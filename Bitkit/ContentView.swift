@@ -9,16 +9,62 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject var lnViewModel = LightningViewModel()
+    @StateObject var onChainViewModel = OnChainViewModel()
     
     var body: some View {
         VStack {
-            Text("LDK-Node running: \(lnViewModel.status?.isRunning == true ? "✅" : "❌")")
+            Group {
+                Text("LDK-Node running: \(lnViewModel.status?.isRunning == true ? "✅" : "❌")")
+                
+                
+                if let nodeId = lnViewModel.nodeId {
+                    Text("LN Node ID: \(nodeId)")
+                        .onTapGesture {
+                            UIPasteboard.general.string = nodeId
+                        }
+                }
+                
+                if let peers = lnViewModel.peers {
+                    ForEach(peers, id: \.nodeId) { peer in
+                        Text("Peer: \(peer.nodeId) \(peer.address) \(peer.isConnected ? "✅" : "❌")")
+                    }
+                }
+                
+                if let lnBalance = lnViewModel.balance {
+                    Text("Lightning \(lnBalance.totalLightningBalanceSats)")
+                }
+              
+                if let onchainBalance = onChainViewModel.balance {
+                    Text("On Chain \(onchainBalance.total)")
+                }
+                
+                if let receiveAddress = onChainViewModel.address {
+                    Text("Receive Address: \(receiveAddress)")
+                        .onTapGesture {
+                            UIPasteboard.general.string = receiveAddress
+                        }
+                }
+                
+                Button("New Receive Address") {
+                    try! onChainViewModel.newReceiveAddress()
+                }
+                
+                Button("Sync") {
+                    Task {
+                        await lnViewModel.sync()
+                        await onChainViewModel.sync()
+                    }
+                }
+            }
+            .multilineTextAlignment(.center)
+            .padding()
         }
-        .padding()
+        .padding(4)
         .onAppear {
             Task {
                 do {
                     try await lnViewModel.start()
+                    try await onChainViewModel.start()
                 } catch {
                     print("Error: \(error)")
                 }

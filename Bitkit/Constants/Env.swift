@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import LDKNode
 
 struct Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -26,12 +25,12 @@ struct Env {
 #endif
     
     //MARK: wallet services
-    static let network: Network = .regtest
+    static let network: WalletNetwork = .regtest
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
             //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-//            return "https://jaybird-logical-sadly.ngrok-free.app"
+            //            return "https://jaybird-logical-sadly.ngrok-free.app"
             return "http://localhost:3000"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
@@ -76,6 +75,19 @@ struct Env {
             return nil
         case .signet:
             return nil
+        }
+    }
+    
+    static var trustedLnPeers: [LnPeer] {
+        switch network {
+        case .regtest:
+            return [.init(nodeId: "021de6ad59a78caf8f376cbd022e8c6ede2a1ef0a4fa035174e8b9c25ad5866584", address: "127.0.0.1:9736")]
+        case .bitcoin:
+            return []
+        case .testnet:
+            return []
+        case .signet:
+            return []
         }
     }
 }
