@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9637E6D32C32CE79004A92FC /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
 		96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */; };
 		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
@@ -37,6 +38,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		9637E6D22C32CE79004A92FC /* Env.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Env.swift; sourceTree = "<group>"; };
 		96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -78,6 +80,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		9637E6D12C32CE65004A92FC /* Constants */ = {
+			isa = PBXGroup;
+			children = (
+				9637E6D22C32CE79004A92FC /* Env.swift */,
+			);
+			path = Constants;
+			sourceTree = "<group>";
+		};
 		96B129FE2C2EC0ED00DD07B0 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
@@ -121,6 +131,7 @@
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
 				96B129FE2C2EC0ED00DD07B0 /* ViewModels */,
 				96B12A012C2EC61500DD07B0 /* Services */,
+				9637E6D12C32CE65004A92FC /* Constants */,
 				96FE1F682C2DE6AC006D0C8B /* Assets.xcassets */,
 				96FE1F6A2C2DE6AC006D0C8B /* Bitkit.entitlements */,
 				96FE1F6B2C2DE6AC006D0C8B /* Preview Content */,
@@ -289,6 +300,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9637E6D32C32CE79004A92FC /* Env.swift in Sources */,
 				96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */,
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
