@@ -21,8 +21,12 @@ class LightningService {
         var config = defaultConfig()
         config.storageDirPath = Env.ldkStorage.path
         config.logDirPath = Env.ldkStorage.path
-        config.network = .regtest
+        config.network = Env.network.ldkNetwork
         config.logLevel = .trace
+        config.anchorChannelsConfig = .init(
+            trustedPeersNoReserve: Env.trustedLnPeers.map({ $0.nodeId }), 
+            perChannelReserveSats: 2000 //TODO set correctly
+        )
         
         let nodeBuilder = Builder.fromConfig(config: config)
         nodeBuilder.setEsploraServer(esploraServerUrl: Env.esploraServerUrl)
@@ -41,7 +45,11 @@ class LightningService {
             //TODO throw custom error
             return
         }
+        
         try node.start()
+        for peer in Env.trustedLnPeers {
+            try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
+        }
     }
     
     func sync() throws {
@@ -58,7 +66,7 @@ extension LightningService {
     var nodeId: String? { node?.nodeId() }
     var balances: BalanceDetails? { node?.listBalances() }
     var status: NodeStatus? { node?.status() }
-    var listPeers: [PeerDetails]? { node?.listPeers() }
-    var listChannels: [ChannelDetails]? { node?.listChannels() }
-    var listPayments: [PaymentDetails]? {  node?.listPayments() }
+    var peers: [PeerDetails]? { node?.listPeers() }
+    var Channels: [ChannelDetails]? { node?.listChannels() }
+    var payments: [PaymentDetails]? {  node?.listPayments() }
 }
