@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
+		96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */; };
+		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
 		96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */; };
 		96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F662C2DE6AA006D0C8B /* ContentView.swift */; };
 		96FE1F692C2DE6AC006D0C8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 96FE1F682C2DE6AC006D0C8B /* Assets.xcassets */; };
@@ -34,6 +37,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningViewModel.swift; sourceTree = "<group>"; };
+		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitApp.swift; sourceTree = "<group>"; };
 		96FE1F662C2DE6AA006D0C8B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -52,6 +57,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,6 +78,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		96B129FE2C2EC0ED00DD07B0 /* ViewModels */ = {
+			isa = PBXGroup;
+			children = (
+				96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */,
+			);
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		96B12A012C2EC61500DD07B0 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				96B12A022C2EC65000DD07B0 /* LightningService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
 		96FE1F582C2DE6AA006D0C8B = {
 			isa = PBXGroup;
 			children = (
@@ -97,6 +119,8 @@
 			children = (
 				96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */,
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
+				96B129FE2C2EC0ED00DD07B0 /* ViewModels */,
+				96B12A012C2EC61500DD07B0 /* Services */,
 				96FE1F682C2DE6AC006D0C8B /* Assets.xcassets */,
 				96FE1F6A2C2DE6AC006D0C8B /* Bitkit.entitlements */,
 				96FE1F6B2C2DE6AC006D0C8B /* Preview Content */,
@@ -145,6 +169,9 @@
 			dependencies = (
 			);
 			name = Bitkit;
+			packageProductDependencies = (
+				96B129FC2C2EC05D00DD07B0 /* LDKNode */,
+			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
 			productType = "com.apple.product-type.application";
@@ -217,6 +244,9 @@
 				Base,
 			);
 			mainGroup = 96FE1F582C2DE6AA006D0C8B;
+			packageReferences = (
+				96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */,
+			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -259,7 +289,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */,
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
+				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -621,6 +653,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lightningdevkit/ldk-node";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		96B129FC2C2EC05D00DD07B0 /* LDKNode */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */;
+			productName = LDKNode;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 96FE1F592C2DE6AA006D0C8B /* Project object */;
 }
