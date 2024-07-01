@@ -12,39 +12,25 @@ import LDKNode
 
 class LightningService {
     private var node: Node?
-        
+    
     static var shared: LightningService = LightningService()
     
-    private init() {
-        
-    }
+    private init() {}
     
-    func setup() throws {
-        //TODO share with app group for background extension
-        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            return //TODO throw error
-        }
-        
-        print(documentsDirectory)
-        
-        let storageDirPath = documentsDirectory.appendingPathComponent("ldk").path //TODO add network and maybe hash mnemonic
-        
+    func setup(mnemonic: String, passphrase: String?) throws {
         var config = defaultConfig()
-        config.storageDirPath = storageDirPath
-        config.logDirPath = storageDirPath
+        config.storageDirPath = Env.ldkStorage.path
+        config.logDirPath = Env.ldkStorage.path
         config.network = .regtest
         config.logLevel = .trace
-
-        let nodeBuilder = Builder.fromConfig(config: config)
-
-        //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-        nodeBuilder.setEsploraServer(esploraServerUrl: "https://jaybird-logical-sadly.ngrok-free.app") //TODO get from ENV
-            
-//        nodeBuilder.setEsploraServer(esploraServerUrl: "http://localhost:3000") //TODO get from ENV
-//        nodeBuilder.setGossipSourceRgs(rgsServerUrl: "https://rapidsync.lightningdevkit.org/snapshot/") //TODO get from ENV
         
-        let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
-               
+        let nodeBuilder = Builder.fromConfig(config: config)
+        nodeBuilder.setEsploraServer(esploraServerUrl: Env.esploraServerUrl)
+        
+        if let rgsServerUrl = Env.ldkRgsServerUrl {
+            nodeBuilder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
+        }
+        
         nodeBuilder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: nil)
         
         node = try nodeBuilder.build()
