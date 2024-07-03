@@ -47,8 +47,23 @@ class LightningService {
         }
         
         try node.start()
+        
+        connectToTrustedPeers()
+    }
+    
+    private func connectToTrustedPeers() {
+        guard let node else {
+            //TODO throw custom error
+            return
+        }
+        
         for peer in Env.trustedLnPeers {
-            try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
+            do {
+                try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
+            } catch {
+                //TODO log error
+                print("Error connecting to peer: \(peer.nodeId)")
+            }
         }
     }
     

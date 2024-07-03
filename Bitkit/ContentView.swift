@@ -32,8 +32,9 @@ struct ContentView: View {
                 
                 if let lnBalance = lnViewModel.balance {
                     Text("Lightning \(lnBalance.totalLightningBalanceSats)")
+                    Text("Lightning onchain \(lnBalance.totalOnchainBalanceSats)")
                 }
-              
+                              
                 if let onchainBalance = onChainViewModel.balance {
                     Text("On Chain \(onchainBalance.total)")
                 }
@@ -64,9 +65,16 @@ struct ContentView: View {
             Task {
                 do {
                     try await lnViewModel.start()
+                } catch {
+                    print("LN Error: \(error)")
+                }
+            }
+            
+            Task {
+                do {
                     try await onChainViewModel.start()
                 } catch {
-                    print("Error: \(error)")
+                    print("OnChain Error: \(error)")
                 }
             }
         }
