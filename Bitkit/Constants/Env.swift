@@ -30,8 +30,8 @@ struct Env {
         switch network {
         case .regtest:
             //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-            //            return "https://jaybird-logical-sadly.ngrok-free.app"
-            return "http://localhost:3000"
+            return "https://jaybird-logical-sadly.ngrok-free.app"
+            //            return "http://localhost:3000"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
