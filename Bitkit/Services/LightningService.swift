@@ -24,7 +24,7 @@ class LightningService {
         config.network = Env.network.ldkNetwork
         config.logLevel = .trace
         config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: Env.trustedLnPeers.map({ $0.nodeId }), 
+            trustedPeersNoReserve: Env.trustedLnPeers.map({ $0.nodeId }),
             perChannelReserveSats: 2000 //TODO set correctly
         )
         
@@ -38,41 +38,53 @@ class LightningService {
         nodeBuilder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: nil)
         
         node = try nodeBuilder.build()
+        print("LDK node setup")
     }
     
-    func start() throws {
+    func start() async throws {
         guard let node else {
             //TODO throw custom error
             return
         }
         
-        try node.start()
+        print("Starting node...")
+        try await ServiceQueue.background(.ldk) {
+            try node.start()
+        }
+        print("Node started!")
         
-        connectToTrustedPeers()
+        try await self.connectToTrustedPeers()
     }
     
-    private func connectToTrustedPeers() {
+    private func connectToTrustedPeers() async throws {
         guard let node else {
             //TODO throw custom error
             return
         }
         
-        for peer in Env.trustedLnPeers {
-            do {
-                try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
-            } catch {
-                //TODO log error
-                print("Error connecting to peer: \(peer.nodeId)")
+        try await ServiceQueue.background(.ldk) {
+            for peer in Env.trustedLnPeers {
+                do {
+                    try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
+                } catch {
+                    //TODO log error
+                    print("Error connecting to peer: \(peer.nodeId)")
+                }
             }
         }
     }
     
-    func sync() throws {
+    func sync() async throws {
         guard let node else {
             //TODO throw custom error
             return
         }
-        try node.syncWallets()
+        
+        print("Syncing LDK...")
+        try await ServiceQueue.background(.ldk) {
+            try node.syncWallets()
+        }
+        print("LDK synced")
     }
 }
 

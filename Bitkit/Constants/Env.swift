@@ -30,8 +30,10 @@ struct Env {
         switch network {
         case .regtest:
             //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-            return "https://jaybird-logical-sadly.ngrok-free.app"
-            //            return "http://localhost:3000"
+//            return "https://jaybird-logical-sadly.ngrok-free.app"
+//            return "http://127.0.0.1:3000"
+            
+            return "http://192.168.0.106:3000"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -81,7 +83,7 @@ struct Env {
     static var trustedLnPeers: [LnPeer] {
         switch network {
         case .regtest:
-            return [.init(nodeId: "021de6ad59a78caf8f376cbd022e8c6ede2a1ef0a4fa035174e8b9c25ad5866584", address: "127.0.0.1:9736")]
+            return [.init(nodeId: "021de6ad59a78caf8f376cbd022e8c6ede2a1ef0a4fa035174e8b9c25ad5866584", address: "127.0.0.1:9738")]
         case .bitcoin:
             return []
         case .testnet:

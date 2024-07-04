@@ -41,7 +41,6 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
         
-        
         print("PUSH USER INFO:")
         print(userInfo)
         
@@ -61,10 +60,10 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
-       
+        
         print("PUSH USER INFO:")
         print(userInfo)
-                
+        
         completionHandler()
     }
 }
