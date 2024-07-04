@@ -10,6 +10,7 @@ import BitcoinDevKit
 
 @MainActor
 class OnChainViewModel: ObservableObject {
+    @Published var isSyncing = false
     @Published var balance: Balance?
     @Published var address: String?
     
@@ -19,19 +20,28 @@ class OnChainViewModel: ObservableObject {
         
         try OnChainService.shared.setup()
         try OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
-        await sync()
+        syncState()
     }
     
     func newReceiveAddress() throws {
         address = try OnChainService.shared.getAddress()
     }
     
-    func sync() async {
+    func sync() async throws {
+        isSyncing = true
+        syncState()
         do {
-            try OnChainService.shared.sync()
-            balance = OnChainService.shared.balance
+            try await OnChainService.shared.sync()
+            isSyncing = false
+            syncState()
         } catch {
-            print("Error: \(error)")
+            isSyncing = false
+            syncState()
+            throw error
         }
+    }
+    
+    private func syncState() {
+        balance = OnChainService.shared.balance
     }
 }

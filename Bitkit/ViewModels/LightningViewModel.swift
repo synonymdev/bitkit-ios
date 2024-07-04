@@ -10,31 +10,58 @@ import LDKNode
 
 @MainActor
 class LightningViewModel: ObservableObject {
+    @Published var isSyncing = false
     @Published var status: NodeStatus?
     @Published var nodeId: String?
     @Published var balance: BalanceDetails?
     @Published var peers: [PeerDetails]?
-
+    
     func start() async throws {
         let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
+        syncState()
         try LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
-        try LightningService.shared.start()
-        await sync()
+        try await LightningService.shared.start()
+        syncState()
     }
     
-    func sync() async {
+    func sync() async throws {
+        isSyncing = true
+        syncState()
+    
         do {
-            try LightningService.shared.sync()
-            status = LightningService.shared.status
-            nodeId = LightningService.shared.nodeId
-            balance = LightningService.shared.balances
-            peers = LightningService.shared.peers
-            
-            //TODO sync everything else for the UI
+            try await LightningService.shared.sync()
+            isSyncing = false
         } catch {
-            print("Error: \(error)")
+            isSyncing = false
+            throw error
         }
+        
+        syncState()
+    }
+    
+    private func syncState() {
+        status = LightningService.shared.status
+        nodeId = LightningService.shared.nodeId
+        balance = LightningService.shared.balances
+        peers = LightningService.shared.peers
+    }
+}
+
+extension NodeStatus {
+    var debugState: String {
+        var debug = """
+Running: \(isRunning ? "✅" : "❌")
+Current best block \(currentBestBlock.height)
+"""
+        
+        if let latestWalletSyncTimestamp {
+            debug += "\nLast synced \(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).description)\n"
+        } else {
+            debug += "\nLast synced never\n"
+        }
+        
+        return debug
     }
 }

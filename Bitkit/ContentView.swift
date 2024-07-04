@@ -12,10 +12,9 @@ struct ContentView: View {
     @StateObject var onChainViewModel = OnChainViewModel()
     
     var body: some View {
-        VStack {
+        ScrollView {
             Group {
-                Text("LDK-Node running: \(lnViewModel.status?.isRunning == true ? "✅" : "❌")")
-                
+                Text(lnViewModel.status?.debugState ?? "No LDK State")
                 
                 if let nodeId = lnViewModel.nodeId {
                     Text("LN Node ID: \(nodeId)")
@@ -50,10 +49,20 @@ struct ContentView: View {
                     try! onChainViewModel.newReceiveAddress()
                 }
                 
-                Button("Sync") {
-                    Task {
-                        await lnViewModel.sync()
-                        await onChainViewModel.sync()
+                VStack {
+                    Button("Sync") {
+                        Task {
+                            try await lnViewModel.sync()
+                            try await onChainViewModel.sync()
+                        }
+                    }
+                    
+                    if lnViewModel.isSyncing {
+                        ProgressView("Syncing Lightning")
+                    }
+                    
+                    if onChainViewModel.isSyncing {
+                        ProgressView("Syncing On Chain")
                     }
                 }
             }

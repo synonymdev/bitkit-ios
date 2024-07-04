@@ -66,13 +66,16 @@ class OnChainService {
         return addressInfo.address.asString()
     }
     
-    func sync() throws {
+    func sync() async throws {
         guard let wallet, let blockchainConfig else {
             //TODO throw custom error
             return
         }
         let blockchain = try Blockchain(config: blockchainConfig)
-        try wallet.sync(blockchain: blockchain, progress: nil)
+        
+        try await ServiceQueue.background(.bdk) {
+            try wallet.sync(blockchain: blockchain, progress: nil)
+        }
     }
 }
 
