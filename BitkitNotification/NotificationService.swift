@@ -28,7 +28,7 @@ class NotificationService: UNNotificationServiceExtension {
                 
                 bestAttemptContent?.title = "Lightning setup"
 
-//                try LightningService.shared.start()
+                try await LightningService.shared.start()
 
                 bestAttemptContent?.title = "Lightning started"
 

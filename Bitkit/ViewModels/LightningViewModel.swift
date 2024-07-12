@@ -15,9 +15,11 @@ class LightningViewModel: ObservableObject {
     @Published var nodeId: String?
     @Published var balance: BalanceDetails?
     @Published var peers: [PeerDetails]?
+    @Published var channels: [ChannelDetails]?
+    @Published var payments: [PaymentDetails]?
     
     func start() async throws {
-        let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
+        let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
         syncState()
@@ -46,6 +48,8 @@ class LightningViewModel: ObservableObject {
         nodeId = LightningService.shared.nodeId
         balance = LightningService.shared.balances
         peers = LightningService.shared.peers
+        channels = LightningService.shared.channels
+        payments = LightningService.shared.payments
     }
 }
 

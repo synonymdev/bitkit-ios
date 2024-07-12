@@ -15,7 +15,7 @@ class OnChainViewModel: ObservableObject {
     @Published var address: String?
     
     func start() async throws {
-        let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
+        let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
         try OnChainService.shared.setup()

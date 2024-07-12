@@ -5,7 +5,7 @@ const { createPushData } = require('./helpers');
 
 const push = new PushNotifications(pushSettings);
 
-const hardcodedpushtoken = "1c3ceed3ef0eaacf9ec0dd03a4fe38c6cad60b5259d8e03efe3aa049e5e5ba89";
+const hardcodedpushtoken = "2933593c23394bd98e9f319082ff4b4f7bcc5e553865fb02b57fbb6ca8c6ce07";
 
 const data = createPushData({
     type: 'payment'

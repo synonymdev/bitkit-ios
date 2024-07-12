@@ -31,16 +31,19 @@ class OnChainService {
     
     func createWallet(mnemonic: String, passphrase: String?) throws {
         let mnemonic = try Mnemonic.fromString(mnemonic: mnemonic)
+        
         let secretKey = DescriptorSecretKey(
             network: Env.network.bdkNetwork,
             mnemonic: mnemonic,
             password: passphrase
         )
+        
         let descriptor = Descriptor.newBip86(
             secretKey: secretKey,
             keychain: .external,
             network: Env.network.bdkNetwork
         )
+        
         let changeDescriptor = Descriptor.newBip86(
             secretKey: secretKey,
             keychain: .internal,
