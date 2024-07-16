@@ -11,7 +11,7 @@ struct LogView: View {
     @State var lines: [String] = []
     
     var body: some View {
-        ScrollView {
+        List {
             ForEach(lines, id: \.self) { line in
                 Text(line)
                     .font(.system(size: 8))
@@ -20,7 +20,7 @@ struct LogView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .background(.black)
+        .listStyle(.plain)
         .onAppear {
             loadLog()
         }
