@@ -23,10 +23,15 @@ struct AppError: LocalizedError {
     }
     
     init(error: Error) {
+        if let ldkBuildError = error as? BuildError {
+            self.init(ldkBuildError: ldkBuildError)
+            return
+        }
+        
         if let ldkError = error as? NodeError {
             self.init(ldkError: ldkError)
             return
-        } 
+        }
         
         if let bdkError = error as? BdkError {
             self.init(bdkError: bdkError)
@@ -58,6 +63,44 @@ struct AppError: LocalizedError {
 //            message = "BIP32 error"
 //            debugMessage = bdkMessage
 //        }
+    }
+    
+    private init(ldkBuildError: BuildError) {
+        switch ldkBuildError as BuildError {
+        case .InvalidChannelMonitor(message: let ldkMessage):
+            message = "Invalid channel monitor"
+            debugMessage = ldkMessage
+        case .InvalidSeedBytes(message: let ldkMessage):
+            message = "Invalid seed bytes"
+            debugMessage = ldkMessage
+        case .InvalidSeedFile(message: let ldkMessage):
+            message = "Invalid seed file"
+            debugMessage = ldkMessage
+        case .InvalidSystemTime(message: let ldkMessage):
+            message = "Invalid system time"
+            debugMessage = ldkMessage
+        case .InvalidListeningAddresses(message: let ldkMessage):
+            message = "Invalid listening addresses"
+            debugMessage = ldkMessage
+        case .ReadFailed(message: let ldkMessage):
+            message = "Read failed"
+            debugMessage = ldkMessage
+        case .WriteFailed(message: let ldkMessage):
+            message = "Write failed"
+            debugMessage = ldkMessage
+        case .StoragePathAccessFailed(message: let ldkMessage):
+            message = "Storage path access failed"
+            debugMessage = ldkMessage
+        case .KvStoreSetupFailed(message: let ldkMessage):
+            message = "KV store setup failed"
+            debugMessage = ldkMessage
+        case .WalletSetupFailed(message: let ldkMessage):
+            message = "Wallet setup failed"
+            debugMessage = ldkMessage
+        case .LoggerSetupFailed(message: let ldkMessage):
+            message = "Logger setup failed"
+            debugMessage = ldkMessage
+        }
     }
     
     private init(ldkError: NodeError) {

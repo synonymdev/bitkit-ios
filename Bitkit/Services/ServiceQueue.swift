@@ -37,7 +37,7 @@ class ServiceQueue {
                 } catch {
                     let appError = AppError(error: error)
                     print("Service Error: \(appError.message) (\(appError.debugMessage ?? ""))")
-                    continuation.resume(throwing: error)
+                    continuation.resume(throwing: appError)
                 }
             }
         }

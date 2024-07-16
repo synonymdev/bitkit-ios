@@ -11,6 +11,10 @@ struct ContentView: View {
     @StateObject var lnViewModel = LightningViewModel()
     @StateObject var onChainViewModel = OnChainViewModel()
     
+    @Environment(\.scenePhase) var scenePhase
+
+    @State var showLogs = false
+    
     var body: some View {
         List {
             Section {
@@ -124,11 +128,15 @@ struct ContentView: View {
                 Task {
                     //                        let invoice = UIPasteboard.general.string
                     do {
-                        let paymentHash = try await LightningService.shared.send(bolt11: "lnbcrt1230n1pnfzdu8pp589sw6vgkercxszde7v4q70yu2ecd0dauhwss4sss52vgu4aemlgqdqqcqzzsxqyz5vqsp59d5228t6805syarr59qkl96kahtjehnahwphglha38qv3sagh25q9qxpqysgq5ssgsd5d8f6lx0f5rjjfnwzy9kmmcup34ppdf7ak5tpe75j3egw9g48esx4czadu84amz8wm2ghwzpu5tcz2szkklcseq86jjnw64pcqlrez5d")
+                        let paymentHash = try await LightningService.shared.send(bolt11: "lnbcrt2u1pnf2qckpp5gzqu4fnv0l8c5x3x0yemq2wcme0ggh497mu88rqfttps7ts68e2sdqqcqzzsxqyz5vqsp5tke63vmcdm7s4f0ue9u2rf58t4j720nu7j2m7x4g4h4ty9ml3r6q9qxpqysgqdy0xjeqt5wrezqf608lxv52z8wqxthffhr28h4eena90ytl6yg9472awe43ldzwkukuh87ftekx82y2r67dqvuaz7q57ujuu4xawy6gpp4hyta")
                     } catch {
                         print("Send error: \(error)")
                     }
                 }
+            }
+            
+            Button("Show Logs") {
+                showLogs = true
             }
             
             Section("Transactions") {
@@ -143,6 +151,9 @@ struct ContentView: View {
                     }
                 }
             }
+        }
+        .sheet(isPresented: $showLogs) {
+            LogView()
         }
         .onAppear {
             print("APPEARED!")
@@ -163,6 +174,35 @@ struct ContentView: View {
                     try await onChainViewModel.sync()
                 } catch {
                     print("OnChain Error: \(error)")
+                }
+            }
+        }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .background {
+                print("Backgrounding")
+                if lnViewModel.status?.isRunning == true {
+                    Task {
+                        do {
+                            try await lnViewModel.stop()
+                        } catch {
+                            print("LN Error: \(error)")
+                        }
+                    }
+                }
+                return
+            }
+            
+            if newPhase == .active {
+                print("Active")
+                if lnViewModel.status?.isRunning == false {
+                    Task {
+                        do {
+                            try await lnViewModel.start()
+                            try await lnViewModel.sync()
+                        } catch {
+                            print("LN Error: \(error)")
+                        }
+                    }
                 }
             }
         }

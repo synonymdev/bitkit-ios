@@ -23,8 +23,15 @@ class LightningViewModel: ObservableObject {
         let passphrase: String? = nil
         
         syncState()
-        try LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
+        try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
         try await LightningService.shared.start()
+        syncState()
+        
+        //TODO listen on LDK events to sync UI state
+    }
+    
+    func stop() async throws {
+        try await LightningService.shared.stop()
         syncState()
     }
     
