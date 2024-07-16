@@ -35,6 +35,7 @@
 		96FE1F772C2DE6AC006D0C8B /* BitkitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F762C2DE6AC006D0C8B /* BitkitTests.swift */; };
 		96FE1F812C2DE6AC006D0C8B /* BitkitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */; };
 		96FE1F832C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */; };
+		96FE5A192C46594500860ADC /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A182C46594500860ADC /* LogView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -86,6 +87,7 @@
 		9637E6DE2C32ED7B004A92FC /* LnPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LnPeer.swift; sourceTree = "<group>"; };
 		96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
+		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
 		96F261312C369C2100167439 /* ServiceQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceQueue.swift; sourceTree = "<group>"; };
 		96F261352C369D2400167439 /* Errors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Errors.swift; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -99,6 +101,7 @@
 		96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITests.swift; sourceTree = "<group>"; };
 		96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		96FE5A182C46594500860ADC /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +143,7 @@
 		961058DD2C355B5500E1F1D8 /* BitkitNotification */ = {
 			isa = PBXGroup;
 			children = (
+				96C246C32C455AF60058222C /* BitkitNotification.entitlements */,
 				961058DE2C355B5500E1F1D8 /* NotificationService.swift */,
 				961058E02C355B5500E1F1D8 /* Info.plist */,
 			);
@@ -232,6 +236,7 @@
 			children = (
 				96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */,
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
+				96FE5A172C46592800860ADC /* Views */,
 				96B129FE2C2EC0ED00DD07B0 /* ViewModels */,
 				96B12A012C2EC61500DD07B0 /* Services */,
 				9637E6DB2C32EA84004A92FC /* Models */,
@@ -268,6 +273,14 @@
 				96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */,
 			);
 			path = BitkitUITests;
+			sourceTree = "<group>";
+		};
+		96FE5A172C46592800860ADC /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				96FE5A182C46594500860ADC /* LogView.swift */,
+			);
+			path = Views;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -457,6 +470,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9637E6D32C32CE79004A92FC /* Env.swift in Sources */,
+				96FE5A192C46594500860ADC /* LogView.swift in Sources */,
 				96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */,
 				9637E6DD2C32EAA8004A92FC /* WalletNetwork.swift in Sources */,
 				96F261362C369D2400167439 /* Errors.swift in Sources */,
@@ -511,6 +525,7 @@
 		961058E52C355B5500E1F1D8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KYH47R284B;
@@ -538,6 +553,7 @@
 		961058E62C355B5500E1F1D8 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = KYH47R284B;

@@ -17,7 +17,7 @@ class LightningService {
     
     private init() {}
     
-    func setup(mnemonic: String, passphrase: String?) throws {
+    func setup(mnemonic: String, passphrase: String?) async throws {
         var config = defaultConfig()
         config.storageDirPath = Env.ldkStorage.path
         config.logDirPath = Env.ldkStorage.path
@@ -41,18 +41,25 @@ class LightningService {
         
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: nil)
         
-        node = try builder.build()
-        print("LDK node setup")
-        
         print(Env.ldkStorage.path)
+
+        print("Building node...")
+        
+        try await ServiceQueue.background(.ldk) {
+            self.node = try builder.build()
+        }
+        
+        print("LDK node setup")
     }
     
-    func start() async throws {
+    /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
+    /// - Parameter onEvent: Triggered on any LDK node event
+    func start(onEvent: ((Event) -> Void)? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
         }
         
-        listenForEvents()
+        listenForEvents(onEvent: onEvent)
 
         print("Starting node...")
         try await ServiceQueue.background(.ldk) {
@@ -62,6 +69,18 @@ class LightningService {
         
         
         try await self.connectToTrustedPeers()
+    }
+    
+    func stop() async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        print("Stopping node...")
+        try await ServiceQueue.background(.ldk) {
+            try node.stop()
+        }
+        print("Node stopped!")
     }
     
     private func connectToTrustedPeers() async throws {
@@ -82,6 +101,25 @@ class LightningService {
         }
     }
     
+    /// Temp fix for regtest where nodes might not agree on current fee rates
+    private func setMaxDustHtlcExposureForCurrentChannels() throws {
+        guard Env.network == .regtest else {
+            print("Not updating channel config for non-regtest network")
+            return
+        }
+        
+        guard let node else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        for channel in node.listChannels() {
+            let config = channel.config
+            config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
+            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
+            print("Updated channel config for: \(channel.userChannelId)")
+        }
+    }
+    
     func sync() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
@@ -90,6 +128,7 @@ class LightningService {
         print("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
+            try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
         print("LDK synced")
     }
@@ -148,7 +187,7 @@ extension LightningService {
 
 //MARK: Events
 extension LightningService {
-    func listenForEvents() {
+    func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
         Task {
             while true {
                 guard let node = self.node else {
@@ -157,10 +196,9 @@ extension LightningService {
                 }
                 
                 let event = await node.nextEventAsync()
-                
+                onEvent?(event)
                 
                 //TODO actual event handler
-                
                 switch event {
                 case .paymentSuccessful(paymentId: let paymentId, paymentHash: let paymentHash, feePaidMsat: let feePaidMsat):
                     print("✅ Payment successful: \(feePaidMsat)")

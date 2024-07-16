@@ -44,8 +44,8 @@ struct Env {
     }
     
     static var appStorageUrl: URL {
-        //TODO move to app group so files can be shared with extensions
-        guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        //App group so files can be shared with extensions
+        guard let documentsDirectory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.bitkit") else {
             fatalError("Could not find documents directory")
         }
         
@@ -84,7 +84,7 @@ struct Env {
         switch network {
         case .regtest:
             return [
-                .init(nodeId: "03e26fdad23b9e17f6a6b1dd0a019c6fcd9e778a1c2af6ae62a0951c8352efbbc3", address: "127.0.0.1:9735")
+                .init(nodeId: "03e26fdad23b9e17f6a6b1dd0a019c6fcd9e778a1c2af6ae62a0951c8352efbbc3", address: "192.168.0.106:9735")
 //                .init(nodeId: "0218ab1da83a4768e154fada54deb5d835199aad116c4212e6844d0dce0f82cab1", address: "192.168.0.106:9737"),
 //                .init(nodeId: "021de6ad59a78caf8f376cbd022e8c6ede2a1ef0a4fa035174e8b9c25ad5866584", address: "192.168.0.106:9738")
             ]
