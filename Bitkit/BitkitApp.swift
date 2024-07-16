@@ -26,8 +26,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        print("PUSH USER INFO")
-        print(userInfo)
+        Logger.debug(userInfo, context: "push notification received")
         
         completionHandler(UIBackgroundFetchResult.newData)
     }
@@ -41,8 +40,7 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
         
-        print("PUSH USER INFO:")
-        print(userInfo)
+        Logger.debug(userInfo, context: "push notification received")
         
         // Change this to your preferred presentation option
         completionHandler([[.banner, .badge, .sound]])
@@ -50,19 +48,17 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02hhx", $0) }.joined()
-        print("***TOKEN \(token)")
+        Logger.debug(token, context: "push token")
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        print("didFailToRegisterForRemoteNotificationsWithError")
-        print(error.localizedDescription)
+        Logger.error(error)
     }
     
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         
-        print("PUSH USER INFO:")
-        print(userInfo)
+        Logger.debug(userInfo, context: "push notification received")
         
         completionHandler()
     }
@@ -79,9 +75,9 @@ struct BitkitApp: App {
                     //TODO move this elsewhere
                     requestPushNotificationPermision { (granted, error) in
                         if granted {
-                            print("PUSH NOTIFICATION GRANTED")
+                            Logger.info("Push notification permission granted")
                         } else {
-                            print("PUSH NOTIFICATION DENIED")
+                            Logger.warn("Push notification permission denied")
                         }
                     }
                 }

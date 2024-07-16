@@ -36,6 +36,8 @@
 		96FE1F812C2DE6AC006D0C8B /* BitkitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */; };
 		96FE1F832C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */; };
 		96FE5A192C46594500860ADC /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A182C46594500860ADC /* LogView.swift */; };
+		96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
+		96FE5A1C2C46A4E100860ADC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -102,6 +104,7 @@
 		96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITests.swift; sourceTree = "<group>"; };
 		96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		96FE5A182C46594500860ADC /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		96FE5A1A2C46A4DD00860ADC /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -204,6 +207,7 @@
 			isa = PBXGroup;
 			children = (
 				96F261352C369D2400167439 /* Errors.swift */,
+				96FE5A1A2C46A4DD00860ADC /* Logger.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -462,6 +466,7 @@
 				961058EB2C35793000E1F1D8 /* WalletNetwork.swift in Sources */,
 				961058DF2C355B5500E1F1D8 /* NotificationService.swift in Sources */,
 				96F261372C369D2400167439 /* Errors.swift in Sources */,
+				96FE5A1C2C46A4E100860ADC /* Logger.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -478,6 +483,7 @@
 				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
 				9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */,
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
+				96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				9637E6D52C32D811004A92FC /* OnChainService.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,

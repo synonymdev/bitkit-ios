@@ -41,15 +41,15 @@ class LightningService {
         
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: nil)
         
-        print(Env.ldkStorage.path)
+        Logger.debug(Env.ldkStorage.path, context: "LDK storage path")
 
-        print("Building node...")
+        Logger.debug("Building node...")
         
         try await ServiceQueue.background(.ldk) {
             self.node = try builder.build()
         }
         
-        print("LDK node setup")
+        Logger.info("LDK node setup")
     }
     
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
@@ -61,12 +61,11 @@ class LightningService {
         
         listenForEvents(onEvent: onEvent)
 
-        print("Starting node...")
+        Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
             try node.start()
         }
-        print("Node started!")
-        
+        Logger.info("Node started")
         
         try await self.connectToTrustedPeers()
     }
@@ -76,11 +75,11 @@ class LightningService {
             throw AppError(serviceError: .nodeNotStarted)
         }
         
-        print("Stopping node...")
+        Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
             try node.stop()
         }
-        print("Node stopped!")
+        Logger.info("Node stopped")
     }
     
     private func connectToTrustedPeers() async throws {
@@ -92,10 +91,9 @@ class LightningService {
             for peer in Env.trustedLnPeers {
                 do {
                     try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
-                    print("Connected to trusted peer: \(peer.nodeId)")
+                    Logger.info("Connected to trusted peer: \(peer.nodeId)")
                 } catch {
-                    //TODO log error
-                    print("Error connecting to peer: \(peer.nodeId)")
+                    Logger.error(error, context: "Peer: \(peer.nodeId)")
                 }
             }
         }
@@ -104,7 +102,7 @@ class LightningService {
     /// Temp fix for regtest where nodes might not agree on current fee rates
     private func setMaxDustHtlcExposureForCurrentChannels() throws {
         guard Env.network == .regtest else {
-            print("Not updating channel config for non-regtest network")
+            Logger.debug("Not updating channel config for non-regtest network")
             return
         }
         
@@ -116,7 +114,7 @@ class LightningService {
             let config = channel.config
             config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
             try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
-            print("Updated channel config for: \(channel.userChannelId)")
+            Logger.info("Updated channel config for: \(channel.userChannelId)")
         }
     }
     
@@ -125,12 +123,12 @@ class LightningService {
             throw AppError(serviceError: .nodeNotStarted)
         }
         
-        print("Syncing LDK...")
+        Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
             try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
-        print("LDK synced")
+        Logger.info("LDK synced")
     }
     
     func receive(amountSats: UInt64, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
@@ -191,7 +189,7 @@ extension LightningService {
         Task {
             while true {
                 guard let node = self.node else {
-                    print("LDK node not started")
+                    Logger.error("LDK node not started")
                     return
                 }
                 
@@ -201,25 +199,25 @@ extension LightningService {
                 //TODO actual event handler
                 switch event {
                 case .paymentSuccessful(paymentId: let paymentId, paymentHash: let paymentHash, feePaidMsat: let feePaidMsat):
-                    print("✅ Payment successful: \(feePaidMsat)")
+                    Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
                     break
                 case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
-                    print("❌ Payment failed: \(reason.debugDescription)")
+                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) reason: \(reason.debugDescription)")
                     break
                 case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
-                    print("🤑 Payment received: \(amountMsat)")
+                    Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
                     break
                 case .paymentClaimable(paymentId: let paymentId, paymentHash: let paymentHash, claimableAmountMsat: let claimableAmountMsat, claimDeadline: let claimDeadline):
-                    print("🫰 Payment claimable: \(claimableAmountMsat)")
+                    Logger.info("🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
                     break
                 case .channelPending(channelId: let channelId, userChannelId: let userChannelId, formerTemporaryChannelId: let formerTemporaryChannelId, counterpartyNodeId: let counterpartyNodeId, fundingTxo: let fundingTxo):
-                    print("⏳ Channel pending: \(channelId)")
+                    Logger.info("⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)")
                     break
                 case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
-                    print("👐 Channel ready: \(channelId)")
+                    Logger.info("👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")")
                     break
                 case .channelClosed(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId, reason: let reason):
-                    print("⛔ Channel closed: \(channelId)")
+                    Logger.info("⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)")
                     break
                 }
                 
