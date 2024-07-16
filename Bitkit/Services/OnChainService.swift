@@ -29,7 +29,7 @@ class OnChainService {
         blockchainConfig = BlockchainConfig.esplora(config: esploraConfig)
     }
     
-    func createWallet(mnemonic: String, passphrase: String?) throws {
+    func createWallet(mnemonic: String, passphrase: String?) async throws {
         let mnemonic = try Mnemonic.fromString(mnemonic: mnemonic)
         
         let secretKey = DescriptorSecretKey(
@@ -52,12 +52,14 @@ class OnChainService {
         
         //TODO save to keychain
         
-        wallet = try Wallet(
-            descriptor: descriptor,
-            changeDescriptor: changeDescriptor,
-            network: Env.network.bdkNetwork,
-            databaseConfig: .memory //TODO use sqlite
-        )
+        try await ServiceQueue.background(.bdk) {
+            self.wallet = try Wallet(
+                descriptor: descriptor,
+                changeDescriptor: changeDescriptor,
+                network: Env.network.bdkNetwork,
+                databaseConfig: .memory //TODO use sqlite
+            )
+        }
     }
     
     func getAddress() throws -> String {

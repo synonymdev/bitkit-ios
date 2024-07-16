@@ -19,7 +19,7 @@ class OnChainViewModel: ObservableObject {
         let passphrase: String? = nil
         
         try OnChainService.shared.setup()
-        try OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
+        try await OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
         syncState()
     }
     
