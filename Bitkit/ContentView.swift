@@ -12,7 +12,7 @@ struct ContentView: View {
     @StateObject var onChainViewModel = OnChainViewModel()
     
     @Environment(\.scenePhase) var scenePhase
-
+    
     @State var showLogs = false
     
     var body: some View {
@@ -58,6 +58,7 @@ struct ContentView: View {
                     ForEach(channels, id: \.channelId) { channel in
                         VStack {
                             Text(channel.counterpartyNodeId).font(.caption2)
+                                .multilineTextAlignment(.leading)
                             HStack {
                                 Text("Out: \(channel.outboundCapacityMsat)")
                                 Spacer()
@@ -71,10 +72,10 @@ struct ContentView: View {
                             Task {
                                 do {
                                     try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
-                                    print("Channel closed")
+                                    Logger.info("Channel closed")
                                     try await lnViewModel.sync()
                                 } catch {
-                                    print("Close channel error: \(error)")
+                                    
                                 }
                             }
                         }
@@ -82,7 +83,7 @@ struct ContentView: View {
                     
                     Button("Copy open channel command") {
                         let cmd = "lncli openchannel --node_key=\(lnViewModel.nodeId ?? "") --local_amt=200000 --push_amt=10000 --private=true --zero_conf --channel_type=anchors"
-//                        let cmd = "lncli openchannel --node_key=\(lnViewModel.nodeId ?? "") --local_amt=200000 --push_amt=10000 --min_confs=3"
+                        //                        let cmd = "lncli openchannel --node_key=\(lnViewModel.nodeId ?? "") --local_amt=200000 --push_amt=10000 --min_confs=3"
                         UIPasteboard.general.string = cmd
                     }
                 }
@@ -96,41 +97,23 @@ struct ContentView: View {
             }
             
             Button("New Receive Address") {
-                try! onChainViewModel.newReceiveAddress()
-            }
-            
-            VStack {
-                Button("Sync") {
-                    Task {
-                        try await lnViewModel.sync()
-                        try await onChainViewModel.sync()
-                    }
-                }
-                
-                if lnViewModel.isSyncing {
-                    ProgressView("Syncing Lightning")
-                }
-                
-                if onChainViewModel.isSyncing {
-                    ProgressView("Syncing On Chain")
+                Task {
+                    try await onChainViewModel.newReceiveAddress()
                 }
             }
             
             Button("Create bolt11") {
                 Task {
                     let invoice = try await LightningService.shared.receive(amountSats: 123, description: "paymeplz")
-                    print(invoice)
+                    Logger.info(invoice, context: "Created invoice")
                     UIPasteboard.general.string = invoice
                 }
             }
             
             Button("Pay bolt11") {
                 Task {
-                    //                        let invoice = UIPasteboard.general.string
-                    do {
-                        let paymentHash = try await LightningService.shared.send(bolt11: "lnbcrt2u1pnf2qckpp5gzqu4fnv0l8c5x3x0yemq2wcme0ggh497mu88rqfttps7ts68e2sdqqcqzzsxqyz5vqsp5tke63vmcdm7s4f0ue9u2rf58t4j720nu7j2m7x4g4h4ty9ml3r6q9qxpqysgqdy0xjeqt5wrezqf608lxv52z8wqxthffhr28h4eena90ytl6yg9472awe43ldzwkukuh87ftekx82y2r67dqvuaz7q57ujuu4xawy6gpp4hyta")
-                    } catch {
-                        print("Send error: \(error)")
+                    if let invoice = UIPasteboard.general.string {
+                        let _ = try? await LightningService.shared.send(bolt11: invoice)
                     }
                 }
             }
@@ -152,40 +135,49 @@ struct ContentView: View {
                 }
             }
         }
+        .refreshable {
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { try await lnViewModel.sync() }
+                    group.addTask { try await onChainViewModel.sync() }
+                    try await group.waitForAll()
+                }
+            } catch {
+                //TODO show an error
+            }
+        }
         .sheet(isPresented: $showLogs) {
             LogView()
         }
         .onAppear {
-            print("APPEARED!")
+            Logger.debug("App appeared, spinning up services...")
             Task {
                 do {
-                    print("Starting LN...")
                     try await lnViewModel.start()
                     try await lnViewModel.sync()
                 } catch {
-                    print("LN Error: \(error)")
+                    Logger.error(error, context: "Failed to start LN")
                 }
             }
             
             Task {
                 do {
-                    print("Starting OnChain...")
                     try await onChainViewModel.start()
                     try await onChainViewModel.sync()
                 } catch {
-                    print("OnChain Error: \(error)")
+                    Logger.error(error, context: "Failed to start on chain")
                 }
             }
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .background {
-                print("Backgrounding")
                 if lnViewModel.status?.isRunning == true {
+                    Logger.debug("App backgrounded, stopping LN service...")
                     Task {
                         do {
                             try await lnViewModel.stop()
                         } catch {
-                            print("LN Error: \(error)")
+                            Logger.error(error, context: "Failed to stop LN")
                         }
                     }
                 }
@@ -193,14 +185,14 @@ struct ContentView: View {
             }
             
             if newPhase == .active {
-                print("Active")
                 if lnViewModel.status?.isRunning == false {
+                    Logger.debug("App active, starting LN service...")
                     Task {
                         do {
                             try await lnViewModel.start()
                             try await lnViewModel.sync()
                         } catch {
-                            print("LN Error: \(error)")
+                            Logger.error(error, context: "Failed to start LN")
                         }
                     }
                 }

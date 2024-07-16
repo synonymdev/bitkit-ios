@@ -52,6 +52,8 @@ class OnChainService {
         
         //TODO save to keychain
         
+        Logger.debug("Creating onchain wallet...")
+        
         try await ServiceQueue.background(.bdk) {
             self.wallet = try Wallet(
                 descriptor: descriptor,
@@ -60,27 +62,35 @@ class OnChainService {
                 databaseConfig: .memory //TODO use sqlite
             )
         }
+        
+        Logger.info("Onchain wallet created")
     }
     
-    func getAddress() throws -> String {
+    func getAddress() async throws -> String {
         guard let wallet else {
-            //TODO throw custom error
-            return "error"
+            throw AppError(serviceError: .onchainWalletNotCreated)
         }
-        let addressInfo = try wallet.getAddress(addressIndex: .new)
-        return addressInfo.address.asString()
+        
+        return try await ServiceQueue.background(.bdk) {
+            let addressInfo = try wallet.getAddress(addressIndex: .new)
+            return addressInfo.address.asString()
+        }
     }
     
     func sync() async throws {
         guard let wallet, let blockchainConfig else {
-            //TODO throw custom error
-            return
+            throw AppError(serviceError: .onchainWalletNotCreated)
         }
+        
+        Logger.debug("Syncing BDK...")
+        
         let blockchain = try Blockchain(config: blockchainConfig)
         
         try await ServiceQueue.background(.bdk) {
             try wallet.sync(blockchain: blockchain, progress: nil)
         }
+        
+        Logger.info("BDK synced")
     }
 }
 

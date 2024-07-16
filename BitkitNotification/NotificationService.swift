@@ -9,30 +9,21 @@ import UserNotifications
 import LDKNode
 
 class NotificationService: UNNotificationServiceExtension {
-
+    
     var contentHandler: ((UNNotificationContent) -> Void)?
     var bestAttemptContent: UNMutableNotificationContent?
     
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         self.contentHandler = contentHandler
         bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
-
-        bestAttemptContent?.title = "RECEIVED"
         
         Task {
             do {
                 let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
                 let passphrase: String? = nil
                 
-                bestAttemptContent?.title = "Lightning setting up..."
-                
-                print("Setting up LDK")
                 try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
                 
-                print("Starting LDK")
-                
-                bestAttemptContent?.title = "Lightning setup"
-
                 try await LightningService.shared.start { event in
                     self.handleLdkEvent(event: event)
                 }
@@ -40,9 +31,8 @@ class NotificationService: UNNotificationServiceExtension {
                 bestAttemptContent?.title = "Lightning error"
                 bestAttemptContent?.body = error.localizedDescription
                 
-                print("Failed to setup node")
-                print(error.localizedDescription)
-                dumpLogs()
+                Logger.error(error, context: "failed to setup node in notification service")
+                dumpLdkLogs()
                 await deliver()
             }
         }
@@ -50,33 +40,19 @@ class NotificationService: UNNotificationServiceExtension {
     
     func handleLdkEvent(event: Event) {
         switch event {
-        case .paymentSuccessful(paymentId: let paymentId, paymentHash: let paymentHash, feePaidMsat: let feePaidMsat):
-            print("✅ Payment successful: \(feePaidMsat)")
-            break
-        case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
-            print("❌ Payment failed: \(reason.debugDescription)")
-            break
         case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
-            print("Payment received: \(paymentId ?? ""), \(paymentHash), \(amountMsat)")
             self.bestAttemptContent?.title = "Payment Received"
             self.bestAttemptContent?.body = "⚡ \(amountMsat / 1000)"
             Task {
                 await self.deliver()
             }
             break
-        case .paymentClaimable(paymentId: let paymentId, paymentHash: let paymentHash, claimableAmountMsat: let claimableAmountMsat, claimDeadline: let claimDeadline):
-            print("🫰 Payment claimable: \(claimableAmountMsat)")
-            break
         case .channelPending(channelId: let channelId, userChannelId: let userChannelId, formerTemporaryChannelId: let formerTemporaryChannelId, counterpartyNodeId: let counterpartyNodeId, fundingTxo: let fundingTxo):
-            print("Channel pending")
             self.bestAttemptContent?.title = "Channel Opened"
             self.bestAttemptContent?.body = "Pending"
-            Task {
-                await self.deliver()
-            }
+            //Don't deliver, give a chance for channelReady event to update the content
             break
         case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
-            print("👐 Channel ready: \(channelId)")
             self.bestAttemptContent?.title = "Channel ready"
             self.bestAttemptContent?.body = "Usable"
             Task {
@@ -84,14 +60,24 @@ class NotificationService: UNNotificationServiceExtension {
             }
             break
         case .channelClosed(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId, reason: let reason):
-            print("⛔ Channel closed: \(channelId)")
+            self.bestAttemptContent?.title = "Channel closed"
+            self.bestAttemptContent?.body = reason.debugDescription //TODO: Reason string
+            Task {
+                await self.deliver()
+            }
+            break
+        case .paymentSuccessful(_, _, _):
+            break
+        case .paymentFailed(_, _, _):
+            break
+        case .paymentClaimable(_, _, _, _):
             break
         }
     }
     
     func deliver() async {
         try? await LightningService.shared.stop()
-
+        
         if let contentHandler = contentHandler, let bestAttemptContent =  bestAttemptContent {
             //TODO: Stop LDK
             
@@ -99,7 +85,7 @@ class NotificationService: UNNotificationServiceExtension {
         }
     }
     
-    func dumpLogs() {
+    func dumpLdkLogs() {
         let dir = Env.ldkStorage
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
         
@@ -111,7 +97,7 @@ class NotificationService: UNNotificationServiceExtension {
                 print(line)
             }
         } catch {
-            print("Failed to load log file")
+            Logger.error(error, context: "failed to load ldk log file")
         }
     }
     

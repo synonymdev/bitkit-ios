@@ -23,8 +23,8 @@ class OnChainViewModel: ObservableObject {
         syncState()
     }
     
-    func newReceiveAddress() throws {
-        address = try OnChainService.shared.getAddress()
+    func newReceiveAddress() async throws {
+        address = try await OnChainService.shared.getAddress()
     }
     
     func sync() async throws {

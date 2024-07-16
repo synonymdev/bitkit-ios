@@ -11,6 +11,7 @@ import BitcoinDevKit
 
 enum CustomServiceError: Error {
     case nodeNotStarted
+    case onchainWalletNotCreated
 }
 
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
@@ -22,6 +23,8 @@ struct AppError: LocalizedError {
         return NSLocalizedString(message, comment: "")
     }
     
+    /// Pass any LDK or BDK error to get a translated error message
+    /// - Parameter error: any error
     init(error: Error) {
         if let ldkBuildError = error as? BuildError {
             self.init(ldkBuildError: ldkBuildError)
@@ -44,6 +47,8 @@ struct AppError: LocalizedError {
     init(message: String, debugMessage: String?) {
         self.message = message
         self.debugMessage = debugMessage
+        
+        Logger.error("\(message) [\(debugMessage ?? "")]", context: "generic app error")
     }
     
     init(serviceError: CustomServiceError) {
@@ -51,7 +56,12 @@ struct AppError: LocalizedError {
         case .nodeNotStarted:
             message = "Node is not started"
             debugMessage = nil
+        case .onchainWalletNotCreated:
+            message = "Onchain wallet not created"
+            debugMessage = nil
         }
+        
+        Logger.error("\(message) [\(debugMessage ?? "")]", context: "service error")
     }
     
     private init(bdkError: BdkError) {
@@ -63,6 +73,8 @@ struct AppError: LocalizedError {
 //            message = "BIP32 error"
 //            debugMessage = bdkMessage
 //        }
+        
+        Logger.error("\(message) [\(debugMessage ?? "")]", context: "BdkError")
     }
     
     private init(ldkBuildError: BuildError) {
@@ -245,5 +257,7 @@ struct AppError: LocalizedError {
             message = "Liquidity fee too high"
             debugMessage = ldkMessage
         }
+        
+        Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }
 }
