@@ -30,7 +30,7 @@ class OnChainService {
     }
     
     func createWallet(mnemonic: String, passphrase: String?) async throws {
-        let mnemonic = try Mnemonic.fromString(mnemonic: mnemonic)
+        let mnemonic = try Mnemonic.fromString(mnemonic: "\(mnemonic)\(passphrase == nil ? "" : " \(passphrase!)")")
         
         let secretKey = DescriptorSecretKey(
             network: Env.network.bdkNetwork,
@@ -38,13 +38,13 @@ class OnChainService {
             password: passphrase
         )
         
-        let descriptor = Descriptor.newBip86(
+        let descriptor = Descriptor.newBip84(
             secretKey: secretKey,
             keychain: .external,
             network: Env.network.bdkNetwork
         )
         
-        let changeDescriptor = Descriptor.newBip86(
+        let changeDescriptor = Descriptor.newBip84(
             secretKey: secretKey,
             keychain: .internal,
             network: Env.network.bdkNetwork

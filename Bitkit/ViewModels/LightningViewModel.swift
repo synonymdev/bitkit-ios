@@ -24,7 +24,11 @@ class LightningViewModel: ObservableObject {
         
         syncState()
         try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
-        try await LightningService.shared.start()
+        try await LightningService.shared.start(onEvent: { _ in
+            Task { @MainActor in
+                self.syncState()
+            }
+        })
         syncState()
         
         //TODO listen on LDK events to sync UI state
