@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		961058DF2C355B5500E1F1D8 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 961058DE2C355B5500E1F1D8 /* NotificationService.swift */; };
+		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		961058E82C35791700E1F1D8 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
+		961058E92C35792100E1F1D8 /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
+		961058EA2C35793000E1F1D8 /* LnPeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6DE2C32ED7B004A92FC /* LnPeer.swift */; };
+		961058EB2C35793000E1F1D8 /* WalletNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6DC2C32EAA8004A92FC /* WalletNetwork.swift */; };
+		961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 961058ED2C35798C00E1F1D8 /* LDKNode */; };
+		961058F02C35799400E1F1D8 /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 961058EF2C35799400E1F1D8 /* BitcoinDevKit */; };
 		9637E6D32C32CE79004A92FC /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
 		9637E6D52C32D811004A92FC /* OnChainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D42C32D811004A92FC /* OnChainService.swift */; };
 		9637E6D82C32D8A7004A92FC /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9637E6D72C32D8A7004A92FC /* BitcoinDevKit */; };
@@ -16,6 +24,10 @@
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
 		96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */; };
 		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
+		96F261322C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
+		96F261332C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
+		96F261362C369D2400167439 /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261352C369D2400167439 /* Errors.swift */; };
+		96F261372C369D2400167439 /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261352C369D2400167439 /* Errors.swift */; };
 		96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */; };
 		96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F662C2DE6AA006D0C8B /* ContentView.swift */; };
 		96FE1F692C2DE6AC006D0C8B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 96FE1F682C2DE6AC006D0C8B /* Assets.xcassets */; };
@@ -23,9 +35,19 @@
 		96FE1F772C2DE6AC006D0C8B /* BitkitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F762C2DE6AC006D0C8B /* BitkitTests.swift */; };
 		96FE1F812C2DE6AC006D0C8B /* BitkitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */; };
 		96FE1F832C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */; };
+		96FE5A192C46594500860ADC /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A182C46594500860ADC /* LogView.swift */; };
+		96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
+		96FE5A1C2C46A4E100860ADC /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		961058E12C355B5500E1F1D8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 96FE1F592C2DE6AA006D0C8B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 961058DB2C355B5500E1F1D8;
+			remoteInfo = BitkitNotification;
+		};
 		96FE1F732C2DE6AC006D0C8B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 96FE1F592C2DE6AA006D0C8B /* Project object */;
@@ -42,7 +64,24 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		961058DE2C355B5500E1F1D8 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		961058E02C355B5500E1F1D8 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9637E6D22C32CE79004A92FC /* Env.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Env.swift; sourceTree = "<group>"; };
 		9637E6D42C32D811004A92FC /* OnChainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnChainService.swift; sourceTree = "<group>"; };
 		9637E6D92C32E573004A92FC /* OnChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnChainViewModel.swift; sourceTree = "<group>"; };
@@ -50,6 +89,9 @@
 		9637E6DE2C32ED7B004A92FC /* LnPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LnPeer.swift; sourceTree = "<group>"; };
 		96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
+		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
+		96F261312C369C2100167439 /* ServiceQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceQueue.swift; sourceTree = "<group>"; };
+		96F261352C369D2400167439 /* Errors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Errors.swift; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitApp.swift; sourceTree = "<group>"; };
 		96FE1F662C2DE6AA006D0C8B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -61,9 +103,20 @@
 		96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F802C2DE6AC006D0C8B /* BitkitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITests.swift; sourceTree = "<group>"; };
 		96FE1F822C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BitkitUITestsLaunchTests.swift; sourceTree = "<group>"; };
+		96FE5A182C46594500860ADC /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		96FE5A1A2C46A4DD00860ADC /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		961058D92C355B5500E1F1D8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				961058F02C35799400E1F1D8 /* BitcoinDevKit in Frameworks */,
+				961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		96FE1F5E2C2DE6AA006D0C8B /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -90,6 +143,30 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		961058DD2C355B5500E1F1D8 /* BitkitNotification */ = {
+			isa = PBXGroup;
+			children = (
+				96C246C32C455AF60058222C /* BitkitNotification.entitlements */,
+				961058DE2C355B5500E1F1D8 /* NotificationService.swift */,
+				961058E02C355B5500E1F1D8 /* Info.plist */,
+			);
+			path = BitkitNotification;
+			sourceTree = "<group>";
+		};
+		961058EC2C35798C00E1F1D8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		961058F12C35904F00E1F1D8 /* Extensions */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Extensions;
+			sourceTree = "<group>";
+		};
 		9637E6D12C32CE65004A92FC /* Constants */ = {
 			isa = PBXGroup;
 			children = (
@@ -121,8 +198,18 @@
 			children = (
 				96B12A022C2EC65000DD07B0 /* LightningService.swift */,
 				9637E6D42C32D811004A92FC /* OnChainService.swift */,
+				96F261312C369C2100167439 /* ServiceQueue.swift */,
 			);
 			path = Services;
+			sourceTree = "<group>";
+		};
+		96F261342C369D1300167439 /* Utilities */ = {
+			isa = PBXGroup;
+			children = (
+				96F261352C369D2400167439 /* Errors.swift */,
+				96FE5A1A2C46A4DD00860ADC /* Logger.swift */,
+			);
+			path = Utilities;
 			sourceTree = "<group>";
 		};
 		96FE1F582C2DE6AA006D0C8B = {
@@ -131,7 +218,9 @@
 				96FE1F632C2DE6AA006D0C8B /* Bitkit */,
 				96FE1F752C2DE6AC006D0C8B /* BitkitTests */,
 				96FE1F7F2C2DE6AC006D0C8B /* BitkitUITests */,
+				961058DD2C355B5500E1F1D8 /* BitkitNotification */,
 				96FE1F622C2DE6AA006D0C8B /* Products */,
+				961058EC2C35798C00E1F1D8 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -141,6 +230,7 @@
 				96FE1F612C2DE6AA006D0C8B /* Bitkit.app */,
 				96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */,
 				96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */,
+				961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -150,10 +240,13 @@
 			children = (
 				96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */,
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
+				96FE5A172C46592800860ADC /* Views */,
 				96B129FE2C2EC0ED00DD07B0 /* ViewModels */,
 				96B12A012C2EC61500DD07B0 /* Services */,
 				9637E6DB2C32EA84004A92FC /* Models */,
 				9637E6D12C32CE65004A92FC /* Constants */,
+				961058F12C35904F00E1F1D8 /* Extensions */,
+				96F261342C369D1300167439 /* Utilities */,
 				96FE1F682C2DE6AC006D0C8B /* Assets.xcassets */,
 				96FE1F6A2C2DE6AC006D0C8B /* Bitkit.entitlements */,
 				96FE1F6B2C2DE6AC006D0C8B /* Preview Content */,
@@ -186,9 +279,38 @@
 			path = BitkitUITests;
 			sourceTree = "<group>";
 		};
+		96FE5A172C46592800860ADC /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				96FE5A182C46594500860ADC /* LogView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		961058DB2C355B5500E1F1D8 /* BitkitNotification */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 961058E42C355B5500E1F1D8 /* Build configuration list for PBXNativeTarget "BitkitNotification" */;
+			buildPhases = (
+				961058D82C355B5500E1F1D8 /* Sources */,
+				961058D92C355B5500E1F1D8 /* Frameworks */,
+				961058DA2C355B5500E1F1D8 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BitkitNotification;
+			packageProductDependencies = (
+				961058ED2C35798C00E1F1D8 /* LDKNode */,
+				961058EF2C35799400E1F1D8 /* BitcoinDevKit */,
+			);
+			productName = BitkitNotification;
+			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		96FE1F602C2DE6AA006D0C8B /* Bitkit */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 96FE1F862C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "Bitkit" */;
@@ -196,10 +318,12 @@
 				96FE1F5D2C2DE6AA006D0C8B /* Sources */,
 				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
 				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
+				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				961058E22C355B5500E1F1D8 /* PBXTargetDependency */,
 			);
 			name = Bitkit;
 			packageProductDependencies = (
@@ -256,6 +380,9 @@
 				LastSwiftUpdateCheck = 1540;
 				LastUpgradeCheck = 1540;
 				TargetAttributes = {
+					961058DB2C355B5500E1F1D8 = {
+						CreatedOnToolsVersion = 15.4;
+					};
 					96FE1F602C2DE6AA006D0C8B = {
 						CreatedOnToolsVersion = 15.4;
 					};
@@ -289,11 +416,19 @@
 				96FE1F602C2DE6AA006D0C8B /* Bitkit */,
 				96FE1F712C2DE6AC006D0C8B /* BitkitTests */,
 				96FE1F7B2C2DE6AC006D0C8B /* BitkitUITests */,
+				961058DB2C355B5500E1F1D8 /* BitkitNotification */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		961058DA2C355B5500E1F1D8 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		96FE1F5F2C2DE6AA006D0C8B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -320,16 +455,35 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		961058D82C355B5500E1F1D8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				961058E92C35792100E1F1D8 /* Env.swift in Sources */,
+				961058E82C35791700E1F1D8 /* LightningService.swift in Sources */,
+				961058EA2C35793000E1F1D8 /* LnPeer.swift in Sources */,
+				96F261332C369C2100167439 /* ServiceQueue.swift in Sources */,
+				961058EB2C35793000E1F1D8 /* WalletNetwork.swift in Sources */,
+				961058DF2C355B5500E1F1D8 /* NotificationService.swift in Sources */,
+				96F261372C369D2400167439 /* Errors.swift in Sources */,
+				96FE5A1C2C46A4E100860ADC /* Logger.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		96FE1F5D2C2DE6AA006D0C8B /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				9637E6D32C32CE79004A92FC /* Env.swift in Sources */,
+				96FE5A192C46594500860ADC /* LogView.swift in Sources */,
 				96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */,
 				9637E6DD2C32EAA8004A92FC /* WalletNetwork.swift in Sources */,
+				96F261362C369D2400167439 /* Errors.swift in Sources */,
 				9637E6DA2C32E573004A92FC /* OnChainViewModel.swift in Sources */,
+				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
 				9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */,
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
+				96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				9637E6D52C32D811004A92FC /* OnChainService.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
@@ -356,6 +510,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		961058E22C355B5500E1F1D8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
+			targetProxy = 961058E12C355B5500E1F1D8 /* PBXContainerItemProxy */;
+		};
 		96FE1F742C2DE6AC006D0C8B /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 96FE1F602C2DE6AA006D0C8B /* Bitkit */;
@@ -369,6 +528,63 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		961058E52C355B5500E1F1D8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KYH47R284B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BitkitNotification/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BitkitNotification;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = to.Bitkit.native.BitkitNotification;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		961058E62C355B5500E1F1D8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = KYH47R284B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = BitkitNotification/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = BitkitNotification;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = to.Bitkit.native.BitkitNotification;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		96FE1F842C2DE6AC006D0C8B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -486,6 +702,7 @@
 		96FE1F872C2DE6AC006D0C8B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
@@ -526,6 +743,7 @@
 		96FE1F882C2DE6AC006D0C8B /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
@@ -656,6 +874,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		961058E42C355B5500E1F1D8 /* Build configuration list for PBXNativeTarget "BitkitNotification" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				961058E52C355B5500E1F1D8 /* Debug */,
+				961058E62C355B5500E1F1D8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		96FE1F5C2C2DE6AA006D0C8B /* Build configuration list for PBXProject "Bitkit" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -714,6 +941,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		961058ED2C35798C00E1F1D8 /* LDKNode */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */;
+			productName = LDKNode;
+		};
+		961058EF2C35799400E1F1D8 /* BitcoinDevKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 9637E6D62C32D8A7004A92FC /* XCRemoteSwiftPackageReference "bdk-swift" */;
+			productName = BitcoinDevKit;
+		};
 		9637E6D72C32D8A7004A92FC /* BitcoinDevKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 9637E6D62C32D8A7004A92FC /* XCRemoteSwiftPackageReference "bdk-swift" */;

@@ -10,31 +10,73 @@ import LDKNode
 
 @MainActor
 class LightningViewModel: ObservableObject {
+    @Published var isSyncing = false
     @Published var status: NodeStatus?
     @Published var nodeId: String?
     @Published var balance: BalanceDetails?
     @Published var peers: [PeerDetails]?
-
+    @Published var channels: [ChannelDetails]?
+    @Published var payments: [PaymentDetails]?
+    
     func start() async throws {
-        let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
+        let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
-        try LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
-        try LightningService.shared.start()
-        await sync()
+        syncState()
+        try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
+        try await LightningService.shared.start(onEvent: { _ in
+            Task { @MainActor in
+                self.syncState()
+            }
+        })
+        syncState()
+        
+        //TODO listen on LDK events to sync UI state
     }
     
-    func sync() async {
+    func stop() async throws {
+        try await LightningService.shared.stop()
+        syncState()
+    }
+    
+    func sync() async throws {
+        isSyncing = true
+        syncState()
+    
         do {
-            try LightningService.shared.sync()
-            status = LightningService.shared.status
-            nodeId = LightningService.shared.nodeId
-            balance = LightningService.shared.balances
-            peers = LightningService.shared.peers
-            
-            //TODO sync everything else for the UI
+            try await LightningService.shared.sync()
+            isSyncing = false
         } catch {
-            print("Error: \(error)")
+            isSyncing = false
+            throw error
         }
+        
+        syncState()
+    }
+    
+    private func syncState() {
+        status = LightningService.shared.status
+        nodeId = LightningService.shared.nodeId
+        balance = LightningService.shared.balances
+        peers = LightningService.shared.peers
+        channels = LightningService.shared.channels
+        payments = LightningService.shared.payments
+    }
+}
+
+extension NodeStatus {
+    var debugState: String {
+        var debug = """
+Running: \(isRunning ? "✅" : "❌")
+Current best block \(currentBestBlock.height)
+"""
+        
+        if let latestWalletSyncTimestamp {
+            debug += "\nLast synced \(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).description)\n"
+        } else {
+            debug += "\nLast synced never\n"
+        }
+        
+        return debug
     }
 }
