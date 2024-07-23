@@ -10,28 +10,38 @@ import BitcoinDevKit
 
 @MainActor
 class OnChainViewModel: ObservableObject {
+    @Published var isSyncing = false
     @Published var balance: Balance?
     @Published var address: String?
     
     func start() async throws {
-        let mnemonic = "science fatigue phone inner pipe solve acquire nothing birth slow armor flip debate gorilla select settle talk badge uphold firm video vibrant banner casual" // = generateEntropyMnemonic()
+        let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
         try OnChainService.shared.setup()
-        try OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
-        await sync()
+        try await OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
+        syncState()
     }
     
-    func newReceiveAddress() throws {
-        address = try OnChainService.shared.getAddress()
+    func newReceiveAddress() async throws {
+        address = try await OnChainService.shared.getAddress()
     }
     
-    func sync() async {
+    func sync() async throws {
+        isSyncing = true
+        syncState()
         do {
-            try OnChainService.shared.sync()
-            balance = OnChainService.shared.balance
+            try await OnChainService.shared.sync()
+            isSyncing = false
+            syncState()
         } catch {
-            print("Error: \(error)")
+            isSyncing = false
+            syncState()
+            throw error
         }
+    }
+    
+    private func syncState() {
+        balance = OnChainService.shared.balance
     }
 }
