@@ -70,17 +70,22 @@ struct BitkitApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .onAppear {
-                    //TODO move this elsewhere
-                    requestPushNotificationPermision { (granted, error) in
-                        if granted {
-                            Logger.info("Push notification permission granted")
-                        } else {
-                            Logger.warn("Push notification permission denied")
+            if Env.isUnitTest {
+                Text("Running unit tests...")
+            } else {
+                ContentView()
+                    .onAppear {
+                        //TODO move this elsewhere
+                        requestPushNotificationPermision { (granted, error) in
+                            if granted {
+                                Logger.info("Push notification permission granted")
+                            } else {
+                                Logger.warn("Push notification permission denied")
+                            }
                         }
                     }
-                }
+            }
+            
         }
     }
 }

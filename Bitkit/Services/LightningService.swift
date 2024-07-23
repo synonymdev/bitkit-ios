@@ -13,7 +13,7 @@ import LDKNode
 class LightningService {
     private var node: Node?
     
-    static var shared: LightningService = LightningService()
+    static var shared = LightningService()
     
     private init() {}
     
