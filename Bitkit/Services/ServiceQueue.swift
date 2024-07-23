@@ -11,12 +11,14 @@ import Foundation
 class ServiceQueue {
     private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .utility)
     private static let bdkQueue = DispatchQueue(label: "bdk-queue", qos: .utility)
-    
+    private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
+
     private init() {}
     
     enum ServiceTypes {
         case ldk
         case bdk
+        case migration
         
         var queue: DispatchQueue {
             switch self {
@@ -24,6 +26,8 @@ class ServiceQueue {
                 return ServiceQueue.ldkQueue
             case .bdk:
                 return ServiceQueue.bdkQueue
+            case .migration:
+                return ServiceQueue.migrationQueue
             }
         }
     }
