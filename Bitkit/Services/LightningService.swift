@@ -65,6 +65,7 @@ class LightningService {
         try await ServiceQueue.background(.ldk) {
             try node.start()
         }
+        
         Logger.info("Node started")
         
         try await self.connectToTrustedPeers()
