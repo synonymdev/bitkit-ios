@@ -32,7 +32,7 @@ final class LdkMigration: XCTestCase {
             XCTFail("Missing file: adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin")
             return
         }
-                                
+        
         try MigrationsService.shared.ldkToLdkNode(
             seed: try Data(contentsOf: seedFile),
             manager: try Data(contentsOf: managerFile),
@@ -40,19 +40,16 @@ final class LdkMigration: XCTestCase {
                 try Data(contentsOf: channelFile)
             ]
         )
-
+        
         try await LightningService.shared.setup(mnemonic: Env.testMnemonic, passphrase: nil)
         try await LightningService.shared.start()
         
         XCTAssertEqual(LightningService.shared.nodeId, "02cd08b7b375e4263849121f9f0ffb2732a0b88d0fb74487575ac539b374f45a55")
         
         let channels = LightningService.shared.channels
-                XCTAssertEqual(channels?.count, 1)
-        
+        XCTAssertEqual(channels?.count, 1)
+                
         try await LightningService.shared.stop()
-        
-//        sleep(5)
-        //TODO spin up LDK and query channel monitors
     }
     
     func dumpLdkLogs() {

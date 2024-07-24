@@ -13,6 +13,7 @@ enum CustomServiceError: Error {
     case nodeNotStarted
     case onchainWalletNotCreated
     case ldkNodeSqliteAlreadyExists
+    case ldkToLdkNodeMigration
 }
 
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
@@ -60,6 +61,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .ldkNodeSqliteAlreadyExists:
             message = "LDK-node SQLite file already exists"
+            debugMessage = nil
+        case .ldkToLdkNodeMigration:
+            message = "LDK to LDK-node migration issue"
             debugMessage = nil
         }
         
