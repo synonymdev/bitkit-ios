@@ -29,11 +29,9 @@ struct Env {
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
+            return "https://electrs-regtest.synonym.to"
             //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-//            return "https://jaybird-logical-sadly.ngrok-free.app"
-            return "http://127.0.0.1:3000"
-            
-//            return "http://192.168.0.106:3000"
+            //return "http://127.0.0.1:3000"            
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
