@@ -1,5 +1,5 @@
 {
-  "originHash" : "50a59acde9afec0b94afb6261fc906e5b5c8d6262ecc90f6afe8978dc903ea8c",
+  "originHash" : "b03b44bd686d6a1f548992eefdc3c205f03696d1af255697a0c62fecb4ff0cca",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -17,6 +17,15 @@
       "state" : {
         "branch" : "main",
         "revision" : "66fec694f2b1de81dcb3d40073698a03dfe25522"
+      }
+    },
+    {
+      "identity" : "ldk-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/lightningdevkit/ldk-swift/",
+      "state" : {
+        "revision" : "e3fa435166527b1089787fd4ab0ce398849fb916",
+        "version" : "0.0.123"
       }
     },
     {

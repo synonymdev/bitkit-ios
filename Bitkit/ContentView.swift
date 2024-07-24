@@ -153,9 +153,6 @@ struct ContentView: View {
             Logger.debug("App appeared, spinning up services...")
             Task {
                 do {
-                    try? await MigrationsService.shared.migrateAll()
-                    
-                    Logger.debug("SKIPPING OTHER SERVICES")
                     try await lnViewModel.start()
                     try await lnViewModel.sync()
                     
