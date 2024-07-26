@@ -29,11 +29,9 @@ struct Env {
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
+            return "https://electrs-regtest.synonym.to"
             //cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-//            return "https://jaybird-logical-sadly.ngrok-free.app"
-//            return "http://127.0.0.1:3000"
-            
-            return "http://192.168.0.106:3000"
+            //return "http://127.0.0.1:3000"            
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -49,15 +47,30 @@ struct Env {
             fatalError("Could not find documents directory")
         }
         
+        if isUnitTest {
+            return documentsDirectory.appendingPathComponent("unit-tests")
+        }
+        
         return documentsDirectory
     }
     
     static var ldkStorage: URL {
-        let storageDirPath = appStorageUrl.appendingPathComponent("ldk")
-        
         switch network {
         case .regtest:
-            return storageDirPath.appendingPathComponent("regtest")
+            return appStorageUrl.appendingPathComponent("regtest").appendingPathComponent("ldk")
+        case .bitcoin:
+            fatalError("Bitcoin network not implemented")
+        case .testnet:
+            fatalError("Testnet network not implemented")
+        case .signet:
+            fatalError("Signet network not implemented")
+        }
+    }
+    
+    static var bdkStorage: URL {
+        switch network {
+        case .regtest:
+            return appStorageUrl.appendingPathComponent("regtest").appendingPathComponent("bdk")
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -84,9 +97,7 @@ struct Env {
         switch network {
         case .regtest:
             return [
-                .init(nodeId: "03e26fdad23b9e17f6a6b1dd0a019c6fcd9e778a1c2af6ae62a0951c8352efbbc3", address: "192.168.0.106:9735")
-//                .init(nodeId: "0218ab1da83a4768e154fada54deb5d835199aad116c4212e6844d0dce0f82cab1", address: "192.168.0.106:9737"),
-//                .init(nodeId: "021de6ad59a78caf8f376cbd022e8c6ede2a1ef0a4fa035174e8b9c25ad5866584", address: "192.168.0.106:9738")
+                .init(nodeId: "02b61365f14c5070465e014485fa91cee5a131cf2a4b7cb37309fcd1cc53975238", address: "192.168.0.106:9735")
             ]
         case .bitcoin:
             return []
@@ -96,4 +107,6 @@ struct Env {
             return []
         }
     }
+    
+    static let testMnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
 }

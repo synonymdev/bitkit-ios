@@ -12,6 +12,8 @@ import BitcoinDevKit
 enum CustomServiceError: Error {
     case nodeNotStarted
     case onchainWalletNotCreated
+    case ldkNodeSqliteAlreadyExists
+    case ldkToLdkNodeMigration
 }
 
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
@@ -41,14 +43,12 @@ struct AppError: LocalizedError {
             return
         }
         
-        self.init(message: "Unknown error", debugMessage: error.localizedDescription)
+        self.init(message: "Error", debugMessage: error.localizedDescription)
     }
     
     init(message: String, debugMessage: String?) {
         self.message = message
         self.debugMessage = debugMessage
-        
-        Logger.error("\(message) [\(debugMessage ?? "")]", context: "generic app error")
     }
     
     init(serviceError: CustomServiceError) {
@@ -58,6 +58,12 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .onchainWalletNotCreated:
             message = "Onchain wallet not created"
+            debugMessage = nil
+        case .ldkNodeSqliteAlreadyExists:
+            message = "LDK-node SQLite file already exists"
+            debugMessage = nil
+        case .ldkToLdkNodeMigration:
+            message = "LDK to LDK-node migration issue"
             debugMessage = nil
         }
         

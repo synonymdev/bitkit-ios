@@ -19,7 +19,7 @@ class NotificationService: UNNotificationServiceExtension {
         
         Task {
             do {
-                let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
+                let mnemonic = Env.testMnemonic // = generateEntropyMnemonic()
                 let passphrase: String? = nil
                 
                 try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
