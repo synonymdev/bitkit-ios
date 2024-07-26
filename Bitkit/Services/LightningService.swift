@@ -13,7 +13,7 @@ import LDKNode
 class LightningService {
     private var node: Node?
     
-    static var shared: LightningService = LightningService()
+    static var shared = LightningService()
     
     private init() {}
     
@@ -65,6 +65,7 @@ class LightningService {
         try await ServiceQueue.background(.ldk) {
             try node.start()
         }
+        
         Logger.info("Node started")
         
         try await self.connectToTrustedPeers()

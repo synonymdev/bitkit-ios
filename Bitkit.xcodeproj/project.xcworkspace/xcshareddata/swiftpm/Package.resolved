@@ -1,5 +1,5 @@
 {
-  "originHash" : "957b506793f070febdbc6a14c01a0fcfc0c18f7f437da5a1d36c9627c119b759",
+  "originHash" : "b03b44bd686d6a1f548992eefdc3c205f03696d1af255697a0c62fecb4ff0cca",
   "pins" : [
     {
       "identity" : "bdk-swift",
@@ -17,6 +17,24 @@
       "state" : {
         "branch" : "main",
         "revision" : "66fec694f2b1de81dcb3d40073698a03dfe25522"
+      }
+    },
+    {
+      "identity" : "ldk-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/lightningdevkit/ldk-swift/",
+      "state" : {
+        "revision" : "e3fa435166527b1089787fd4ab0ce398849fb916",
+        "version" : "0.0.123"
+      }
+    },
+    {
+      "identity" : "sqlite.swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/stephencelis/SQLite.swift.git",
+      "state" : {
+        "revision" : "a95fc6df17d108bd99210db5e8a9bac90fe984b8",
+        "version" : "0.15.3"
       }
     }
   ],

@@ -12,7 +12,7 @@ class OnChainService {
     private var wallet: Wallet?
     private var blockchainConfig: BlockchainConfig?
     
-    static var shared: OnChainService = OnChainService()
+    static var shared = OnChainService()
     
     private init() {}
     
@@ -59,7 +59,7 @@ class OnChainService {
                 descriptor: descriptor,
                 changeDescriptor: changeDescriptor,
                 network: Env.network.bdkNetwork,
-                databaseConfig: .memory //TODO use sqlite
+                databaseConfig: .sled(config: .init(path: Env.bdkStorage.path, treeName: ""))
             )
         }
         

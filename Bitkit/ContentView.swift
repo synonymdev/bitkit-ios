@@ -149,23 +149,17 @@ struct ContentView: View {
         .sheet(isPresented: $showLogs) {
             LogView()
         }
-        .onAppear {
+        .onAppear {            
             Logger.debug("App appeared, spinning up services...")
             Task {
                 do {
                     try await lnViewModel.start()
                     try await lnViewModel.sync()
-                } catch {
-                    Logger.error(error, context: "Failed to start LN")
-                }
-            }
-            
-            Task {
-                do {
+                    
                     try await onChainViewModel.start()
                     try await onChainViewModel.sync()
                 } catch {
-                    Logger.error(error, context: "Failed to start on chain")
+                    Logger.error(error, context: "Failed to start wallet services")
                 }
             }
         }

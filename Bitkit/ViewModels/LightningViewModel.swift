@@ -19,7 +19,7 @@ class LightningViewModel: ObservableObject {
     @Published var payments: [PaymentDetails]?
     
     func start() async throws {
-        let mnemonic = "always coconut smooth scatter steel web version exist broken motion damage board trap dinosaur include alone dust flag paddle give divert journey garden bench" // = generateEntropyMnemonic()
+        let mnemonic = Env.testMnemonic // = generateEntropyMnemonic()
         let passphrase: String? = nil
         
         syncState()
