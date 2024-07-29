@@ -7,8 +7,7 @@
 
 import XCTest
 
-final class LdkMigration: XCTestCase {
-    
+final class LdkMigrationTests: XCTestCase {
     override func setUpWithError() throws {
         try? FileManager.default.removeItem(at: Env.appStorageUrl) //Removes 'unit-test' directory
     }
