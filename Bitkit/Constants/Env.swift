@@ -12,6 +12,9 @@ struct Env {
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     
+    //{Team ID}.{Keychain Group}
+    static let keychainGroup = "KYH47R284B.to.bitkit"
+    
 #if targetEnvironment(simulator)
     static let isSim = true
 #else
