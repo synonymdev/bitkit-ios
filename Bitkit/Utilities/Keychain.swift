@@ -8,19 +8,22 @@
 import Foundation
 import Security
 
-class KeyChain {
-    enum KeyChainKey {
-        case mnemonic(index: Int)
+class Keychain {
+    enum KeychainKey {
+        case bip39Mnemonic(index: Int)
+        case bip39Passphrase(index: Int)
         
         var storageKey: String {
             switch self {
-            case .mnemonic(let index):
-                return "mnemonic_\(index)"
+            case .bip39Mnemonic(let index):
+                return "bip39_mnemonic_\(index)"
+            case .bip39Passphrase(index: let index):
+                return "bip39_passphrase_\(index)"
             }
         }
     }
     
-    class func save(key: KeyChainKey, data: Data) throws {
+    class func save(key: KeychainKey, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
         
         let query = [
@@ -47,7 +50,7 @@ class KeyChain {
         Logger.info("Saved \(key.storageKey)", context: "Keychain")
     }
     
-    class func saveString(key: KeyChainKey, str: String) throws {
+    class func saveString(key: KeychainKey, str: String) throws {
         guard let data = str.data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
@@ -55,7 +58,7 @@ class KeyChain {
         try save(key: key, data: data)
     }
     
-    class func delete(key: KeyChainKey) throws {
+    class func delete(key: KeychainKey) throws {
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: key.storageKey,
@@ -73,7 +76,7 @@ class KeyChain {
     }
     
     //TODO throws if fails but return nil if not found
-    class func load(key: KeyChainKey) throws -> Data? {
+    class func load(key: KeychainKey) throws -> Data? {
         let query = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key.storageKey,
@@ -86,6 +89,11 @@ class KeyChain {
         
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
         
+        if status == errSecItemNotFound {
+            Logger.debug("\(key.storageKey) not found in keychain")
+            return nil
+        }
+        
         if status != noErr {
             Logger.error("Failed to load \(key.storageKey) from keychain. \(status.description)", context: "Keychain")
             throw KeychainError.failedToLoad
@@ -95,7 +103,7 @@ class KeyChain {
         return dataTypeRef as! Data?
     }
     
-    class func loadString(key: KeyChainKey) throws -> String? {
+    class func loadString(key: KeychainKey) throws -> String? {
         if let data = try load(key: key), let str = String(data: data, encoding: .utf8) {
             return str
         }
@@ -131,7 +139,8 @@ class KeyChain {
     }
     
     class func wipeEntireKeychain() throws {
-        guard Env.isDebug && Env.network == .regtest else {
+        //TODO remove check in the future when safe to do so or required by the UI
+        guard (Env.isDebug || Env.isUnitTest) && Env.network == .regtest else {
             Logger.error("Wiping keychain is only allowed in debug mode for regtest", context: "Keychain")
             throw KeychainError.keychainWipeNotAllowed
         }

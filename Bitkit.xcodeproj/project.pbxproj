@@ -27,7 +27,8 @@
 		9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6DE2C32ED7B004A92FC /* LnPeer.swift */; };
 		963DE7932C578D9900A2AA1D /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7922C578D9900A2AA1D /* Keychain.swift */; };
 		963DE7942C578D9900A2AA1D /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7922C578D9900A2AA1D /* Keychain.swift */; };
-		963DE7962C57969000A2AA1D /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7952C57969000A2AA1D /* Keychain.swift */; };
+		963DE7962C57969000A2AA1D /* KeychainTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7952C57969000A2AA1D /* KeychainTests.swift */; };
+		963DE7972C57BC8D00A2AA1D /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7922C578D9900A2AA1D /* Keychain.swift */; };
 		966DE6612C502C7E00A7B0EF /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
 		966DE6622C502C8600A7B0EF /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261352C369D2400167439 /* Errors.swift */; };
 		966DE6632C502C8600A7B0EF /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
@@ -111,7 +112,7 @@
 		9637E6DC2C32EAA8004A92FC /* WalletNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletNetwork.swift; sourceTree = "<group>"; };
 		9637E6DE2C32ED7B004A92FC /* LnPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LnPeer.swift; sourceTree = "<group>"; };
 		963DE7922C578D9900A2AA1D /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
-		963DE7952C57969000A2AA1D /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
+		963DE7952C57969000A2AA1D /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
 		966DE66A2C50FA6A00A7B0EF /* channel_manager.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = channel_manager.bin; sourceTree = "<group>"; };
 		966DE66C2C50FA7600A7B0EF /* adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin; sourceTree = "<group>"; };
 		966DE6712C512C1E00A7B0EF /* seed.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = seed.bin; sourceTree = "<group>"; };
@@ -312,7 +313,7 @@
 				966DE6692C50FA5800A7B0EF /* ldk-backup */,
 				96FE1F762C2DE6AC006D0C8B /* BitkitTests.swift */,
 				9613018D2C50288900878183 /* LdkMigration.swift */,
-				963DE7952C57969000A2AA1D /* Keychain.swift */,
+				963DE7952C57969000A2AA1D /* KeychainTests.swift */,
 			);
 			path = BitkitTests;
 			sourceTree = "<group>";
@@ -518,6 +519,7 @@
 				961058EA2C35793000E1F1D8 /* LnPeer.swift in Sources */,
 				96F261332C369C2100167439 /* ServiceQueue.swift in Sources */,
 				961058EB2C35793000E1F1D8 /* WalletNetwork.swift in Sources */,
+				963DE7972C57BC8D00A2AA1D /* Keychain.swift in Sources */,
 				961058DF2C355B5500E1F1D8 /* NotificationService.swift in Sources */,
 				96F261372C369D2400167439 /* Errors.swift in Sources */,
 				96FE5A1C2C46A4E100860ADC /* Logger.swift in Sources */,
@@ -564,7 +566,7 @@
 				966DE6752C512FD100A7B0EF /* HexBytes.swift in Sources */,
 				96FE1F772C2DE6AC006D0C8B /* BitkitTests.swift in Sources */,
 				966DE6682C50372900A7B0EF /* OnChainService.swift in Sources */,
-				963DE7962C57969000A2AA1D /* Keychain.swift in Sources */,
+				963DE7962C57969000A2AA1D /* KeychainTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
