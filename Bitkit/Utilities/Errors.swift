@@ -16,6 +16,14 @@ enum CustomServiceError: Error {
     case ldkToLdkNodeMigration
 }
 
+enum KeychainError: Error {
+    case failedToSave
+    case failedToSaveAlreadyExists
+    case failedToDelete
+    case failedToLoad
+    case keychainWipeNotAllowed
+}
+
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
 struct AppError: LocalizedError {
     let message: String
