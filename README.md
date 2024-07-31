@@ -1,5 +1,4 @@
-## Error handling
+## How to build
 
-- Don't pass exceptions up to the UI
-- Translations
-- Known lightning errors
+1. Open Bitkit.xcodeproj in XCode
+2. Build
