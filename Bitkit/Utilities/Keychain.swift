@@ -8,22 +8,24 @@
 import Foundation
 import Security
 
-class Keychain {
-    enum KeychainKey {
-        case bip39Mnemonic(index: Int)
-        case bip39Passphrase(index: Int)
-        
-        var storageKey: String {
-            switch self {
-            case .bip39Mnemonic(let index):
-                return "bip39_mnemonic_\(index)"
-            case .bip39Passphrase(index: let index):
-                return "bip39_passphrase_\(index)"
-            }
+enum KeychainEntryType {
+    case bip39Mnemonic(index: Int)
+    case bip39Passphrase(index: Int)
+    
+    //TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
+    
+    var storageKey: String {
+        switch self {
+        case .bip39Mnemonic(let index):
+            return "bip39_mnemonic_\(index)"
+        case .bip39Passphrase(index: let index):
+            return "bip39_passphrase_\(index)"
         }
     }
-    
-    class func save(key: KeychainKey, data: Data) throws {
+}
+
+class Keychain {
+    class func save(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
         
         let query = [
@@ -47,10 +49,22 @@ class Keychain {
             throw KeychainError.failedToSave
         }
         
+        //Sanity check on save
+        guard var storedValue = try load(key: key) else {
+            Logger.error("Failed to load \(key.storageKey) after saving", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+        
+        guard storedValue == data else {
+            Logger.error("Saved \(key.storageKey) does not match loaded value", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+        storedValue = Data() //Clear memory
+        
         Logger.info("Saved \(key.storageKey)", context: "Keychain")
     }
     
-    class func saveString(key: KeychainKey, str: String) throws {
+    class func saveString(key: KeychainEntryType, str: String) throws {
         guard let data = str.data(using: .utf8) else {
             throw KeychainError.failedToSave
         }
@@ -58,7 +72,7 @@ class Keychain {
         try save(key: key, data: data)
     }
     
-    class func delete(key: KeychainKey) throws {
+    class func delete(key: KeychainEntryType) throws {
         let query = [
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: key.storageKey,
@@ -75,8 +89,15 @@ class Keychain {
         Logger.debug("Deleted \(key.storageKey)", context: "Keychain")
     }
     
+    class func exists(key: KeychainEntryType) throws -> Bool {
+        var value = try load(key: key)
+        let exists = value != nil
+        value = Data() //Clear memory
+        return exists
+    }
+    
     //TODO throws if fails but return nil if not found
-    class func load(key: KeychainKey) throws -> Data? {
+    class func load(key: KeychainEntryType) throws -> Data? {
         let query = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: key.storageKey,
@@ -103,7 +124,7 @@ class Keychain {
         return dataTypeRef as! Data?
     }
     
-    class func loadString(key: KeychainKey) throws -> String? {
+    class func loadString(key: KeychainEntryType) throws -> String? {
         if let data = try load(key: key), let str = String(data: data, encoding: .utf8) {
             return str
         }
@@ -153,6 +174,8 @@ class Keychain {
                 kSecAttrAccessGroup as String: Env.keychainGroup
             ] as [String : Any]
             SecItemDelete(query as CFDictionary)
+            
+            Logger.info("Deleted \(key) from keychain")
         }
     }
 }

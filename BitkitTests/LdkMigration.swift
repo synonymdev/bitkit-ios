@@ -33,6 +33,7 @@ final class LdkMigrationTests: XCTestCase {
         }
         
         try MigrationsService.shared.ldkToLdkNode(
+            walletIndex: 0,
             seed: try Data(contentsOf: seedFile),
             manager: try Data(contentsOf: managerFile),
             monitors: [
@@ -40,7 +41,8 @@ final class LdkMigrationTests: XCTestCase {
             ]
         )
         
-        try await LightningService.shared.setup(mnemonic: Env.testMnemonic, passphrase: nil)
+        //TODO restore first from words
+        try await LightningService.shared.setup(walletIndex: 0)
         try await LightningService.shared.start()
         
         XCTAssertEqual(LightningService.shared.nodeId, "02cd08b7b375e4263849121f9f0ffb2732a0b88d0fb74487575ac539b374f45a55")

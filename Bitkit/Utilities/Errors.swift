@@ -11,9 +11,10 @@ import BitcoinDevKit
 
 enum CustomServiceError: Error {
     case nodeNotStarted
-    case onchainWalletNotCreated
+    case onchainWalletNotInitialized
     case ldkNodeSqliteAlreadyExists
     case ldkToLdkNodeMigration
+    case mnemonicNotFound
 }
 
 enum KeychainError: Error {
@@ -64,7 +65,7 @@ struct AppError: LocalizedError {
         case .nodeNotStarted:
             message = "Node is not started"
             debugMessage = nil
-        case .onchainWalletNotCreated:
+        case .onchainWalletNotInitialized:
             message = "Onchain wallet not created"
             debugMessage = nil
         case .ldkNodeSqliteAlreadyExists:
@@ -72,6 +73,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .ldkToLdkNodeMigration:
             message = "LDK to LDK-node migration issue"
+            debugMessage = nil
+        case .mnemonicNotFound:
+            message = "Mnemonic not found"
             debugMessage = nil
         }
         

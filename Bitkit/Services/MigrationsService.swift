@@ -17,17 +17,17 @@ class MigrationsService {
 
 //MARK: Migrations for RN Bitkit to Swift Bitkit
 extension MigrationsService {
-    func ldkToLdkNode(seed: Data, manager: Data, monitors: [Data]) throws {
+    func ldkToLdkNode(walletIndex: Int, seed: Data, manager: Data, monitors: [Data]) throws {
         Logger.info("Migrating LDK to LDKNode")
-        let storagePath = Env.ldkStorage.path
-        let sqlFilePath = Env.ldkStorage.appendingPathComponent("ldk_node_data.sqlite").path
+        let ldkStorage = Env.ldkStorage(walletIndex: walletIndex)
+        let sqlFilePath = ldkStorage.appendingPathComponent("ldk_node_data.sqlite").path
         
         //Create path if doesn't exist
         let fileManager = FileManager.default
         var isDir: ObjCBool = true
-        if !fileManager.fileExists(atPath: storagePath, isDirectory: &isDir) {
-            try fileManager.createDirectory(atPath: storagePath, withIntermediateDirectories: true, attributes: nil)
-            Logger.debug("Directory created at path: \(storagePath)")
+        if !fileManager.fileExists(atPath: ldkStorage.path, isDirectory: &isDir) {
+            try fileManager.createDirectory(atPath: ldkStorage.path, withIntermediateDirectories: true, attributes: nil)
+            Logger.debug("Directory created at path: \(ldkStorage.path)")
         }
         
         Logger.debug(sqlFilePath, context: "SQLIte file path")
