@@ -12,15 +12,25 @@ import LDKNode
 
 class LightningService {
     private var node: Node?
+    var currentWalletIndex: Int = 0
     
     static var shared = LightningService()
     
     private init() {}
     
-    func setup(mnemonic: String, passphrase: String?) async throws {
+    func setup(walletIndex: Int) async throws {
+        guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        
+        var passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        
+        currentWalletIndex = walletIndex
+        
         var config = defaultConfig()
-        config.storageDirPath = Env.ldkStorage.path
-        config.logDirPath = Env.ldkStorage.path
+        let ldkStoragePath = Env.ldkStorage(walletIndex: walletIndex).path
+        config.storageDirPath = ldkStoragePath
+        config.logDirPath = ldkStoragePath
         config.network = Env.network.ldkNetwork
         config.logLevel = .trace
         
@@ -39,9 +49,9 @@ class LightningService {
             builder.setGossipSourceP2p()
         }
         
-        builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: nil)
+        builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
         
-        Logger.debug(Env.ldkStorage.path, context: "LDK storage path")
+        Logger.debug(ldkStoragePath, context: "LDK storage path")
 
         Logger.debug("Building node...")
         
@@ -50,6 +60,10 @@ class LightningService {
         }
         
         Logger.info("LDK node setup")
+        
+        //Clear memory
+        mnemonic = ""
+        passphrase = nil
     }
     
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
@@ -81,6 +95,12 @@ class LightningService {
             try node.stop()
         }
         Logger.info("Node stopped")
+    }
+    
+    func wipeStorage() async throws {
+        Logger.warn("Wiping on chain wallet...")
+        try FileManager.default.removeItem(at: Env.ldkStorage(walletIndex: currentWalletIndex))
+        Logger.info("On chain wallet wiped")
     }
     
     private func connectToTrustedPeers() async throws {

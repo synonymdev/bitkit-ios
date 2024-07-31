@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import BitcoinDevKit
 
 struct Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -29,6 +30,8 @@ struct Env {
     
     //MARK: wallet services
     static let network: WalletNetwork = .regtest
+    static let defaultWalletWordCount: WordCount = .words12
+    static let onchainWalletStopGap = UInt64(20)
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
@@ -57,10 +60,12 @@ struct Env {
         return documentsDirectory
     }
     
-    static var ldkStorage: URL {
+    static func ldkStorage(walletIndex: Int) -> URL {
         switch network {
         case .regtest:
-            return appStorageUrl.appendingPathComponent("regtest").appendingPathComponent("ldk")
+            return appStorageUrl
+                .appendingPathComponent("regtest")
+                .appendingPathComponent("wallet\(walletIndex)/ldk")
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -70,10 +75,12 @@ struct Env {
         }
     }
     
-    static var bdkStorage: URL {
+    static func bdkStorage(walletIndex: Int) -> URL {
         switch network {
         case .regtest:
-            return appStorageUrl.appendingPathComponent("regtest").appendingPathComponent("bdk")
+            return appStorageUrl
+                .appendingPathComponent("regtest")
+                .appendingPathComponent("wallet\(walletIndex)/bdk")
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -111,5 +118,5 @@ struct Env {
         }
     }
     
-    static let testMnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
+//    static let testMnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
 }

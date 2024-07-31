@@ -18,25 +18,34 @@ class LightningViewModel: ObservableObject {
     @Published var channels: [ChannelDetails]?
     @Published var payments: [PaymentDetails]?
     
-    func start() async throws {
-        let mnemonic = Env.testMnemonic // = generateEntropyMnemonic()
-        let passphrase: String? = nil
-        
+    private init() {}
+    public static var shared = LightningViewModel()
+
+    func start(walletIndex: Int = 0) async throws {
         syncState()
-        try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
+        try await LightningService.shared.setup(walletIndex: walletIndex)
         try await LightningService.shared.start(onEvent: { _ in
+            //On every lightning event just sync UI
             Task { @MainActor in
                 self.syncState()
             }
         })
         syncState()
-        
-        //TODO listen on LDK events to sync UI state
+                
+        //Always sync on start but don't need to wait for this
+        Task { @MainActor in
+            try await sync()
+        }
     }
     
     func stop() async throws {
         try await LightningService.shared.stop()
         syncState()
+    }
+    
+    func wipeWallet() async throws {
+        try await stop()
+        try await LightningService.shared.wipeStorage()
     }
     
     func sync() async throws {

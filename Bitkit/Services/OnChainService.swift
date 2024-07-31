@@ -10,31 +10,35 @@ import BitcoinDevKit
 
 class OnChainService {
     private var wallet: Wallet?
-    private var blockchainConfig: BlockchainConfig?
+    var currentWalletIndex: Int = 0
     
-    static var shared = OnChainService()
-    
-    private init() {}
-    
-    func setup() throws {
-        //TODO maybe better as a lazy var
+    private var blockchainConfig: BlockchainConfig {
         let esploraConfig = EsploraConfig(
             baseUrl: Env.esploraServerUrl,
             proxy: nil,
             concurrency: nil,
-            stopGap: UInt64(20),
+            stopGap: Env.onchainWalletStopGap,
             timeout: nil
         )
         
-        blockchainConfig = BlockchainConfig.esplora(config: esploraConfig)
+        return BlockchainConfig.esplora(config: esploraConfig)
     }
     
-    func createWallet(mnemonic: String, passphrase: String?) async throws {
-        let mnemonic = try Mnemonic.fromString(mnemonic: "\(mnemonic)\(passphrase == nil ? "" : " \(passphrase!)")")
+    static var shared = OnChainService()
+    private init() {}
+    
+    func setup(walletIndex: Int) async throws {
+        guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
         
+        var passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        
+        currentWalletIndex = walletIndex
+                
         let secretKey = DescriptorSecretKey(
             network: Env.network.bdkNetwork,
-            mnemonic: mnemonic,
+            mnemonic: try Mnemonic.fromString(mnemonic: mnemonic),
             password: passphrase
         )
         
@@ -54,21 +58,42 @@ class OnChainService {
         
         Logger.debug("Creating onchain wallet...")
         
+        let bdkStorage = Env.bdkStorage(walletIndex: walletIndex)
+        try FileManager.default.createDirectory(at: bdkStorage, withIntermediateDirectories: true, attributes: nil)
+        
+        let dbConfig = DatabaseConfig.sqlite(config: .init(path: bdkStorage.appendingPathComponent("db.sqlite").path))
+        
         try await ServiceQueue.background(.bdk) {
             self.wallet = try Wallet(
                 descriptor: descriptor,
                 changeDescriptor: changeDescriptor,
                 network: Env.network.bdkNetwork,
-                databaseConfig: .sled(config: .init(path: Env.bdkStorage.path, treeName: ""))
+                databaseConfig: dbConfig
             )
         }
         
         Logger.info("Onchain wallet created")
+        
+        //Clear memory
+        mnemonic = ""
+        passphrase = nil
+    }
+    
+    func stop() {
+        Logger.debug("Stopping on chain wallet...")
+        self.wallet = nil
+        Logger.info("On chain wallet stopped")
+    }
+    
+    func wipeStorage() async throws {
+        Logger.warn("Wiping on chain wallet...")
+        try FileManager.default.removeItem(at: Env.bdkStorage(walletIndex: currentWalletIndex))
+        Logger.info("On chain wallet wiped")
     }
     
     func getAddress() async throws -> String {
         guard let wallet else {
-            throw AppError(serviceError: .onchainWalletNotCreated)
+            throw AppError(serviceError: .onchainWalletNotInitialized)
         }
         
         return try await ServiceQueue.background(.bdk) {
@@ -78,8 +103,8 @@ class OnChainService {
     }
     
     func sync() async throws {
-        guard let wallet, let blockchainConfig else {
-            throw AppError(serviceError: .onchainWalletNotCreated)
+        guard let wallet else {
+            throw AppError(serviceError: .onchainWalletNotInitialized)
         }
         
         Logger.debug("Syncing BDK...")
