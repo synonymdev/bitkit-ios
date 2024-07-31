@@ -34,7 +34,7 @@ class OnChainViewModel: ObservableObject {
     
     func wipeWallet() async throws {
         try stop()
-        try await OnChainService.shared.wipeStorage()
+        try await OnChainService.shared.wipeStorage(walletIndex: 0)
     }
     
     func newReceiveAddress() async throws {

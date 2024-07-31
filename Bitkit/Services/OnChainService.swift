@@ -85,9 +85,19 @@ class OnChainService {
         Logger.info("On chain wallet stopped")
     }
     
-    func wipeStorage() async throws {
+    func wipeStorage(walletIndex: Int) async throws {
+        guard wallet == nil else {
+            throw AppError(serviceError: .onchainWalletStillRunning)
+        }
+
+        let directory = Env.bdkStorage(walletIndex: walletIndex)
+        guard FileManager.default.fileExists(atPath: directory.path) else {
+            Logger.warn("No directory found to wipe: \(directory.path)")
+            return
+        }
+        
         Logger.warn("Wiping on chain wallet...")
-        try FileManager.default.removeItem(at: Env.bdkStorage(walletIndex: currentWalletIndex))
+        try FileManager.default.removeItem(at: directory)
         Logger.info("On chain wallet wiped")
     }
     

@@ -45,7 +45,7 @@ class LightningViewModel: ObservableObject {
     
     func wipeWallet() async throws {
         try await stop()
-        try await LightningService.shared.wipeStorage()
+        try await LightningService.shared.wipeStorage(walletIndex: 0)
     }
     
     func sync() async throws {

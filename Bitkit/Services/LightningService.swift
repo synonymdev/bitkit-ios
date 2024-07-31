@@ -97,10 +97,20 @@ class LightningService {
         Logger.info("Node stopped")
     }
     
-    func wipeStorage() async throws {
-        Logger.warn("Wiping on chain wallet...")
-        try FileManager.default.removeItem(at: Env.ldkStorage(walletIndex: currentWalletIndex))
-        Logger.info("On chain wallet wiped")
+    func wipeStorage(walletIndex: Int) async throws {
+        guard node == nil else {
+            throw AppError(serviceError: .nodeStillRunning)
+        }
+
+        let directory = Env.ldkStorage(walletIndex: walletIndex)
+        guard FileManager.default.fileExists(atPath: directory.path) else {
+            Logger.warn("No directory found to wipe: \(directory.path)")
+            return
+        }
+        
+        Logger.warn("Wiping on lighting wallet...")
+        try FileManager.default.removeItem(at: directory)
+        Logger.info("Lightning wallet wiped")
     }
     
     private func connectToTrustedPeers() async throws {
