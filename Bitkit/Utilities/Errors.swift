@@ -15,6 +15,8 @@ enum CustomServiceError: Error {
     case ldkNodeSqliteAlreadyExists
     case ldkToLdkNodeMigration
     case mnemonicNotFound
+    case nodeStillRunning
+    case onchainWalletStillRunning
 }
 
 enum KeychainError: Error {
@@ -76,6 +78,12 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .mnemonicNotFound:
             message = "Mnemonic not found"
+            debugMessage = nil
+        case .nodeStillRunning:
+            message = "Node is still running"
+            debugMessage = nil
+        case .onchainWalletStillRunning:
+            message = "Onchain wallet is still running"
             debugMessage = nil
         }
         
