@@ -27,7 +27,7 @@ struct LogView: View {
     }
     
     func loadLog() {
-        let dir = Env.ldkStorage
+        let dir = Env.ldkStorage(walletIndex: LightningService.shared.currentWalletIndex)
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
         
         do {

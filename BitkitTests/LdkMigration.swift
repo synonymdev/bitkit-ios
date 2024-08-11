@@ -7,10 +7,11 @@
 
 import XCTest
 
-final class LdkMigration: XCTestCase {
+final class LdkMigrationTests: XCTestCase {
+    let walletIndex = 0
     
     override func setUpWithError() throws {
-        try? FileManager.default.removeItem(at: Env.appStorageUrl) //Removes 'unit-test' directory
+        
     }
     
     override func tearDownWithError() throws {
@@ -18,6 +19,9 @@ final class LdkMigration: XCTestCase {
     }
     
     func testLdkToLdkNode() async throws {
+        try Keychain.wipeEntireKeychain()
+        try await LightningService.shared.wipeStorage(walletIndex: walletIndex)
+
         guard let seedFile = Bundle(for: type(of: self)).url(forResource: "seed", withExtension: "bin") else {
             XCTFail("Missing file: seed.bin")
             return
@@ -33,7 +37,12 @@ final class LdkMigration: XCTestCase {
             return
         }
         
+        let testMnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
+        
+        try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: testMnemonic)
+        
         try MigrationsService.shared.ldkToLdkNode(
+            walletIndex: 0,
             seed: try Data(contentsOf: seedFile),
             manager: try Data(contentsOf: managerFile),
             monitors: [
@@ -41,7 +50,8 @@ final class LdkMigration: XCTestCase {
             ]
         )
         
-        try await LightningService.shared.setup(mnemonic: Env.testMnemonic, passphrase: nil)
+        //TODO restore first from words
+        try await LightningService.shared.setup(walletIndex: walletIndex)
         try await LightningService.shared.start()
         
         XCTAssertEqual(LightningService.shared.nodeId, "02cd08b7b375e4263849121f9f0ffb2732a0b88d0fb74487575ac539b374f45a55")
@@ -53,7 +63,7 @@ final class LdkMigration: XCTestCase {
     }
     
     func dumpLdkLogs() {
-        let dir = Env.ldkStorage
+        let dir = Env.ldkStorage(walletIndex: walletIndex)
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
         
         guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
@@ -65,12 +75,5 @@ final class LdkMigration: XCTestCase {
             print(line)
         }
         print("*****END LOG******")
-    }
-    
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
     }
 }

@@ -9,6 +9,7 @@ import UserNotifications
 import LDKNode
 
 class NotificationService: UNNotificationServiceExtension {
+    let walletIndex = 0 //Assume first wallet for now
     
     var contentHandler: ((UNNotificationContent) -> Void)?
     var bestAttemptContent: UNMutableNotificationContent?
@@ -19,10 +20,7 @@ class NotificationService: UNNotificationServiceExtension {
         
         Task {
             do {
-                let mnemonic = Env.testMnemonic // = generateEntropyMnemonic()
-                let passphrase: String? = nil
-                
-                try await LightningService.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
+                try await LightningService.shared.setup(walletIndex: walletIndex) //Assume first wallet for now
                 
                 try await LightningService.shared.start { event in
                     self.handleLdkEvent(event: event)
@@ -86,7 +84,7 @@ class NotificationService: UNNotificationServiceExtension {
     }
     
     func dumpLdkLogs() {
-        let dir = Env.ldkStorage
+        let dir = Env.ldkStorage(walletIndex: walletIndex)
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
         
         do {
