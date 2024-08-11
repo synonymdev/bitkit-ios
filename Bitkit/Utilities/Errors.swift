@@ -11,9 +11,20 @@ import BitcoinDevKit
 
 enum CustomServiceError: Error {
     case nodeNotStarted
-    case onchainWalletNotCreated
+    case onchainWalletNotInitialized
     case ldkNodeSqliteAlreadyExists
     case ldkToLdkNodeMigration
+    case mnemonicNotFound
+    case nodeStillRunning
+    case onchainWalletStillRunning
+}
+
+enum KeychainError: Error {
+    case failedToSave
+    case failedToSaveAlreadyExists
+    case failedToDelete
+    case failedToLoad
+    case keychainWipeNotAllowed
 }
 
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
@@ -56,7 +67,7 @@ struct AppError: LocalizedError {
         case .nodeNotStarted:
             message = "Node is not started"
             debugMessage = nil
-        case .onchainWalletNotCreated:
+        case .onchainWalletNotInitialized:
             message = "Onchain wallet not created"
             debugMessage = nil
         case .ldkNodeSqliteAlreadyExists:
@@ -64,6 +75,15 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .ldkToLdkNodeMigration:
             message = "LDK to LDK-node migration issue"
+            debugMessage = nil
+        case .mnemonicNotFound:
+            message = "Mnemonic not found"
+            debugMessage = nil
+        case .nodeStillRunning:
+            message = "Node is still running"
+            debugMessage = nil
+        case .onchainWalletStillRunning:
+            message = "Onchain wallet is still running"
             debugMessage = nil
         }
         

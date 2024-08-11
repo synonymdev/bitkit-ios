@@ -14,13 +14,27 @@ class OnChainViewModel: ObservableObject {
     @Published var balance: Balance?
     @Published var address: String?
     
-    func start() async throws {
-        let mnemonic = Env.testMnemonic // = generateEntropyMnemonic()
-        let passphrase: String? = nil
-        
-        try OnChainService.shared.setup()
-        try await OnChainService.shared.createWallet(mnemonic: mnemonic, passphrase: passphrase)
+    private init() {}
+    public static var shared = OnChainViewModel()
+
+    func start(walletIndex: Int = 0) async throws {
+        try await OnChainService.shared.setup(walletIndex: walletIndex)
         syncState()
+        
+        //Always sync on start but don't need to wait for this
+        Task { @MainActor in
+            try await sync()
+        }
+    }
+    
+    func stop() throws {
+        OnChainService.shared.stop()
+        syncState()
+    }
+    
+    func wipeWallet() async throws {
+        try stop()
+        try await OnChainService.shared.wipeStorage(walletIndex: 0)
     }
     
     func newReceiveAddress() async throws {
