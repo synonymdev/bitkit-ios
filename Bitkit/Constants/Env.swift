@@ -32,6 +32,7 @@ struct Env {
     static let network: WalletNetwork = .regtest
     static let defaultWalletWordCount: WordCount = .words12
     static let onchainWalletStopGap = UInt64(20)
+    static let esploraParallelRequests = UInt64(5)
     static var esploraServerUrl: String {
         switch network {
         case .regtest:

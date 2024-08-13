@@ -48,7 +48,7 @@ class ServiceQueue {
         }
         
         let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
-        Logger.performance("\(functionName) (\(service)) took \(timeElapsed) seconds")
+        Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
         
         return result
     }

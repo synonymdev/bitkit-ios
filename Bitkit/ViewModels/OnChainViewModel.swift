@@ -41,11 +41,15 @@ class OnChainViewModel: ObservableObject {
         address = try await OnChainService.shared.getAddress()
     }
     
-    func sync() async throws {
+    func sync(full: Bool = false) async throws {
         isSyncing = true
         syncState()
         do {
-            try await OnChainService.shared.sync()
+            if full {
+                try await OnChainService.shared.fullScan()
+            } else {
+                try await OnChainService.shared.syncWithRevealedSpks()
+            }
             isSyncing = false
             syncState()
         } catch {
