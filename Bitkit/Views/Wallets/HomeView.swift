@@ -159,7 +159,7 @@ struct HomeView: View {
         .refreshable {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { try await onChainViewModel.sync() }
+                    group.addTask { try await onChainViewModel.sync(full: true) }
                     group.addTask { try await lnViewModel.sync() }
                     try await group.waitForAll()
                 }

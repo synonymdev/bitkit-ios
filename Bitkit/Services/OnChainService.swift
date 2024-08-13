@@ -102,7 +102,8 @@ class OnChainService {
         }
     }
     
-    func sync() async throws {
+    /// Partial sync. Collects all revealed script pubkeys from the wallet keychain.
+    func syncWithRevealedSpks() async throws {
         guard let wallet else {
             throw AppError(serviceError: .onchainWalletNotInitialized)
         }
@@ -122,6 +123,7 @@ class OnChainService {
         Logger.info("BDK synced")
     }
     
+    /// Required on restore or manually from settings. Performs a full scan of the wallet.
     func fullScan() async throws {
         guard let wallet else {
             throw AppError(serviceError: .onchainWalletNotInitialized)
@@ -131,9 +133,13 @@ class OnChainService {
                 
         try await ServiceQueue.background(.bdk) {
             let request = wallet.startFullScan()
-            let update = try self.esploraClient.fullScan(fullScanRequest: request, stopGap: 100, parallelRequests: 5)
+            let update = try self.esploraClient.fullScan(
+                fullScanRequest: request,
+                stopGap: Env.onchainWalletStopGap, 
+                parallelRequests: Env.esploraParallelRequests
+            )
             try wallet.applyUpdate(update: update)
-            //TODO: persist wallet??
+            //TODO: persist wallet once BDK is updated to beta release
         }
         
         hasSynced = true
