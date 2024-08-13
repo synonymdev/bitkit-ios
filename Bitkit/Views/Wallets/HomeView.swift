@@ -37,7 +37,8 @@ struct HomeView: View {
                 }
                 
                 if let onchainBalance = onChainViewModel.balance {
-                    Text("On Chain \(onchainBalance.total)")
+                    Text("On Chain Pending \(onchainBalance.immature.toSat())")
+                    Text("On Chain Total \(onchainBalance.total.toSat())")
                 }
             }
             
