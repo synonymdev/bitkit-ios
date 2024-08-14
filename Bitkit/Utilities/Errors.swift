@@ -49,11 +49,6 @@ struct AppError: LocalizedError {
             return
         }
         
-        if let bdkError = error as? BdkError {
-            self.init(bdkError: bdkError)
-            return
-        }
-        
         self.init(message: "Error", debugMessage: error.localizedDescription)
     }
     
@@ -90,15 +85,15 @@ struct AppError: LocalizedError {
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "service error")
     }
     
-    private init(bdkError: BdkError) {
-        message = "Bdk error"
+    private init(bdkError: Error) {
+        message = "Onchain wallet error"
         debugMessage = bdkError.localizedDescription
         //TODO support all message types in switch case
-//        switch bdkError as BdkError {
-//        case .Bip32(message: let bdkMessage):
-//            message = "BIP32 error"
-//            debugMessage = bdkMessage
-//        }
+        //CalculateFeeError
+        //CannotConnectError
+        //DescriptorError
+        //EsploraError
+        //PersistenceError
         
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "BdkError")
     }

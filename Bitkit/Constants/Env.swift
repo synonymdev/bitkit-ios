@@ -32,6 +32,7 @@ struct Env {
     static let network: WalletNetwork = .regtest
     static let defaultWalletWordCount: WordCount = .words12
     static let onchainWalletStopGap = UInt64(20)
+    static let esploraParallelRequests = UInt64(5)
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
@@ -107,7 +108,7 @@ struct Env {
         switch network {
         case .regtest:
             return [
-                .init(nodeId: "02b61365f14c5070465e014485fa91cee5a131cf2a4b7cb37309fcd1cc53975238", address: "192.168.0.106:9735")
+//                .init(nodeId: "02b61365f14c5070465e014485fa91cee5a131cf2a4b7cb37309fcd1cc53975238", address: "192.168.0.106:9735")
             ]
         case .bitcoin:
             return []

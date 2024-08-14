@@ -32,8 +32,9 @@ class ServiceQueue {
         }
     }
     
-    static func background<T>(_ service: ServiceTypes, _ blocking: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
+    static func background<T>(_ service: ServiceTypes, _ blocking: @escaping () throws -> T, functionName: String = #function) async throws -> T {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let result = try await withCheckedThrowingContinuation { continuation in
             service.queue.async {
                 do {
                     let res = try blocking()
@@ -45,5 +46,10 @@ class ServiceQueue {
                 }
             }
         }
+        
+        let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
+        Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+        
+        return result
     }
 }
