@@ -37,7 +37,8 @@ struct HomeView: View {
                 }
                 
                 if let onchainBalance = onChainViewModel.balance {
-                    Text("On Chain \(onchainBalance.total)")
+                    Text("On Chain Pending \(onchainBalance.immature.toSat())")
+                    Text("On Chain Total \(onchainBalance.total.toSat())")
                 }
             }
             
@@ -158,7 +159,7 @@ struct HomeView: View {
         .refreshable {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { try await onChainViewModel.sync() }
+                    group.addTask { try await onChainViewModel.sync(full: true) }
                     group.addTask { try await lnViewModel.sync() }
                     try await group.waitForAll()
                 }

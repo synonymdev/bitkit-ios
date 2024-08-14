@@ -11,17 +11,10 @@ import BitcoinDevKit
 class OnChainService {
     private var wallet: Wallet?
     var currentWalletIndex: Int = 0
+    private var hasSynced = false
     
-    private var blockchainConfig: BlockchainConfig {
-        let esploraConfig = EsploraConfig(
-            baseUrl: Env.esploraServerUrl,
-            proxy: nil,
-            concurrency: nil,
-            stopGap: Env.onchainWalletStopGap,
-            timeout: nil
-        )
-        
-        return BlockchainConfig.esplora(config: esploraConfig)
+    private var esploraClient: EsploraClient {
+        EsploraClient(url: Env.esploraServerUrl)
     }
     
     static var shared = OnChainService()
@@ -53,22 +46,19 @@ class OnChainService {
             keychain: .internal,
             network: Env.network.bdkNetwork
         )
-        
-        //TODO save to keychain
-        
+                
         Logger.debug("Creating onchain wallet...")
         
         let bdkStorage = Env.bdkStorage(walletIndex: walletIndex)
         try FileManager.default.createDirectory(at: bdkStorage, withIntermediateDirectories: true, attributes: nil)
-        
-        let dbConfig = DatabaseConfig.sqlite(config: .init(path: bdkStorage.appendingPathComponent("db.sqlite").path))
-        
+        let sqlitePath = bdkStorage.appendingPathComponent("db.sqlite").path
+                
         try await ServiceQueue.background(.bdk) {
             self.wallet = try Wallet(
                 descriptor: descriptor,
                 changeDescriptor: changeDescriptor,
-                network: Env.network.bdkNetwork,
-                databaseConfig: dbConfig
+                persistenceBackendPath: sqlitePath,
+                network: Env.network.bdkNetwork
             )
         }
         
@@ -107,30 +97,59 @@ class OnChainService {
         }
         
         return try await ServiceQueue.background(.bdk) {
-            let addressInfo = try wallet.getAddress(addressIndex: .new)
+            let addressInfo = try wallet.revealNextAddress(keychain: .external)
             return addressInfo.address.asString()
         }
     }
     
-    func sync() async throws {
+    /// Partial sync. Collects all revealed script pubkeys from the wallet keychain.
+    func syncWithRevealedSpks() async throws {
         guard let wallet else {
             throw AppError(serviceError: .onchainWalletNotInitialized)
         }
         
         Logger.debug("Syncing BDK...")
-        
-        let blockchain = try Blockchain(config: blockchainConfig)
-        
+                
         try await ServiceQueue.background(.bdk) {
-            try wallet.sync(blockchain: blockchain, progress: nil)
+            let request = wallet.startSyncWithRevealedSpks()
+            let update = try self.esploraClient.sync(syncRequest: request, parallelRequests: 5)
+            try wallet.applyUpdate(update: update)
+            
+            //TODO: persist wallet??
         }
         
+        hasSynced = true
+        
         Logger.info("BDK synced")
+    }
+    
+    /// Required on restore or manually from settings. Performs a full scan of the wallet.
+    func fullScan() async throws {
+        guard let wallet else {
+            throw AppError(serviceError: .onchainWalletNotInitialized)
+        }
+        
+        Logger.debug("Full on chain scan...")
+                
+        try await ServiceQueue.background(.bdk) {
+            let request = wallet.startFullScan()
+            let update = try self.esploraClient.fullScan(
+                fullScanRequest: request,
+                stopGap: Env.onchainWalletStopGap, 
+                parallelRequests: Env.esploraParallelRequests
+            )
+            try wallet.applyUpdate(update: update)
+            //TODO: persist wallet once BDK is updated to beta release
+        }
+        
+        hasSynced = true
+        
+        Logger.info("Full scan complete")
     }
 }
 
 //MARK: UI Helpers (Published via OnChainViewModel)
 extension OnChainService {
     //TODO catch errors?
-    var balance: Balance? { try? wallet?.getBalance() }
+    var balance: Balance? { hasSynced ? wallet?.getBalance() : nil }
 }

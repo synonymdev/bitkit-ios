@@ -37,7 +37,7 @@ class StartupHandler {
     ///  - Returns: The generated mnemonic
     static func createNewWallet(bip39Passphrase: String?, walletIndex: Int = 0) throws -> String {
         let mnemonic = Mnemonic(wordCount: Env.defaultWalletWordCount).asString()
-        
+                
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
         if let bip39Passphrase {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)

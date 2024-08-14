@@ -31,6 +31,10 @@ class Logger {
         handle("🧪🧪🧪: \(message)", context: context, file: file, function: function, line: line)
     }
     
+    static func performance(_ message: Any, context: String = "", file: String = #file, function: String = #function, line: Int = #line) {
+        handle("PERF: \(message)", context: context, file: file, function: function, line: line)
+    }
+    
     private static func handle(_ message: Any, context: String = "", file: String = #file, function: String = #function, line: Int = #line) {
         let fileName = URL(fileURLWithPath: file).lastPathComponent
         let line = "\(message) \(context == "" ? "" : "- \(context) ")[\(fileName): \(function) line: \(line)]"

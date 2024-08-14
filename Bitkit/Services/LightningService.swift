@@ -93,6 +93,7 @@ class LightningService {
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
             try node.stop()
+            self.node = nil
         }
         Logger.info("Node stopped")
     }
