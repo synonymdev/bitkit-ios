@@ -52,7 +52,7 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
         
         Logger.debug(ldkStoragePath, context: "LDK storage path")
-
+        
         Logger.debug("Building node...")
         
         try await ServiceQueue.background(.ldk) {
@@ -74,7 +74,7 @@ class LightningService {
         }
         
         listenForEvents(onEvent: onEvent)
-
+        
         Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
             try node.start()
@@ -102,7 +102,7 @@ class LightningService {
         guard node == nil else {
             throw AppError(serviceError: .nodeStillRunning)
         }
-
+        
         let directory = Env.ldkStorage(walletIndex: walletIndex)
         guard FileManager.default.fileExists(atPath: directory.path) else {
             Logger.warn("No directory found to wipe: \(directory.path)")
@@ -200,6 +200,37 @@ class LightningService {
             try node.closeChannel(
                 userChannelId: userChannelId,
                 counterpartyNodeId: counterpartyNodeId
+            )
+        }
+    }
+    
+    func sign(message: String) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        guard let msg = message.data(using: .utf8) else {
+            throw AppError(serviceError: .invalidNodeSigningMessage)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            return try node.signMessage(msg: [UInt8](msg))
+        }
+    }
+    
+    func openChannel(peer: LnPeer, channelAmountSats: UInt64, pushToCounterpartySats: UInt64? = nil) async throws -> UserChannelId {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            return try node.connectOpenChannel(
+                nodeId: peer.nodeId,
+                address: peer.address,
+                channelAmountSats: channelAmountSats,
+                pushToCounterpartyMsat: pushToCounterpartySats == nil ? nil : pushToCounterpartySats! * 1000,
+                channelConfig: nil,
+                announceChannel: false
             )
         }
     }
