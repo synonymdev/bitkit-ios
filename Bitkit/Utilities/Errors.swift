@@ -10,6 +10,7 @@ import LDKNode
 import BitcoinDevKit
 
 enum CustomServiceError: Error {
+    case nodeNotSetup
     case nodeNotStarted
     case onchainWalletNotInitialized
     case ldkNodeSqliteAlreadyExists
@@ -67,6 +68,9 @@ struct AppError: LocalizedError {
     
     init(serviceError: CustomServiceError) {
         switch serviceError {
+        case .nodeNotSetup:
+            message = "Node is not setup"
+            debugMessage = nil
         case .nodeNotStarted:
             message = "Node is not started"
             debugMessage = nil

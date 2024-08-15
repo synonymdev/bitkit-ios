@@ -70,7 +70,7 @@ class LightningService {
     /// - Parameter onEvent: Triggered on any LDK node event
     func start(onEvent: ((Event) -> Void)? = nil) async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         listenForEvents(onEvent: onEvent)
@@ -100,7 +100,7 @@ class LightningService {
     
     func wipeStorage(walletIndex: Int) async throws {
         guard node == nil else {
-            throw AppError(serviceError: .nodeStillRunning)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         let directory = Env.ldkStorage(walletIndex: walletIndex)
@@ -116,7 +116,7 @@ class LightningService {
     
     private func connectToTrustedPeers() async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         try await ServiceQueue.background(.ldk) {
@@ -139,7 +139,7 @@ class LightningService {
         }
         
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         for channel in node.listChannels() {
@@ -152,7 +152,7 @@ class LightningService {
     
     func sync() async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         Logger.debug("Syncing LDK...")
@@ -165,7 +165,7 @@ class LightningService {
     
     func receive(amountSats: UInt64, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         return try await ServiceQueue.background(.ldk) {
@@ -181,7 +181,7 @@ class LightningService {
     
     func send(bolt11: Bolt11Invoice) async throws -> PaymentHash {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         //Check if peer is connected
@@ -206,7 +206,7 @@ class LightningService {
     
     func sign(message: String) async throws -> String {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         guard let msg = message.data(using: .utf8) else {
@@ -220,7 +220,7 @@ class LightningService {
     
     func openChannel(peer: LnPeer, channelAmountSats: UInt64, pushToCounterpartySats: UInt64? = nil) async throws -> UserChannelId {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         return try await ServiceQueue.background(.ldk) {
