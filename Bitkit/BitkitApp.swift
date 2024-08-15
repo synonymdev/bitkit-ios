@@ -7,48 +7,32 @@
 
 import SwiftUI
 
-//TODO move to util and show in onboarding
-func requestPushNotificationPermision(completionHandler: @escaping (Bool, Error?) -> Void) {
-    let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
-    UNUserNotificationCenter.current().requestAuthorization(
-        options: authOptions,
-        completionHandler: completionHandler
-    )
-    UIApplication.shared.registerForRemoteNotifications()
-}
-
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        
-        //Permision is requested on coach view appearance
         return true
-    }
-    
-    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
-        Logger.debug(userInfo, context: "push notification received")
-        
-        completionHandler(UIBackgroundFetchResult.newData)
     }
 }
 
-@available(iOS 10, *)
 extension AppDelegate : UNUserNotificationCenterDelegate {
-    // Receive displayed notifications for iOS 10 devices.
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
         
-        Logger.debug(userInfo, context: "push notification received")
+        Logger.debug(userInfo, context: "push notification received while app is in the foreground")
         
-        // Change this to your preferred presentation option
-        completionHandler([[.banner, .badge, .sound]])
+        //If we want to display the native notification to the user while the app is open we need to call this with options
+        //Unlikely we will need to as the background operation would have been aborted and we would have nothint to show
+        completionHandler([])
+//        completionHandler([[.banner, .badge, .sound]])
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let token = deviceToken.map { String(format: "%02hhx", $0) }.joined()
-        Logger.debug(token, context: "push token")
+        Task {
+            //If this fails we can try again later as the token is cached here
+            try? await BlocktankService.shared.registerDevice(deviceToken: deviceToken.map { String(format: "%02hhx", $0) }.joined())
+        }
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
@@ -58,8 +42,8 @@ extension AppDelegate : UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
         
-        Logger.debug(userInfo, context: "push notification received")
-        
+        Logger.debug(userInfo, context: "app opened from push notification")
+        //TODO: if user tapped on an incoming tx we should open it on that tx view
         completionHandler()
     }
 }
@@ -74,18 +58,7 @@ struct BitkitApp: App {
                 Text("Running unit tests...")
             } else {
                 ContentView()
-                    .onAppear {
-                        //TODO move this elsewhere
-                        requestPushNotificationPermision { (granted, error) in
-                            if granted {
-                                Logger.info("Push notification permission granted")
-                            } else {
-                                Logger.warn("Push notification permission denied")
-                            }
-                        }
-                    }
             }
-            
         }
     }
 }

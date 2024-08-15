@@ -17,6 +17,7 @@ enum CustomServiceError: Error {
     case mnemonicNotFound
     case nodeStillRunning
     case onchainWalletStillRunning
+    case invalidNodeSigningMessage
 }
 
 enum KeychainError: Error {
@@ -25,6 +26,13 @@ enum KeychainError: Error {
     case failedToDelete
     case failedToLoad
     case keychainWipeNotAllowed
+}
+
+enum BlocktankError: Error {
+    case missingResponse
+    case invalidResponse
+    case invalidJson
+    case missingDeviceToken
 }
 
 /// Translates LDK and BDK error messages into translated messages that can be displayed to end users
@@ -79,6 +87,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .onchainWalletStillRunning:
             message = "Onchain wallet is still running"
+            debugMessage = nil
+        case .invalidNodeSigningMessage:
+            message = "Invalid node signing message"
             debugMessage = nil
         }
         

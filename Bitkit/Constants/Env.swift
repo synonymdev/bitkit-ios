@@ -108,7 +108,8 @@ struct Env {
         switch network {
         case .regtest:
             return [
-//                .init(nodeId: "02b61365f14c5070465e014485fa91cee5a131cf2a4b7cb37309fcd1cc53975238", address: "192.168.0.106:9735")
+                //Staging Blocktank node
+                .init(nodeId: "03b9a456fb45d5ac98c02040d39aec77fa3eeb41fd22cf40b862b393bcfc43473a", address: "35.233.47.252:9400")
             ]
         case .bitcoin:
             return []
@@ -119,5 +120,16 @@ struct Env {
         }
     }
     
-//    static let testMnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
+    static var blocktankUrl: String {
+        switch network {
+        case .regtest:
+            return "https://api.stag.blocktank.to"
+        case .bitcoin:
+            fatalError("Bitcoin network not implemented")
+        case .testnet:
+            fatalError("Testnet network not implemented")
+        case .signet:
+            fatalError("Signet network not implemented")
+        }
+    }
 }
