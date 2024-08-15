@@ -10,7 +10,7 @@ import SwiftUI
 struct RestoreView: View {
     @StateObject var viewModel = ViewModel.shared
     
-    @State var bip39Mnemonic = "play toss explain entire until buddy sign promote prepare artist crystal auction"
+    @State var bip39Mnemonic = ""
     @State var bip39Passphrase: String? = nil
     
     var body: some View {
