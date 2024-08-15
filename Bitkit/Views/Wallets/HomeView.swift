@@ -11,15 +11,14 @@ struct HomeView: View {
     @ObservedObject var lnViewModel = LightningViewModel.shared
     @ObservedObject var onChainViewModel = OnChainViewModel.shared
     @StateObject var viewModel = ViewModel.shared
-    
-    @Environment(\.scenePhase) var scenePhase
-    
+        
     @State var showLogs = false
     
     var body: some View {
         List {
             Section {
-                Text(lnViewModel.status?.debugState ?? "No LDK State")
+                Text(lnViewModel.state.debugState)
+                    .font(.caption)
                 
                 if let nodeId = lnViewModel.nodeId {
                     Text("LN Node ID: \(nodeId)")
@@ -206,37 +205,6 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showLogs) {
             LogView()
-        }
-        .onChange(of: scenePhase) { newPhase in
-            Logger.debug("Scene phase changed: \(newPhase)")
-            if newPhase == .background {
-                if lnViewModel.status?.isRunning == true {
-                    Logger.debug("App backgrounded, stopping LN service...")
-                    Task {
-                        do {
-                            try await lnViewModel.stop()
-                        } catch {
-                            Logger.error(error, context: "Failed to stop LN")
-                        }
-                    }
-                }
-                return
-            }
-            
-            if newPhase == .active {
-                //TODO: check node might still be "stopping" from previously and we should wait for it to stop before restarting
-                if lnViewModel.status?.isRunning == false {
-                    Logger.debug("App active, starting LN service...")
-                    Task {
-                        do {
-                            try await lnViewModel.start()
-                            try await lnViewModel.sync()
-                        } catch {
-                            Logger.error(error, context: "Failed to start LN")
-                        }
-                    }
-                }
-            }
         }
     }
 }
