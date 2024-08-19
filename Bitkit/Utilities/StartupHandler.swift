@@ -5,7 +5,7 @@
 //  Created by Jason van den Berg on 2024/07/31.
 //
 
-import Foundation
+import SwiftUI
 import BitcoinDevKit
 
 class StartupHandler {
@@ -60,5 +60,14 @@ class StartupHandler {
         if let bip39Passphrase {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)
         }
+    }
+    
+    static func requestPushNotificationPermision(completionHandler: @escaping (Bool, Error?) -> Void) {
+        let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
+        UNUserNotificationCenter.current().requestAuthorization(
+            options: authOptions,
+            completionHandler: completionHandler
+        )
+        UIApplication.shared.registerForRemoteNotifications()
     }
 }
