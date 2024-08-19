@@ -52,7 +52,7 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
         
         Logger.debug(ldkStoragePath, context: "LDK storage path")
-
+        
         Logger.debug("Building node...")
         
         try await ServiceQueue.background(.ldk) {
@@ -70,11 +70,11 @@ class LightningService {
     /// - Parameter onEvent: Triggered on any LDK node event
     func start(onEvent: ((Event) -> Void)? = nil) async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         listenForEvents(onEvent: onEvent)
-
+        
         Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
             try node.start()
@@ -100,9 +100,9 @@ class LightningService {
     
     func wipeStorage(walletIndex: Int) async throws {
         guard node == nil else {
-            throw AppError(serviceError: .nodeStillRunning)
+            throw AppError(serviceError: .nodeNotSetup)
         }
-
+        
         let directory = Env.ldkStorage(walletIndex: walletIndex)
         guard FileManager.default.fileExists(atPath: directory.path) else {
             Logger.warn("No directory found to wipe: \(directory.path)")
@@ -116,7 +116,7 @@ class LightningService {
     
     private func connectToTrustedPeers() async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         try await ServiceQueue.background(.ldk) {
@@ -139,7 +139,7 @@ class LightningService {
         }
         
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         for channel in node.listChannels() {
@@ -152,7 +152,7 @@ class LightningService {
     
     func sync() async throws {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         Logger.debug("Syncing LDK...")
@@ -165,7 +165,7 @@ class LightningService {
     
     func receive(amountSats: UInt64, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         return try await ServiceQueue.background(.ldk) {
@@ -181,7 +181,7 @@ class LightningService {
     
     func send(bolt11: Bolt11Invoice) async throws -> PaymentHash {
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            throw AppError(serviceError: .nodeNotSetup)
         }
         
         //Check if peer is connected
@@ -200,6 +200,37 @@ class LightningService {
             try node.closeChannel(
                 userChannelId: userChannelId,
                 counterpartyNodeId: counterpartyNodeId
+            )
+        }
+    }
+    
+    func sign(message: String) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        
+        guard let msg = message.data(using: .utf8) else {
+            throw AppError(serviceError: .invalidNodeSigningMessage)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            return try node.signMessage(msg: [UInt8](msg))
+        }
+    }
+    
+    func openChannel(peer: LnPeer, channelAmountSats: UInt64, pushToCounterpartySats: UInt64? = nil) async throws -> UserChannelId {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            return try node.connectOpenChannel(
+                nodeId: peer.nodeId,
+                address: peer.address,
+                channelAmountSats: channelAmountSats,
+                pushToCounterpartyMsat: pushToCounterpartySats == nil ? nil : pushToCounterpartySats! * 1000,
+                channelConfig: nil,
+                announceChannel: false
             )
         }
     }

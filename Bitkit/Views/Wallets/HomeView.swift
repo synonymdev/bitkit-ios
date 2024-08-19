@@ -11,15 +11,14 @@ struct HomeView: View {
     @ObservedObject var lnViewModel = LightningViewModel.shared
     @ObservedObject var onChainViewModel = OnChainViewModel.shared
     @StateObject var viewModel = ViewModel.shared
-    
-    @Environment(\.scenePhase) var scenePhase
-    
+        
     @State var showLogs = false
     
     var body: some View {
         List {
             Section {
-                Text(lnViewModel.status?.debugState ?? "No LDK State")
+                Text(lnViewModel.state.debugState)
+                    .font(.caption)
                 
                 if let nodeId = lnViewModel.nodeId {
                     Text("LN Node ID: \(nodeId)")
@@ -39,6 +38,44 @@ struct HomeView: View {
                 if let onchainBalance = onChainViewModel.balance {
                     Text("On Chain Pending \(onchainBalance.immature.toSat())")
                     Text("On Chain Total \(onchainBalance.total.toSat())")
+                }
+            }
+            
+            Section("Blocktank") {
+                Button("Register for notifications") {
+                    StartupHandler.requestPushNotificationPermision { granted, error in
+                        //If granted AppDelegate will receive the token and handle registration
+                        if let error {
+                            Logger.error(error, context: "Failed to request push notification permission")
+                        }
+                    }
+                }
+                
+                Button("Self test") {
+                    Task {
+                        sleep(2) //Chance to background the app
+                        do {
+                            try await BlocktankService.shared.selfTest()
+                        } catch {
+                            Logger.error(error, context: "Failed to self test")
+                        }
+                    }
+                }
+                
+                if let peer = Env.trustedLnPeers.first {
+                    Button("Open channel to trusted peer") {
+                        Task { @MainActor in
+                            do {
+                                let _ = try await LightningService.shared.openChannel(
+                                    peer: peer,
+                                    channelAmountSats: 20000,
+                                    pushToCounterpartySats: 10000
+                                )
+                            } catch {
+                                Logger.error(error, context: "Failed to open test channel")
+                            }
+                        }
+                    }
                 }
             }
             
@@ -85,7 +122,6 @@ struct HomeView: View {
                     
                     Button("Copy open channel command") {
                         let cmd = "lncli openchannel --node_key=\(lnViewModel.nodeId ?? "") --local_amt=200000 --push_amt=10000 --private=true --zero_conf --channel_type=anchors"
-                        //                        let cmd = "lncli openchannel --node_key=\(lnViewModel.nodeId ?? "") --local_amt=200000 --push_amt=10000 --min_confs=3"
                         UIPasteboard.general.string = cmd
                     }
                 }
@@ -169,35 +205,6 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showLogs) {
             LogView()
-        }
-        .onChange(of: scenePhase) { newPhase in
-            if newPhase == .background {
-                if lnViewModel.status?.isRunning == true {
-                    Logger.debug("App backgrounded, stopping LN service...")
-                    Task {
-                        do {
-                            try await lnViewModel.stop()
-                        } catch {
-                            Logger.error(error, context: "Failed to stop LN")
-                        }
-                    }
-                }
-                return
-            }
-            
-            if newPhase == .active {
-                if lnViewModel.status?.isRunning == false {
-                    Logger.debug("App active, starting LN service...")
-                    Task {
-                        do {
-                            try await lnViewModel.start()
-                            try await lnViewModel.sync()
-                        } catch {
-                            Logger.error(error, context: "Failed to start LN")
-                        }
-                    }
-                }
-            }
         }
     }
 }

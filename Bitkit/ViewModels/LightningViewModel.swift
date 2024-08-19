@@ -8,9 +8,30 @@
 import SwiftUI
 import LDKNode
 
+enum NodeState {
+    case stopped
+    case starting
+    case running
+    case stopping
+    
+    var debugState: String {
+        switch self {
+        case .stopped:
+            return "Stopped 🛑"
+        case .starting:
+            return "Starting... 🚀"
+        case .running:
+            return "Running ✅"
+        case .stopping:
+            return "Stopping... 🛑"
+        }
+    }
+}
+
 @MainActor
 class LightningViewModel: ObservableObject {
     @Published var isSyncing = false
+    @Published var state: NodeState = .stopped
     @Published var status: NodeStatus?
     @Published var nodeId: String?
     @Published var balance: BalanceDetails?
@@ -20,8 +41,9 @@ class LightningViewModel: ObservableObject {
     
     private init() {}
     public static var shared = LightningViewModel()
-
+    
     func start(walletIndex: Int = 0) async throws {
+        state = .starting
         syncState()
         try await LightningService.shared.setup(walletIndex: walletIndex)
         try await LightningService.shared.start(onEvent: { _ in
@@ -30,8 +52,10 @@ class LightningViewModel: ObservableObject {
                 self.syncState()
             }
         })
+        
+        state = .running
         syncState()
-                
+        
         //Always sync on start but don't need to wait for this
         Task { @MainActor in
             try await sync()
@@ -39,7 +63,9 @@ class LightningViewModel: ObservableObject {
     }
     
     func stop() async throws {
+        state = .stopping
         try await LightningService.shared.stop()
+        state = .stopped
         syncState()
     }
     
@@ -49,9 +75,22 @@ class LightningViewModel: ObservableObject {
     }
     
     func sync() async throws {
+        syncState()
+        
+        guard state == .running else {
+            //Not really required to throw an error here
+            Logger.warn("Can't sync when node is not running. Current state: \(state.debugState)")
+            return
+        }
+        
+        while isSyncing {
+            Logger.warn("Sync already in progress, waiting for it to complete...")
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        
         isSyncing = true
         syncState()
-    
+        
         do {
             try await LightningService.shared.sync()
             isSyncing = false

@@ -29,6 +29,7 @@ struct ContentView: View {
         .onAppear {
             viewModel.setWalletExistsState()
         }
+        .handleLightningStateOnScenePhaseChange() //Will stop and start LN node as needed
     }
 }
 
