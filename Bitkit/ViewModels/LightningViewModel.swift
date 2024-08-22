@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/06/28.
 //
 
-import SwiftUI
 import LDKNode
+import SwiftUI
 
 enum NodeState {
     case stopped
@@ -47,7 +47,7 @@ class LightningViewModel: ObservableObject {
         syncState()
         try await LightningService.shared.setup(walletIndex: walletIndex)
         try await LightningService.shared.start(onEvent: { _ in
-            //On every lightning event just sync UI
+            // On every lightning event just sync UI
             Task { @MainActor in
                 self.syncState()
             }
@@ -56,7 +56,7 @@ class LightningViewModel: ObservableObject {
         state = .running
         syncState()
         
-        //Always sync on start but don't need to wait for this
+        // Always sync on start but don't need to wait for this
         Task { @MainActor in
             try await sync()
         }
@@ -78,7 +78,7 @@ class LightningViewModel: ObservableObject {
         syncState()
         
         guard state == .running else {
-            //Not really required to throw an error here
+            // Not really required to throw an error here
             Logger.warn("Can't sync when node is not running. Current state: \(state.debugState)")
             return
         }
@@ -115,9 +115,9 @@ class LightningViewModel: ObservableObject {
 extension NodeStatus {
     var debugState: String {
         var debug = """
-Running: \(isRunning ? "✅" : "❌")
-Current best block \(currentBestBlock.height)
-"""
+        Running: \(isRunning ? "✅" : "❌")
+        Current best block \(currentBestBlock.height)
+        """
         
         if let latestWalletSyncTimestamp {
             debug += "\nLast synced \(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).description)\n"

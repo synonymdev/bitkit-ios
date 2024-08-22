@@ -43,8 +43,8 @@ struct HomeView: View {
             
             Section("Blocktank") {
                 Button("Register for notifications") {
-                    StartupHandler.requestPushNotificationPermision { granted, error in
-                        //If granted AppDelegate will receive the token and handle registration
+                    StartupHandler.requestPushNotificationPermision { _, error in
+                        // If granted AppDelegate will receive the token and handle registration
                         if let error {
                             Logger.error(error, context: "Failed to request push notification permission")
                         }
@@ -53,7 +53,7 @@ struct HomeView: View {
                 
                 Button("Self test") {
                     Task {
-                        sleep(2) //Chance to background the app
+                        sleep(2) // Chance to background the app
                         do {
                             try await BlocktankService.shared.selfTest()
                         } catch {
@@ -105,7 +105,6 @@ struct HomeView: View {
                                 Text(channel.isChannelReady ? "🟢" : "🔴")
                                 Text(channel.isUsable ? "🟢" : "🔴")
                             }
-                            
                         }
                         .onLongPressGesture {
                             Task {
@@ -113,9 +112,7 @@ struct HomeView: View {
                                     try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
                                     Logger.info("Channel closed")
                                     try await lnViewModel.sync()
-                                } catch {
-                                    
-                                }
+                                } catch {}
                             }
                         }
                     }
@@ -167,10 +164,10 @@ struct HomeView: View {
                         return
                     }
                     do {
-                        //Delete storage (for current wallet only)
+                        // Delete storage (for current wallet only)
                         try await onChainViewModel.wipeWallet()
                         try await lnViewModel.wipeWallet()
-                        //Delete entire keychain
+                        // Delete entire keychain
                         try Keychain.wipeEntireKeychain()
                         viewModel.setWalletExistsState()
                     } catch {
@@ -200,7 +197,7 @@ struct HomeView: View {
                     try await group.waitForAll()
                 }
             } catch {
-                //TODO show an error
+                // TODO: show an error
             }
         }
         .sheet(isPresented: $showLogs) {

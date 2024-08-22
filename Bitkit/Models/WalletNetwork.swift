@@ -5,16 +5,16 @@
 //  Created by Jason van den Berg on 2024/07/01.
 //
 
+import BitcoinDevKit
 import Foundation
 import LDKNode
-import BitcoinDevKit
 
 enum WalletNetwork {
     case regtest
     case bitcoin
     case testnet
     case signet
-    
+
     var displayName: String {
         switch self {
         case .regtest:
@@ -27,7 +27,7 @@ enum WalletNetwork {
             return "Signet"
         }
     }
-        
+
     var ldkNetwork: LDKNode.Network {
         switch self {
         case .regtest:
@@ -40,7 +40,7 @@ enum WalletNetwork {
             return .signet
         }
     }
-    
+
     var bdkNetwork: BitcoinDevKit.Network {
         switch self {
         case .regtest:
