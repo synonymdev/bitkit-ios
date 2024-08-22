@@ -9,7 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject var viewModel = ViewModel.shared
-    
+
     var body: some View {
         VStack {
             if viewModel.walletExists == nil {
@@ -29,7 +29,7 @@ struct ContentView: View {
         .onAppear {
             viewModel.setWalletExistsState()
         }
-        .handleLightningStateOnScenePhaseChange() //Will stop and start LN node as needed
+        .handleLightningStateOnScenePhaseChange() // Will stop and start LN node as needed
     }
 }
 

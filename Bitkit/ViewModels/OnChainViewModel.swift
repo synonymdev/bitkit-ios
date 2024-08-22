@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/07/01.
 //
 
-import SwiftUI
 import BitcoinDevKit
+import SwiftUI
 
 @MainActor
 class OnChainViewModel: ObservableObject {
@@ -21,7 +21,7 @@ class OnChainViewModel: ObservableObject {
         try await OnChainService.shared.setup(walletIndex: walletIndex)
         syncState()
         
-        //Always sync on start but don't need to wait for this
+        // Always sync on start but don't need to wait for this
         Task { @MainActor in
             try await sync()
         }

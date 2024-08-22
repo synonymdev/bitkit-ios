@@ -12,7 +12,7 @@ enum KeychainEntryType {
     case bip39Mnemonic(index: Int)
     case bip39Passphrase(index: Int)
     
-    //TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
+    // TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
     
     var storageKey: String {
         switch self {
@@ -34,9 +34,9 @@ class Keychain {
             kSecAttrAccount as String: key.storageKey,
             kSecValueData as String: data,
             kSecAttrAccessGroup as String: Env.keychainGroup
-        ] as [String : Any]
+        ] as [String: Any]
         
-        //Don't allow accidentally overwriting keys
+        // Don't allow accidentally overwriting keys
         guard try load(key: key) == nil else {
             Logger.error("Key \(key.storageKey) already exists in keychain. Explicity delete key before attempting to update value.", context: "Keychain")
             throw KeychainError.failedToSaveAlreadyExists
@@ -49,7 +49,7 @@ class Keychain {
             throw KeychainError.failedToSave
         }
         
-        //Sanity check on save
+        // Sanity check on save
         guard var storedValue = try load(key: key) else {
             Logger.error("Failed to load \(key.storageKey) after saving", context: "Keychain")
             throw KeychainError.failedToSave
@@ -59,7 +59,7 @@ class Keychain {
             Logger.error("Saved \(key.storageKey) does not match loaded value", context: "Keychain")
             throw KeychainError.failedToSave
         }
-        storedValue = Data() //Clear memory
+        storedValue = Data() // Clear memory
         
         Logger.info("Saved \(key.storageKey)", context: "Keychain")
     }
@@ -77,7 +77,7 @@ class Keychain {
             kSecClass as String: kSecClassGenericPassword as String,
             kSecAttrAccount as String: key.storageKey,
             kSecAttrAccessGroup as String: Env.keychainGroup
-        ] as [String : Any]
+        ] as [String: Any]
         
         let status = SecItemDelete(query as CFDictionary)
         
@@ -92,11 +92,11 @@ class Keychain {
     class func exists(key: KeychainEntryType) throws -> Bool {
         var value = try load(key: key)
         let exists = value != nil
-        value = Data() //Clear memory
+        value = Data() // Clear memory
         return exists
     }
     
-    //TODO throws if fails but return nil if not found
+    // TODO: throws if fails but return nil if not found
     class func load(key: KeychainEntryType) throws -> Data? {
         let query = [
             kSecClass as String: kSecClassGenericPassword,
@@ -104,9 +104,9 @@ class Keychain {
             kSecReturnData as String: kCFBooleanTrue!,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecAttrAccessGroup as String: Env.keychainGroup
-        ] as [String : Any]
+        ] as [String: Any]
         
-        var dataTypeRef: AnyObject? = nil
+        var dataTypeRef: AnyObject?
         
         let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
         
@@ -148,7 +148,7 @@ class Keychain {
         
         var storageKeys = [String]()
         if lastResultCode == noErr {
-            let array = result as? Array<Dictionary<String, Any>>
+            let array = result as? [[String: Any]]
             for item in array! {
                 if let key = item[kSecAttrAccount as String] as? String {
                     storageKeys.append(key)
@@ -160,8 +160,8 @@ class Keychain {
     }
     
     class func wipeEntireKeychain() throws {
-        //TODO remove check in the future when safe to do so or required by the UI
-        guard (Env.isDebug || Env.isUnitTest) && Env.network == .regtest else {
+        // TODO: remove check in the future when safe to do so or required by the UI
+        guard Env.isDebug || Env.isUnitTest, Env.network == .regtest else {
             Logger.error("Wiping keychain is only allowed in debug mode for regtest", context: "Keychain")
             throw KeychainError.keychainWipeNotAllowed
         }
@@ -172,7 +172,7 @@ class Keychain {
                 kSecClass as String: kSecClassGenericPassword as String,
                 kSecAttrAccount as String: key,
                 kSecAttrAccessGroup as String: Env.keychainGroup
-            ] as [String : Any]
+            ] as [String: Any]
             SecItemDelete(query as CFDictionary)
             
             Logger.info("Deleted \(key) from keychain")

@@ -7,12 +7,12 @@
 
 import SwiftUI
 
-fileprivate struct HandleLightningStateOnScenePhaseChange: ViewModifier {
+private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @StateObject var viewModel = ViewModel.shared
     @ObservedObject var lnViewModel = LightningViewModel.shared
     @Environment(\.scenePhase) var scenePhase
 
-    let sleepTime: UInt64 = 5_00_000_000 // 0.5 seconds
+    let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
     
     func body(content: Content) -> some View {
         content
@@ -95,6 +95,6 @@ extension View {
     /// Stops and restarts lightning node when the app enters the background and foreground
     /// - Returns: View
     func handleLightningStateOnScenePhaseChange() -> some View {
-        self.modifier(HandleLightningStateOnScenePhaseChange())
+        modifier(HandleLightningStateOnScenePhaseChange())
     }
 }

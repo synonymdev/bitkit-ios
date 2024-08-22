@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/07/31.
 //
 
-import SwiftUI
 import BitcoinDevKit
+import SwiftUI
 
 class StartupHandler {
     private init() {}
@@ -52,9 +52,9 @@ class StartupHandler {
     ///   - bip39Passphrase: optional bip39 passphrase
     ///   - walletIndex: wallet index, defaults to zero for first
     static func restoreWallet(mnemonic: String, bip39Passphrase: String?, walletIndex: Int = 0) throws {
-        _ = try Mnemonic.fromString(mnemonic: mnemonic) //Check it's valid
+        _ = try Mnemonic.fromString(mnemonic: mnemonic) // Check it's valid
         
-        //TODO validate word count also?
+        // TODO: validate word count also?
                 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
         if let bip39Passphrase {

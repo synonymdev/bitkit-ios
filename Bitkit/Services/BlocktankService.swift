@@ -12,7 +12,7 @@ class BlocktankService {
     private init() {}
     
     func registerDevice(deviceToken: String) async throws {
-        UserDefaults.standard.setValue(deviceToken, forKey: "deviceToken") //Token cached so we can retry registration if there are any issues
+        UserDefaults.standard.setValue(deviceToken, forKey: "deviceToken") // Token cached so we can retry registration if there are any issues
         
         guard let nodeId = LightningService.shared.nodeId else {
             throw AppError(serviceError: .nodeNotStarted)
@@ -26,8 +26,8 @@ class BlocktankService {
         let signature = try await LightningService.shared.sign(message: messageToSign)
         
         let publicKey = "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f"
-        //TODO: use real public key like below to enable decryption of the push notification payload so we know which node event to wait for
-        //https://github.com/SeverinAlexB/ln-verifymessagejs/blob/master/src/shared_secret.ts
+        // TODO: use real public key like below to enable decryption of the push notification payload so we know which node event to wait for
+        // https://github.com/SeverinAlexB/ln-verifymessagejs/blob/master/src/shared_secret.ts
         
         let params = [
             "deviceToken": deviceToken,
@@ -38,13 +38,13 @@ class BlocktankService {
             "nodeId": nodeId,
             "isoTimestamp": isoTimestamp,
             "signature": signature
-        ] as [String : Any]
+        ] as [String: Any]
                 
         let result = try await postRequest("notifications/api/device", params)
         Logger.info("Device registered: \(String(data: result, encoding: .utf8) ?? "")")
     }
     
-    //TODO: token is cached above so occasionally check the status of the device with Blocktank. If not registered but we have a token then retry registration.
+    // TODO: token is cached above so occasionally check the status of the device with Blocktank. If not registered but we have a token then retry registration.
     
     func selfTest() async throws {
         guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
@@ -59,7 +59,7 @@ class BlocktankService {
                 "type": "incomingHtlc",
                 "payload": ["secretMessage": "hello"]
             ]
-        ] as [String : Any]
+        ] as [String: Any]
                 
         let result = try await postRequest("notifications/api/device/\(deviceToken)/test-notification", params)
         Logger.info("Notification sent to self: \(String(data: result, encoding: .utf8) ?? "")")
@@ -91,7 +91,7 @@ extension BlocktankService {
                     Logger.error(responseBody)
                 }
                 
-                throw BlocktankError.invalidResponse //TODO: add error status code
+                throw BlocktankError.invalidResponse // TODO: add error status code
             }
             
             return data
@@ -109,7 +109,8 @@ extension BlocktankService {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+              (200...299).contains(httpResponse.statusCode)
+        else {
             throw BlocktankError.invalidResponse
         }
         
