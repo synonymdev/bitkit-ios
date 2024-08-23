@@ -8,30 +8,59 @@
 import SwiftUI
 
 struct TabBar: View {
+    @State private var showReceiveNavigation = false
+    @State private var showSendNavigation = false
+
+    private let sheetHeight = UIScreen.screenHeight - 200
+
     var body: some View {
         VStack {
             Spacer()
             HStack {
                 Spacer()
-                Label("Send", image: "arrow.up.arrow.down")
+                Button(action: {
+                    showSendNavigation = true
+                }, label: {
+                    Label("Send", image: "arrow.up.arrow.down")
+                })
                 Spacer()
 
-                // Scan QR
-                Image(systemName: "qrcode.viewfinder")
-                    .resizable()
-                    .frame(width: 30, height: 30)
-                    .padding()
-                    .onTapGesture {
-                        Logger.info("Scan QR")
-                    }
+                NavigationLink(destination: ScannerView()) {
+                    Image(systemName: "viewfinder")
+                        .resizable()
+                        .frame(width: 30, height: 30)
+                        .padding()
+                }
                 Spacer()
-                Label("Receive", image: "arrow.down.arrow.up")
+
+                Button(action: {
+                    showReceiveNavigation = true
+                }, label: {
+                    Label("Receive", image: "arrow.down.arrow.up")
+                })
+
                 Spacer()
             }
             .background(.regularMaterial)
             .cornerRadius(30)
             .padding()
         }
+        .sheet(isPresented: $showSendNavigation, content: {
+            if #available(iOS 16.0, *) {
+                SendOptionsView()
+                    .presentationDetents([.height(sheetHeight)])
+            } else {
+                SendOptionsView() // Will just consume full screen
+            }
+        })
+        .sheet(isPresented: $showReceiveNavigation, content: {
+            if #available(iOS 16.0, *) {
+                ReceiveQR()
+                    .presentationDetents([.height(sheetHeight)])
+            } else {
+                ReceiveQR() // Will just consume full screen
+            }
+        })
     }
 }
 

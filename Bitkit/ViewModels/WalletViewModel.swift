@@ -52,6 +52,7 @@ class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @Published var walletBalanceSats: UInt64? = nil // Combined onchain and LN
+    @Published var bip21: String? = nil
     
     // MARK: Lightning state
     @Published var lightningState: LightningNodeState = .stopped
@@ -122,7 +123,7 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
     
-    private func syncState() {
+    internal func syncState() {
         // MARK: Lightning
         lightningStatus = LightningService.shared.status
         lightningNodeId = LightningService.shared.nodeId
@@ -142,69 +143,18 @@ class WalletViewModel: ObservableObject {
         }
         // TODO: tx history
     }
-}
-
-// MARK: Lightning actions
-extension WalletViewModel {
-    func startLightning(walletIndex: Int = 0) async throws {
-        lightningState = .starting
-        syncState()
-        try await LightningService.shared.setup(walletIndex: walletIndex)
-        try await LightningService.shared.start(onEvent: { _ in
-            // On every lightning event just sync UI
-            Task { @MainActor in
-                self.syncState()
-            }
-        })
-        
-        lightningState = .running
-        
-        try await OnChainService.shared.setup(walletIndex: walletIndex)
-        
-        syncState()
-        
-        // Always sync on start but don't need to wait for this
-        Task { @MainActor in
-            try await sync()
+    
+    func createBip21() async throws {
+        // TODO: actually implement BIP21 spec
+        if onchainAddress == nil {
+            try await newOnchainReceiveAddress()
         }
-    }
-    
-    func stopLightningNode() async throws {
-        lightningState = .stopping
-        try await LightningService.shared.stop()
-        lightningState = .stopped
-        syncState()
-    }
-    
-    func wipeLightningWallet() async throws {
-        try await stopLightningNode()
-        try await LightningService.shared.wipeStorage(walletIndex: 0)
-    }
-}
-
-// MARK: Onchain actions
-extension WalletViewModel {
-    func startOnchain(walletIndex: Int = 0) async throws {
-        try await OnChainService.shared.setup(walletIndex: walletIndex)
-        syncState()
-            
-        // Always sync on start but don't need to wait for this
-        Task { @MainActor in
-            try await sync()
+        
+        guard let onchainAddress else {
+            Logger.error("Missing on chain address, cannot create bip21 string")
+            return
         }
-    }
-    
-    func stopOnchainWallet() throws {
-        OnChainService.shared.stop()
-        syncState()
-    }
-    
-    func wipeOnchainWallet() async throws {
-        try stopOnchainWallet()
-        try await OnChainService.shared.wipeStorage(walletIndex: 0)
-    }
-    
-    func newOnchainReceiveAddress() async throws {
-        onchainAddress = try await OnChainService.shared.getAddress()
+        
+        bip21 = "bitcoin:\(onchainAddress)"
     }
 }
