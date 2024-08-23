@@ -9,43 +9,6 @@ import BitcoinDevKit
 import LDKNode
 import SwiftUI
 
-enum LightningNodeState {
-    case stopped
-    case starting
-    case running
-    case stopping
-    
-    var debugState: String {
-        switch self {
-        case .stopped:
-            return "Stopped 🛑"
-        case .starting:
-            return "Starting... 🚀"
-        case .running:
-            return "Running ✅"
-        case .stopping:
-            return "Stopping... 🛑"
-        }
-    }
-}
-
-extension NodeStatus {
-    var debugState: String {
-        var debug = """
-        Running: \(isRunning ? "✅" : "❌")
-        Current best block \(currentBestBlock.height)
-        """
-        
-        if let latestWalletSyncTimestamp {
-            debug += "\nLast synced \(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).description)\n"
-        } else {
-            debug += "\nLast synced never\n"
-        }
-        
-        return debug
-    }
-}
-
 @MainActor
 class WalletViewModel: ObservableObject {
     // MARK: General state
@@ -53,6 +16,7 @@ class WalletViewModel: ObservableObject {
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @Published var walletBalanceSats: UInt64? = nil // Combined onchain and LN
     @Published var bip21: String? = nil
+    @Published var activityItems: [ActivityItem]? = nil
     
     // MARK: Lightning state
     @Published var lightningState: LightningNodeState = .stopped
@@ -61,7 +25,6 @@ class WalletViewModel: ObservableObject {
     @Published var lightningBalance: BalanceDetails?
     @Published var lightningPeers: [PeerDetails]?
     @Published var lightningChannels: [ChannelDetails]?
-    @Published var lightningPayments: [PaymentDetails]? // TODO: unify with onchain
     
     // MARK: Onchain state
     @Published var onchainBalance: Balance?
@@ -108,7 +71,7 @@ class WalletViewModel: ObservableObject {
                     }
                 } else {
                     // Not really required to throw an error here
-                    Logger.warn("Can't sync lightning when node is not running. Current state: \(lightningState.debugState)")
+                    Logger.warn("Can't sync lightning when node is not running. Current state: \(lightningState.rawValue)")
                 }
                 
                 try await group.waitForAll()
@@ -130,7 +93,6 @@ class WalletViewModel: ObservableObject {
         lightningBalance = LightningService.shared.balances
         lightningPeers = LightningService.shared.peers
         lightningChannels = LightningService.shared.channels
-        lightningPayments = LightningService.shared.payments
         
         // MARK: onchain
         onchainBalance = OnChainService.shared.balance
@@ -142,6 +104,13 @@ class WalletViewModel: ObservableObject {
             Logger.warn("Failed to calculate wallet balance, onchain: \(String(describing: onchainBalance)), lightning: \(String(describing: lightningBalance))")
         }
         // TODO: tx history
+        if let lnTxs = LightningService.shared.payments {
+            activityItems = lnTxs.map { .lightning(.init(payment: $0)) }
+        }
+        
+        if let onchainTxs = OnChainService.shared.transactions {
+            activityItems?.append(contentsOf: onchainTxs.map { .onchain(.init(tx: $0)) })
+        }
     }
     
     func createBip21() async throws {

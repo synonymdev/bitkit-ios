@@ -153,4 +153,5 @@ class OnChainService {
 extension OnChainService {
     // TODO: catch errors?
     var balance: Balance? { hasSynced ? wallet?.getBalance() : nil }
+    var transactions: [CanonicalTx]? { wallet?.transactions() }
 }

@@ -60,15 +60,24 @@ struct HomeView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 VStack {
-                    // TODO: show unified activity list
-                    if let payments = wallet.lightningPayments {
-                        ForEach(payments, id: \.id) { payment in
+                    if let activityItems = wallet.activityItems {
+                        ForEach(activityItems, id: \.self) { item in
                             HStack {
-                                Text("\(payment.direction == .inbound ? "⬇️" : "⬆️")")
-                                Text("\(payment.status)")
-                                Spacer()
-                                Text("\(payment.amountMsat ?? 0)")
+                                switch item {
+                                case .onchain(let onchainItem):
+                                    Text("⛓️ \(onchainItem.txType == .sent ? "⬆️" : "⬇️")")
+                                    Text("\(onchainItem.confirmed ? "✅" : "⏳")")
+                                    Spacer()
+                                    Text("\(onchainItem.valueSats)")
+                                case .lightning(let lightningItem):
+                                    Text("⚡️ \(lightningItem.txType == .sent ? "⬆️" : "⬇️")")
+                                    Text("\(lightningItem.status)")
+                                    Spacer()
+                                    Text("\(lightningItem.valueSats)")
+                                }
                             }
+                            .padding(.horizontal)
+                            .padding(.vertical, 2)
                         }
                     }
                 }
@@ -76,9 +85,7 @@ struct HomeView: View {
             .overlay(content: {
                 TabBar()
             })
-            .navigationBarItems(trailing: NavigationLink(destination: SettingsListView()) {
-                Image(systemName: "gear")
-            })
+            .navigationBarItems(trailing: rightNavigationItem)
             .navigationTitle("Bitkit")
             .refreshable {
                 do {
@@ -86,6 +93,15 @@ struct HomeView: View {
                 } catch {
                     // TODO: show an error
                 }
+            }
+        }
+    }
+    
+    var rightNavigationItem: some View {
+        HStack {
+            Text(wallet.lightningState.debugEmoji)
+            NavigationLink(destination: SettingsListView()) {
+                Image(systemName: "gear")
             }
         }
     }
