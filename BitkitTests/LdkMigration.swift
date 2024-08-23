@@ -10,9 +10,7 @@ import XCTest
 final class LdkMigrationTests: XCTestCase {
     let walletIndex = 0
     
-    override func setUpWithError() throws {
-        
-    }
+    override func setUpWithError() throws {}
     
     override func tearDownWithError() throws {
         dumpLdkLogs()
@@ -43,14 +41,14 @@ final class LdkMigrationTests: XCTestCase {
         
         try MigrationsService.shared.ldkToLdkNode(
             walletIndex: 0,
-            seed: try Data(contentsOf: seedFile),
-            manager: try Data(contentsOf: managerFile),
+            seed: Data(contentsOf: seedFile),
+            manager: Data(contentsOf: managerFile),
             monitors: [
-                try Data(contentsOf: channelFile)
+                Data(contentsOf: channelFile)
             ]
         )
         
-        //TODO restore first from words
+        // TODO: restore first from words
         try await LightningService.shared.setup(walletIndex: walletIndex)
         try await LightningService.shared.start()
         
@@ -69,9 +67,9 @@ final class LdkMigrationTests: XCTestCase {
         guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else {
             return
         }
-        let lines = text.components(separatedBy: "\n").map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+        let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         print("*****LDK-NODE LOG******")
-        lines.suffix(20).forEach { line in
+        for line in lines.suffix(20) {
             print(line)
         }
         print("*****END LOG******")

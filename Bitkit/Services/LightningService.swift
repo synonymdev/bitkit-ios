@@ -8,7 +8,7 @@
 import Foundation
 import LDKNode
 
-//TODO catch all errors and pass a readable error message to the UI
+// TODO: catch all errors and pass a readable error message to the UI
 
 class LightningService {
     private var node: Node?
@@ -34,10 +34,10 @@ class LightningService {
         config.network = Env.network.ldkNetwork
         config.logLevel = .trace
         
-        config.trustedPeers0conf = Env.trustedLnPeers.map({ $0.nodeId })
+        config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
         config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: Env.trustedLnPeers.map({ $0.nodeId }),
-            perChannelReserveSats: 1000 //TODO set correctly
+            trustedPeersNoReserve: Env.trustedLnPeers.map { $0.nodeId },
+            perChannelReserveSats: 1000 // TODO: set correctly
         )
         
         let builder = Builder.fromConfig(config: config)
@@ -61,7 +61,7 @@ class LightningService {
         
         Logger.info("LDK node setup")
         
-        //Clear memory
+        // Clear memory
         mnemonic = ""
         passphrase = nil
     }
@@ -82,7 +82,7 @@ class LightningService {
         
         Logger.info("Node started")
         
-        try await self.connectToTrustedPeers()
+        try await connectToTrustedPeers()
     }
     
     func stop() async throws {
@@ -169,7 +169,7 @@ class LightningService {
         }
         
         return try await ServiceQueue.background(.ldk) {
-            return try node
+            try node
                 .bolt11Payment()
                 .receive(
                     amountMsat: amountSats * 1000,
@@ -184,10 +184,10 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
         
-        //Check if peer is connected
+        // Check if peer is connected
         
         return try await ServiceQueue.background(.ldk) {
-            return try node.bolt11Payment().send(invoice: bolt11)
+            try node.bolt11Payment().send(invoice: bolt11)
         }
     }
     
@@ -214,7 +214,7 @@ class LightningService {
         }
         
         return try await ServiceQueue.background(.ldk) {
-            return try node.signMessage(msg: [UInt8](msg))
+            try node.signMessage(msg: [UInt8](msg))
         }
     }
     
@@ -224,7 +224,7 @@ class LightningService {
         }
         
         return try await ServiceQueue.background(.ldk) {
-            return try node.connectOpenChannel(
+            try node.connectOpenChannel(
                 nodeId: peer.nodeId,
                 address: peer.address,
                 channelAmountSats: channelAmountSats,
@@ -236,17 +236,19 @@ class LightningService {
     }
 }
 
-//MARK: UI Helpers (Published via LightningViewModel)
+// MARK: UI Helpers (Published via LightningViewModel)
+
 extension LightningService {
     var nodeId: String? { node?.nodeId() }
     var balances: BalanceDetails? { node?.listBalances() }
     var status: NodeStatus? { node?.status() }
     var peers: [PeerDetails]? { node?.listPeers() }
     var channels: [ChannelDetails]? { node?.listChannels() }
-    var payments: [PaymentDetails]? {  node?.listPayments() }
+    var payments: [PaymentDetails]? { node?.listPayments() }
 }
 
-//MARK: Events
+// MARK: Events
+
 extension LightningService {
     func listenForEvents(onEvent: ((Event) -> Void)? = nil) {
         Task {
@@ -259,29 +261,22 @@ extension LightningService {
                 let event = await node.nextEventAsync()
                 onEvent?(event)
                 
-                //TODO actual event handler
+                // TODO: actual event handler
                 switch event {
                 case .paymentSuccessful(paymentId: let paymentId, paymentHash: let paymentHash, feePaidMsat: let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
-                    break
                 case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
                     Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) reason: \(reason.debugDescription)")
-                    break
                 case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
-                    break
                 case .paymentClaimable(paymentId: let paymentId, paymentHash: let paymentHash, claimableAmountMsat: let claimableAmountMsat, claimDeadline: let claimDeadline):
                     Logger.info("🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
-                    break
                 case .channelPending(channelId: let channelId, userChannelId: let userChannelId, formerTemporaryChannelId: let formerTemporaryChannelId, counterpartyNodeId: let counterpartyNodeId, fundingTxo: let fundingTxo):
                     Logger.info("⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)")
-                    break
                 case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
                     Logger.info("👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")")
-                    break
                 case .channelClosed(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId, reason: let reason):
                     Logger.info("⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)")
-                    break
                 }
                 
                 node.eventHandled()

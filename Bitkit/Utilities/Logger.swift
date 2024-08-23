@@ -9,7 +9,7 @@ import Foundation
 
 class Logger {
     private init() {}
-    static let queue = DispatchQueue (label: "bitkit.log", qos: .utility)
+    static let queue = DispatchQueue(label: "bitkit.log", qos: .utility)
     
     static func info(_ message: Any, context: String = "", file: String = #file, function: String = #function, line: Int = #line) {
         handle("INFOℹ️: \(message)", context: context, file: file, function: function, line: line)
@@ -42,7 +42,7 @@ class Logger {
         print(line)
         
         queue.async {
-            //TODO write to file
+            // TODO: write to file
         }
     }
 }

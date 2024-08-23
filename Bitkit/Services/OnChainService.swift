@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/07/01.
 //
 
-import Foundation
 import BitcoinDevKit
+import Foundation
 
 class OnChainService {
     private var wallet: Wallet?
@@ -29,9 +29,9 @@ class OnChainService {
         
         currentWalletIndex = walletIndex
                 
-        let secretKey = DescriptorSecretKey(
+        let secretKey = try DescriptorSecretKey(
             network: Env.network.bdkNetwork,
-            mnemonic: try Mnemonic.fromString(mnemonic: mnemonic),
+            mnemonic: Mnemonic.fromString(mnemonic: mnemonic),
             password: passphrase
         )
         
@@ -64,14 +64,14 @@ class OnChainService {
         
         Logger.info("Onchain wallet created")
         
-        //Clear memory
+        // Clear memory
         mnemonic = ""
         passphrase = nil
     }
     
     func stop() {
         Logger.debug("Stopping on chain wallet...")
-        self.wallet = nil
+        wallet = nil
         Logger.info("On chain wallet stopped")
     }
     
@@ -115,7 +115,7 @@ class OnChainService {
             let update = try self.esploraClient.sync(syncRequest: request, parallelRequests: 5)
             try wallet.applyUpdate(update: update)
             
-            //TODO: persist wallet??
+            // TODO: persist wallet??
         }
         
         hasSynced = true
@@ -135,11 +135,11 @@ class OnChainService {
             let request = wallet.startFullScan()
             let update = try self.esploraClient.fullScan(
                 fullScanRequest: request,
-                stopGap: Env.onchainWalletStopGap, 
+                stopGap: Env.onchainWalletStopGap,
                 parallelRequests: Env.esploraParallelRequests
             )
             try wallet.applyUpdate(update: update)
-            //TODO: persist wallet once BDK is updated to beta release
+            // TODO: persist wallet once BDK is updated to beta release
         }
         
         hasSynced = true
@@ -148,8 +148,9 @@ class OnChainService {
     }
 }
 
-//MARK: UI Helpers (Published via OnChainViewModel)
+// MARK: UI Helpers (Published via OnChainViewModel)
+
 extension OnChainService {
-    //TODO catch errors?
+    // TODO: catch errors?
     var balance: Balance? { hasSynced ? wallet?.getBalance() : nil }
 }
