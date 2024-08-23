@@ -13,7 +13,7 @@ struct LightningSettingsView: View {
     var body: some View {
         List {
             Section("Node") {
-                Text(wallet.lightningState.debugState)
+                Text(wallet.lightningState.displayState)
                     .font(.caption)
 
                 if let nodeId = wallet.lightningNodeId {

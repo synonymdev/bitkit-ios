@@ -34,6 +34,7 @@
 		964DF71E2C78A7ED00EDE6DE /* SendOptionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964DF71D2C78A7ED00EDE6DE /* SendOptionsView.swift */; };
 		964DF7212C78A88300EDE6DE /* ScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964DF7202C78A88300EDE6DE /* ScannerView.swift */; };
 		964DF7252C78AE7200EDE6DE /* QR.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964DF7242C78AE7200EDE6DE /* QR.swift */; };
+		964DF7272C78C61D00EDE6DE /* ActivityItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964DF7262C78C61D00EDE6DE /* ActivityItem.swift */; };
 		965F243A2C6CF1B1005A5B31 /* BlocktankService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965F24392C6CF1B1005A5B31 /* BlocktankService.swift */; };
 		965F243C2C6E13D1005A5B31 /* ScenePhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965F243B2C6E13D1005A5B31 /* ScenePhase.swift */; };
 		966DE6612C502C7E00A7B0EF /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
@@ -134,6 +135,7 @@
 		964DF71D2C78A7ED00EDE6DE /* SendOptionsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendOptionsView.swift; sourceTree = "<group>"; };
 		964DF7202C78A88300EDE6DE /* ScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerView.swift; sourceTree = "<group>"; };
 		964DF7242C78AE7200EDE6DE /* QR.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QR.swift; sourceTree = "<group>"; };
+		964DF7262C78C61D00EDE6DE /* ActivityItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityItem.swift; sourceTree = "<group>"; };
 		965F24392C6CF1B1005A5B31 /* BlocktankService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocktankService.swift; sourceTree = "<group>"; };
 		965F243B2C6E13D1005A5B31 /* ScenePhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenePhase.swift; sourceTree = "<group>"; };
 		966DE66A2C50FA6A00A7B0EF /* channel_manager.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = channel_manager.bin; sourceTree = "<group>"; };
@@ -270,6 +272,7 @@
 			children = (
 				9637E6DC2C32EAA8004A92FC /* WalletNetwork.swift */,
 				9637E6DE2C32ED7B004A92FC /* LnPeer.swift */,
+				964DF7262C78C61D00EDE6DE /* ActivityItem.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -629,6 +632,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				964DF71B2C78A63400EDE6DE /* ReceiveQR.swift in Sources */,
+				964DF7272C78C61D00EDE6DE /* ActivityItem.swift in Sources */,
 				96A9C13F2C788B9E0013D65C /* LightningSettingsView.swift in Sources */,
 				9637E6D32C32CE79004A92FC /* Env.swift in Sources */,
 				96FE5A192C46594500860ADC /* LogView.swift in Sources */,
