@@ -8,8 +8,7 @@
 import SwiftUI
 
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
-    @StateObject var viewModel = ViewModel.shared
-    @ObservedObject var lnViewModel = LightningViewModel.shared
+    @ObservedObject var wallet = WalletViewModel.shared
     @Environment(\.scenePhase) var scenePhase
 
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
@@ -17,7 +16,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: scenePhase) { newPhase in
-                guard viewModel.walletExists == true else {
+                guard wallet.walletExists == true else {
                     return
                 }
                 
@@ -45,11 +44,11 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     }
     
     func stopNodeIfNeeded() async throws {
-        if lnViewModel.state == .stopped || lnViewModel.state == .stopping {
+        if wallet.lightningState == .stopped || wallet.lightningState == .stopping {
             return
         }
         
-        while lnViewModel.state == .starting {
+        while wallet.lightningState == .starting {
             Logger.debug("Waiting for LN to start first before stopping...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
@@ -59,23 +58,23 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             return
         }
         
-        guard lnViewModel.state != .stopped && lnViewModel.state != .stopping else {
+        guard wallet.lightningState != .stopped && wallet.lightningState != .stopping else {
             Logger.debug("LN is already stopped or stopping")
             return
         }
         
         Logger.debug("App backgrounded Stopping node...")
         
-        try await lnViewModel.stop()
+        try await wallet.stopLightningNode()
     }
     
     func startNodeIfNeeded() async throws {
-        while lnViewModel.state == .stopping {
+        while wallet.lightningState == .stopping {
             Logger.debug("Node is still stopping, waiting...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
         
-        guard lnViewModel.state == .stopped else {
+        guard wallet.lightningState == .stopped else {
             Logger.debug("LN is already running or starting, abandoning restart...")
             return
         }
@@ -87,7 +86,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         
         Logger.debug("App active, starting LN service...")
 
-        try await lnViewModel.start()
+        try await wallet.startLightning()
     }
 }
 

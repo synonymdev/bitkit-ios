@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct RestoreView: View {
-    @StateObject var viewModel = ViewModel.shared
+    @StateObject var wallet = WalletViewModel.shared
     
     @State var bip39Mnemonic = ""
     @State var bip39Passphrase: String? = nil
@@ -32,7 +32,7 @@ struct RestoreView: View {
                     do {
                         _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
                         // TODO: handle full sync here before revealing the UI so balances are pre populated
-                        viewModel.setWalletExistsState()
+                        wallet.setWalletExistsState()
                     } catch {
                         // TODO: show a error to user
                         Logger.error(error)
@@ -46,7 +46,7 @@ struct RestoreView: View {
 }
 
 struct WelcomeView: View {
-    @StateObject var viewModel = ViewModel.shared
+    @StateObject var wallet = WalletViewModel.shared
     @State var bip39Passphrase: String?
     
     @State var showRestore = false
@@ -69,7 +69,7 @@ struct WelcomeView: View {
                 Button("Create Wallet") {
                     do {
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
-                        viewModel.setWalletExistsState()
+                        wallet.setWalletExistsState()
                     } catch {
                         // TODO: show a error to user
                         Logger.error(error)

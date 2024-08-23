@@ -15,7 +15,7 @@ class StartupHandler {
         Logger.debug("Spinning up services...")
         Task {
             do {
-                try await OnChainViewModel.shared.start()
+                try await WalletViewModel.shared.startOnchain()
             } catch {
                 Logger.error(error, context: "Failed to start on chain service")
             }
@@ -23,7 +23,7 @@ class StartupHandler {
         
         Task {
             do {
-                try await LightningViewModel.shared.start()
+                try await WalletViewModel.shared.startLightning()
             } catch {
                 Logger.error(error, context: "Failed to start lightning service")
             }
