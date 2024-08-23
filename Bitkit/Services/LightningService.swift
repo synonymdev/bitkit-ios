@@ -236,7 +236,7 @@ class LightningService {
     }
 }
 
-// MARK: UI Helpers (Published via LightningViewModel)
+// MARK: UI Helpers (Published via WalletViewModel)
 
 extension LightningService {
     var nodeId: String? { node?.nodeId() }

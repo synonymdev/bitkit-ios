@@ -21,10 +21,8 @@
 		962B921E2C5A20EF00B21057 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962B921D2C5A20EF00B21057 /* WelcomeView.swift */; };
 		962B92212C5A217400B21057 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962B92202C5A217400B21057 /* HomeView.swift */; };
 		962B92232C5A327000B21057 /* StartupHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962B92222C5A327000B21057 /* StartupHandler.swift */; };
-		962B92252C5A4F5D00B21057 /* ViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962B92242C5A4F5D00B21057 /* ViewModel.swift */; };
 		9637E6D32C32CE79004A92FC /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
 		9637E6D52C32D811004A92FC /* OnChainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D42C32D811004A92FC /* OnChainService.swift */; };
-		9637E6DA2C32E573004A92FC /* OnChainViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D92C32E573004A92FC /* OnChainViewModel.swift */; };
 		9637E6DD2C32EAA8004A92FC /* WalletNetwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6DC2C32EAA8004A92FC /* WalletNetwork.swift */; };
 		9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6DE2C32ED7B004A92FC /* LnPeer.swift */; };
 		963DE7932C578D9900A2AA1D /* Keychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 963DE7922C578D9900A2AA1D /* Keychain.swift */; };
@@ -49,8 +47,11 @@
 		966DE6752C512FD100A7B0EF /* HexBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966DE6732C512C9300A7B0EF /* HexBytes.swift */; };
 		968A68082C6B6D1F00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */; };
 		968A680F2C6BA5EC00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A680E2C6BA5EC00D4C7CD /* BitcoinDevKit */; };
+		96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13A2C787B240013D65C /* SettingsListView.swift */; };
+		96A9C13F2C788B9E0013D65C /* LightningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */; };
+		96A9C1422C7891A90013D65C /* TabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C1412C7891A90013D65C /* TabBar.swift */; };
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
-		96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */; };
+		96B12A002C2EC37B00DD07B0 /* WalletViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */; };
 		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
 		96F261322C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
 		96F261332C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
@@ -115,10 +116,8 @@
 		962B921D2C5A20EF00B21057 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		962B92202C5A217400B21057 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		962B92222C5A327000B21057 /* StartupHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupHandler.swift; sourceTree = "<group>"; };
-		962B92242C5A4F5D00B21057 /* ViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModel.swift; sourceTree = "<group>"; };
 		9637E6D22C32CE79004A92FC /* Env.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Env.swift; sourceTree = "<group>"; };
 		9637E6D42C32D811004A92FC /* OnChainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnChainService.swift; sourceTree = "<group>"; };
-		9637E6D92C32E573004A92FC /* OnChainViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnChainViewModel.swift; sourceTree = "<group>"; };
 		9637E6DC2C32EAA8004A92FC /* WalletNetwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletNetwork.swift; sourceTree = "<group>"; };
 		9637E6DE2C32ED7B004A92FC /* LnPeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LnPeer.swift; sourceTree = "<group>"; };
 		963DE7922C578D9900A2AA1D /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
@@ -129,7 +128,10 @@
 		966DE66C2C50FA7600A7B0EF /* adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin; sourceTree = "<group>"; };
 		966DE6712C512C1E00A7B0EF /* seed.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = seed.bin; sourceTree = "<group>"; };
 		966DE6732C512C9300A7B0EF /* HexBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexBytes.swift; sourceTree = "<group>"; };
-		96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningViewModel.swift; sourceTree = "<group>"; };
+		96A9C13A2C787B240013D65C /* SettingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsListView.swift; sourceTree = "<group>"; };
+		96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningSettingsView.swift; sourceTree = "<group>"; };
+		96A9C1412C7891A90013D65C /* TabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBar.swift; sourceTree = "<group>"; };
+		96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
 		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
 		96F261312C369C2100167439 /* ServiceQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceQueue.swift; sourceTree = "<group>"; };
@@ -223,7 +225,9 @@
 		962B921C2C5A209400B21057 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				96A9C13A2C787B240013D65C /* SettingsListView.swift */,
 				96FE5A182C46594500860ADC /* LogView.swift */,
+				96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */,
 			);
 			path = Settings;
 			sourceTree = "<group>";
@@ -263,12 +267,18 @@
 			path = "ldk-backup";
 			sourceTree = "<group>";
 		};
+		96A9C1402C78918E0013D65C /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				96A9C1412C7891A90013D65C /* TabBar.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
 		96B129FE2C2EC0ED00DD07B0 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
-				962B92242C5A4F5D00B21057 /* ViewModel.swift */,
-				96B129FF2C2EC37B00DD07B0 /* LightningViewModel.swift */,
-				9637E6D92C32E573004A92FC /* OnChainViewModel.swift */,
+				96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -326,6 +336,7 @@
 				96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */,
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
 				96FE5A172C46592800860ADC /* Views */,
+				96A9C1402C78918E0013D65C /* Components */,
 				96B129FE2C2EC0ED00DD07B0 /* ViewModels */,
 				96B12A012C2EC61500DD07B0 /* Services */,
 				9637E6DB2C32EA84004A92FC /* Models */,
@@ -572,17 +583,17 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96A9C13F2C788B9E0013D65C /* LightningSettingsView.swift in Sources */,
 				9637E6D32C32CE79004A92FC /* Env.swift in Sources */,
 				96FE5A192C46594500860ADC /* LogView.swift in Sources */,
 				961301882C50202A00878183 /* MigrationsService.swift in Sources */,
-				96B12A002C2EC37B00DD07B0 /* LightningViewModel.swift in Sources */,
+				96B12A002C2EC37B00DD07B0 /* WalletViewModel.swift in Sources */,
 				9637E6DD2C32EAA8004A92FC /* WalletNetwork.swift in Sources */,
 				962B921E2C5A20EF00B21057 /* WelcomeView.swift in Sources */,
 				963DE7932C578D9900A2AA1D /* Keychain.swift in Sources */,
 				96F261362C369D2400167439 /* Errors.swift in Sources */,
-				9637E6DA2C32E573004A92FC /* OnChainViewModel.swift in Sources */,
+				96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */,
 				962B92212C5A217400B21057 /* HomeView.swift in Sources */,
-				962B92252C5A4F5D00B21057 /* ViewModel.swift in Sources */,
 				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
 				965F243C2C6E13D1005A5B31 /* ScenePhase.swift in Sources */,
 				9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */,
@@ -594,6 +605,7 @@
 				962B92232C5A327000B21057 /* StartupHandler.swift in Sources */,
 				9637E6D52C32D811004A92FC /* OnChainService.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
+				96A9C1422C7891A90013D65C /* TabBar.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
