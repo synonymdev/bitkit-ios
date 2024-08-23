@@ -72,27 +72,6 @@ struct HomeView: View {
                         }
                     }
                 }
-                
-                if let receiveAddress = wallet.onchainAddress {
-                    Text("Receive Address: \(receiveAddress)")
-                        .onTapGesture {
-                            UIPasteboard.general.string = receiveAddress
-                        }
-                }
-                
-                Button("New Receive Address") {
-                    Task {
-                        try await wallet.newOnchainReceiveAddress()
-                    }
-                }
-                
-                Button("Pay bolt11") {
-                    Task {
-                        if let invoice = UIPasteboard.general.string {
-                            let _ = try? await LightningService.shared.send(bolt11: invoice)
-                        }
-                    }
-                }
             }
             .overlay(content: {
                 TabBar()

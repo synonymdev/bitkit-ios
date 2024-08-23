@@ -39,6 +39,7 @@ struct SettingsListView: View {
                 }
             }
         }
+        .navigationTitle("Settings")
     }
 }
 
