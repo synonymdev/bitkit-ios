@@ -6,8 +6,8 @@
 //
 
 import Foundation
+import LightningDevKit // TODO: remove this when we no longer need it to read funding_tx and index from monitors
 import SQLite
-import LightningDevKit //TODO remove this when we no longer need it to read funding_tx and index from monitors
 
 class MigrationsService {
     static var shared = MigrationsService()
@@ -15,14 +15,15 @@ class MigrationsService {
     private init() {}
 }
 
-//MARK: Migrations for RN Bitkit to Swift Bitkit
+// MARK: Migrations for RN Bitkit to Swift Bitkit
+
 extension MigrationsService {
     func ldkToLdkNode(walletIndex: Int, seed: Data, manager: Data, monitors: [Data]) throws {
         Logger.info("Migrating LDK to LDKNode")
         let ldkStorage = Env.ldkStorage(walletIndex: walletIndex)
         let sqlFilePath = ldkStorage.appendingPathComponent("ldk_node_data.sqlite").path
         
-        //Create path if doesn't exist
+        // Create path if doesn't exist
         let fileManager = FileManager.default
         var isDir: ObjCBool = true
         if !fileManager.fileExists(atPath: ldkStorage.path, isDirectory: &isDir) {
@@ -32,7 +33,7 @@ extension MigrationsService {
         
         Logger.debug(sqlFilePath, context: "SQLIte file path")
         
-        //Can't migrate if data currently exists
+        // Can't migrate if data currently exists
         guard !fileManager.fileExists(atPath: sqlFilePath) else {
             throw AppError(serviceError: .ldkNodeSqliteAlreadyExists)
         }
@@ -53,8 +54,8 @@ extension MigrationsService {
             t.column(valueCol)
         })
         
-        //TODO: use create statement directly from LDK-node instead
-        //CREATE TABLE IF NOT EXISTS {} (
+        // TODO: use create statement directly from LDK-node instead
+        // CREATE TABLE IF NOT EXISTS {} (
         //        primary_namespace TEXT NOT NULL,
         //        secondary_namespace TEXT DEFAULT \"\" NOT NULL,
         //        key TEXT NOT NULL CHECK (key <> ''),
@@ -66,7 +67,7 @@ extension MigrationsService {
         Logger.debug(rowid, context: "Inserted manager")
         
         let seconds = UInt64(NSDate().timeIntervalSince1970)
-        let nanoSeconds = UInt32.init(truncating: NSNumber(value: seconds * 1000 * 1000))
+        let nanoSeconds = UInt32(truncating: NSNumber(value: seconds * 1000 * 1000))
         let keysManager = KeysManager(
             seed: [UInt8](seed),
             startingTimeSecs: seconds,
@@ -74,8 +75,9 @@ extension MigrationsService {
         )
         
         for monitor in monitors {
-            //MARK: get funding_tx and index using plain LDK
-            //https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#definition-of-channel_id
+            // MARK: get funding_tx and index using plain LDK
+
+            // https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#definition-of-channel_id
             guard let channelMonitor = Bindings.readThirtyTwoBytesChannelMonitor(ser: [UInt8](monitor), argA: keysManager.asEntropySource(), argB: keysManager.asSignerProvider()).getValue()?.1 else {
                 Logger.error("Could not read channel monitor using readThirtyTwoBytesChannelMonitor")
                 throw AppError(serviceError: .ldkToLdkNodeMigration)

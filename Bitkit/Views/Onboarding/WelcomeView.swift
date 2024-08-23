@@ -18,7 +18,7 @@ struct RestoreView: View {
             Text("Restore Wallet")
                 .font(.largeTitle)
             
-            Form() {
+            Form {
                 TextField("BIP39 Mnemonic", text: $bip39Mnemonic)
                 
                 TextField("BIP39 Passphrase", text: Binding(
@@ -31,10 +31,10 @@ struct RestoreView: View {
                 Button("Restore Wallet") {
                     do {
                         _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
-                        //TODO: handle full sync here before revealing the UI so balances are pre populated
+                        // TODO: handle full sync here before revealing the UI so balances are pre populated
                         viewModel.setWalletExistsState()
                     } catch {
-                        //TODO: show a error to user
+                        // TODO: show a error to user
                         Logger.error(error)
                     }
                 }
@@ -71,7 +71,7 @@ struct WelcomeView: View {
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
                         viewModel.setWalletExistsState()
                     } catch {
-                        //TODO: show a error to user
+                        // TODO: show a error to user
                         Logger.error(error)
                     }
                 }

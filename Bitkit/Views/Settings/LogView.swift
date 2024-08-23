@@ -9,7 +9,7 @@ import SwiftUI
 
 struct LogView: View {
     @State var lines: [String] = []
-    
+
     var body: some View {
         List {
             ForEach(lines, id: \.self) { line in
@@ -25,14 +25,14 @@ struct LogView: View {
             loadLog()
         }
     }
-    
+
     func loadLog() {
         let dir = Env.ldkStorage(walletIndex: LightningService.shared.currentWalletIndex)
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
-        
+
         do {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
-            lines = text.components(separatedBy: "\n").map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         } catch {
             lines = ["Failed to load log file"]
         }

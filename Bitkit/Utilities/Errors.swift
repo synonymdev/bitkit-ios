@@ -5,9 +5,9 @@
 //  Created by Jason van den Berg on 2024/07/04.
 //
 
+import BitcoinDevKit
 import Foundation
 import LDKNode
-import BitcoinDevKit
 
 enum CustomServiceError: Error {
     case nodeNotSetup
@@ -103,12 +103,12 @@ struct AppError: LocalizedError {
     private init(bdkError: Error) {
         message = "Onchain wallet error"
         debugMessage = bdkError.localizedDescription
-        //TODO support all message types in switch case
-        //CalculateFeeError
-        //CannotConnectError
-        //DescriptorError
-        //EsploraError
-        //PersistenceError
+        // TODO: support all message types in switch case
+        // CalculateFeeError
+        // CannotConnectError
+        // DescriptorError
+        // EsploraError
+        // PersistenceError
         
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "BdkError")
     }
@@ -156,7 +156,6 @@ struct AppError: LocalizedError {
         case .AlreadyRunning(message: let ldkMessage):
             message = "Node is already running"
             debugMessage = ldkMessage
-            break;
         case .NotRunning(message: let ldkMessage):
             message = "Node is not running"
             debugMessage = ldkMessage
