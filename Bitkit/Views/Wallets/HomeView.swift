@@ -71,7 +71,7 @@ struct HomeView: View {
                                     Text("\(onchainItem.valueSats)")
                                 case .lightning(let lightningItem):
                                     Text("⚡️ \(lightningItem.txType == .sent ? "⬆️" : "⬇️")")
-                                    Text("\(lightningItem.status)")
+                                    Text("\(lightningItem.status == .completed ? "✅" : "⏳")")
                                     Spacer()
                                     Text("\(lightningItem.valueSats)")
                                 }

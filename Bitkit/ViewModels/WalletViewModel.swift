@@ -46,8 +46,8 @@ class WalletViewModel: ObservableObject {
         syncState()
         
         if isSyncingWallet {
+            Logger.warn("Sync already in progress, waiting for existing sync.")
             while isSyncingWallet {
-                Logger.warn("Sync already in progress, waiting for existing sync.")
                 try await Task.sleep(nanoseconds: 500_000_000)
             }
             return
@@ -100,9 +100,8 @@ class WalletViewModel: ObservableObject {
         // MARK: combined
         if let onchainBalance, let lightningBalance {
             walletBalanceSats = lightningBalance.totalLightningBalanceSats + onchainBalance.total.toSat()
-        } else {
-            Logger.warn("Failed to calculate wallet balance, onchain: \(String(describing: onchainBalance)), lightning: \(String(describing: lightningBalance))")
         }
+        
         // TODO: tx history
         if let lnTxs = LightningService.shared.payments {
             activityItems = lnTxs.map { .lightning(.init(payment: $0)) }
