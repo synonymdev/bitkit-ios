@@ -21,7 +21,7 @@ struct TabBar: View {
                 Button(action: {
                     showSendNavigation = true
                 }, label: {
-                    Label("Send", image: "arrow.up.arrow.down")
+                    Text("Send")
                 })
                 Spacer()
 
@@ -36,7 +36,7 @@ struct TabBar: View {
                 Button(action: {
                     showReceiveNavigation = true
                 }, label: {
-                    Label("Receive", image: "arrow.down.arrow.up")
+                    Text("Receive")
                 })
 
                 Spacer()

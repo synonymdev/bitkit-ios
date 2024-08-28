@@ -4,13 +4,13 @@ enum BtBolt11PaymentState: String, Codable {
     /**
      * Payment attempt is being done now.
      */
-    case inflight = "inflight"
+    case pending // TODO: called inflight in API??
     /**
      * Payment confirmed
      */
-    case paid = "paid"
+    case paid
     /**
      * Payment failed.
      */
-    case failed = "failed"
+    case failed
 }

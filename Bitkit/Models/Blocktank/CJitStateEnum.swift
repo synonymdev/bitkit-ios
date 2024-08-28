@@ -1,8 +1,8 @@
 import Foundation
 
 enum CJitStateEnum: String, Codable {
-    case created = "created"
-    case completed = "completed"
-    case expired = "expired"
-    case failed = "failed"
+    case created
+    case completed
+    case expired
+    case failed
 }

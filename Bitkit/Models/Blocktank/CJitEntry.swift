@@ -12,15 +12,15 @@ struct CJitEntry: Codable {
     /**
      * Fee in satoshi to open this channel.
      */
-    var feeSat: Int
+    var feeSat: UInt32
     /**
      * Requested channel size in satoshi
      */
-    var channelSizeSat: Int
+    var channelSizeSat: UInt64
     /**
      * Number of weeks before Blocktank might close then channel.
      */
-    var channelExpiryWeeks: Int
+    var channelExpiryWeeks: UInt8
     /**
      * Channel open error if the channel open failed.
      */
@@ -56,7 +56,9 @@ struct CJitEntry: Codable {
     /**
      * Date when this CJit offer expires.
      */
-    var expiresAt: Date
-    var updatedAt: Date
-    var createdAt: Date
+    var expiresAt: String
+    var updatedAt: String
+    var createdAt: String
+
+    // TODO: provide computed var for above dates
 }
