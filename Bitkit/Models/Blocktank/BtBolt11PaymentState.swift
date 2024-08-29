@@ -4,7 +4,13 @@ enum BtBolt11PaymentState: String, Codable {
     /**
      * Payment attempt is being done now.
      */
-    case pending // TODO: called inflight in API??
+    case pending
+    
+    /**
+     * Payment received but not confirmed/rejected yet. Only possible with HODL invoices.
+     */
+    case holding
+    
     /**
      * Payment confirmed
      */
@@ -12,5 +18,5 @@ enum BtBolt11PaymentState: String, Codable {
     /**
      * Payment failed.
      */
-    case failed
+    case canceled
 }
