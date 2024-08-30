@@ -10,7 +10,43 @@ import Foundation
 class BlocktankService {
     static var shared = BlocktankService()
     private init() {}
+        
+    func getInfo() async throws -> BtInfo {
+        let data = try await getRequest(Env.blocktankClientServer + "/info")
+        return try JSONDecoder().decode(BtInfo.self, from: data)
+    }
     
+    func createCJitEntry(
+        channelSizeSat: UInt64,
+        invoiceSat: UInt64,
+        invoiceDescription: String,
+        nodeId: String,
+        channelExpiryWeeks: UInt8,
+        options: CreateCjitOptions
+    ) async throws -> CJitEntry {
+        let data = try await postRequest(Env.blocktankClientServer + "/cjit", [
+            "channelSizeSat": channelSizeSat,
+            "invoiceSat": invoiceSat,
+            "invoiceDescription": invoiceDescription,
+            "nodeId": nodeId,
+            "channelExpiryWeeks": channelExpiryWeeks,
+            "source": options.source ?? "bitkit-ios",
+            "discountCode": options.discountCode ?? ""
+        ])
+        
+//        // Convert to plain json to debug
+//        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        
+        return try JSONDecoder().decode(CJitEntry.self, from: data)
+    }
+}
+
+// MARK: Orders
+
+// MARK: CJIT Orders
+
+// MARK: Push notifications
+extension BlocktankService {
     func registerDevice(deviceToken: String) async throws {
         UserDefaults.standard.setValue(deviceToken, forKey: "deviceToken") // Token cached so we can retry registration if there are any issues
         
@@ -40,7 +76,7 @@ class BlocktankService {
             "signature": signature
         ] as [String: Any]
                 
-        let result = try await postRequest("notifications/api/device", params)
+        let result = try await postRequest(Env.blocktankPushNotificationServer + "/device", params)
         Logger.info("Device registered: \(String(data: result, encoding: .utf8) ?? "")")
     }
     
@@ -67,9 +103,9 @@ class BlocktankService {
 }
 
 extension BlocktankService {
-    func postRequest(_ path: String, _ params: [String: Any] = [:]) async throws -> Data {
+    func postRequest(_ urlStr: String, _ params: [String: Any] = [:]) async throws -> Data {
         return try await ServiceQueue.background(.blocktank) {
-            let url = URL(string: "\(Env.blocktankUrl)/\(path)")!
+            let url = URL(string: urlStr)!
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             
@@ -98,8 +134,8 @@ extension BlocktankService {
         }
     }
     
-    func getRequest(_ path: String, _ params: [String: String] = [:]) async throws -> Data {
-        var urlComponents = URLComponents(string: "\(Env.blocktankUrl)/\(path)")!
+    func getRequest(_ url: String, _ params: [String: String] = [:]) async throws -> Data {
+        var urlComponents = URLComponents(string: url)!
         urlComponents.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         
         let url = urlComponents.url!
