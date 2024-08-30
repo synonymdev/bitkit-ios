@@ -121,7 +121,7 @@ enum Env {
         }
     }
     
-    static var blocktankUrl: String {
+    static var blocktankBaseUrl: String {
         switch network {
         case .regtest:
             return "https://api.stag.blocktank.to"
@@ -132,5 +132,13 @@ enum Env {
         case .signet:
             fatalError("Signet network not implemented")
         }
+    }
+    
+    static var blocktankPushNotificationServer: String {
+        return "\(blocktankBaseUrl)/notifications/api/device"
+    }
+    
+    static var blocktankClientServer: String {
+        return "\(blocktankBaseUrl)/blocktank/api/v2"
     }
 }
