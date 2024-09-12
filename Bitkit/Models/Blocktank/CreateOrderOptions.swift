@@ -19,7 +19,7 @@ struct CreateOrderOptions: Codable {
         var signature: String
     }
 
-    func initWithDefaults() -> CreateOrderOptions {
-        return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", turboChannel: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
+    static func initWithDefaults() -> CreateOrderOptions {
+        return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", source: "bitkit-ios", turboChannel: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
     }
 }

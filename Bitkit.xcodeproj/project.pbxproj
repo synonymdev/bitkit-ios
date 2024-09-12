@@ -103,6 +103,16 @@
 		966DE6752C512FD100A7B0EF /* HexBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966DE6732C512C9300A7B0EF /* HexBytes.swift */; };
 		968A68082C6B6D1F00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */; };
 		968A680F2C6BA5EC00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A680E2C6BA5EC00D4C7CD /* BitcoinDevKit */; };
+		969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */; };
+		969DE0D02C92E2CD008039DF /* BlocktankService+CJIT.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */; };
+		969DE0D22C92E330008039DF /* BlocktankService+Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */; };
+		969DE0D42C92E360008039DF /* BlocktankService+Channels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */; };
+		969DE0D62C92E384008039DF /* BlocktankService+Fees.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */; };
+		969DE0D72C92E3D4008039DF /* BlocktankService+CJIT.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */; };
+		969DE0D82C92E3D4008039DF /* BlocktankService+Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */; };
+		969DE0D92C92E3D4008039DF /* BlocktankService+Channels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */; };
+		969DE0DA2C92E3D4008039DF /* BlocktankService+Orders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */; };
+		969DE0DB2C92E3D4008039DF /* BlocktankService+Fees.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */; };
 		96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13A2C787B240013D65C /* SettingsListView.swift */; };
 		96A9C13F2C788B9E0013D65C /* LightningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */; };
 		96A9C1422C7891A90013D65C /* TabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C1412C7891A90013D65C /* TabBar.swift */; };
@@ -217,6 +227,11 @@
 		966DE66C2C50FA7600A7B0EF /* adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin; sourceTree = "<group>"; };
 		966DE6712C512C1E00A7B0EF /* seed.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = seed.bin; sourceTree = "<group>"; };
 		966DE6732C512C9300A7B0EF /* HexBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexBytes.swift; sourceTree = "<group>"; };
+		969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Orders.swift"; sourceTree = "<group>"; };
+		969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+CJIT.swift"; sourceTree = "<group>"; };
+		969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Notifications.swift"; sourceTree = "<group>"; };
+		969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Channels.swift"; sourceTree = "<group>"; };
+		969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Fees.swift"; sourceTree = "<group>"; };
 		96A9C13A2C787B240013D65C /* SettingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsListView.swift; sourceTree = "<group>"; };
 		96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningSettingsView.swift; sourceTree = "<group>"; };
 		96A9C1412C7891A90013D65C /* TabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBar.swift; sourceTree = "<group>"; };
@@ -418,6 +433,19 @@
 			path = "ldk-backup";
 			sourceTree = "<group>";
 		};
+		969DE0CC2C92E27C008039DF /* Blocktank */ = {
+			isa = PBXGroup;
+			children = (
+				965F24392C6CF1B1005A5B31 /* BlocktankService.swift */,
+				969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */,
+				969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */,
+				969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */,
+				969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */,
+				969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */,
+			);
+			path = Blocktank;
+			sourceTree = "<group>";
+		};
 		96A9C1402C78918E0013D65C /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -440,9 +468,9 @@
 		96B12A012C2EC61500DD07B0 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				969DE0CC2C92E27C008039DF /* Blocktank */,
 				96B12A022C2EC65000DD07B0 /* LightningService.swift */,
 				9637E6D42C32D811004A92FC /* OnChainService.swift */,
-				965F24392C6CF1B1005A5B31 /* BlocktankService.swift */,
 				961301872C50202A00878183 /* MigrationsService.swift */,
 				96F261312C369C2100167439 /* ServiceQueue.swift */,
 			);
@@ -767,6 +795,7 @@
 				96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */,
 				963859B12C7F619C00FD4C5E /* BtInfo.swift in Sources */,
 				963859B22C7F619C00FD4C5E /* BitcoinNetwork.enum.swift in Sources */,
+				969DE0D42C92E360008039DF /* BlocktankService+Channels.swift in Sources */,
 				962B92212C5A217400B21057 /* HomeView.swift in Sources */,
 				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
 				963859AF2C7F619C00FD4C5E /* BtOpenChannelState.swift in Sources */,
@@ -781,7 +810,9 @@
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
 				964DF7182C789FBB00EDE6DE /* UIScreen.swift in Sources */,
 				963859B92C7F619C00FD4C5E /* BtEstimateFeeResponse.swift in Sources */,
+				969DE0D02C92E2CD008039DF /* BlocktankService+CJIT.swift in Sources */,
 				96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */,
+				969DE0D22C92E330008039DF /* BlocktankService+Notifications.swift in Sources */,
 				963859A82C7F619C00FD4C5E /* BtPaymentState2.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				966DE6742C512C9300A7B0EF /* HexBytes.swift in Sources */,
@@ -790,7 +821,9 @@
 				963859B72C7F619C00FD4C5E /* CreateOrderOptions.swift in Sources */,
 				964DF7212C78A88300EDE6DE /* ScannerView.swift in Sources */,
 				963859AE2C7F619C00FD4C5E /* CJitStateEnum.swift in Sources */,
+				969DE0D62C92E384008039DF /* BlocktankService+Fees.swift in Sources */,
 				96A9C1442C789BCB0013D65C /* WalletViewModel+LN.swift in Sources */,
+				969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */,
 				963859B52C7F619C00FD4C5E /* BtOrder.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
 				96A9C1422C7891A90013D65C /* TabBar.swift in Sources */,
@@ -812,6 +845,11 @@
 				9613018F2C5028CC00878183 /* MigrationsService.swift in Sources */,
 				966DE6642C502CA300A7B0EF /* ServiceQueue.swift in Sources */,
 				966DE6752C512FD100A7B0EF /* HexBytes.swift in Sources */,
+				969DE0D72C92E3D4008039DF /* BlocktankService+CJIT.swift in Sources */,
+				969DE0D82C92E3D4008039DF /* BlocktankService+Notifications.swift in Sources */,
+				969DE0D92C92E3D4008039DF /* BlocktankService+Channels.swift in Sources */,
+				969DE0DA2C92E3D4008039DF /* BlocktankService+Orders.swift in Sources */,
+				969DE0DB2C92E3D4008039DF /* BlocktankService+Fees.swift in Sources */,
 				963859C22C7F6D7200FD4C5E /* BlocktankService.swift in Sources */,
 				963859C12C7F6CC200FD4C5E /* BlocktankTests.swift in Sources */,
 				963859C32C7F6D7A00FD4C5E /* Bt0ConfMinTxFeeWindow.swift in Sources */,

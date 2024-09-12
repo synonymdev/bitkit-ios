@@ -44,7 +44,7 @@ struct CJitEntry: Codable {
     /**
      * @deprecated Use `source` instead
      */
-    var couponCode: String
+    var couponCode: String?
     /**
      * Source what created this Cjit. Example: 'bitkit', 'widget'.
      */

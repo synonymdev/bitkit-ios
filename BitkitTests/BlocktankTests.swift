@@ -53,6 +53,29 @@ final class BlocktankTests: XCTestCase {
         Logger.test(cjit.invoice)
     }
 
+    func testOrders() async throws {
+        let order1 = try await BlocktankService.shared.createOrder(
+            lspBalanceSat: 100000,
+            channelExpiryWeeks: 2,
+            options: .initWithDefaults()
+        )
+
+        let orderCheck = try await BlocktankService.shared.getOrder(orderId: order1.id)
+        XCTAssertEqual(order1.id, orderCheck.id)
+        XCTAssertEqual(order1.payment.onchain.address, orderCheck.payment.onchain.address)
+
+        let order2 = try await BlocktankService.shared.createOrder(
+            lspBalanceSat: 123400,
+            channelExpiryWeeks: 4,
+            options: .initWithDefaults()
+        )
+
+        let orders = try await BlocktankService.shared.getOrders(orderIds: [order1.id, order2.id])
+        XCTAssertEqual(2, orders.count)
+        XCTAssertEqual(order1.id, orders[0].id)
+        XCTAssertEqual(order2.id, orders[1].id)
+    }
+
     func testPerformanceExample() throws {
         // This is an example of a performance test case.
         self.measure {
