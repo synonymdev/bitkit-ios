@@ -14,7 +14,14 @@ class NotificationService: UNNotificationServiceExtension {
     var contentHandler: ((UNNotificationContent) -> Void)?
     var bestAttemptContent: UNMutableNotificationContent?
     
+    var receieveTime: CFAbsoluteTime?
+    var nodeStartedTime: CFAbsoluteTime?
+    var lightningEventTime: CFAbsoluteTime?
+    var nodeStopTime: CFAbsoluteTime?
+    
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
+        self.receieveTime = CFAbsoluteTimeGetCurrent()
+        
         self.contentHandler = contentHandler
         self.bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
         
@@ -23,8 +30,11 @@ class NotificationService: UNNotificationServiceExtension {
                 try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
                 
                 try await LightningService.shared.start { event in
+                    self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)
                 }
+                
+                self.nodeStartedTime = CFAbsoluteTimeGetCurrent()
             } catch {
                 self.bestAttemptContent?.title = "Lightning error"
                 self.bestAttemptContent?.body = error.localizedDescription
@@ -49,8 +59,13 @@ class NotificationService: UNNotificationServiceExtension {
             self.bestAttemptContent?.body = "Pending"
         // Don't deliver, give a chance for channelReady event to update the content
         case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
-            self.bestAttemptContent?.title = "Channel ready"
-            self.bestAttemptContent?.body = "Usable"
+            self.bestAttemptContent?.title = "Payment received"
+            self.bestAttemptContent?.body = "Via new channel"
+
+            if let channel = LightningService.shared.channels?.first { $0.channelId == channelId } {
+                self.bestAttemptContent?.title = "Received ⚡ \(channel.outboundCapacityMsat / 1000) sats"
+            }
+            
             Task {
                 await self.deliver()
             }
@@ -62,21 +77,54 @@ class NotificationService: UNNotificationServiceExtension {
             }
         case .paymentSuccessful:
             break
-        case .paymentFailed:
-            break
         case .paymentClaimable:
             break
+        case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
+            self.bestAttemptContent?.title = "Payment failed"
+            self.bestAttemptContent?.body = reason.debugDescription ?? "Unknown"
+            Task {
+                await self.deliver()
+            }
         }
     }
     
     func deliver() async {
         try? await LightningService.shared.stop()
+        self.nodeStopTime = CFAbsoluteTimeGetCurrent()
         
+        self.logPerformance()
         if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
             // TODO: Stop LDK
             
             contentHandler(bestAttemptContent)
         }
+    }
+    
+    func logPerformance() {
+        guard let receieveTime else {
+            return
+        }
+        
+        guard let nodeStartedTime else {
+            return
+        }
+        
+        let nodeStartSeconds = Double(round(100 * (nodeStartedTime - receieveTime)) / 100)
+        Logger.performance("Node start time \(nodeStartSeconds) seconds")
+        
+        guard let lightningEventTime else {
+            return
+        }
+        
+        let lightningEventSeconds = Double(round(100 * (lightningEventTime - nodeStartedTime)) / 100)
+        Logger.performance("Lightning event time \(lightningEventSeconds) seconds from node startup")
+        
+        guard let nodeStopTime else {
+            return
+        }
+        
+        let nodeStopSeconds = Double(round(100 * (nodeStopTime - lightningEventTime)) / 100)
+        Logger.performance("Node stop time \(lightningEventSeconds) seconds from lightning event")
     }
     
     func dumpLdkLogs() {
