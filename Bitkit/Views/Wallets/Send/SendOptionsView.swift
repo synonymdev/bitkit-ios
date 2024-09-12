@@ -17,8 +17,12 @@ struct SendOptionsView: View {
             Button("Paste") {
                 // TODO: handle proper sending flow and decode multiple strings
                 Task {
-                    if let invoice = UIPasteboard.general.string {
-                        let _ = try? await LightningService.shared.send(bolt11: invoice)
+                    do {
+                        if let invoice = UIPasteboard.general.string {
+                            let _ = try await LightningService.shared.send(bolt11: invoice)
+                        }
+                    } catch {
+                        Logger.error(error)
                     }
                 }
             }

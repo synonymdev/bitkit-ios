@@ -43,6 +43,7 @@ struct HomeView: View {
                     }, label: {
                         Image(systemName: "arrow.up.arrow.down")
                     })
+                    
                     HStack {
                         Text("Spending")
                             .font(.title3)
