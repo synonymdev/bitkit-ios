@@ -28,11 +28,16 @@ final class BlocktankTests: XCTestCase {
         let invoiceSat: UInt64 = 6000
         let expiryWeeks: UInt8 = 2
 
+        guard let nodeId = LightningService.shared.nodeId else {
+            XCTFail("Node id not available")
+            return
+        }
+
         let cjit = try await BlocktankService.shared.createCJitEntry(
             channelSizeSat: channelSizeSat,
             invoiceSat: invoiceSat,
             invoiceDescription: "Pay me",
-            nodeId: LightningService.shared.nodeId ?? "",
+            nodeId: nodeId,
             channelExpiryWeeks: expiryWeeks,
             options: .init()
         )
@@ -40,6 +45,12 @@ final class BlocktankTests: XCTestCase {
         // Make sure respone matches the input
         XCTAssertEqual(channelSizeSat, cjit.channelSizeSat)
         XCTAssertEqual(expiryWeeks, cjit.channelExpiryWeeks)
+
+        let entry = try await BlocktankService.shared.getCJitEntry(entryId: cjit.id)
+        XCTAssertEqual(cjit.id, entry.id)
+        XCTAssertEqual(cjit.channelSizeSat, entry.channelSizeSat)
+
+        Logger.test(cjit.invoice)
     }
 
     func testPerformanceExample() throws {

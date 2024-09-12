@@ -53,9 +53,9 @@ struct LightningSettingsView: View {
                             Text(channel.counterpartyNodeId).font(.caption2)
                                 .multilineTextAlignment(.leading)
                             HStack {
-                                Text("Out: \(channel.outboundCapacityMsat)")
+                                Text("Out: \(channel.outboundCapacityMsat / 1000)")
                                 Spacer()
-                                Text("In: \(channel.inboundCapacityMsat)")
+                                Text("In: \(channel.inboundCapacityMsat / 1000)")
                                 Text(channel.isChannelReady ? "🟢" : "🔴")
                                 Text(channel.isUsable ? "🟢" : "🔴")
                             }
@@ -105,7 +105,7 @@ struct LightningSettingsView: View {
                             do {
                                 let _ = try await LightningService.shared.openChannel(
                                     peer: peer,
-                                    channelAmountSats: 20000,
+                                    channelAmountSats: 50000,
                                     pushToCounterpartySats: 10000
                                 )
                             } catch {

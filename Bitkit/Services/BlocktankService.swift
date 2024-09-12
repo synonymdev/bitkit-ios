@@ -39,6 +39,11 @@ class BlocktankService {
         
         return try JSONDecoder().decode(CJitEntry.self, from: data)
     }
+    
+    func getCJitEntry(entryId: String) async throws -> CJitEntry {
+        let data = try await getRequest(Env.blocktankClientServer + "/cjit/\(entryId)")
+        return try JSONDecoder().decode(CJitEntry.self, from: data)
+    }
 }
 
 // MARK: Orders
@@ -68,9 +73,7 @@ extension BlocktankService {
         let params = [
             "deviceToken": deviceToken,
             "publicKey": publicKey,
-            "features": [
-                "blocktank.incomingHtlc"
-            ],
+            "features": Env.pushNotificationFeatures,
             "nodeId": nodeId,
             "isoTimestamp": isoTimestamp,
             "signature": signature
