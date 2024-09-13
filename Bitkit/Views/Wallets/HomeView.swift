@@ -38,11 +38,9 @@ struct HomeView: View {
                     }
                     .padding(.vertical, 4)
                     
-                    Button(action: {
-                        // TODO: buy channel
-                    }, label: {
+                    NavigationLink(destination: TransferView()) {
                         Image(systemName: "arrow.up.arrow.down")
-                    })
+                    }
                     
                     HStack {
                         Text("Spending")

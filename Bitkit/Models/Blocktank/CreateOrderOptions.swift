@@ -15,7 +15,7 @@ struct CreateOrderOptions: Codable {
 
     struct WakeToOpen: Codable {
         var nodeId: String
-        var timestamp: Date
+        var timestamp: String
         var signature: String
     }
 
