@@ -90,7 +90,6 @@ struct LightningSettingsView: View {
 
                 Button("Self test") {
                     Task {
-                        sleep(2) // Chance to background the app
                         do {
                             try await BlocktankService.shared.selfTest()
                         } catch {
