@@ -27,15 +27,20 @@ class NotificationService: UNNotificationServiceExtension {
         
         Task {
             do {
-                try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
+                Logger.debug("Received notification")
+                do {
+                    try await self.decryptPayload(request)
+                } catch {
+                    Logger.error(error, context: "failed to decrypt payload")
+                }
                 
-                // TODO: Decrypt payload and wait for specific event
+                try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
 
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)
                 }
-                
+
                 self.nodeStartedTime = CFAbsoluteTimeGetCurrent()
                 
             } catch {
@@ -46,6 +51,72 @@ class NotificationService: UNNotificationServiceExtension {
                 self.dumpLdkLogs()
                 await self.deliver()
             }
+        }
+    }
+    
+    func decryptPayload(_ request: UNNotificationRequest) async throws {
+        guard let aps = request.content.userInfo["aps"] as? AnyObject else {
+            Logger.error("Missing aps payload")
+            return
+        }
+        
+        guard
+            let alert = aps["alert"] as? AnyObject,
+            let payload = alert["payload"] as? AnyObject,
+            let cipher = payload["cipher"] as? String,
+            let iv = payload["iv"] as? String,
+            let publicKey = payload["publicKey"] as? String,
+            let tag = payload["tag"] as? String
+        else {
+            Logger.error("Missing payload details")
+            return
+        }
+        
+        guard let ciphertext = Data(base64Encoded: cipher) else {
+            Logger.error("Failed to decode cipher")
+            return
+        }
+                
+        guard let privateKey = try Keychain.load(key: .pushNotificationPrivateKey) else {
+            Logger.error("Missing pushNotificationPrivateKey")
+            return
+        }
+        
+        let password = try Crypto.generateSharedSecret(privateKey: privateKey, nodePubkey: publicKey, derivationName: "bitkit-notifications")
+
+        let decrypted = try Crypto.decrypt(
+            .init(cipher: ciphertext, iv: iv.hexaData, tag: tag.hexaData),
+            secretKey: password
+        )
+        
+        Logger.debug("Decrypted payload: \(String(data: decrypted, encoding: .utf8) ?? "")")
+
+        // Optional("{\"source\":\"blocktank\",\"type\":\"incomingHtlc\",\"payload\":{\"secretMessage\":\"hello\"},\"createdAt\":\"2024-09-13T17:35:56.766Z\"}") [NotificationService.swift: decryptPayload(_:)
+        
+        // {"source":"blocktank","type":"orderPaymentConfirmed","payload":{"lspId":"03b9a456fb45d5ac98c02040d39aec77fa3eeb41fd22cf40b862b393bcfc43473a","orderId":"d0a0fcd7-1e90-4893-a46b-fc53f46d84f2"},"createdAt":"2024-09-13T17:41:59.076Z"}
+        
+        guard let jsonData = try JSONSerialization.jsonObject(with: decrypted, options: []) as? [String: Any] else {
+            Logger.error("Failed to convert decrypted data to utf8")
+            return
+        }
+        
+        let orderPaymentConfirmed = jsonData["type"] as? String
+        guard let payload = jsonData["payload"] as? [String: Any] else {
+            Logger.error("Missing payload")
+            return
+        }
+        
+        if orderPaymentConfirmed == "orderPaymentConfirmed" {
+            Logger.debug("Order payment confirmed")
+            
+            guard let orderId = payload["orderId"] as? String else {
+                Logger.error("Missing orderId")
+                return
+            }
+            
+            Logger.debug("orderId: \(orderId)")
+            
+            // TODO: trigger channel open
         }
     }
         
@@ -97,8 +168,6 @@ class NotificationService: UNNotificationServiceExtension {
         
         self.logPerformance()
         if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
-            // TODO: Stop LDK
-            
             contentHandler(bestAttemptContent)
         }
     }
