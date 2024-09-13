@@ -33,6 +33,13 @@ class BlocktankService {
                 throw BlocktankError.missingResponse
             }
             
+            if Env.isDebug {
+                // Don't want to include possibly sensitive data in production logs
+                if let json = try? JSONSerialization.jsonObject(with: data, options: []) {
+                    Logger.debug(json)
+                }
+            }
+            
             guard (200...299).contains(httpResponse.statusCode) else {
                 Logger.error("Invalid server response (\(httpResponse.statusCode)) from POST \(url.absoluteString)")
                 
@@ -42,10 +49,6 @@ class BlocktankService {
                 
                 throw BlocktankError.invalidResponse // TODO: add error status code
             }
-            
-            // MARK: For debugging responses
-//            let json = try JSONSerialization.jsonObject(with: data, options: [])
-//            Logger.debug(json)
             
             return data
         }
@@ -77,8 +80,12 @@ class BlocktankService {
             throw BlocktankError.missingResponse
         }
         
-        let json = try JSONSerialization.jsonObject(with: data, options: [])
-        Logger.test(json)
+        if Env.isDebug {
+            // Don't want to include possibly sensitive data in production logs
+            if let json = try? JSONSerialization.jsonObject(with: data, options: []) {
+                Logger.debug(json)
+            }
+        }
         
         guard (200...299).contains(httpResponse.statusCode) else {
             Logger.error("Invalid BT server response (\(httpResponse.statusCode)) from GET \(url.absoluteString)")

@@ -22,13 +22,20 @@ extension BlocktankService {
         
         let signature = try await LightningService.shared.sign(message: messageToSign)
         
-        let publicKey = "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f"
-        // TODO: use real public key like below to enable decryption of the push notification payload so we know which node event to wait for
-        // https://github.com/SeverinAlexB/ln-verifymessagejs/blob/master/src/shared_secret.ts
+        let keypair = try Crypto.generateKeyPair()
+        
+        Logger.debug("Notification encryption public key: \(keypair.publicKey.hex)")
+        
+        // New keypair for each token registration
+        if try Keychain.exists(key: .pushNotificationPrivateKey) {
+            try? Keychain.delete(key: .pushNotificationPrivateKey)
+        }
+        
+        try Keychain.save(key: .pushNotificationPrivateKey, data: keypair.privateKey)
         
         let params = [
             "deviceToken": deviceToken,
-            "publicKey": publicKey,
+            "publicKey": keypair.publicKey.hex,
             "features": Env.pushNotificationFeatures,
             "nodeId": nodeId,
             "isoTimestamp": isoTimestamp,
@@ -56,7 +63,7 @@ extension BlocktankService {
             ]
         ] as [String: Any]
                 
-        let result = try await postRequest("notifications/api/device/\(deviceToken)/test-notification", params)
+        let result = try await postRequest(Env.blocktankPushNotificationServer + "/device/\(deviceToken)/test-notification", params)
         Logger.info("Notification sent to self: \(String(data: result, encoding: .utf8) ?? "")")
     }
 }

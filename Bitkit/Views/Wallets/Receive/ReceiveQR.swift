@@ -53,7 +53,7 @@ struct ReceiveQR: View {
                 Button("Create and copy bolt11") {
                     Task { @MainActor in
                         do {
-                            let invoice = try await LightningService.shared.receive(amountSats: 123, description: "paymeplz")
+                            let invoice = try await LightningService.shared.receive(amountSats: 5000, description: "paymeplz")
                             UIPasteboard.general.string = invoice
                         } catch {
                             Logger.error(error)

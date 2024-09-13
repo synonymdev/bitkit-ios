@@ -125,6 +125,14 @@
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
 		96B12A002C2EC37B00DD07B0 /* WalletViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */; };
 		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
+		96E4939F2C942D3B000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
+		96E493A02C942D42000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
+		96E493A12C942D44000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
+		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
+		96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* secp256k1 */; };
+		96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A72C943184000E8BC2 /* secp256k1 */; };
+		96E493AA2C9432A1000E8BC2 /* CryptoTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E493A92C9432A1000E8BC2 /* CryptoTests.swift */; };
+		96E493AB2C943377000E8BC2 /* HexBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966DE6732C512C9300A7B0EF /* HexBytes.swift */; };
 		96F261322C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
 		96F261332C369C2100167439 /* ServiceQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261312C369C2100167439 /* ServiceQueue.swift */; };
 		96F261362C369D2400167439 /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261352C369D2400167439 /* Errors.swift */; };
@@ -247,6 +255,8 @@
 		96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
 		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
+		96E4939E2C942D3B000E8BC2 /* Crypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Crypto.swift; sourceTree = "<group>"; };
+		96E493A92C9432A1000E8BC2 /* CryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoTests.swift; sourceTree = "<group>"; };
 		96F261312C369C2100167439 /* ServiceQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceQueue.swift; sourceTree = "<group>"; };
 		96F261352C369D2400167439 /* Errors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Errors.swift; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -270,6 +280,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				969DE0E62C93451C008039DF /* BitcoinDevKit in Frameworks */,
+				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
 				961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -279,6 +290,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				968A68082C6B6D1F00D4C7CD /* BitcoinDevKit in Frameworks */,
+				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
 				9613018C2C5022D700878183 /* SQLite in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
 				968A680F2C6BA5EC00D4C7CD /* BitcoinDevKit in Frameworks */,
@@ -290,6 +302,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -503,6 +516,7 @@
 				963DE7922C578D9900A2AA1D /* Keychain.swift */,
 				962B92222C5A327000B21057 /* StartupHandler.swift */,
 				965F243B2C6E13D1005A5B31 /* ScenePhase.swift */,
+				96E4939E2C942D3B000E8BC2 /* Crypto.swift */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -566,6 +580,7 @@
 				9613018D2C50288900878183 /* LdkMigration.swift */,
 				963DE7952C57969000A2AA1D /* KeychainTests.swift */,
 				963859C02C7F6CC200FD4C5E /* BlocktankTests.swift */,
+				96E493A92C9432A1000E8BC2 /* CryptoTests.swift */,
 			);
 			path = BitkitTests;
 			sourceTree = "<group>";
@@ -610,6 +625,7 @@
 			packageProductDependencies = (
 				961058ED2C35798C00E1F1D8 /* LDKNode */,
 				969DE0E52C93451C008039DF /* BitcoinDevKit */,
+				96E493A72C943184000E8BC2 /* secp256k1 */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -636,6 +652,7 @@
 				966DE66F2C51210000A7B0EF /* LightningDevKit */,
 				968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */,
 				968A680E2C6BA5EC00D4C7CD /* BitcoinDevKit */,
+				96E493A32C942FD1000E8BC2 /* secp256k1 */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -655,6 +672,9 @@
 				96FE1F742C2DE6AC006D0C8B /* PBXTargetDependency */,
 			);
 			name = BitkitTests;
+			packageProductDependencies = (
+				96E493A52C94317D000E8BC2 /* secp256k1 */,
+			);
 			productName = BitkitTests;
 			productReference = 96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -717,6 +737,7 @@
 				961301892C50215500878183 /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */,
 				968A680D2C6BA5EC00D4C7CD /* XCRemoteSwiftPackageReference "bdk-swift" */,
+				96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -773,9 +794,11 @@
 			files = (
 				961058E92C35792100E1F1D8 /* Env.swift in Sources */,
 				961058E82C35791700E1F1D8 /* LightningService.swift in Sources */,
+				96E493A12C942D44000E8BC2 /* Crypto.swift in Sources */,
 				961058EA2C35793000E1F1D8 /* LnPeer.swift in Sources */,
 				96F261332C369C2100167439 /* ServiceQueue.swift in Sources */,
 				961058EB2C35793000E1F1D8 /* WalletNetwork.swift in Sources */,
+				96E493AB2C943377000E8BC2 /* HexBytes.swift in Sources */,
 				963DE7972C57BC8D00A2AA1D /* Keychain.swift in Sources */,
 				961058DF2C355B5500E1F1D8 /* NotificationService.swift in Sources */,
 				96F261372C369D2400167439 /* Errors.swift in Sources */,
@@ -827,6 +850,7 @@
 				963859AC2C7F619C00FD4C5E /* LspNode.swift in Sources */,
 				9637E6DF2C32ED7B004A92FC /* LnPeer.swift in Sources */,
 				963859BC2C7F619C00FD4C5E /* Bt0ConfMinTxFeeWindow.swift in Sources */,
+				96E4939F2C942D3B000E8BC2 /* Crypto.swift in Sources */,
 				965F243A2C6CF1B1005A5B31 /* BlocktankService.swift in Sources */,
 				96FE1F672C2DE6AA006D0C8B /* ContentView.swift in Sources */,
 				964DF7182C789FBB00EDE6DE /* UIScreen.swift in Sources */,
@@ -879,6 +903,7 @@
 				963859C42C7F6D7A00FD4C5E /* BtChannelClose.swift in Sources */,
 				963859C52C7F6D7A00FD4C5E /* CreateOrderOptions.swift in Sources */,
 				963859C62C7F6D7A00FD4C5E /* BtOnchainTransaction.swift in Sources */,
+				96E493AA2C9432A1000E8BC2 /* CryptoTests.swift in Sources */,
 				963859C72C7F6D7A00FD4C5E /* BtOpenChannelState.swift in Sources */,
 				963859C82C7F6D7A00FD4C5E /* BtInfo.swift in Sources */,
 				963859C92C7F6D7A00FD4C5E /* BtPayment.swift in Sources */,
@@ -893,6 +918,7 @@
 				963859D22C7F6D7A00FD4C5E /* BtPaymentState2.swift in Sources */,
 				963859D32C7F6D7A00FD4C5E /* BtOnchainTransactions.swift in Sources */,
 				963859D42C7F6D7A00FD4C5E /* CreateCjitOptions.swift in Sources */,
+				96E493A02C942D42000E8BC2 /* Crypto.swift in Sources */,
 				963859D52C7F6D7A00FD4C5E /* BitcoinNetwork.enum.swift in Sources */,
 				963859D62C7F6D7A00FD4C5E /* CJitEntry.swift in Sources */,
 				963859D72C7F6D7A00FD4C5E /* CJitStateEnum.swift in Sources */,
@@ -1361,6 +1387,14 @@
 				kind = branch;
 			};
 		};
+		96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.17.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1397,6 +1431,21 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */;
 			productName = LDKNode;
+		};
+		96E493A32C942FD1000E8BC2 /* secp256k1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = secp256k1;
+		};
+		96E493A52C94317D000E8BC2 /* secp256k1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = secp256k1;
+		};
+		96E493A72C943184000E8BC2 /* secp256k1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */;
+			productName = secp256k1;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
