@@ -26,7 +26,7 @@ class StartupHandler {
                 try await WalletViewModel.shared.startLightning()
                 
                 // TODO: should be move to onboarding or when creating first invoice
-                requestPushNotificationPermision { _, error in
+                await requestPushNotificationPermision { _, error in
                     // If granted AppDelegate will receive the token and handle registration
                     if let error {
                         Logger.error(error, context: "Failed to request push notification permission")
@@ -70,6 +70,7 @@ class StartupHandler {
         }
     }
     
+    @MainActor
     static func requestPushNotificationPermision(completionHandler: @escaping (Bool, Error?) -> Void) {
         let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
         UNUserNotificationCenter.current().requestAuthorization(

@@ -29,12 +29,15 @@ class NotificationService: UNNotificationServiceExtension {
             do {
                 try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
                 
+                // TODO: Decrypt payload and wait for specific event
+
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)
                 }
                 
                 self.nodeStartedTime = CFAbsoluteTimeGetCurrent()
+                
             } catch {
                 self.bestAttemptContent?.title = "Lightning error"
                 self.bestAttemptContent?.body = error.localizedDescription

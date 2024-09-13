@@ -31,4 +31,18 @@ extension WalletViewModel {
     func newOnchainReceiveAddress() async throws {
         onchainAddress = try await OnChainService.shared.getAddress()
     }
+    
+    func sendOnchainPayment(address: String, amount: UInt64, feeRate: UInt64? = nil) async throws -> String {
+        var feeRate = feeRate
+        if feeRate == nil {
+            // TODO: fetch the default fee rate from API
+            feeRate = 10
+        }
+        
+        return try await OnChainService.shared.sendPayment(
+            address: address,
+            amount: amount,
+            feeRate: feeRate!
+        )
+    }
 }

@@ -113,6 +113,10 @@
 		969DE0D92C92E3D4008039DF /* BlocktankService+Channels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */; };
 		969DE0DA2C92E3D4008039DF /* BlocktankService+Orders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */; };
 		969DE0DB2C92E3D4008039DF /* BlocktankService+Fees.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */; };
+		969DE0E02C933390008039DF /* TransferView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0DF2C933390008039DF /* TransferView.swift */; };
+		969DE0E22C93341E008039DF /* BlocktankViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0E12C93341E008039DF /* BlocktankViewModel.swift */; };
+		969DE0E42C9339F4008039DF /* ConfirmOrderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0E32C9339F4008039DF /* ConfirmOrderView.swift */; };
+		969DE0E62C93451C008039DF /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 969DE0E52C93451C008039DF /* BitcoinDevKit */; };
 		96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13A2C787B240013D65C /* SettingsListView.swift */; };
 		96A9C13F2C788B9E0013D65C /* LightningSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */; };
 		96A9C1422C7891A90013D65C /* TabBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96A9C1412C7891A90013D65C /* TabBar.swift */; };
@@ -232,6 +236,9 @@
 		969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Notifications.swift"; sourceTree = "<group>"; };
 		969DE0D32C92E360008039DF /* BlocktankService+Channels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Channels.swift"; sourceTree = "<group>"; };
 		969DE0D52C92E384008039DF /* BlocktankService+Fees.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Fees.swift"; sourceTree = "<group>"; };
+		969DE0DF2C933390008039DF /* TransferView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferView.swift; sourceTree = "<group>"; };
+		969DE0E12C93341E008039DF /* BlocktankViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocktankViewModel.swift; sourceTree = "<group>"; };
+		969DE0E32C9339F4008039DF /* ConfirmOrderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfirmOrderView.swift; sourceTree = "<group>"; };
 		96A9C13A2C787B240013D65C /* SettingsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsListView.swift; sourceTree = "<group>"; };
 		96A9C13E2C788B9E0013D65C /* LightningSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningSettingsView.swift; sourceTree = "<group>"; };
 		96A9C1412C7891A90013D65C /* TabBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBar.swift; sourceTree = "<group>"; };
@@ -262,6 +269,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				969DE0E62C93451C008039DF /* BitcoinDevKit in Frameworks */,
 				961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -446,6 +454,15 @@
 			path = Blocktank;
 			sourceTree = "<group>";
 		};
+		969DE0DE2C93335F008039DF /* Transfer */ = {
+			isa = PBXGroup;
+			children = (
+				969DE0DF2C933390008039DF /* TransferView.swift */,
+				969DE0E32C9339F4008039DF /* ConfirmOrderView.swift */,
+			);
+			path = Transfer;
+			sourceTree = "<group>";
+		};
 		96A9C1402C78918E0013D65C /* Components */ = {
 			isa = PBXGroup;
 			children = (
@@ -461,6 +478,7 @@
 				96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */,
 				96A9C1432C789BCB0013D65C /* WalletViewModel+LN.swift */,
 				96A9C1452C789BD90013D65C /* WalletViewModel+Onchain.swift */,
+				969DE0E12C93341E008039DF /* BlocktankViewModel.swift */,
 			);
 			path = ViewModels;
 			sourceTree = "<group>";
@@ -565,6 +583,7 @@
 			isa = PBXGroup;
 			children = (
 				962B921F2C5A216200B21057 /* Wallets */,
+				969DE0DE2C93335F008039DF /* Transfer */,
 				964DF71F2C78A87000EDE6DE /* Scanner */,
 				962B921B2C5A208200B21057 /* Onboarding */,
 				962B921C2C5A209400B21057 /* Settings */,
@@ -590,6 +609,7 @@
 			name = BitkitNotification;
 			packageProductDependencies = (
 				961058ED2C35798C00E1F1D8 /* LDKNode */,
+				969DE0E52C93451C008039DF /* BitcoinDevKit */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -794,6 +814,7 @@
 				96F261362C369D2400167439 /* Errors.swift in Sources */,
 				96A9C13B2C787B240013D65C /* SettingsListView.swift in Sources */,
 				963859B12C7F619C00FD4C5E /* BtInfo.swift in Sources */,
+				969DE0E42C9339F4008039DF /* ConfirmOrderView.swift in Sources */,
 				963859B22C7F619C00FD4C5E /* BitcoinNetwork.enum.swift in Sources */,
 				969DE0D42C92E360008039DF /* BlocktankService+Channels.swift in Sources */,
 				962B92212C5A217400B21057 /* HomeView.swift in Sources */,
@@ -814,6 +835,7 @@
 				96FE5A1B2C46A4DD00860ADC /* Logger.swift in Sources */,
 				969DE0D22C92E330008039DF /* BlocktankService+Notifications.swift in Sources */,
 				963859A82C7F619C00FD4C5E /* BtPaymentState2.swift in Sources */,
+				969DE0E02C933390008039DF /* TransferView.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				966DE6742C512C9300A7B0EF /* HexBytes.swift in Sources */,
 				962B92232C5A327000B21057 /* StartupHandler.swift in Sources */,
@@ -824,6 +846,7 @@
 				969DE0D62C92E384008039DF /* BlocktankService+Fees.swift in Sources */,
 				96A9C1442C789BCB0013D65C /* WalletViewModel+LN.swift in Sources */,
 				969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */,
+				969DE0E22C93341E008039DF /* BlocktankViewModel.swift in Sources */,
 				963859B52C7F619C00FD4C5E /* BtOrder.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
 				96A9C1422C7891A90013D65C /* TabBar.swift in Sources */,
@@ -1361,6 +1384,11 @@
 			productName = BitcoinDevKit;
 		};
 		968A680E2C6BA5EC00D4C7CD /* BitcoinDevKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 968A680D2C6BA5EC00D4C7CD /* XCRemoteSwiftPackageReference "bdk-swift" */;
+			productName = BitcoinDevKit;
+		};
+		969DE0E52C93451C008039DF /* BitcoinDevKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 968A680D2C6BA5EC00D4C7CD /* XCRemoteSwiftPackageReference "bdk-swift" */;
 			productName = BitcoinDevKit;
