@@ -53,10 +53,10 @@ final class LdkMigrationTests: XCTestCase {
         try await LightningService.shared.start()
         
         XCTAssertEqual(LightningService.shared.nodeId, "02cd08b7b375e4263849121f9f0ffb2732a0b88d0fb74487575ac539b374f45a55")
-        
+
         let channels = LightningService.shared.channels
         XCTAssertEqual(channels?.count, 1)
-                
+
         try await LightningService.shared.stop()
     }
     
