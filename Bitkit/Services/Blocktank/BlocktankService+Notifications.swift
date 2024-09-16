@@ -36,12 +36,12 @@ extension BlocktankService {
         let params = [
             "deviceToken": deviceToken,
             "publicKey": keypair.publicKey.hex,
-            "features": Env.pushNotificationFeatures,
+            "features": Env.pushNotificationFeatures.map { $0.feature },
             "nodeId": nodeId,
             "isoTimestamp": isoTimestamp,
             "signature": signature
         ] as [String: Any]
-                
+        
         let result = try await postRequest(Env.blocktankPushNotificationServer + "/device", params)
         Logger.info("Device registered: \(String(data: result, encoding: .utf8) ?? "")")
     }

@@ -1,12 +1,12 @@
 import Foundation
 
 struct CreateOrderOptions: Codable {
-    var clientBalanceSat: Int
+    var clientBalanceSat: UInt64
     var lspNodeId: String?
     var couponCode: String
     var source: String?
     var discountCode: String?
-    var turboChannel: Bool
+    var zeroConf: Bool // Turbo channel
     var zeroConfPayment: Bool?
     var zeroReserve: Bool
     var wakeToOpen: WakeToOpen?
@@ -20,6 +20,6 @@ struct CreateOrderOptions: Codable {
     }
 
     static func initWithDefaults() -> CreateOrderOptions {
-        return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", source: "bitkit-ios", turboChannel: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
+        return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", source: "bitkit-ios", zeroConf: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
     }
 }

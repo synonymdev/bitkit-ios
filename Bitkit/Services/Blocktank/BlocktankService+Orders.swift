@@ -29,7 +29,7 @@ extension BlocktankService {
             params["discountCode"] = discountCode
         }
 
-        params["turboChannel"] = options.turboChannel
+        params["zeroConf"] = options.zeroConf
 
         if let zeroConfPayment = options.zeroConfPayment {
             params["zeroConfPayment"] = zeroConfPayment

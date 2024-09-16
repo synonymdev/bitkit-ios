@@ -21,7 +21,6 @@ class BlocktankViewModel: ObservableObject {
         }
 
         let receivingBalanceSats = spendingBalanceSats * 2 // TODO: confirm default in RN Bitkit
-
         let timestamp = Date().formatted(.iso8601)
         let signature = try await LightningService.shared.sign(message: "channelOpen-\(timestamp)")
 
@@ -31,6 +30,10 @@ class BlocktankViewModel: ObservableObject {
             timestamp: timestamp,
             signature: signature
         )
+        options.clientBalanceSat = spendingBalanceSats
+        options.zeroReserve = true
+        options.zeroConf = true
+        options.zeroConfPayment = false
 
         let order = try await BlocktankService.shared.createOrder(
             lspBalanceSat: receivingBalanceSats,

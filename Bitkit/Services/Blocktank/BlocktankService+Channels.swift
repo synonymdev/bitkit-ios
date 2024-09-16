@@ -8,5 +8,17 @@
 import Foundation
 
 extension BlocktankService {
-    // openChannel
+    func openChannel(orderId: String) async throws {
+        guard let nodeId = LightningService.shared.nodeId else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+
+        let params = [
+            "connectionStringOrPubkey": nodeId,
+            "announceChannel": false
+        ] as [String: Any]
+
+        let result = try await postRequest(Env.blocktankClientServer + "/channels/\(orderId)/open", params)
+        Logger.info("Channel opened: \(String(data: result, encoding: .utf8) ?? "")")
+    }
 }
