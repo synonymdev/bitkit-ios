@@ -19,6 +19,9 @@ class NotificationService: UNNotificationServiceExtension {
     var lightningEventTime: CFAbsoluteTime?
     var nodeStopTime: CFAbsoluteTime?
     
+    var notificationType: BlocktankNotificationType?
+    var notificationPayload: [String: Any]?
+    
     override func didReceive(_ request: UNNotificationRequest, withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void) {
         self.receieveTime = CFAbsoluteTimeGetCurrent()
         
@@ -26,30 +29,44 @@ class NotificationService: UNNotificationServiceExtension {
         self.bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
         
         Task {
+            Logger.debug("Received notification")
             do {
-                Logger.debug("Received notification")
-                do {
-                    try await self.decryptPayload(request)
-                } catch {
-                    Logger.error(error, context: "failed to decrypt payload")
-                }
-                
+                try await self.decryptPayload(request)
+            } catch {
+                // Don't cancel the notification if this fails, rather let the node spin up and handle any potential events
+                Logger.error(error, context: "Failed to read notification payment")
+            }
+                        
+            do {
                 try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
-
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)
                 }
 
                 self.nodeStartedTime = CFAbsoluteTimeGetCurrent()
-                
             } catch {
                 self.bestAttemptContent?.title = "Lightning error"
                 self.bestAttemptContent?.body = error.localizedDescription
                 
                 Logger.error(error, context: "failed to setup node in notification service")
                 self.dumpLdkLogs()
-                await self.deliver()
+                self.deliver()
+            }
+            
+            // Once node is started, handle the manual channel opening if needed
+            if self.notificationType == .orderPaymentConfirmed {
+                guard let orderId = notificationPayload?["orderId"] as? String else {
+                    Logger.error("Missing orderId")
+                    return
+                }
+                
+                do {
+                    try await BlocktankService.shared.openChannel(orderId: orderId)
+                    Logger.info("Opened channel request for order \(orderId)")
+                } catch {
+                    Logger.error(error, context: "failed to open channel")
+                }
             }
         }
     }
@@ -100,54 +117,59 @@ class NotificationService: UNNotificationServiceExtension {
             return
         }
         
-        let orderPaymentConfirmed = jsonData["type"] as? String
         guard let payload = jsonData["payload"] as? [String: Any] else {
             Logger.error("Missing payload")
             return
         }
         
-        if orderPaymentConfirmed == "orderPaymentConfirmed" {
-            Logger.debug("Order payment confirmed")
-            
-            guard let orderId = payload["orderId"] as? String else {
-                Logger.error("Missing orderId")
-                return
-            }
-            
-            Logger.debug("orderId: \(orderId)")
-            
-            // TODO: trigger channel open
+        guard let typeStr = jsonData["type"] as? String, let type = BlocktankNotificationType(rawValue: typeStr) else {
+            Logger.error("Missing type")
+            return
         }
+        
+        self.notificationType = type
+        self.notificationPayload = payload
     }
         
+    /// Listen for LDK events and if the event matches the notification type then deliver the notification
+    /// - Parameter event
     func handleLdkEvent(event: Event) {
         switch event {
         case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
             self.bestAttemptContent?.title = "Payment Received"
             self.bestAttemptContent?.body = "⚡ \(amountMsat / 1000)"
-            Task {
-                await self.deliver()
+            
+            if self.notificationType == .incomingHtlc {
+                self.deliver()
             }
         case .channelPending(channelId: let channelId, userChannelId: let userChannelId, formerTemporaryChannelId: let formerTemporaryChannelId, counterpartyNodeId: let counterpartyNodeId, fundingTxo: let fundingTxo):
             self.bestAttemptContent?.title = "Channel Opened"
             self.bestAttemptContent?.body = "Pending"
         // Don't deliver, give a chance for channelReady event to update the content
         case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
-            self.bestAttemptContent?.title = "Payment received"
-            self.bestAttemptContent?.body = "Via new channel"
+            if self.notificationType == .cjitPaymentArrived {
+                self.bestAttemptContent?.title = "Payment received"
+                self.bestAttemptContent?.body = "Via new channel"
 
-            if let channel = LightningService.shared.channels?.first { $0.channelId == channelId } {
-                self.bestAttemptContent?.title = "Received ⚡ \(channel.outboundCapacityMsat / 1000) sats"
-            }
-            
-            Task {
-                await self.deliver()
+                if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
+                    self.bestAttemptContent?.title = "Received ⚡ \(channel.outboundCapacityMsat / 1000) sats"
+                }
+                self.deliver()
+            } else if self.notificationType == .orderPaymentConfirmed {
+                self.bestAttemptContent?.title = "Channel opened"
+                self.bestAttemptContent?.body = "Ready to send"
+                self.deliver()
             }
         case .channelClosed(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId, reason: let reason):
             self.bestAttemptContent?.title = "Channel closed"
             self.bestAttemptContent?.body = reason.debugDescription // TODO: Reason string
-            Task {
-                await self.deliver()
+            
+            if self.notificationType == .mutualClose {
+                self.deliver()
+            } else if self.notificationType == .orderPaymentConfirmed {
+                self.bestAttemptContent?.title = "Channel failed to open in the background"
+                self.bestAttemptContent?.body = "Please try again"
+                self.deliver()
             }
         case .paymentSuccessful:
             break
@@ -155,20 +177,23 @@ class NotificationService: UNNotificationServiceExtension {
             break
         case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
             self.bestAttemptContent?.title = "Payment failed"
-            self.bestAttemptContent?.body = reason.debugDescription ?? "Unknown"
-            Task {
-                await self.deliver()
+            self.bestAttemptContent?.body = reason.debugDescription
+            
+            if self.notificationType == .wakeToTimeout {
+                self.deliver()
             }
         }
     }
     
-    func deliver() async {
-        try? await LightningService.shared.stop()
-        self.nodeStopTime = CFAbsoluteTimeGetCurrent()
-        
-        self.logPerformance()
-        if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
-            contentHandler(bestAttemptContent)
+    func deliver() {
+        Task {
+            try? await LightningService.shared.stop()
+            self.nodeStopTime = CFAbsoluteTimeGetCurrent()
+            
+            self.logPerformance()
+            if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
+                contentHandler(bestAttemptContent)
+            }
         }
     }
     
@@ -196,7 +221,7 @@ class NotificationService: UNNotificationServiceExtension {
         }
         
         let nodeStopSeconds = Double(round(100 * (nodeStopTime - lightningEventTime)) / 100)
-        Logger.performance("Node stop time \(lightningEventSeconds) seconds from lightning event")
+        Logger.performance("Node stop time \(nodeStopSeconds) seconds from lightning event")
     }
     
     func dumpLdkLogs() {

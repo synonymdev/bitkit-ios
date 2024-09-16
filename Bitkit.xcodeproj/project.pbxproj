@@ -125,6 +125,9 @@
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
 		96B12A002C2EC37B00DD07B0 /* WalletViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */; };
 		96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96B12A022C2EC65000DD07B0 /* LightningService.swift */; };
+		96C30B242C981DC1004D087A /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
+		96C30B252C981E44004D087A /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
+		96C30B262C981E45004D087A /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
 		96E4939F2C942D3B000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
 		96E493A02C942D42000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
 		96E493A12C942D44000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
@@ -285,6 +288,7 @@
 		96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletViewModel.swift; sourceTree = "<group>"; };
 		96B12A022C2EC65000DD07B0 /* LightningService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LightningService.swift; sourceTree = "<group>"; };
 		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
+		96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocktankNotificationType.swift; sourceTree = "<group>"; };
 		96E4939E2C942D3B000E8BC2 /* Crypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Crypto.swift; sourceTree = "<group>"; };
 		96E493A92C9432A1000E8BC2 /* CryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoTests.swift; sourceTree = "<group>"; };
 		96F261312C369C2100167439 /* ServiceQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceQueue.swift; sourceTree = "<group>"; };
@@ -446,6 +450,7 @@
 				9638599F2C7F619B00FD4C5E /* CreateOrderOptions.swift */,
 				963859A02C7F619B00FD4C5E /* Discount.swift */,
 				963859942C7F619B00FD4C5E /* LspNode.swift */,
+				96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */,
 			);
 			path = Blocktank;
 			sourceTree = "<group>";
@@ -862,6 +867,7 @@
 				96E493AE2C94BBBA000E8BC2 /* BlocktankService+CJIT.swift in Sources */,
 				96E493AF2C94BBBA000E8BC2 /* BlocktankService+Channels.swift in Sources */,
 				96E493B02C94BBBA000E8BC2 /* BlocktankService+Orders.swift in Sources */,
+				96C30B252C981E44004D087A /* BlocktankNotificationType.swift in Sources */,
 				96E493B12C94BBBA000E8BC2 /* BlocktankService+Fees.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -932,6 +938,7 @@
 				969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */,
 				969DE0E22C93341E008039DF /* BlocktankViewModel.swift in Sources */,
 				963859B52C7F619C00FD4C5E /* BtOrder.swift in Sources */,
+				96C30B242C981DC1004D087A /* BlocktankNotificationType.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,
 				96A9C1422C7891A90013D65C /* TabBar.swift in Sources */,
 			);
@@ -996,6 +1003,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				96FE1F812C2DE6AC006D0C8B /* BitkitUITests.swift in Sources */,
+				96C30B262C981E45004D087A /* BlocktankNotificationType.swift in Sources */,
 				96FE1F832C2DE6AC006D0C8B /* BitkitUITestsLaunchTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

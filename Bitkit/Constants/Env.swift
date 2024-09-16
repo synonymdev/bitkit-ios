@@ -142,11 +142,11 @@ enum Env {
         return "\(blocktankBaseUrl)/blocktank/api/v2"
     }
     
-    static var pushNotificationFeatures = [
-        "blocktank.incomingHtlc",
-        "blocktank.mutualClose",
-        "blocktank.orderPaymentConfirmed",
-        "blocktank.cjitPaymentArrived",
-        "blocktank.wakeToTimeout"
+    static var pushNotificationFeatures: [BlocktankNotificationType] = [
+        .incomingHtlc,
+        .mutualClose,
+        .orderPaymentConfirmed,
+        .cjitPaymentArrived,
+        .wakeToTimeout
     ]
 }

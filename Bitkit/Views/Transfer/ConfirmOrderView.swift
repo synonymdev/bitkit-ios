@@ -51,6 +51,18 @@ struct ConfirmOrderView: View {
                     Text("Payment sent: \(txId)")
                     Text("You can close the app now. We will notify you when the channel is ready.")
                 }
+
+                Section {
+                    Button("Try manual open") {
+                        Task {
+                            do {
+                                try await BlocktankService.shared.openChannel(orderId: order.id)
+                            } catch {
+                                Logger.error(error)
+                            }
+                        }
+                    }
+                }
             }
         }
         .navigationTitle("Confirm Order")
