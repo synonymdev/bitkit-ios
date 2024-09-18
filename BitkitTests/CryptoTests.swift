@@ -60,14 +60,14 @@ final class CryptoTests: XCTestCase {
     }
 
     func testBlocktankEncryptedPayload() throws {
-        let cipher = "1kGoUrkQN8yymc8JWMBsn0g3oS4DJtY4cUESuRi6HOMohJEjT7and62SWPKoINI0p+gIc8LbHAVz8vQdNiS7cNhUXfaWDB+ytVMmMVnlo8ky9vk90pUt/V7ToDBEf5MjFop3DQsPUQsh2LL/zNaJjpEb12v6aKg="
-        let iv = "4f44c8f4d22f69c3d64b4c33e29a16e4"
-        let publicKey = "0234957d95b9716774faed99ad84bc6994abe5b29b259bfb4015abc013d28c1a1d"
-        let tag = "68696bbf002589ea833dd151f128cb6b"
+        let cipher = "l2fInfyw64gO12odo8iipISloQJ45Rc4WjFmpe95brdaAMDq+T/L9ZChcmMCXnR0J6BXd8sSIJe/0bmby8uSZZJuVCzwF76XHfY5oq0Y1/hKzyZTn8nG3dqfiLHnAPy1tZFQfm5ALgjwWnViYJLXoGFpXs7kLMA="
+        let iv = "2b8ed77fd2198e3ed88cfaa794a246e8"
+        let serverPublicKey = "031e9923e689a181a803486b7d8c0d4a5aad360edb70c8bb413a98458d91652213"
+        let tag = "caddd13746d6a6aed16176734964d3a3"
         let derivationName = "bitkit-notifications"
+        let decryptedPayload = "{\"source\":\"blocktank\",\"type\":\"incomingHtlc\",\"payload\":{\"secretMessage\":\"hello\"},\"createdAt\":\"2024-09-18T13:33:52.555Z\"}"
 
-        let clientPublicKey = "0395504daf41d6aa6e0b13a30f52793201bb3e132cbefb232022267f549b0219d4"
-        let clientPrivateKey = "5cbf2390a02a21df211d0a6480e187e60b8b089f1a7648abf6b312cc48480401"
+        let clientPrivateKey = "cc74b1a4fdcd35916c766d3318c5a93b7e33a36ebeff0463128bf284975c2680"
 
         guard let ciphertext = Data(base64Encoded: cipher) else {
             XCTFail("Failed to decode cipher")
@@ -75,16 +75,16 @@ final class CryptoTests: XCTestCase {
         }
 
         // Without derivationName
-        let sharedSecret = try Crypto.generateSharedSecret(privateKey: clientPrivateKey.hexaData, nodePubkey: publicKey)
-        XCTAssertEqual("03c027f7d82611ab64bc4f3e9be4137fec80fc506aefe7ec63327b99e6b56d62a0", sharedSecret.hex)
+        let sharedSecret = try Crypto.generateSharedSecret(privateKey: clientPrivateKey.hexaData, nodePubkey: serverPublicKey)
+        XCTAssertEqual("028ce542975d6d7b2307c92e527d507b03ffb3d897eb2e0830d29f40d5efd80ee3", sharedSecret.hex)
 
-        let sharedSecret2 = try Crypto.generateSharedSecret(privateKey: clientPrivateKey.hexaData, nodePubkey: publicKey, derivationName: derivationName)
-        XCTAssertEqual("12fc8324f541348ffb033884a88838e102c6d14018f55e0682e6be1180befdd6", sharedSecret2.hex)
+        let sharedSecret2 = try Crypto.generateSharedSecret(privateKey: clientPrivateKey.hexaData, nodePubkey: serverPublicKey, derivationName: derivationName)
+        XCTAssertEqual("3a9d552cb16dfae40feae644254c4ca46cab82e570de5662aacc4018e33b609b", sharedSecret2.hex)
 
         let encryptedPayload = Crypto.EncryptedPayload(cipher: ciphertext, iv: iv.hexaData, tag: tag.hexaData)
 
         let value = try Crypto.decrypt(encryptedPayload, secretKey: sharedSecret2)
 
-        XCTAssertEqual(String(data: value, encoding: .utf8), "{\"source\":\"blocktank\",\"type\":\"incomingHtlc\",\"payload\":{\"secretMessage\":\"hello\"},\"createdAt\":\"2024-09-13T14:20:09.429Z\"}")
+        XCTAssertEqual(String(data: value, encoding: .utf8), decryptedPayload)
     }
 }

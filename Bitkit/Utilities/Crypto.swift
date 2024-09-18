@@ -40,7 +40,7 @@ class Crypto {
             let bytes = stringToBytes(derivationName)
             let merged = baseSecret + bytes
 
-            return try Data(dsha256(baseSecret))
+            return try Data(dsha256(merged))
         }
 
         return Data(baseSecret)
