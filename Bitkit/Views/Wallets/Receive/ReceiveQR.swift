@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ReceiveQR: View {
     @ObservedObject var wallet = WalletViewModel.shared
+    @State var isCreatingInvoice = false
 
     var body: some View {
         VStack {
@@ -23,9 +24,42 @@ struct ReceiveQR: View {
                 Button("Copy") {
                     UIPasteboard.general.string = bip21
                 }
-
             } else {
                 ProgressView()
+            }
+
+            if let nodeId = wallet.lightningNodeId {
+                Button("Create and copy CJIT invoice") {
+                    Task { @MainActor in
+                        isCreatingInvoice = true
+                        do {
+                            let entry = try await BlocktankService.shared.createCJitEntry(
+                                channelSizeSat: 120000,
+                                invoiceSat: 6000,
+                                invoiceDescription: "Pay me",
+                                nodeId: nodeId,
+                                channelExpiryWeeks: 2,
+                                options: .init()
+                            )
+                            UIPasteboard.general.string = entry.invoice.request
+                        } catch {
+                            Logger.error(error)
+                        }
+                        isCreatingInvoice = false
+                    }
+                }
+                .disabled(isCreatingInvoice)
+
+                Button("Create and copy bolt11") {
+                    Task { @MainActor in
+                        do {
+                            let invoice = try await LightningService.shared.receive(amountSats: 5000, description: "paymeplz")
+                            UIPasteboard.general.string = invoice
+                        } catch {
+                            Logger.error(error)
+                        }
+                    }
+                }
             }
         }
         .task {

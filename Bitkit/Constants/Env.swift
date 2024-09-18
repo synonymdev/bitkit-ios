@@ -135,10 +135,18 @@ enum Env {
     }
     
     static var blocktankPushNotificationServer: String {
-        return "\(blocktankBaseUrl)/notifications/api/device"
+        return "\(blocktankBaseUrl)/notifications/api"
     }
     
     static var blocktankClientServer: String {
         return "\(blocktankBaseUrl)/blocktank/api/v2"
     }
+    
+    static var pushNotificationFeatures: [BlocktankNotificationType] = [
+        .incomingHtlc,
+        .mutualClose,
+        .orderPaymentConfirmed,
+        .cjitPaymentArrived,
+        .wakeToTimeout
+    ]
 }

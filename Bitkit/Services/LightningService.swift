@@ -179,7 +179,7 @@ class LightningService {
         }
     }
     
-    func send(bolt11: Bolt11Invoice) async throws -> PaymentHash {
+    func send(bolt11: Bolt11Invoice, sats: UInt64? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -187,7 +187,11 @@ class LightningService {
         // Check if peer is connected
         
         return try await ServiceQueue.background(.ldk) {
-            try node.bolt11Payment().send(invoice: bolt11)
+            if let sats {
+                try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000)
+            } else {
+                try node.bolt11Payment().send(invoice: bolt11)
+            }
         }
     }
     

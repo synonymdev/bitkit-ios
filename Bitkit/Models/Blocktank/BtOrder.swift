@@ -4,7 +4,7 @@ struct BtOrder: Codable {
     var id: String
     var state: BtOrderState
     var state2: BtOrderState2
-    var feeSat: Int
+    var feeSat: UInt64
     var lspBalanceSat: Int
     var clientBalanceSat: Int
     var zeroConf: Bool

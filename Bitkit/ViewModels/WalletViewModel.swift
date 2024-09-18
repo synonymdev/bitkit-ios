@@ -102,14 +102,18 @@ class WalletViewModel: ObservableObject {
             walletBalanceSats = lightningBalance.totalLightningBalanceSats + onchainBalance.total.toSat()
         }
         
+        var newActivityItems: [ActivityItem] = []
+        
         // TODO: tx history
         if let lnTxs = LightningService.shared.payments {
-            activityItems = lnTxs.map { .lightning(.init(payment: $0)) }
+            newActivityItems.append(contentsOf: lnTxs.map { .lightning(.init(payment: $0)) })
         }
         
         if let onchainTxs = OnChainService.shared.transactions {
-            activityItems?.append(contentsOf: onchainTxs.map { .onchain(.init(tx: $0)) })
+            newActivityItems.append(contentsOf: onchainTxs.map { .onchain(.init(tx: $0)) })
         }
+        
+        activityItems = newActivityItems // TODO: sort
     }
     
     func createBip21() async throws {

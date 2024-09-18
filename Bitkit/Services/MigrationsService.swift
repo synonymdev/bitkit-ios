@@ -9,6 +9,8 @@ import Foundation
 import LightningDevKit // TODO: remove this when we no longer need it to read funding_tx and index from monitors
 import SQLite
 
+typealias Expression = SQLite.Expression
+
 class MigrationsService {
     static var shared = MigrationsService()
     

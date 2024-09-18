@@ -11,6 +11,7 @@ import Security
 enum KeychainEntryType {
     case bip39Mnemonic(index: Int)
     case bip39Passphrase(index: Int)
+    case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
     
     // TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
     
@@ -20,6 +21,8 @@ enum KeychainEntryType {
             return "bip39_mnemonic_\(index)"
         case .bip39Passphrase(index: let index):
             return "bip39_passphrase_\(index)"
+        case .pushNotificationPrivateKey:
+            return "push_notification_private_key"
         }
     }
 }
