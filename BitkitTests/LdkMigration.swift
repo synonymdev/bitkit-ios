@@ -10,8 +10,11 @@ import XCTest
 final class LdkMigrationTests: XCTestCase {
     let walletIndex = 0
     
-    override func setUpWithError() throws {}
-    
+    override func setUp() async throws {
+        try? await LightningService.shared.wipeStorage(walletIndex: 0)
+        try Keychain.wipeEntireKeychain()
+    }
+
     override func tearDownWithError() throws {
         dumpLdkLogs()
     }

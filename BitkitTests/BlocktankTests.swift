@@ -9,13 +9,20 @@ import XCTest
 
 final class BlocktankTests: XCTestCase {
     override func setUp() async throws {
+        try? await LightningService.shared.wipeStorage(walletIndex: 0)
+        try Keychain.wipeEntireKeychain()
+        
+        let mnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
+        try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: mnemonic)
+
         try await LightningService.shared.setup(walletIndex: 0)
         try await LightningService.shared.start()
     }
 
     override func tearDown() async throws {
         // Stopping is better but it seems to take so long
-//        try await LightningService.shared.stop()
+        try await LightningService.shared.stop()
+        try Keychain.delete(key: .bip39Mnemonic(index: 0))
     }
 
     func testGetInfo() async throws {
