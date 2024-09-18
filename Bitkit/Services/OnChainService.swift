@@ -146,6 +146,49 @@ class OnChainService {
         
         Logger.info("Full scan complete")
     }
+    
+    ///  Sends an on chain payment
+    /// - Parameters:
+    ///   - address
+    ///   - amount
+    ///   - feeRate
+    /// - Returns: Transaction ID
+    func sendPayment(address: String, amount: UInt64, feeRate: UInt64) async throws -> String {
+        guard let wallet else {
+            throw AppError(serviceError: .onchainWalletNotInitialized)
+        }
+        
+        Logger.debug("Sending on chain payment...")
+        
+        return try await ServiceQueue.background(.bdk) {
+            let psbt = try self.buildTransaction(address: address, amount: amount, feeRate: feeRate)
+            
+            let isSigned = try wallet.sign(psbt: psbt)
+            let transaction = try psbt.extractTx()
+            let client = self.esploraClient
+            try self.esploraClient.broadcast(transaction: transaction)
+            Logger.info("On chain payment sent: \(transaction.txid())")
+            return transaction.txid()
+        }
+    }
+    
+    func buildTransaction(address: String, amount: UInt64, feeRate: UInt64) throws -> Psbt {
+        guard let wallet else {
+            throw AppError(serviceError: .onchainWalletNotInitialized)
+        }
+        
+        let script = try Address(address: address, network: Env.network.bdkNetwork)
+            .scriptPubkey()
+        
+        let txBuilder = try TxBuilder()
+            .addRecipient(
+                script: script,
+                amount: Amount.fromSat(fromSat: amount)
+            )
+            .feeRate(feeRate: FeeRate.fromSatPerVb(satPerVb: feeRate))
+            .finish(wallet: wallet)
+        return txBuilder
+    }
 }
 
 // MARK: UI Helpers (Published via OnChainViewModel)
