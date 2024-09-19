@@ -27,6 +27,14 @@ class NotificationService: UNNotificationServiceExtension {
         
         self.contentHandler = contentHandler
         self.bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
+    
+        guard !StateLocker.isLocked(.lightning) else {
+            Logger.info("Lightning process already locked, app likely in foreground")
+            self.bestAttemptContent?.title = "Lightning process already locked"
+            self.bestAttemptContent?.body = "App likely in foreground"
+            self.deliver()
+            return
+        }
         
         Task {
             Logger.debug("Received notification")
@@ -63,7 +71,7 @@ class NotificationService: UNNotificationServiceExtension {
                 
                 do {
                     try await BlocktankService.shared.openChannel(orderId: orderId)
-                    Logger.info("Opened channel request for order \(orderId)")
+                    Logger.info("Open channel request for order \(orderId)")
                 } catch {
                     Logger.error(error, context: "failed to open channel")
                 }
@@ -145,32 +153,30 @@ class NotificationService: UNNotificationServiceExtension {
         case .channelPending(channelId: let channelId, userChannelId: let userChannelId, formerTemporaryChannelId: let formerTemporaryChannelId, counterpartyNodeId: let counterpartyNodeId, fundingTxo: let fundingTxo):
             self.bestAttemptContent?.title = "Channel Opened"
             self.bestAttemptContent?.body = "Pending"
-        // Don't deliver, give a chance for channelReady event to update the content
+        // Don't deliver, give a chance for channelReady event to update the content if it's a turbo channel
         case .channelReady(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId):
             if self.notificationType == .cjitPaymentArrived {
                 self.bestAttemptContent?.title = "Payment received"
                 self.bestAttemptContent?.body = "Via new channel"
-
+                
                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
                     self.bestAttemptContent?.title = "Received ⚡ \(channel.outboundCapacityMsat / 1000) sats"
                 }
-                self.deliver()
             } else if self.notificationType == .orderPaymentConfirmed {
                 self.bestAttemptContent?.title = "Channel opened"
                 self.bestAttemptContent?.body = "Ready to send"
-                self.deliver()
             }
+            self.deliver()
         case .channelClosed(channelId: let channelId, userChannelId: let userChannelId, counterpartyNodeId: let counterpartyNodeId, reason: let reason):
-            self.bestAttemptContent?.title = "Channel closed"
-            self.bestAttemptContent?.body = reason.debugDescription // TODO: Reason string
-            
             if self.notificationType == .mutualClose {
-                self.deliver()
+                self.bestAttemptContent?.title = "Channel closed"
+                self.bestAttemptContent?.body = "Balance moved from spending to savings"
             } else if self.notificationType == .orderPaymentConfirmed {
                 self.bestAttemptContent?.title = "Channel failed to open in the background"
                 self.bestAttemptContent?.body = "Please try again"
-                self.deliver()
             }
+
+            self.deliver()
         case .paymentSuccessful:
             break
         case .paymentClaimable:
@@ -193,6 +199,7 @@ class NotificationService: UNNotificationServiceExtension {
             self.logPerformance()
             if let contentHandler = contentHandler, let bestAttemptContent = bestAttemptContent {
                 contentHandler(bestAttemptContent)
+                Logger.info("Delivered notification")
             }
         }
     }
