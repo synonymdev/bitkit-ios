@@ -19,6 +19,9 @@ class LightningService {
     private init() {}
     
     func setup(walletIndex: Int) async throws {
+        Logger.debug("Checking lightning process lock...")
+        try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
         }
@@ -96,6 +99,8 @@ class LightningService {
             self.node = nil
         }
         Logger.info("Node stopped")
+        
+        try StateLocker.unlock(.lightning)
     }
     
     func wipeStorage(walletIndex: Int) async throws {

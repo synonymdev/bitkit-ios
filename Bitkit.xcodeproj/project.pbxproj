@@ -101,6 +101,10 @@
 		966DE6722C512C1E00A7B0EF /* seed.bin in Resources */ = {isa = PBXBuildFile; fileRef = 966DE6712C512C1E00A7B0EF /* seed.bin */; };
 		966DE6742C512C9300A7B0EF /* HexBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966DE6732C512C9300A7B0EF /* HexBytes.swift */; };
 		966DE6752C512FD100A7B0EF /* HexBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 966DE6732C512C9300A7B0EF /* HexBytes.swift */; };
+		96853DF12C9C398F003F13C2 /* StateLocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96853DF02C9C398B003F13C2 /* StateLocker.swift */; };
+		96853DF22C9C398F003F13C2 /* StateLocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96853DF02C9C398B003F13C2 /* StateLocker.swift */; };
+		96853DF32C9C398F003F13C2 /* StateLocker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96853DF02C9C398B003F13C2 /* StateLocker.swift */; };
+		96853DF52C9C66F9003F13C2 /* StateLockerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96853DF42C9C66F4003F13C2 /* StateLockerTests.swift */; };
 		9689A9202C9AC6050083C099 /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
 		968A68082C6B6D1F00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */; };
 		968A680F2C6BA5EC00D4C7CD /* BitcoinDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 968A680E2C6BA5EC00D4C7CD /* BitcoinDevKit */; };
@@ -272,6 +276,8 @@
 		966DE66C2C50FA7600A7B0EF /* adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin; sourceTree = "<group>"; };
 		966DE6712C512C1E00A7B0EF /* seed.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = seed.bin; sourceTree = "<group>"; };
 		966DE6732C512C9300A7B0EF /* HexBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HexBytes.swift; sourceTree = "<group>"; };
+		96853DF02C9C398B003F13C2 /* StateLocker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateLocker.swift; sourceTree = "<group>"; };
+		96853DF42C9C66F4003F13C2 /* StateLockerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateLockerTests.swift; sourceTree = "<group>"; };
 		969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Orders.swift"; sourceTree = "<group>"; };
 		969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+CJIT.swift"; sourceTree = "<group>"; };
 		969DE0D12C92E330008039DF /* BlocktankService+Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Notifications.swift"; sourceTree = "<group>"; };
@@ -546,6 +552,7 @@
 		96F261342C369D1300167439 /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
+				96853DF02C9C398B003F13C2 /* StateLocker.swift */,
 				96F261352C369D2400167439 /* Errors.swift */,
 				96FE5A1A2C46A4DD00860ADC /* Logger.swift */,
 				963DE7922C578D9900A2AA1D /* Keychain.swift */,
@@ -616,6 +623,7 @@
 				963DE7952C57969000A2AA1D /* KeychainTests.swift */,
 				963859C02C7F6CC200FD4C5E /* BlocktankTests.swift */,
 				96E493A92C9432A1000E8BC2 /* CryptoTests.swift */,
+				96853DF42C9C66F4003F13C2 /* StateLockerTests.swift */,
 			);
 			path = BitkitTests;
 			sourceTree = "<group>";
@@ -856,6 +864,7 @@
 				96E493C42C94BD23000E8BC2 /* BtPaymentState2.swift in Sources */,
 				96E493C52C94BD23000E8BC2 /* CreateOrderOptions.swift in Sources */,
 				96E493C62C94BD23000E8BC2 /* CJitStateEnum.swift in Sources */,
+				96853DF32C9C398F003F13C2 /* StateLocker.swift in Sources */,
 				96E493C72C94BD23000E8BC2 /* BtOrder.swift in Sources */,
 				96E493C82C94BD23000E8BC2 /* BtOnchainTransaction.swift in Sources */,
 				96E493C92C94BD24000E8BC2 /* BtInfo.swift in Sources */,
@@ -909,6 +918,7 @@
 				962B92212C5A217400B21057 /* HomeView.swift in Sources */,
 				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
 				963859AF2C7F619C00FD4C5E /* BtOpenChannelState.swift in Sources */,
+				96853DF12C9C398F003F13C2 /* StateLocker.swift in Sources */,
 				96A9C1462C789BD90013D65C /* WalletViewModel+Onchain.swift in Sources */,
 				963859B62C7F619C00FD4C5E /* CJitEntry.swift in Sources */,
 				965F243C2C6E13D1005A5B31 /* ScenePhase.swift in Sources */,
@@ -981,6 +991,7 @@
 				963859CE2C7F6D7A00FD4C5E /* BtChannelOpenErrorType.swift in Sources */,
 				963859CF2C7F6D7A00FD4C5E /* BtEstimateFeeResponse.swift in Sources */,
 				963859D02C7F6D7A00FD4C5E /* BtOrder.swift in Sources */,
+				96853DF52C9C66F9003F13C2 /* StateLockerTests.swift in Sources */,
 				963859D12C7F6D7A00FD4C5E /* BtOrderState.swift in Sources */,
 				963859D22C7F6D7A00FD4C5E /* BtPaymentState2.swift in Sources */,
 				963859D32C7F6D7A00FD4C5E /* BtOnchainTransactions.swift in Sources */,
@@ -989,6 +1000,7 @@
 				963859D52C7F6D7A00FD4C5E /* BitcoinNetwork.enum.swift in Sources */,
 				963859D62C7F6D7A00FD4C5E /* CJitEntry.swift in Sources */,
 				963859D72C7F6D7A00FD4C5E /* CJitStateEnum.swift in Sources */,
+				96853DF22C9C398F003F13C2 /* StateLocker.swift in Sources */,
 				963859D82C7F6D7A00FD4C5E /* BtBolt11PaymentState.swift in Sources */,
 				963859D92C7F6D7A00FD4C5E /* LspNode.swift in Sources */,
 				963859DA2C7F6D7A00FD4C5E /* BtOrderState2.swift in Sources */,
@@ -1298,6 +1310,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited) UNIT_TESTING";
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
