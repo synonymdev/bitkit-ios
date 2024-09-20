@@ -13,6 +13,8 @@ struct ConfirmOrderView: View {
     @State private var isPaying = false
     @State private var txId = ""
 
+    @Environment(\.toast) private var toast
+
     var body: some View {
         Form {
             Section {
@@ -38,7 +40,7 @@ struct ConfirmOrderView: View {
 
                                 // TODO: tell BT model to watch this order for payment
                             } catch {
-                                Logger.error(error)
+                                toast.show(error)
                             }
 
                             isPaying = false
@@ -58,7 +60,7 @@ struct ConfirmOrderView: View {
                             do {
                                 try await BlocktankService.shared.openChannel(orderId: order.id)
                             } catch {
-                                Logger.error(error)
+                                toast.show(error)
                             }
                         }
                     }
