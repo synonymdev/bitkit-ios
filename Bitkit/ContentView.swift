@@ -27,7 +27,28 @@ struct ContentView: View {
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
                 Task {
-                    try await wallet.startAll()
+                    try await wallet.startAll { lighntingEvent in
+                        switch lighntingEvent {
+                        case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
+                            toast.show(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")
+                        case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
+                            toast.show(type: .success, title: "Channel pending", description: "Waiting for confirmation")
+                        case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
+                            if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
+                                toast.show(type: .success, title: "Channel opened", description: "Ready to send \(channel.outboundCapacityMsat / 1000) sats")
+                            } else {
+                                toast.show(type: .error, title: "Channel opened", description: "Ready to send")
+                            }
+                        case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
+                            toast.show(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
+                        case .paymentSuccessful:
+                            break
+                        case .paymentClaimable:
+                            break
+                        case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
+                            break
+                        }
+                    }
 
                     // TODO: should be move to onboarding or when creating first invoice
                     StartupHandler.requestPushNotificationPermision { _, error in
