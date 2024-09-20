@@ -109,4 +109,6 @@ struct HomeView: View {
 
 #Preview {
     HomeView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

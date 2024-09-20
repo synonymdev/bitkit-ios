@@ -78,4 +78,6 @@ struct ReceiveQR: View {
 
 #Preview {
     ReceiveQR()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

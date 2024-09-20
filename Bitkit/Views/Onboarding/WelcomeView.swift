@@ -92,4 +92,6 @@ struct WelcomeView: View {
 
 #Preview {
     WelcomeView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }
