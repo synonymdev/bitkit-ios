@@ -24,6 +24,7 @@ class ToastViewModel: ObservableObject {
     @Published var currentToast: Toast?
 
     func show(type: Toast.ToastType, title: String, description: String, autoHide: Bool = true, visibilityTime: Double = 3.0) {
+        Logger.debug("Showing toast: \(title) - \(description)")
         withAnimation {
             currentToast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
         }

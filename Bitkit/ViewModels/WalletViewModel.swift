@@ -30,14 +30,14 @@ class WalletViewModel: ObservableObject {
     @Published var onchainBalance: Balance?
     @Published var onchainAddress: String?
     
-    func startAll() async throws {
+    func startAll(onEvent: ((Event) -> Void)? = nil) async throws {
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 try await self.startOnchain()
             }
             
             group.addTask {
-                try await self.startLightning()
+                try await self.startLightning(onEvent: onEvent)
             }
             
             try await group.waitForAll()
