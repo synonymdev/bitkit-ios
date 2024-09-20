@@ -36,4 +36,5 @@ struct SendOptionsView: View {
 
 #Preview {
     SendOptionsView()
+        .environmentObject(ToastViewModel())
 }

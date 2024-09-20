@@ -120,4 +120,5 @@ struct LightningSettingsView: View {
 
 #Preview {
     LightningSettingsView()
+        .environmentObject(WalletViewModel())
 }

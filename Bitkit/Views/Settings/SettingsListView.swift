@@ -47,4 +47,6 @@ struct SettingsListView: View {
 
 #Preview {
     SettingsListView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

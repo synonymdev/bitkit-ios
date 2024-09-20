@@ -56,4 +56,6 @@ struct TransferView: View {
 
 #Preview {
     TransferView()
+        .environmentObject(ToastViewModel())
+        .environmentObject(BlocktankViewModel())
 }
