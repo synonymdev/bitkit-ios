@@ -33,13 +33,8 @@ class WalletViewModel: ObservableObject {
     private init() {}
     public static var shared = WalletViewModel()
     
-    func setWalletExistsState() {
-        do {
-            walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
-        } catch {
-            // TODO: show error
-            Logger.error(error)
-        }
+    func setWalletExistsState() throws {
+        walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
     
     func sync(fullOnchainScan: Bool = false) async throws {

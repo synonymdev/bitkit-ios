@@ -21,7 +21,7 @@ struct LogView: View {
             }
         }
         .listStyle(.plain)
-        .onAppear {
+        .task {
             loadLog()
         }
     }
