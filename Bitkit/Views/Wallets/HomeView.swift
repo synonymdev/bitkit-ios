@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
-    @ObservedObject var wallet = WalletViewModel.shared
-    @Environment(\.toast) private var toast
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
             
     var body: some View {
         NavigationView {

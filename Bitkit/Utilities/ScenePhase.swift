@@ -8,9 +8,9 @@
 import SwiftUI
 
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
-    @ObservedObject var wallet = WalletViewModel.shared
     @Environment(\.scenePhase) var scenePhase
-
+    @EnvironmentObject var wallet: WalletViewModel
+    
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
     
     func body(content: Content) -> some View {

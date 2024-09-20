@@ -19,6 +19,7 @@ struct Toast: Equatable {
     let visibilityTime: Double
 }
 
+@MainActor
 class ToastViewModel: ObservableObject {
     @Published var currentToast: Toast?
 
@@ -44,16 +45,5 @@ class ToastViewModel: ObservableObject {
         withAnimation {
             currentToast = nil
         }
-    }
-}
-
-private struct ToastViewModelKey: EnvironmentKey {
-    static let defaultValue = ToastViewModel()
-}
-
-extension EnvironmentValues {
-    var toast: ToastViewModel {
-        get { self[ToastViewModelKey.self] }
-        set { self[ToastViewModelKey.self] = newValue }
     }
 }

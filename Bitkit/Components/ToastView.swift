@@ -75,7 +75,7 @@ struct ToastModifier: ViewModifier {
 }
 
 extension View {
-    func toast(viewModel: ToastViewModel) -> some View {
+    func toastOverlay(viewModel: ToastViewModel) -> some View {
         modifier(ToastModifier(viewModel: viewModel))
     }
 }

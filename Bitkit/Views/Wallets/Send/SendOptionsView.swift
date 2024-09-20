@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SendOptionsView: View {
-    @Environment(\.toast) private var toast
+    @EnvironmentObject var toast: ToastViewModel
 
     var body: some View {
         VStack {
