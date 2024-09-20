@@ -12,7 +12,8 @@ struct TransferView: View {
     @State private var isCreatingOrder = false
     @State private var newOrder: BtOrder? = nil
 
-    @Environment(\.toast) private var toast
+    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var blocktank: BlocktankViewModel
 
     var body: some View {
         Form {
@@ -32,7 +33,7 @@ struct TransferView: View {
                         isCreatingOrder = true
 
                         do {
-                            newOrder = try await BlocktankViewModel.shared.createOrder(spendingBalanceSats: spendingBalanceSats)
+                            newOrder = try await blocktank.createOrder(spendingBalanceSats: spendingBalanceSats)
                         } catch {
                             toast.show(error)
                         }

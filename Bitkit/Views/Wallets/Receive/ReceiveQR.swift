@@ -8,9 +8,10 @@
 import SwiftUI
 
 struct ReceiveQR: View {
-    @ObservedObject var wallet = WalletViewModel.shared
     @State var isCreatingInvoice = false
-    @Environment(\.toast) private var toast
+
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
 
     var body: some View {
         VStack {

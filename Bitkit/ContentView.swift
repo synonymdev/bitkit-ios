@@ -8,8 +8,8 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject var wallet = WalletViewModel.shared
-
+    @StateObject private var wallet = WalletViewModel()
+    @StateObject private var blocktank = BlocktankViewModel()
     @StateObject private var toast = ToastViewModel()
 
     var body: some View {
@@ -22,12 +22,21 @@ struct ContentView: View {
                 WelcomeView()
             }
         }
-        .environment(\.toast, toast)
-        .toast(viewModel: toast)
+        .toastOverlay(viewModel: toast)
         .onChange(of: wallet.walletExists) { _ in
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
-                StartupHandler.startAllServices()
+                Task {
+                    try await wallet.startAll()
+
+                    // TODO: should be move to onboarding or when creating first invoice
+                    StartupHandler.requestPushNotificationPermision { _, error in
+                        // If granted AppDelegate will receive the token and handle registration
+                        if let error {
+                            Logger.error(error, context: "Failed to request push notification permission")
+                        }
+                    }
+                }
             }
         }
         .task {
@@ -38,6 +47,10 @@ struct ContentView: View {
             }
         }
         .handleLightningStateOnScenePhaseChange() // Will stop and start LN node as needed
+        // Environment objects always at the end
+        .environmentObject(toast)
+        .environmentObject(wallet)
+        .environmentObject(blocktank)
     }
 }
 

@@ -8,12 +8,11 @@
 import SwiftUI
 
 struct RestoreView: View {
-    @StateObject var wallet = WalletViewModel.shared
-    
     @State var bip39Mnemonic = ""
     @State var bip39Passphrase: String? = nil
     
-    @Environment(\.toast) private var toast
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
     
     var body: some View {
         VStack {
@@ -47,11 +46,11 @@ struct RestoreView: View {
 }
 
 struct WelcomeView: View {
-    @StateObject var wallet = WalletViewModel.shared
     @State var bip39Passphrase: String?
-    
     @State var showRestore = false
-    @Environment(\.toast) private var toast
+    
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
     
     var body: some View {
         VStack {

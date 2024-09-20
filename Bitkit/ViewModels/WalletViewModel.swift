@@ -30,8 +30,19 @@ class WalletViewModel: ObservableObject {
     @Published var onchainBalance: Balance?
     @Published var onchainAddress: String?
     
-    private init() {}
-    public static var shared = WalletViewModel()
+    func startAll() async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await self.startOnchain()
+            }
+            
+            group.addTask {
+                try await self.startLightning()
+            }
+            
+            try await group.waitForAll()
+        }
+    }
     
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
