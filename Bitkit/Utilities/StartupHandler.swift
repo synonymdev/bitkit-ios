@@ -11,33 +11,6 @@ import SwiftUI
 class StartupHandler {
     private init() {}
     
-    static func startAllServices() {
-        Logger.debug("Spinning up services...")
-        Task {
-            do {
-                try await WalletViewModel.shared.startOnchain()
-            } catch {
-                Logger.error(error, context: "Failed to start on chain service")
-            }
-        }
-        
-        Task {
-            do {
-                try await WalletViewModel.shared.startLightning()
-                
-                // TODO: should be move to onboarding or when creating first invoice
-                await requestPushNotificationPermision { _, error in
-                    // If granted AppDelegate will receive the token and handle registration
-                    if let error {
-                        Logger.error(error, context: "Failed to request push notification permission")
-                    }
-                }
-            } catch {
-                Logger.error(error, context: "Failed to start lightning service")
-            }
-        }
-    }
-    
     /// Creates a new mnemonic and saves it to the keychain
     /// - Parameters:
     ///  - bip39Passphrase: optional bip39 passphrase

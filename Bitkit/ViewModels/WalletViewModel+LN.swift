@@ -59,14 +59,15 @@ extension NodeStatus {
 }
 
 extension WalletViewModel {
-    func startLightning(walletIndex: Int = 0) async throws {
+    func startLightning(walletIndex: Int = 0, onEvent: ((Event) -> Void)? = nil) async throws {
         lightningState = .starting
         syncState()
         try await LightningService.shared.setup(walletIndex: walletIndex)
-        try await LightningService.shared.start(onEvent: { _ in
+        try await LightningService.shared.start(onEvent: { event in
             // On every lightning event just sync UI
             Task { @MainActor in
                 self.syncState()
+                onEvent?(event)
             }
         })
         

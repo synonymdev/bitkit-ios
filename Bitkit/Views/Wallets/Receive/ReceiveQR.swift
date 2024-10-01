@@ -8,8 +8,10 @@
 import SwiftUI
 
 struct ReceiveQR: View {
-    @ObservedObject var wallet = WalletViewModel.shared
     @State var isCreatingInvoice = false
+
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
 
     var body: some View {
         VStack {
@@ -56,7 +58,7 @@ struct ReceiveQR: View {
                             let invoice = try await LightningService.shared.receive(amountSats: 5000, description: "paymeplz")
                             UIPasteboard.general.string = invoice
                         } catch {
-                            Logger.error(error)
+                            toast.show(error)
                         }
                     }
                 }
@@ -67,8 +69,7 @@ struct ReceiveQR: View {
                 do {
                     try await wallet.createBip21()
                 } catch {
-                    // TODO: Show error notification
-                    Logger.error(error)
+                    toast.show(error)
                 }
             }
         }
@@ -77,4 +78,6 @@ struct ReceiveQR: View {
 
 #Preview {
     ReceiveQR()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

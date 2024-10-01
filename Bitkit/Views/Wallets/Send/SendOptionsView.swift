@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct SendOptionsView: View {
+    @EnvironmentObject var toast: ToastViewModel
+
     var body: some View {
         VStack {
             Text("Send")
@@ -22,7 +24,7 @@ struct SendOptionsView: View {
                             let _ = try await LightningService.shared.send(bolt11: invoice)
                         }
                     } catch {
-                        Logger.error(error)
+                        toast.show(error)
                     }
                 }
             }
@@ -34,4 +36,5 @@ struct SendOptionsView: View {
 
 #Preview {
     SendOptionsView()
+        .environmentObject(ToastViewModel())
 }

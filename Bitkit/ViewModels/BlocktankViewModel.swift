@@ -9,9 +9,6 @@ import SwiftUI
 
 @MainActor
 class BlocktankViewModel: ObservableObject {
-    private init() {}
-    public static var shared = BlocktankViewModel()
-
     @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
     @Published var cJitEntries: [CJitEntry] = []
 
