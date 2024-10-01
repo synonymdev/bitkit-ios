@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct LightningSettingsView: View {
-    @ObservedObject var wallet = WalletViewModel.shared
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         List {
@@ -120,4 +120,5 @@ struct LightningSettingsView: View {
 
 #Preview {
     LightningSettingsView()
+        .environmentObject(WalletViewModel())
 }

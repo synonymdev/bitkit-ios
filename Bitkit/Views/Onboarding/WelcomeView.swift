@@ -8,10 +8,11 @@
 import SwiftUI
 
 struct RestoreView: View {
-    @StateObject var wallet = WalletViewModel.shared
-    
     @State var bip39Mnemonic = ""
     @State var bip39Passphrase: String? = nil
+    
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
     
     var body: some View {
         VStack {
@@ -32,10 +33,9 @@ struct RestoreView: View {
                     do {
                         _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
                         // TODO: handle full sync here before revealing the UI so balances are pre populated
-                        wallet.setWalletExistsState()
+                        try wallet.setWalletExistsState()
                     } catch {
-                        // TODO: show a error to user
-                        Logger.error(error)
+                        toast.show(error)
                     }
                 }
                 .padding()
@@ -46,10 +46,11 @@ struct RestoreView: View {
 }
 
 struct WelcomeView: View {
-    @StateObject var wallet = WalletViewModel.shared
     @State var bip39Passphrase: String?
-    
     @State var showRestore = false
+    
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
     
     var body: some View {
         VStack {
@@ -69,10 +70,9 @@ struct WelcomeView: View {
                 Button("Create Wallet") {
                     do {
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
-                        wallet.setWalletExistsState()
+                        try wallet.setWalletExistsState()
                     } catch {
-                        // TODO: show a error to user
-                        Logger.error(error)
+                        toast.show(error)
                     }
                 }
                 .padding()
@@ -92,4 +92,6 @@ struct WelcomeView: View {
 
 #Preview {
     WelcomeView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct HomeView: View {
-    @ObservedObject var wallet = WalletViewModel.shared
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
             
     var body: some View {
         NavigationView {
@@ -90,7 +91,7 @@ struct HomeView: View {
                 do {
                     try await wallet.sync(fullOnchainScan: true)
                 } catch {
-                    // TODO: show an error
+                    toast.show(error)
                 }
             }
         }
@@ -108,4 +109,6 @@ struct HomeView: View {
 
 #Preview {
     HomeView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }

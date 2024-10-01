@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct SettingsListView: View {
-    @ObservedObject var wallet = WalletViewModel.shared
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var toast: ToastViewModel
 
     var body: some View {
         List {
@@ -24,6 +25,7 @@ struct SettingsListView: View {
                 Task {
                     guard Env.network == .regtest else {
                         Logger.error("Can only nuke on regtest")
+                        toast.show(type: .error, title: "Error", description: "Can only nuke on regtest")
                         return
                     }
                     do {
@@ -32,9 +34,9 @@ struct SettingsListView: View {
                         try await wallet.wipeLightningWallet()
                         // Delete entire keychain
                         try Keychain.wipeEntireKeychain()
-                        wallet.setWalletExistsState()
+                        try wallet.setWalletExistsState()
                     } catch {
-                        Logger.error(error, context: "Nuke")
+                        toast.show(error)
                     }
                 }
             }
@@ -45,4 +47,6 @@ struct SettingsListView: View {
 
 #Preview {
     SettingsListView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(ToastViewModel())
 }
