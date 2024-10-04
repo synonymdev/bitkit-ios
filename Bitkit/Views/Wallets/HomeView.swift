@@ -10,6 +10,8 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var toast: ToastViewModel
+    
+    @State private var showNodeState = false
             
     var body: some View {
         NavigationView {
@@ -66,7 +68,9 @@ struct HomeView: View {
                                 Text(item.kind == .onchain ? "⛓️" : "⚡️")
                                 Text("\(item.direction == .outbound ? "⬆️" : "⬇️")")
                                 Spacer()
-                                Text("\(item.amountSats)")
+                                if let amountSats = item.amountSats {
+                                    Text("\(amountSats)")
+                                }
                             }
                             .padding(.horizontal)
                             .padding(.vertical, 2)
@@ -77,8 +81,6 @@ struct HomeView: View {
             .overlay(content: {
                 TabBar()
             })
-            .navigationBarItems(trailing: rightNavigationItem)
-            .navigationTitle("Bitkit")
             .refreshable {
                 do {
                     try await wallet.sync(fullOnchainScan: true)
@@ -86,15 +88,23 @@ struct HomeView: View {
                     toast.show(error)
                 }
             }
+            .navigationBarItems(trailing: rightNavigationItem)
+            .navigationTitle("Bitkit")
         }
     }
     
     var rightNavigationItem: some View {
         HStack {
             Text(wallet.nodeLifecycleState.debugEmoji)
+                .onTapGesture {
+                    showNodeState = true
+                }
             NavigationLink(destination: SettingsListView()) {
                 Image(systemName: "gear")
             }
+        }
+        .sheet(isPresented: $showNodeState) {
+            NodeStateView()
         }
     }
 }
