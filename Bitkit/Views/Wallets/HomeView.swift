@@ -17,7 +17,7 @@ struct HomeView: View {
                 VStack(alignment: .leading) {
                     Text("Total balance")
                         .font(.title3)
-                    if let balanceSats = wallet.walletBalanceSats {
+                    if let balanceSats = wallet.totalBalanceSats {
                         Text("\(balanceSats) sats")
                             .font(.title)
                     } else {
@@ -32,8 +32,8 @@ struct HomeView: View {
                         Text("Savings")
                             .font(.title3)
                         Spacer()
-                        if let onchainBalance = wallet.onchainBalance {
-                            Text("\(onchainBalance.total.toSat())")
+                        if let balances = wallet.balanceDetails {
+                            Text("\(balances.totalOnchainBalanceSats)")
                                 .font(.title3)
                         }
                     }
@@ -47,7 +47,7 @@ struct HomeView: View {
                         Text("Spending")
                             .font(.title3)
                         Spacer()
-                        if let lnBalance = wallet.lightningBalance {
+                        if let lnBalance = wallet.balanceDetails {
                             Text("\(lnBalance.totalLightningBalanceSats)")
                                 .font(.title3)
                         }
@@ -63,18 +63,10 @@ struct HomeView: View {
                     if let activityItems = wallet.activityItems {
                         ForEach(activityItems, id: \.self) { item in
                             HStack {
-                                switch item {
-                                case .onchain(let onchainItem):
-                                    Text("⛓️ \(onchainItem.txType == .sent ? "⬆️" : "⬇️")")
-                                    Text("\(onchainItem.confirmed ? "✅" : "⏳")")
-                                    Spacer()
-                                    Text("\(onchainItem.valueSats)")
-                                case .lightning(let lightningItem):
-                                    Text("⚡️ \(lightningItem.txType == .sent ? "⬆️" : "⬇️")")
-                                    Text("\(lightningItem.status == .completed ? "✅" : "⏳")")
-                                    Spacer()
-                                    Text("\(lightningItem.valueSats)")
-                                }
+                                Text(item.kind == .onchain ? "⛓️" : "⚡️")
+                                Text("\(item.direction == .outbound ? "⬆️" : "⬇️")")
+                                Spacer()
+                                Text("\(item.amountSats)")
                             }
                             .padding(.horizontal)
                             .padding(.vertical, 2)
@@ -99,7 +91,7 @@ struct HomeView: View {
     
     var rightNavigationItem: some View {
         HStack {
-            Text(wallet.lightningState.debugEmoji)
+            Text(wallet.nodeLifecycleState.debugEmoji)
             NavigationLink(destination: SettingsListView()) {
                 Image(systemName: "gear")
             }

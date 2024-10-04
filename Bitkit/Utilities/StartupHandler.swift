@@ -5,7 +5,7 @@
 //  Created by Jason van den Berg on 2024/07/31.
 //
 
-import BitcoinDevKit
+import LDKNode
 import SwiftUI
 
 class StartupHandler {
@@ -17,7 +17,7 @@ class StartupHandler {
     ///  - walletIndex: wallet index, defaults to zero for first entry
     ///  - Returns: The generated mnemonic
     static func createNewWallet(bip39Passphrase: String?, walletIndex: Int = 0) throws -> String {
-        let mnemonic = Mnemonic(wordCount: Env.defaultWalletWordCount).asString()
+        let mnemonic = generateEntropyMnemonic()
                 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
         if let bip39Passphrase {
@@ -33,8 +33,6 @@ class StartupHandler {
     ///   - bip39Passphrase: optional bip39 passphrase
     ///   - walletIndex: wallet index, defaults to zero for first
     static func restoreWallet(mnemonic: String, bip39Passphrase: String?, walletIndex: Int = 0) throws {
-        _ = try Mnemonic.fromString(mnemonic: mnemonic) // Check it's valid
-        
         // TODO: validate word count also?
                 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)

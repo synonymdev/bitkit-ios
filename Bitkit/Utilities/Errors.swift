@@ -5,7 +5,6 @@
 //  Created by Jason van den Berg on 2024/07/04.
 //
 
-import BitcoinDevKit
 import Foundation
 import LDKNode
 
@@ -55,11 +54,6 @@ struct AppError: LocalizedError {
         
         if let ldkError = error as? NodeError {
             self.init(ldkError: ldkError)
-            return
-        }
-        
-        if let esploraError = error as? EsploraError {
-            self.init(esploraError: esploraError)
             return
         }
         
@@ -302,49 +296,5 @@ struct AppError: LocalizedError {
         }
         
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
-    }
-    
-    private init(esploraError: EsploraError) {
-        switch esploraError as EsploraError {
-        case .InvalidHttpHeaderName(let name):
-            message = "Invalid HTTP header name"
-            debugMessage = name
-        case .Minreq(errorMessage: let errorMessage):
-            message = "Minreq error"
-            debugMessage = errorMessage
-        case .HttpResponse(status: let status, errorMessage: let errorMessage):
-            message = "HTTP response error"
-            debugMessage = "\(status) \(errorMessage)"
-        case .Parsing(errorMessage: let errorMessage):
-            message = "Parsing error"
-            debugMessage = errorMessage
-        case .StatusCode(errorMessage: let errorMessage):
-            message = "Status code error"
-            debugMessage = errorMessage
-        case .BitcoinEncoding(errorMessage: let errorMessage):
-            message = "Bitcoin encoding error"
-            debugMessage = errorMessage
-        case .HexToArray(errorMessage: let errorMessage):
-            message = "Hex to array error"
-            debugMessage = errorMessage
-        case .HexToBytes(errorMessage: let errorMessage):
-            message = "Hex to bytes error"
-            debugMessage = errorMessage
-        case .TransactionNotFound:
-            message = "Transaction not found"
-            debugMessage = nil
-        case .HeaderHeightNotFound(height: let height):
-            message = "Header height not found"
-            debugMessage = "\(height)"
-        case .HeaderHashNotFound:
-            message = "Header hash not found"
-            debugMessage = nil
-        case .InvalidHttpHeaderValue(value: let value):
-            message = "Invalid HTTP header value"
-            debugMessage = value
-        case .RequestAlreadyConsumed:
-            message = "Request already consumed"
-            debugMessage = nil
-        }
     }
 }

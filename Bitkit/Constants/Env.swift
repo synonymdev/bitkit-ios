@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/07/01.
 //
 
-import BitcoinDevKit
 import Foundation
+import LDKNode
 
 enum Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -30,8 +30,8 @@ enum Env {
     
     // MARK: wallet services
 
-    static let network: WalletNetwork = .regtest
-    static let defaultWalletWordCount: WordCount = .words12
+    static let network: LDKNode.Network = .regtest
+    static let defaultWalletWordCount = 12
     static let onchainWalletStopGap = UInt64(20)
     static let esploraParallelRequests = UInt64(5)
     static var esploraServerUrl: String {
