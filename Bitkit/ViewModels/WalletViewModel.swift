@@ -5,47 +5,64 @@
 //  Created by Jason van den Berg on 2024/06/28.
 //
 
-import BitcoinDevKit
 import LDKNode
 import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
-    // MARK: General state
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
-    @Published var walletBalanceSats: UInt64? = nil // Combined onchain and LN
     @Published var bip21: String? = nil
-    @Published var activityItems: [ActivityItem]? = nil
-    
-    // MARK: Lightning state
-    @Published var lightningState: LightningNodeState = .stopped
-    @Published var lightningStatus: NodeStatus?
-    @Published var lightningNodeId: String?
-    @Published var lightningBalance: BalanceDetails?
-    @Published var lightningPeers: [PeerDetails]?
-    @Published var lightningChannels: [ChannelDetails]?
-    
-    // MARK: Onchain state
-    @Published var onchainBalance: Balance?
-    @Published var onchainAddress: String?
-    
-    func startAll(onEvent: ((Event) -> Void)? = nil) async throws {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                try await self.startOnchain()
-            }
-            
-            group.addTask {
-                try await self.startLightning(onEvent: onEvent)
-            }
-            
-            try await group.waitForAll()
-        }
-    }
+    @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
+    @Published var totalBalanceSats: UInt64? = nil // Combined onchain and LN
+    @Published var nodeLifecycleState: NodeLifecycleState = .stopped
+    @Published var nodeStatus: NodeStatus?
+    @Published var nodeId: String?
+    @Published var balanceDetails: BalanceDetails?
+    @Published var peers: [PeerDetails]?
+    @Published var channels: [ChannelDetails]?
+    @Published var onchainAddress: String? = nil
     
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
+    }
+    
+    func start(walletIndex: Int = 0, onEvent: ((Event) -> Void)? = nil) async throws {
+        nodeLifecycleState = .starting
+        syncState()
+        try await LightningService.shared.setup(walletIndex: walletIndex)
+        try await LightningService.shared.start(onEvent: { event in
+            // On every lightning event just sync UI
+            Task { @MainActor in
+                self.syncState()
+                onEvent?(event)
+            }
+        })
+        
+        nodeLifecycleState = .running
+        
+        syncState()
+        
+        // Always sync on start but don't need to wait for this
+        Task { @MainActor in
+            try await sync()
+        }
+    }
+    
+    func stopLightningNode() async throws {
+        nodeLifecycleState = .stopping
+        try await LightningService.shared.stop()
+        nodeLifecycleState = .stopped
+        syncState()
+    }
+    
+    func wipeLightningWallet() async throws {
+        try await stopLightningNode()
+        try await LightningService.shared.wipeStorage(walletIndex: 0)
+    }
+    
+    func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {
+        try await LightningService.shared.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
     }
     
     func sync(fullOnchainScan: Bool = false) async throws {
@@ -63,26 +80,7 @@ class WalletViewModel: ObservableObject {
         syncState()
         
         do {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    if fullOnchainScan {
-                        try await OnChainService.shared.fullScan()
-                    } else {
-                        try await OnChainService.shared.syncWithRevealedSpks()
-                    }
-                }
-                if lightningState == .running {
-                    group.addTask {
-                        try await LightningService.shared.sync()
-                    }
-                } else {
-                    // Not really required to throw an error here
-                    Logger.warn("Can't sync lightning when node is not running. Current state: \(lightningState.rawValue)")
-                }
-                
-                try await group.waitForAll()
-            }
-            
+            try await LightningService.shared.sync()
         } catch {
             isSyncingWallet = false
             throw error
@@ -92,47 +90,39 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
     
-    internal func syncState() {
-        // MARK: Lightning
-        lightningStatus = LightningService.shared.status
-        lightningNodeId = LightningService.shared.nodeId
-        lightningBalance = LightningService.shared.balances
-        lightningPeers = LightningService.shared.peers
-        lightningChannels = LightningService.shared.channels
-        
-        // MARK: onchain
-        onchainBalance = OnChainService.shared.balance
-        
-        // MARK: combined
-        if let onchainBalance, let lightningBalance {
-            walletBalanceSats = lightningBalance.totalLightningBalanceSats + onchainBalance.total.toSat()
+    func send(address: String, sats: UInt64) async throws -> Txid {
+        let txid = try await LightningService.shared.send(address: address, sats: sats)
+        Task {
+            // Best to auto sync on chain so we have latest state
+            try await sync()
         }
-        
-        var newActivityItems: [ActivityItem] = []
-        
-        // TODO: tx history
-        if let lnTxs = LightningService.shared.payments {
-            newActivityItems.append(contentsOf: lnTxs.map { .lightning(.init(payment: $0)) })
-        }
-        
-        if let onchainTxs = OnChainService.shared.transactions {
-            newActivityItems.append(contentsOf: onchainTxs.map { .onchain(.init(tx: $0)) })
-        }
-        
-        activityItems = newActivityItems // TODO: sort
+        return txid
     }
     
+    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
+        let hash = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
+        syncState()
+        return hash
+    }
+    
+    internal func syncState() {
+        nodeStatus = LightningService.shared.status
+        nodeId = LightningService.shared.nodeId
+        balanceDetails = LightningService.shared.balances
+        peers = LightningService.shared.peers
+        channels = LightningService.shared.channels
+        
+        if let balanceDetails {
+            totalBalanceSats = balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats
+        }
+        
+        // TODO: eventually load other activity types from local storage
+        activityItems = (LightningService.shared.payments ?? []).filter { $0.status != .failed }
+    }
+    
+    // TODO: create LN invoice as well
     func createBip21() async throws {
-        // TODO: actually implement BIP21 spec
-        if onchainAddress == nil {
-            try await newOnchainReceiveAddress()
-        }
-        
-        guard let onchainAddress else {
-            Logger.error("Missing on chain address, cannot create bip21 string")
-            return
-        }
-        
-        bip21 = "bitcoin:\(onchainAddress)"
+        let address = try await LightningService.shared.newAddress()
+        bip21 = "bitcoin:\(address)"
     }
 }

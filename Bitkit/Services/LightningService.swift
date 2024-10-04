@@ -34,8 +34,10 @@ class LightningService {
         let ldkStoragePath = Env.ldkStorage(walletIndex: walletIndex).path
         config.storageDirPath = ldkStoragePath
         config.logDirPath = ldkStoragePath
-        config.network = Env.network.ldkNetwork
+        config.network = Env.network
         config.logLevel = .trace
+        
+        Logger.debug("Using LDK storage path: \(ldkStoragePath)")
         
         config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
         config.anchorChannelsConfig = .init(
@@ -168,6 +170,16 @@ class LightningService {
         Logger.info("LDK synced")
     }
     
+    func newAddress() async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().newAddress()
+        }
+    }
+    
     func receive(amountSats: UInt64, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -184,12 +196,24 @@ class LightningService {
         }
     }
     
+    func send(address: String, sats: UInt64) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        
+        Logger.info("Sending \(sats) sats to \(address)")
+        
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().sendToAddress(address: address, amountMsat: sats)
+        }
+    }
+    
     func send(bolt11: Bolt11Invoice, sats: UInt64? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
         
-        // Check if peer is connected
+        Logger.info("Paying bolt11: \(bolt11)")
         
         return try await ServiceQueue.background(.ldk) {
             if let sats {
