@@ -22,12 +22,17 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     @Published var onchainAddress: String? = nil
+    private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
     
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
     
-    func start(walletIndex: Int = 0, onEvent: ((Event) -> Void)? = nil) async throws {
+    func setOnEvent(_ onEvent: @escaping (Event) -> Void) {
+        self.onEvent = onEvent
+    }
+    
+    func start(walletIndex: Int = 0) async throws {
         nodeLifecycleState = .starting
         syncState()
         do {
@@ -36,7 +41,7 @@ class WalletViewModel: ObservableObject {
                 // On every lightning event just sync UI
                 Task { @MainActor in
                     self.syncState()
-                    onEvent?(event)
+                    self.onEvent?(event)
                 }
             })
         } catch {

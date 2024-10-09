@@ -86,9 +86,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         
         Logger.debug("App active, starting LN service...")
 
-        try await wallet.start { _ in
-            // TODO: handle events here like in ContentView
-        }
+        try await wallet.start()
     }
 }
 

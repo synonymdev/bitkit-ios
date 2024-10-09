@@ -28,7 +28,7 @@ struct ContentView: View {
             if wallet.walletExists == true {
                 Task {
                     do {
-                        try await wallet.start { lighntingEvent in
+                        wallet.setOnEvent { lighntingEvent in
                             switch lighntingEvent {
                             case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
                                 toast.show(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")
@@ -50,6 +50,8 @@ struct ContentView: View {
                                 break
                             }
                         }
+
+                        try await wallet.start()
                     } catch {
                         Logger.error("Failed to start wallet")
                         Haptics.notify(.error)
