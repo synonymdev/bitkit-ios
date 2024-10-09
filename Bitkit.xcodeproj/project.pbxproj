@@ -686,7 +686,6 @@
 				96B129FC2C2EC05D00DD07B0 /* LDKNode */,
 				9613018B2C5022D700878183 /* SQLite */,
 				966DE66F2C51210000A7B0EF /* LightningDevKit */,
-				968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */,
 				96E493A32C942FD1000E8BC2 /* secp256k1 */,
 			);
 			productName = Bitkit;
@@ -1474,10 +1473,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */;
 			productName = LightningDevKit;
-		};
-		968A68072C6B6D1F00D4C7CD /* BitcoinDevKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = BitcoinDevKit;
 		};
 		96B129FC2C2EC05D00DD07B0 /* LDKNode */ = {
 			isa = XCSwiftPackageProductDependency;
