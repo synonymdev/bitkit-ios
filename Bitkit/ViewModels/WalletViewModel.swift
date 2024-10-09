@@ -30,14 +30,19 @@ class WalletViewModel: ObservableObject {
     func start(walletIndex: Int = 0, onEvent: ((Event) -> Void)? = nil) async throws {
         nodeLifecycleState = .starting
         syncState()
-        try await LightningService.shared.setup(walletIndex: walletIndex)
-        try await LightningService.shared.start(onEvent: { event in
-            // On every lightning event just sync UI
-            Task { @MainActor in
-                self.syncState()
-                onEvent?(event)
-            }
-        })
+        do {
+            try await LightningService.shared.setup(walletIndex: walletIndex)
+            try await LightningService.shared.start(onEvent: { event in
+                // On every lightning event just sync UI
+                Task { @MainActor in
+                    self.syncState()
+                    onEvent?(event)
+                }
+            })
+        } catch {
+            nodeLifecycleState = .errorStarting(cause: error)
+            throw error
+        }
         
         nodeLifecycleState = .running
         
