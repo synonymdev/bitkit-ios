@@ -10,7 +10,6 @@ import Foundation
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
     private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .utility)
-    private static let bdkQueue = DispatchQueue(label: "bdk-queue", qos: .utility)
     private static let blocktankQueue = DispatchQueue(label: "bt-queue", qos: .utility)
     private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
 
@@ -18,7 +17,6 @@ class ServiceQueue {
     
     enum ServiceTypes {
         case ldk
-        case bdk
         case blocktank
         case migration
         
@@ -26,8 +24,6 @@ class ServiceQueue {
             switch self {
             case .ldk:
                 return ServiceQueue.ldkQueue
-            case .bdk:
-                return ServiceQueue.bdkQueue
             case .blocktank:
                 return ServiceQueue.blocktankQueue
             case .migration:
