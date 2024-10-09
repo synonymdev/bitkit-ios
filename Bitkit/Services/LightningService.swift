@@ -36,6 +36,7 @@ class LightningService {
         config.logDirPath = ldkStoragePath
         config.network = Env.network
         config.logLevel = .trace
+        config.walletSyncIntervalSecs = Env.walletSyncIntervalSecs
         
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
         
