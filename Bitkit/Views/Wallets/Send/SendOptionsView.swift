@@ -22,8 +22,10 @@ struct SendOptionsView: View {
                     do {
                         if let invoice = UIPasteboard.general.string {
                             let _ = try await LightningService.shared.send(bolt11: invoice)
+                            Haptics.notify(.success)
                         }
                     } catch {
+                        Haptics.notify(.error)
                         toast.show(error)
                     }
                 }

@@ -25,6 +25,7 @@ struct ReceiveQR: View {
 
                 Button("Copy") {
                     UIPasteboard.general.string = bip21
+                    Haptics.play(.copiedToClipboard)
                 }
             } else {
                 ProgressView()
@@ -44,8 +45,10 @@ struct ReceiveQR: View {
                                 options: .init()
                             )
                             UIPasteboard.general.string = entry.invoice.request
+                            Haptics.play(.copiedToClipboard)
                         } catch {
                             Logger.error(error)
+                            Haptics.notify(.error)
                         }
                         isCreatingInvoice = false
                     }
@@ -57,6 +60,7 @@ struct ReceiveQR: View {
                         do {
                             let invoice = try await LightningService.shared.receive(amountSats: 5000, description: "paymeplz")
                             UIPasteboard.general.string = invoice
+                            Haptics.play(.copiedToClipboard)
                         } catch {
                             toast.show(error)
                         }
