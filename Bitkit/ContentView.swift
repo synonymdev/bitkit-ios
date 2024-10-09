@@ -27,7 +27,7 @@ struct ContentView: View {
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
                 Task {
-                    try await wallet.startAll { lighntingEvent in
+                    try await wallet.start { lighntingEvent in
                         switch lighntingEvent {
                         case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
                             toast.show(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")

@@ -30,7 +30,7 @@ struct ReceiveQR: View {
                 ProgressView()
             }
 
-            if let nodeId = wallet.lightningNodeId {
+            if let nodeId = wallet.nodeId {
                 Button("Create and copy CJIT invoice") {
                     Task { @MainActor in
                         isCreatingInvoice = true

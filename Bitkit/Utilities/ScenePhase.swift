@@ -44,11 +44,11 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     }
     
     func stopNodeIfNeeded() async throws {
-        if wallet.lightningState == .stopped || wallet.lightningState == .stopping {
+        if wallet.nodeLifecycleState == .stopped || wallet.nodeLifecycleState == .stopping {
             return
         }
         
-        while wallet.lightningState == .starting {
+        while wallet.nodeLifecycleState == .starting {
             Logger.debug("Waiting for LN to start first before stopping...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
@@ -58,7 +58,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             return
         }
         
-        guard wallet.lightningState != .stopped && wallet.lightningState != .stopping else {
+        guard wallet.nodeLifecycleState != .stopped && wallet.nodeLifecycleState != .stopping else {
             Logger.debug("LN is already stopped or stopping")
             return
         }
@@ -69,12 +69,12 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     }
     
     func startNodeIfNeeded() async throws {
-        while wallet.lightningState == .stopping {
+        while wallet.nodeLifecycleState == .stopping {
             Logger.debug("Node is still stopping, waiting...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
         
-        guard wallet.lightningState == .stopped else {
+        guard wallet.nodeLifecycleState == .stopped else {
             Logger.debug("LN is already running or starting, abandoning restart...")
             return
         }
@@ -86,7 +86,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         
         Logger.debug("App active, starting LN service...")
 
-        try await wallet.startLightning()
+        try await wallet.start { _ in
+            // TODO: handle events here like in ContentView
+        }
     }
 }
 

@@ -13,10 +13,10 @@ struct LightningSettingsView: View {
     var body: some View {
         List {
             Section("Node") {
-                Text(wallet.lightningState.displayState)
+                Text(wallet.nodeLifecycleState.displayState)
                     .font(.caption)
 
-                if let nodeId = wallet.lightningNodeId {
+                if let nodeId = wallet.nodeId {
                     Text("LN Node ID: \(nodeId)")
                         .font(.caption)
                         .onTapGesture {
@@ -25,7 +25,7 @@ struct LightningSettingsView: View {
                 }
             }
 
-            if let peers = wallet.lightningPeers {
+            if let peers = wallet.peers {
                 Section("Peers") {
                     ForEach(peers, id: \.nodeId) { peer in
                         HStack {
@@ -46,7 +46,7 @@ struct LightningSettingsView: View {
                 }
             }
 
-            if let channels = wallet.lightningChannels {
+            if let channels = wallet.channels {
                 Section("Channels") {
                     ForEach(channels, id: \.channelId) { channel in
                         VStack {
@@ -72,7 +72,7 @@ struct LightningSettingsView: View {
                     }
 
                     Button("Copy open channel command") {
-                        let cmd = "lncli openchannel --node_key=\(wallet.lightningNodeId ?? "") --local_amt=200000 --push_amt=10000 --private=true --zero_conf --channel_type=anchors"
+                        let cmd = "lncli openchannel --node_key=\(wallet.nodeId ?? "") --local_amt=200000 --push_amt=10000 --private=true --zero_conf --channel_type=anchors"
                         UIPasteboard.general.string = cmd
                     }
                 }

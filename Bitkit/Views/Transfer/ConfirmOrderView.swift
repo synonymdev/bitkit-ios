@@ -32,12 +32,10 @@ struct ConfirmOrderView: View {
                             isPaying = true
 
                             do {
-                                txId = try await wallet.sendOnchainPayment(
+                                txId = try await wallet.send(
                                     address: order.payment.onchain.address,
-                                    amount: order.feeSat
+                                    sats: order.feeSat
                                 )
-
-                                Logger.test(txId)
 
                                 // TODO: tell BT model to watch this order for payment
                             } catch {

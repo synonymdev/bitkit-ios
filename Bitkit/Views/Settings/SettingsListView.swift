@@ -30,7 +30,6 @@ struct SettingsListView: View {
                     }
                     do {
                         // Delete storage (for current wallet only)
-                        try await wallet.wipeOnchainWallet()
                         try await wallet.wipeLightningWallet()
                         // Delete entire keychain
                         try Keychain.wipeEntireKeychain()
