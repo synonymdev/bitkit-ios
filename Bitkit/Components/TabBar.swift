@@ -8,12 +8,7 @@
 import SwiftUI
 
 struct TabBar: View {
-    @State private var showReceiveNavigation = false
-    @State private var showSendNavigation = false
-
-    @EnvironmentObject var toast: ToastViewModel
-
-    private let sheetHeight = UIScreen.screenHeight - 200
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         VStack {
@@ -21,13 +16,14 @@ struct TabBar: View {
             HStack {
                 Spacer()
                 Button(action: {
-                    showSendNavigation = true
+                    app.showSendSheet = true
+                    Haptics.play(.openSheet)
                 }, label: {
                     Text("Send")
                 })
                 Spacer()
 
-                NavigationLink(destination: scanner) {
+                NavigationLink(destination: ScannerView()) {
                     Image(systemName: "viewfinder")
                         .resizable()
                         .frame(width: 30, height: 30)
@@ -36,7 +32,8 @@ struct TabBar: View {
                 Spacer()
 
                 Button(action: {
-                    showReceiveNavigation = true
+                    app.showReceiveSheet = true
+                    Haptics.play(.openSheet)
                 }, label: {
                     Text("Receive")
                 })
@@ -46,35 +43,6 @@ struct TabBar: View {
             .background(.regularMaterial)
             .cornerRadius(30)
             .padding()
-        }
-        .sheet(isPresented: $showSendNavigation, content: {
-            if #available(iOS 16.0, *) {
-                SendOptionsView()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                SendOptionsView() // Will just consume full screen
-            }
-        })
-        .sheet(isPresented: $showReceiveNavigation, content: {
-            if #available(iOS 16.0, *) {
-                ReceiveQR()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                ReceiveQR() // Will just consume full screen
-            }
-        })
-    }
-
-    var scanner: some View {
-        ScannerView { scannedData, error in
-            if let error {
-                toast.show(error)
-                return
-            }
-
-            if let scannedData {
-                Logger.test(scannedData)
-            }
         }
     }
 }
@@ -86,5 +54,6 @@ struct TabBar: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay {
         TabBar()
+            .environmentObject(AppViewModel())
     }
 }

@@ -11,15 +11,12 @@ struct ReceiveQR: View {
     @State var isCreatingInvoice = false
 
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         VStack {
             Text("Receive Bitcoin")
                 .padding()
-                .onAppear {
-                    toast.show(type: .error, title: "TEST", description: "TEST")
-                }
             if let bip21 = wallet.bip21 {
                 QR(content: bip21)
                     .frame(maxWidth: .infinity)
@@ -64,7 +61,7 @@ struct ReceiveQR: View {
                             UIPasteboard.general.string = invoice
                             Haptics.play(.copiedToClipboard)
                         } catch {
-                            toast.show(error)
+                            app.toast(error)
                         }
                     }
                 }
@@ -75,7 +72,7 @@ struct ReceiveQR: View {
                 do {
                     try await wallet.createBip21()
                 } catch {
-                    toast.show(error)
+                    app.toast(error)
                 }
             }
         }
@@ -85,5 +82,5 @@ struct ReceiveQR: View {
 #Preview {
     ReceiveQR()
         .environmentObject(WalletViewModel())
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
 }

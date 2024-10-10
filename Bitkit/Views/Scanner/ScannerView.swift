@@ -9,8 +9,7 @@ import CodeScanner
 import SwiftUI
 
 struct ScannerView: View {
-    let onScan: (ScannedData?, Error?) -> Void
-
+    @EnvironmentObject var app: AppViewModel
     @Environment(\.presentationMode) var presentationMode
 
     var body: some View {
@@ -22,10 +21,10 @@ struct ScannerView: View {
                     let scannedData = try ScannedData(result.string)
                     Logger.debug("Scanned data: \(scannedData)")
                     Haptics.play(.scanSuccess)
-                    onScan(scannedData, nil)
+                    app.scannedData = scannedData
+                    app.showSendSheet = true
                 } catch {
                     Logger.error("Failed to scan data: \(error)")
-                    onScan(nil, error)
                 }
             }
         }
@@ -35,5 +34,6 @@ struct ScannerView: View {
 // TODO: all basic cases here for now
 
 #Preview {
-    ScannerView(onScan: { _, _ in })
+    ScannerView()
+        .environmentObject(AppViewModel())
 }

@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SendOptionsView: View {
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         VStack {
@@ -26,7 +26,7 @@ struct SendOptionsView: View {
                         }
                     } catch {
                         Haptics.notify(.error)
-                        toast.show(error)
+                        app.toast(error)
                     }
                 }
             }
@@ -38,5 +38,5 @@ struct SendOptionsView: View {
 
 #Preview {
     SendOptionsView()
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
 }

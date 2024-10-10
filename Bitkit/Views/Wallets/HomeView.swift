@@ -8,11 +8,13 @@
 import SwiftUI
 
 struct HomeView: View {
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
     
     @State private var showNodeState = false
-            
+    
+    private let sheetHeight = UIScreen.screenHeight - 200
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -85,12 +87,28 @@ struct HomeView: View {
                 do {
                     try await wallet.sync(fullOnchainScan: true)
                 } catch {
-                    toast.show(error)
+                    app.toast(error)
                 }
             }
             .navigationBarItems(trailing: rightNavigationItem)
             .navigationTitle("Bitkit")
         }
+        .sheet(isPresented: $app.showSendSheet, content: {
+            if #available(iOS 16.0, *) {
+                SendOptionsView()
+                    .presentationDetents([.height(sheetHeight)])
+            } else {
+                SendOptionsView() // Will just consume full screen on older iOS versions
+            }
+        })
+        .sheet(isPresented: $app.showReceiveSheet, content: {
+            if #available(iOS 16.0, *) {
+                ReceiveQR()
+                    .presentationDetents([.height(sheetHeight)])
+            } else {
+                ReceiveQR() // Will just consume full screen on older iOS versions
+            }
+        })
     }
     
     var rightNavigationItem: some View {
@@ -112,5 +130,5 @@ struct HomeView: View {
 #Preview {
     HomeView()
         .environmentObject(WalletViewModel())
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
 }
