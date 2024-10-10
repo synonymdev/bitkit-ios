@@ -11,6 +11,8 @@ struct TabBar: View {
     @State private var showReceiveNavigation = false
     @State private var showSendNavigation = false
 
+    @EnvironmentObject var toast: ToastViewModel
+
     private let sheetHeight = UIScreen.screenHeight - 200
 
     var body: some View {
@@ -25,7 +27,7 @@ struct TabBar: View {
                 })
                 Spacer()
 
-                NavigationLink(destination: ScannerView()) {
+                NavigationLink(destination: scanner) {
                     Image(systemName: "viewfinder")
                         .resizable()
                         .frame(width: 30, height: 30)
@@ -61,6 +63,19 @@ struct TabBar: View {
                 ReceiveQR() // Will just consume full screen
             }
         })
+    }
+
+    var scanner: some View {
+        ScannerView { scannedData, error in
+            if let error {
+                toast.show(error)
+                return
+            }
+
+            if let scannedData {
+                Logger.test(scannedData)
+            }
+        }
     }
 }
 

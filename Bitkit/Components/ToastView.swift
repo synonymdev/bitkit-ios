@@ -61,6 +61,8 @@ struct ToastModifier: ViewModifier {
                                 withAnimation {
                                     viewModel.hide()
                                 }
+
+                                Logger.test("TOAST")
                             }
                             .padding(.horizontal)
                             .padding(.top)

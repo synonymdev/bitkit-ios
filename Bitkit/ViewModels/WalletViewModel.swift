@@ -67,7 +67,10 @@ class WalletViewModel: ObservableObject {
     }
     
     func wipeLightningWallet() async throws {
-        try await stopLightningNode()
+        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
+            try await stopLightningNode()
+        }
+        
         try await LightningService.shared.wipeStorage(walletIndex: 0)
     }
     

@@ -124,6 +124,11 @@
 		96C30B242C981DC1004D087A /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
 		96C30B252C981E44004D087A /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
 		96E20CCF2CB6C85C00C24149 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E20CCC2CB6C85800C24149 /* Haptics.swift */; };
+		96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */ = {isa = PBXBuildFile; productRef = 96E20CD32CB6D91A00C24149 /* CodeScanner */; };
+		96E20CDA2CB7C32400C24149 /* Scanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E20CD92CB7C32400C24149 /* Scanner.swift */; };
+		96E20CDB2CB7C32400C24149 /* Scanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E20CD92CB7C32400C24149 /* Scanner.swift */; };
+		96E20CDC2CB7C32400C24149 /* Scanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E20CD92CB7C32400C24149 /* Scanner.swift */; };
+		96E20CDE2CB7FBDB00C24149 /* AppViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E20CDD2CB7FBD600C24149 /* AppViewModel.swift */; };
 		96E4939F2C942D3B000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
 		96E493A02C942D42000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
 		96E493A12C942D44000E8BC2 /* Crypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96E4939E2C942D3B000E8BC2 /* Crypto.swift */; };
@@ -289,6 +294,9 @@
 		96C246C32C455AF60058222C /* BitkitNotification.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BitkitNotification.entitlements; sourceTree = "<group>"; };
 		96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocktankNotificationType.swift; sourceTree = "<group>"; };
 		96E20CCC2CB6C85800C24149 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		96E20CD52CB6D9A600C24149 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		96E20CD92CB7C32400C24149 /* Scanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Scanner.swift; sourceTree = "<group>"; };
+		96E20CDD2CB7FBD600C24149 /* AppViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppViewModel.swift; sourceTree = "<group>"; };
 		96E4939E2C942D3B000E8BC2 /* Crypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Crypto.swift; sourceTree = "<group>"; };
 		96E493A92C9432A1000E8BC2 /* CryptoTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CryptoTests.swift; sourceTree = "<group>"; };
 		96E7339F2CB01F90003E299D /* NodeLifecycleState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeLifecycleState.swift; sourceTree = "<group>"; };
@@ -330,6 +338,7 @@
 				9613018C2C5022D700878183 /* SQLite in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
 				96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */,
+				96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -420,6 +429,7 @@
 			children = (
 				9637E6DE2C32ED7B004A92FC /* LnPeer.swift */,
 				96E7339F2CB01F90003E299D /* NodeLifecycleState.swift */,
+				96E20CD92CB7C32400C24149 /* Scanner.swift */,
 				9638595F2C7F59EA00FD4C5E /* Blocktank */,
 			);
 			path = Models;
@@ -527,6 +537,7 @@
 		96B129FE2C2EC0ED00DD07B0 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				96E20CDD2CB7FBD600C24149 /* AppViewModel.swift */,
 				96B129FF2C2EC37B00DD07B0 /* WalletViewModel.swift */,
 				969DE0E12C93341E008039DF /* BlocktankViewModel.swift */,
 				969DDA2B2C9D8D72001E654E /* ToastViewModel.swift */,
@@ -586,6 +597,7 @@
 		96FE1F632C2DE6AA006D0C8B /* Bitkit */ = {
 			isa = PBXGroup;
 			children = (
+				96E20CD52CB6D9A600C24149 /* Info.plist */,
 				96FE1F642C2DE6AA006D0C8B /* BitkitApp.swift */,
 				96FE1F662C2DE6AA006D0C8B /* ContentView.swift */,
 				96FE5A172C46592800860ADC /* Views */,
@@ -690,6 +702,7 @@
 				9613018B2C5022D700878183 /* SQLite */,
 				966DE66F2C51210000A7B0EF /* LightningDevKit */,
 				96E493A32C942FD1000E8BC2 /* secp256k1 */,
+				96E20CD32CB6D91A00C24149 /* CodeScanner */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -774,6 +787,7 @@
 				961301892C50215500878183 /* XCRemoteSwiftPackageReference "SQLite.swift" */,
 				966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */,
 				96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
+				96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -838,6 +852,7 @@
 				96E493B22C94BD23000E8BC2 /* BitcoinNetwork.enum.swift in Sources */,
 				96E493B32C94BD23000E8BC2 /* BtPayment.swift in Sources */,
 				96E493B42C94BD23000E8BC2 /* BtOpenChannelState.swift in Sources */,
+				96E20CDC2CB7C32400C24149 /* Scanner.swift in Sources */,
 				96E493B52C94BD23000E8BC2 /* BtBolt11Invoice.swift in Sources */,
 				96E493B62C94BD23000E8BC2 /* BtEstimateFeeResponse.swift in Sources */,
 				96E493B72C94BD23000E8BC2 /* BtOrderState.swift in Sources */,
@@ -899,6 +914,7 @@
 				963859AA2C7F619C00FD4C5E /* BtOnchainTransactions.swift in Sources */,
 				963859B02C7F619C00FD4C5E /* BtPayment.swift in Sources */,
 				963859B32C7F619C00FD4C5E /* CreateCjitOptions.swift in Sources */,
+				96E20CDA2CB7C32400C24149 /* Scanner.swift in Sources */,
 				963DE7932C578D9900A2AA1D /* Keychain.swift in Sources */,
 				963859BA2C7F619C00FD4C5E /* BtChannel.swift in Sources */,
 				96F261362C369D2400167439 /* Errors.swift in Sources */,
@@ -906,6 +922,7 @@
 				963859B12C7F619C00FD4C5E /* BtInfo.swift in Sources */,
 				969DE0E42C9339F4008039DF /* ConfirmOrderView.swift in Sources */,
 				963859B22C7F619C00FD4C5E /* BitcoinNetwork.enum.swift in Sources */,
+				96E20CDE2CB7FBDB00C24149 /* AppViewModel.swift in Sources */,
 				969DE0D42C92E360008039DF /* BlocktankService+Channels.swift in Sources */,
 				962B92212C5A217400B21057 /* HomeView.swift in Sources */,
 				96F261322C369C2100167439 /* ServiceQueue.swift in Sources */,
@@ -957,6 +974,7 @@
 				966DE6672C50372600A7B0EF /* LightningService.swift in Sources */,
 				966DE6632C502C8600A7B0EF /* Logger.swift in Sources */,
 				9613018E2C50288900878183 /* LdkMigration.swift in Sources */,
+				96E20CDB2CB7C32400C24149 /* Scanner.swift in Sources */,
 				966DE6662C502CBD00A7B0EF /* LnPeer.swift in Sources */,
 				966DE6612C502C7E00A7B0EF /* Env.swift in Sources */,
 				9613018F2C5028CC00878183 /* MigrationsService.swift in Sources */,
@@ -1218,8 +1236,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -1259,8 +1279,10 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -1452,6 +1474,14 @@
 				kind = branch;
 			};
 		};
+		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/twostraws/CodeScanner";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
 		96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/21-DOT-DEV/swift-secp256k1";
@@ -1482,6 +1512,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96B129FB2C2EC05D00DD07B0 /* XCRemoteSwiftPackageReference "ldk-node" */;
 			productName = LDKNode;
+		};
+		96E20CD32CB6D91A00C24149 /* CodeScanner */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */;
+			productName = CodeScanner;
 		};
 		96E493A32C942FD1000E8BC2 /* secp256k1 */ = {
 			isa = XCSwiftPackageProductDependency;

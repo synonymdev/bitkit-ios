@@ -17,7 +17,9 @@ struct ReceiveQR: View {
         VStack {
             Text("Receive Bitcoin")
                 .padding()
-
+                .onAppear {
+                    toast.show(type: .error, title: "TEST", description: "TEST")
+                }
             if let bip21 = wallet.bip21 {
                 QR(content: bip21)
                     .frame(maxWidth: .infinity)

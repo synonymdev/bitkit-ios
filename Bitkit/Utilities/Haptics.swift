@@ -25,4 +25,6 @@ class Haptics {
 // MARK: add aliases for common haptic feedback here
 extension UIImpactFeedbackGenerator.FeedbackStyle {
     static var copiedToClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .soft }
+    static var pastedFromClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .soft }
+    static var scanSuccess: UIImpactFeedbackGenerator.FeedbackStyle { .heavy }
 }
