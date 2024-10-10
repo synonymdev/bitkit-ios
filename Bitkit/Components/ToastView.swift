@@ -49,36 +49,31 @@ struct ToastView: View {
 }
 
 struct ToastModifier: ViewModifier {
-    @ObservedObject var viewModel: ToastViewModel
+    @Binding var toast: Toast?
+    let onDismiss: () -> Void
 
     func body(content: Content) -> some View {
         content
             .overlay(
                 ZStack {
-                    if let toast = viewModel.currentToast {
+                    if let toast {
                         VStack {
-                            ToastView(toast: toast) {
-                                withAnimation {
-                                    viewModel.hide()
-                                }
-
-                                Logger.test("TOAST")
-                            }
-                            .padding(.horizontal)
-                            .padding(.top)
+                            ToastView(toast: toast, onDismiss: onDismiss)
+                                .padding(.horizontal)
+                                .padding(.top)
                             Spacer()
                         }
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
-                .animation(.easeInOut(duration: 0.4), value: viewModel.currentToast)
+                .animation(.easeInOut(duration: 0.4), value: toast)
             )
     }
 }
 
 extension View {
-    func toastOverlay(viewModel: ToastViewModel) -> some View {
-        modifier(ToastModifier(viewModel: viewModel))
+    func toastOverlay(toast: Binding<Toast?>, onDismiss: @escaping () -> Void) -> some View {
+        modifier(ToastModifier(toast: toast, onDismiss: onDismiss))
     }
 }
 

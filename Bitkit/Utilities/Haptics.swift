@@ -27,4 +27,5 @@ extension UIImpactFeedbackGenerator.FeedbackStyle {
     static var copiedToClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .soft }
     static var pastedFromClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .soft }
     static var scanSuccess: UIImpactFeedbackGenerator.FeedbackStyle { .heavy }
+    static var openSheet: UIImpactFeedbackGenerator.FeedbackStyle { .medium }
 }

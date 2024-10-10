@@ -8,9 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var app = AppViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
-    @StateObject private var toast = ToastViewModel()
 
     var body: some View {
         VStack {
@@ -22,7 +22,7 @@ struct ContentView: View {
                 WelcomeView()
             }
         }
-        .toastOverlay(viewModel: toast)
+        .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
         .onChange(of: wallet.walletExists) { _ in
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
@@ -31,17 +31,17 @@ struct ContentView: View {
                         wallet.setOnEvent { lighntingEvent in
                             switch lighntingEvent {
                             case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
-                                toast.show(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")
+                                app.toast(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")
                             case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-                                toast.show(type: .success, title: "Channel pending", description: "Waiting for confirmation")
+                                app.toast(type: .success, title: "Channel pending", description: "Waiting for confirmation")
                             case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
                                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                                    toast.show(type: .success, title: "Channel opened", description: "Ready to send \(channel.outboundCapacityMsat / 1000) sats")
+                                    app.toast(type: .success, title: "Channel opened", description: "Ready to send \(channel.outboundCapacityMsat / 1000) sats")
                                 } else {
-                                    toast.show(type: .error, title: "Channel opened", description: "Ready to send")
+                                    app.toast(type: .error, title: "Channel opened", description: "Ready to send")
                                 }
                             case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
-                                toast.show(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
+                                app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
                             case .paymentSuccessful:
                                 break
                             case .paymentClaimable:
@@ -71,12 +71,12 @@ struct ContentView: View {
             do {
                 try wallet.setWalletExistsState()
             } catch {
-                toast.show(error)
+                app.toast(error)
             }
         }
         .handleLightningStateOnScenePhaseChange() // Will stop and start LN node as needed
         // Environment objects always at the end
-        .environmentObject(toast)
+        .environmentObject(app)
         .environmentObject(wallet)
         .environmentObject(blocktank)
     }
