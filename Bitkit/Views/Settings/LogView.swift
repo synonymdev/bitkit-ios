@@ -9,24 +9,31 @@ import SwiftUI
 
 struct LogView: View {
     @State var lines: [String] = []
+    @State private var shouldScrollToBottom = false
 
     var body: some View {
-        List {
-            ForEach(lines, id: \.self) { line in
-                Text(line)
-                    .font(.system(size: 8))
-                    .multilineTextAlignment(.leading)
-                    .foregroundColor(.green)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        ScrollViewReader { proxy in
+            ScrollView {
+                ForEach(lines, id: \.self) { line in
+                    Text(line)
+                        .font(.system(size: 8))
+                        .multilineTextAlignment(.leading)
+                        .foregroundColor(.green)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .listStyle(.plain)
+            .onChange(of: shouldScrollToBottom) { _ in
+                scrollToBottom(proxy: proxy)
             }
         }
-        .listStyle(.plain)
         .task {
-            loadLog()
+            await loadLog()
         }
     }
 
-    func loadLog() {
+    @MainActor
+    func loadLog() async {
         let dir = Env.ldkStorage(walletIndex: LightningService.shared.currentWalletIndex)
         let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
 
@@ -36,6 +43,17 @@ struct LogView: View {
         } catch {
             lines = ["Failed to load log file"]
         }
+
+        shouldScrollToBottom = true
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy) {
+        if let lastLine = lines.last {
+            withAnimation {
+                proxy.scrollTo(lastLine, anchor: .bottom)
+            }
+        }
+        shouldScrollToBottom = false
     }
 }
 

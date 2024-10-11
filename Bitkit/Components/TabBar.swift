@@ -13,37 +13,41 @@ struct TabBar: View {
     var body: some View {
         VStack {
             Spacer()
-            HStack {
-                Spacer()
-                Button(action: {
-                    app.showSendSheet = true
-                    Haptics.play(.openSheet)
-                }, label: {
-                    Text("Send")
-                })
-                Spacer()
+            if app.showTabBar {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        app.showSendSheet = true
+                        Haptics.play(.openSheet)
+                    }, label: {
+                        Text("Send")
+                    })
+                    Spacer()
 
-                NavigationLink(destination: ScannerView()) {
-                    Image(systemName: "viewfinder")
-                        .resizable()
-                        .frame(width: 30, height: 30)
-                        .padding()
+                    NavigationLink(destination: ScannerView()) {
+                        Image(systemName: "viewfinder")
+                            .resizable()
+                            .frame(width: 30, height: 30)
+                            .padding()
+                    }
+                    Spacer()
+
+                    Button(action: {
+                        app.showReceiveSheet = true
+                        Haptics.play(.openSheet)
+                    }, label: {
+                        Text("Receive")
+                    })
+
+                    Spacer()
                 }
-                Spacer()
-
-                Button(action: {
-                    app.showReceiveSheet = true
-                    Haptics.play(.openSheet)
-                }, label: {
-                    Text("Receive")
-                })
-
-                Spacer()
+                .background(.regularMaterial)
+                .cornerRadius(30)
+                .padding()
+                .transition(.move(edge: .bottom))
             }
-            .background(.regularMaterial)
-            .cornerRadius(30)
-            .padding()
         }
+        .animation(.easeInOut, value: app.showTabBar)
     }
 }
 

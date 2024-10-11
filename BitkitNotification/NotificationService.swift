@@ -74,6 +74,9 @@ class NotificationService: UNNotificationServiceExtension {
                     Logger.info("Open channel request for order \(orderId)")
                 } catch {
                     Logger.error(error, context: "failed to open channel")
+                    self.bestAttemptContent?.title = "Channel open failed"
+                    self.bestAttemptContent?.body = error.localizedDescription
+                    self.deliver()
                 }
             }
         }

@@ -14,7 +14,9 @@ class WalletViewModel: ObservableObject {
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @Published var bip21: String? = nil
     @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
-    @Published var totalBalanceSats: UInt64? = nil // Combined onchain and LN
+    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
+    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
+    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
     @Published var nodeId: String?
@@ -23,7 +25,8 @@ class WalletViewModel: ObservableObject {
     @Published var channels: [ChannelDetails]?
     @Published var onchainAddress: String? = nil
     private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
-    
+    private var syncTimer: Timer?
+
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
@@ -78,7 +81,7 @@ class WalletViewModel: ObservableObject {
         try await LightningService.shared.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
     }
     
-    func sync(fullOnchainScan: Bool = false) async throws {
+    func sync() async throws {
         syncState()
         
         if isSyncingWallet {
@@ -126,11 +129,13 @@ class WalletViewModel: ObservableObject {
         channels = LightningService.shared.channels
         
         if let balanceDetails {
-            totalBalanceSats = balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats
+            totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
+            totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
+            totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
-        
+                
         // TODO: eventually load other activity types from local storage
-        activityItems = (LightningService.shared.payments ?? []).filter { $0.status != .failed }
+        activityItems = (LightningService.shared.payments ?? [])
     }
     
     // TODO: create LN invoice as well

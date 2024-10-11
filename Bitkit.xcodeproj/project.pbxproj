@@ -103,6 +103,8 @@
 		9689A9202C9AC6050083C099 /* BlocktankNotificationType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96C30B232C981DC1004D087A /* BlocktankNotificationType.swift */; };
 		969787B42CB91596000E116A /* SendEnterManually.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969787B32CB91596000E116A /* SendEnterManually.swift */; };
 		969787B62CB92264000E116A /* View.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969787B52CB92262000E116A /* View.swift */; };
+		969787B82CB93B2C000E116A /* SavingsWalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969787B72CB93B2C000E116A /* SavingsWalletView.swift */; };
+		969787BA2CB93B3C000E116A /* SpendingWalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969787B92CB93B3C000E116A /* SpendingWalletView.swift */; };
 		969DDA2E2C9D8DB5001E654E /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DDA2D2C9D8DB1001E654E /* ToastView.swift */; };
 		969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */; };
 		969DE0D02C92E2CD008039DF /* BlocktankService+CJIT.swift in Sources */ = {isa = PBXBuildFile; fileRef = 969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */; };
@@ -284,6 +286,8 @@
 		96853DF42C9C66F4003F13C2 /* StateLockerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateLockerTests.swift; sourceTree = "<group>"; };
 		969787B32CB91596000E116A /* SendEnterManually.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendEnterManually.swift; sourceTree = "<group>"; };
 		969787B52CB92262000E116A /* View.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = View.swift; sourceTree = "<group>"; };
+		969787B72CB93B2C000E116A /* SavingsWalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavingsWalletView.swift; sourceTree = "<group>"; };
+		969787B92CB93B3C000E116A /* SpendingWalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpendingWalletView.swift; sourceTree = "<group>"; };
 		969DDA2D2C9D8DB1001E654E /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
 		969DE0CD2C92E2A9008039DF /* BlocktankService+Orders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+Orders.swift"; sourceTree = "<group>"; };
 		969DE0CF2C92E2CD008039DF /* BlocktankService+CJIT.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BlocktankService+CJIT.swift"; sourceTree = "<group>"; };
@@ -419,6 +423,8 @@
 			isa = PBXGroup;
 			children = (
 				962B92202C5A217400B21057 /* HomeView.swift */,
+				969787B72CB93B2C000E116A /* SavingsWalletView.swift */,
+				969787B92CB93B3C000E116A /* SpendingWalletView.swift */,
 				964DF7192C78A61F00EDE6DE /* Receive */,
 				964DF71C2C78A79300EDE6DE /* Send */,
 			);
@@ -960,6 +966,7 @@
 				963859A82C7F619C00FD4C5E /* BtPaymentState2.swift in Sources */,
 				969787B42CB91596000E116A /* SendEnterManually.swift in Sources */,
 				969DE0E02C933390008039DF /* TransferView.swift in Sources */,
+				969787BA2CB93B3C000E116A /* SpendingWalletView.swift in Sources */,
 				96B12A032C2EC65000DD07B0 /* LightningService.swift in Sources */,
 				96E733A82CB03386003E299D /* PaymentDetails.swift in Sources */,
 				966DE6742C512C9300A7B0EF /* HexBytes.swift in Sources */,
@@ -973,6 +980,7 @@
 				969DE0CE2C92E2A9008039DF /* BlocktankService+Orders.swift in Sources */,
 				969DE0E22C93341E008039DF /* BlocktankViewModel.swift in Sources */,
 				963859B52C7F619C00FD4C5E /* BtOrder.swift in Sources */,
+				969787B82CB93B2C000E116A /* SavingsWalletView.swift in Sources */,
 				96C30B242C981DC1004D087A /* BlocktankNotificationType.swift in Sources */,
 				96E733A62CB028DE003E299D /* NodeStatus.swift in Sources */,
 				96FE1F652C2DE6AA006D0C8B /* BitkitApp.swift in Sources */,

@@ -51,6 +51,9 @@ struct TransferView: View {
             }
         }
         .navigationTitle("Transfer Funds")
+        .onAppear {
+            app.showTabBar = false
+        }
     }
 }
 

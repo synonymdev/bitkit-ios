@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         NavigationView {
@@ -64,10 +65,14 @@ struct SendOptionsView: View {
                 }
             }
         }
+        .onAppear {
+            wallet.syncState()
+        }
     }
 }
 
 #Preview {
     SendOptionsView()
         .environmentObject(AppViewModel())
+        .environmentObject(WalletViewModel())
 }

@@ -10,9 +10,9 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    
+
     @State private var showNodeState = false
-    
+
     private let sheetHeight = UIScreen.screenHeight - 200
 
     var body: some View {
@@ -20,46 +20,43 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading) {
                     Text("Total balance")
-                        .font(.title3)
-                    if let balanceSats = wallet.totalBalanceSats {
-                        Text("\(balanceSats) sats")
-                            .font(.title)
-                    } else {
-                        ProgressView()
+                        .font(.caption)
+                    Text("\(wallet.totalBalanceSats)")
+                        .font(.title)
+                        .bold()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+
+                HStack {
+                    NavigationLink(destination: SavingsWalletView()) {
+                        VStack(alignment: .leading) {
+                            Text("SAVINGS")
+                                .font(.caption)
+                            Text("\(wallet.totalOnchainSats)")
+                                .font(.title3)
+                        }
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    Divider()
+                        .frame(height: 50)
+
+                    NavigationLink(destination: SpendingWalletView()) {
+                        VStack(alignment: .leading) {
+                            Text("SPENDING")
+                                .font(.caption)
+                            Text("\(wallet.totalLightningSats)")
+                                .font(.title3)
+                        }
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
-                
-                VStack {
-                    HStack {
-                        Text("Savings")
-                            .font(.title3)
-                        Spacer()
-                        if let balances = wallet.balanceDetails {
-                            Text("\(balances.totalOnchainBalanceSats)")
-                                .font(.title3)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                    
-                    NavigationLink(destination: TransferView()) {
-                        Image(systemName: "arrow.up.arrow.down")
-                    }
-                    
-                    HStack {
-                        Text("Spending")
-                            .font(.title3)
-                        Spacer()
-                        if let lnBalance = wallet.balanceDetails {
-                            Text("\(lnBalance.totalLightningBalanceSats)")
-                                .font(.title3)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-                .padding()
-               
+
                 Text("Activity")
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -67,6 +64,7 @@ struct HomeView: View {
                     if let activityItems = wallet.activityItems {
                         ForEach(activityItems, id: \.self) { item in
                             HStack {
+                                Text(item.statusDebugEmoji)
                                 Text(item.kind == .onchain ? "⛓️" : "⚡️")
                                 Text("\(item.direction == .outbound ? "⬆️" : "⬇️")")
                                 Spacer()
@@ -80,18 +78,21 @@ struct HomeView: View {
                     }
                 }
             }
-            .overlay(content: {
-                TabBar()
-            })
             .refreshable {
                 do {
-                    try await wallet.sync(fullOnchainScan: true)
+                    try await wallet.sync()
                 } catch {
                     app.toast(error)
                 }
             }
             .navigationBarItems(trailing: rightNavigationItem)
             .navigationTitle("Bitkit")
+        }
+        .onAppear {
+            app.showTabBar = true
+        }
+        .overlay {
+            TabBar()
         }
         .sheet(isPresented: $app.showSendSheet, content: {
             if #available(iOS 16.0, *) {
@@ -110,7 +111,7 @@ struct HomeView: View {
             }
         })
     }
-    
+
     var rightNavigationItem: some View {
         HStack {
             Text(wallet.nodeLifecycleState.debugEmoji)
