@@ -21,6 +21,20 @@ class AppViewModel: ObservableObject {
 extension AppViewModel {
     func toast(type: Toast.ToastType, title: String, description: String, autoHide: Bool = true, visibilityTime: Double = 3.0) {
         Logger.debug("Showing toast: \(title) - \(description)")
+
+        switch type {
+        case .error:
+            Haptics.notify(.error)
+        case .success:
+            Haptics.notify(.success)
+        case .info:
+            Haptics.play(.heavy)
+        case .lightning:
+            Haptics.play(.rigid)
+        case .warning:
+            Haptics.notify(.warning)
+        }
+
         withAnimation {
             currentToast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
         }

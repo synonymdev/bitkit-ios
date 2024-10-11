@@ -28,6 +28,8 @@ struct ScannerView: View {
                 }
             }
         }
+        .navigationBarTitle("Scan QR Code")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
