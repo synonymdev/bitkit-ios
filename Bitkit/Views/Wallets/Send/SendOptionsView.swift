@@ -11,27 +11,58 @@ struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
-        VStack {
-            Text("Send")
+        NavigationView {
+            VStack {
+                Text("Send Bitcoin")
+                    .font(.title)
+                    .padding()
 
-            Spacer()
+                Spacer()
 
-            Button("Paste") {
-                // TODO: handle proper sending flow and decode multiple strings
-                Task {
-                    do {
-                        if let invoice = UIPasteboard.general.string {
-                            let _ = try await LightningService.shared.send(bolt11: invoice)
-                            Haptics.notify(.success)
+                List {
+                    Section("To") {
+                        HStack {
+                            Button("Contact") {
+                                app.toast(type: .warning, title: "Coming soon", description: "This feature is not available yet")
+                            }
                         }
-                    } catch {
-                        Haptics.notify(.error)
-                        app.toast(error)
+
+                        HStack {
+                            Button("Paste Invoice") {
+                                guard let uri = UIPasteboard.general.string else {
+                                    Logger.error("No data in clipboard")
+                                    return
+                                }
+
+                                do {
+                                    let data = try ScannedData(uri)
+                                    Logger.debug("Pasted data: \(data)")
+                                    app.scannedData = data
+
+                                    Haptics.play(.pastedFromClipboard)
+
+                                    // TODO: nav to next view
+                                } catch {
+                                    Logger.error(error, context: "Failed to read data from clipboard")
+                                    app.toast(error)
+                                }
+                            }
+                        }
+
+                        HStack {
+                            NavigationLink(destination: SendEnterManually()) {
+                                Text("Enter Manually")
+                            }
+                        }
+
+                        HStack {
+                            NavigationLink(destination: ScannerView()) {
+                                Text("Scan QR Code")
+                            }
+                        }
                     }
                 }
             }
-
-            Spacer()
         }
     }
 }
