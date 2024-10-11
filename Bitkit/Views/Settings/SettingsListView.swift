@@ -41,6 +41,9 @@ struct SettingsListView: View {
             }
         }
         .navigationTitle("Settings")
+        .onAppear {
+            app.showTabBar = false
+        }
     }
 }
 

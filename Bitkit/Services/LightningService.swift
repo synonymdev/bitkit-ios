@@ -37,13 +37,13 @@ class LightningService {
         config.network = Env.network
         config.logLevel = .trace
         config.walletSyncIntervalSecs = Env.walletSyncIntervalSecs
-        
+                
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
         
         config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
         config.anchorChannelsConfig = .init(
             trustedPeersNoReserve: Env.trustedLnPeers.map { $0.nodeId },
-            perChannelReserveSats: 1000 // TODO: set correctly
+            perChannelReserveSats: 2000 // TODO: set correctly
         )
         
         let builder = Builder.fromConfig(config: config)

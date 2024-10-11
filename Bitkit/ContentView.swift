@@ -58,11 +58,16 @@ struct ContentView: View {
                     }
 
                     // TODO: should be move to onboarding or when creating first invoice
-                    StartupHandler.requestPushNotificationPermision { _, error in
-                        // If granted AppDelegate will receive the token and handle registration
-                        if let error {
-                            Logger.error(error, context: "Failed to request push notification permission")
+                    if UserDefaults.standard.string(forKey: "deviceToken") == nil {
+                        StartupHandler.requestPushNotificationPermision { _, error in
+                            // If granted AppDelegate will receive the token and handle registration
+                            if let error {
+                                Logger.error(error, context: "Failed to request push notification permission")
+                                app.toast(error)
+                            }
                         }
+                    } else {
+                        Logger.debug("Device token already exists, assumed registered with Blocktank")
                     }
                 }
             }

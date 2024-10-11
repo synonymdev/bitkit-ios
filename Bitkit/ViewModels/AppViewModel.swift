@@ -13,6 +13,7 @@ class AppViewModel: ObservableObject {
 
     @Published var showReceiveSheet = false
     @Published var showSendSheet = false
+    @Published var showTabBar = true
 
     @Published var currentToast: Toast?
 }
@@ -20,8 +21,6 @@ class AppViewModel: ObservableObject {
 // MARK: Toast notifications
 extension AppViewModel {
     func toast(type: Toast.ToastType, title: String, description: String, autoHide: Bool = true, visibilityTime: Double = 3.0) {
-        Logger.debug("Showing toast: \(title) - \(description)")
-
         switch type {
         case .error:
             Haptics.notify(.error)
