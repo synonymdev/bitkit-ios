@@ -36,8 +36,8 @@ struct ReceiveQR: View {
                         isCreatingInvoice = true
                         do {
                             let entry = try await BlocktankService.shared.createCJitEntry(
-                                channelSizeSat: 120000,
-                                invoiceSat: 6000,
+                                channelSizeSat: 100000,
+                                invoiceSat: 50000,
                                 invoiceDescription: "Pay me",
                                 nodeId: nodeId,
                                 channelExpiryWeeks: 2,
@@ -46,8 +46,8 @@ struct ReceiveQR: View {
                             UIPasteboard.general.string = entry.invoice.request
                             Haptics.play(.copiedToClipboard)
                         } catch {
+                            app.toast(error)
                             Logger.error(error)
-                            Haptics.notify(.error)
                         }
                         isCreatingInvoice = false
                     }

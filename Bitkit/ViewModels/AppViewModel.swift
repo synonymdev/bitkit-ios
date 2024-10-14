@@ -13,6 +13,7 @@ class AppViewModel: ObservableObject {
 
     @Published var showReceiveSheet = false
     @Published var showSendSheet = false
+    @Published var showScanner = false
     @Published var showTabBar = true
 
     @Published var currentToast: Toast?

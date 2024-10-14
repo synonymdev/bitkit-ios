@@ -115,7 +115,7 @@ class WalletViewModel: ObservableObject {
         return txid
     }
     
-    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
         let hash = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
         syncState()
         return hash
@@ -135,7 +135,22 @@ class WalletViewModel: ObservableObject {
         }
                 
         // TODO: eventually load other activity types from local storage
-        activityItems = (LightningService.shared.payments ?? [])
+        activityItems = (LightningService.shared.payments ?? []).reversed().filter { details in
+            switch details.kind {
+            case .onchain:
+                return true
+            case .bolt11(hash: let hash, preimage: let preimage, secret: let secret):
+                return !(details.status == .pending && details.direction == .inbound)
+            case .bolt11Jit(hash: let hash, preimage: let preimage, secret: let secret, lspFeeLimits: let lspFeeLimits):
+                return false
+            case .bolt12Offer(hash: let hash, preimage: let preimage, secret: let secret, offerId: let offerId):
+                return false
+            case .bolt12Refund(hash: let hash, preimage: let preimage, secret: let secret):
+                return false
+            case .spontaneous(hash: let hash, preimage: let preimage):
+                return true
+            }
+        }
     }
     
     // TODO: create LN invoice as well

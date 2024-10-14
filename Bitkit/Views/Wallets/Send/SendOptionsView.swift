@@ -42,7 +42,18 @@ struct SendOptionsView: View {
 
                                     Haptics.play(.pastedFromClipboard)
 
-                                    // TODO: nav to next view
+                                    // TODO: nav to next view instead
+                                    if let option = data.options.first {
+                                        switch option {
+                                        case .onchain(let address, let amount, let label, let message):
+                                            app.toast(type: .success, title: "Onchain", description: "Onchain")
+                                        case .bolt11(let invoice):
+                                            app.toast(type: .success, title: "Bolt11", description: "Bolt11")
+                                            Task {
+                                                try? await wallet.send(bolt11: invoice)
+                                            }
+                                        }
+                                    }
                                 } catch {
                                     Logger.error(error, context: "Failed to read data from clipboard")
                                     app.toast(error)

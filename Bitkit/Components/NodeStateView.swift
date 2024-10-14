@@ -38,96 +38,95 @@ struct NodeStateView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
-        NavigationView {
-            List {
-                Section {
+        List {
+            Section {
+                HStack {
+                    Text("Node state:")
+                    Spacer()
+                    Text("\(wallet.nodeLifecycleState.debugEmoji) \(wallet.nodeLifecycleState.displayState)")
+                }
+
+                if let status = wallet.nodeStatus {
                     HStack {
-                        Text("Node state:")
+                        Text("Ready:")
                         Spacer()
-                        Text("\(wallet.nodeLifecycleState.debugEmoji) \(wallet.nodeLifecycleState.displayState)")
+                        Text(status.isRunning == true ? "Yes" : "No")
                     }
 
-                    if let status = wallet.nodeStatus {
-                        HStack {
-                            Text("Ready:")
-                            Spacer()
-                            Text(status.isRunning == true ? "Yes" : "No")
-                        }
-
-                        HStack {
-                            Text("Last sync time:")
-                            Spacer()
-                            if let latestWalletSyncTimestamp = status.latestWalletSyncTimestamp {
-                                Text(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).formatted())
-                            } else {
-                                Text("Never")
-                            }
-                        }
-                    }
-                }
-
-                if let peers = wallet.peers {
-                    Section("Peers: \(peers.count)") {
-                        ForEach(peers, id: \.nodeId) { peer in
-                            HStack {
-                                Text("\(peer.nodeId)@\(peer.address)")
-                                    .font(.caption)
-                                Spacer()
-                                Text(peer.isConnected ? "✅" : "❌")
-                            }
-                        }
-                    }
-                }
-
-                if let channels = wallet.channels {
-                    Section("Channels: \(channels.count)") {
-                        ForEach(channels, id: \.channelId) { channel in
-                            HStack {
-                                Text(channel.channelId)
-                                    .font(.caption)
-                                Spacer()
-                                Text(channel.isChannelReady ? "✅" : "❌")
-                            }
-                        }
-                    }
-                }
-
-                if let balanceDetails = wallet.balanceDetails {
-                    Section("Wallet Balances") {
-                        HStack {
-                            Text("Total onchain:")
-                            Spacer()
-                            Text("\(balanceDetails.totalOnchainBalanceSats)")
-                        }
-
-                        HStack {
-                            Text("Spendable onchain:")
-                            Spacer()
-                            Text("\(balanceDetails.spendableOnchainBalanceSats)")
-                        }
-
-                        HStack {
-                            Text("Total anchor channels reserve:")
-                            Spacer()
-                            Text("\(balanceDetails.totalAnchorChannelsReserveSats)")
-                        }
-
-                        HStack {
-                            Text("Total lightning:")
-                            Spacer()
-                            Text("\(balanceDetails.totalLightningBalanceSats)")
-                        }
-                    }
-
-                    Section("Lightning Balances") {
-                        ForEach(balanceDetails.lightningBalances.map { IdentifiableLightningBalance($0) }) { identifiableBalance in
-                            LightningBalanceRow(balance: identifiableBalance.balance)
+                    HStack {
+                        Text("Last sync time:")
+                        Spacer()
+                        if let latestWalletSyncTimestamp = status.latestWalletSyncTimestamp {
+                            Text(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).formatted())
+                        } else {
+                            Text("Never")
                         }
                     }
                 }
             }
-            .navigationBarTitle("Node State")
+
+            if let peers = wallet.peers {
+                Section("Peers: \(peers.count)") {
+                    ForEach(peers, id: \.nodeId) { peer in
+                        HStack {
+                            Text("\(peer.nodeId)@\(peer.address)")
+                                .font(.caption)
+                            Spacer()
+                            Text(peer.isConnected ? "✅" : "❌")
+                        }
+                    }
+                }
+            }
+
+            if let channels = wallet.channels {
+                Section("Channels: \(channels.count)") {
+                    ForEach(channels, id: \.channelId) { channel in
+                        HStack {
+                            Text(channel.channelId)
+                                .font(.caption)
+                            Spacer()
+                            Text(channel.isChannelReady ? "✅" : "❌")
+                            Text(channel.isPublic ? "🌐" : "🔒")
+                        }
+                    }
+                }
+            }
+
+            if let balanceDetails = wallet.balanceDetails {
+                Section("Wallet Balances") {
+                    HStack {
+                        Text("Total onchain:")
+                        Spacer()
+                        Text("\(balanceDetails.totalOnchainBalanceSats)")
+                    }
+
+                    HStack {
+                        Text("Spendable onchain:")
+                        Spacer()
+                        Text("\(balanceDetails.spendableOnchainBalanceSats)")
+                    }
+
+                    HStack {
+                        Text("Total anchor channels reserve:")
+                        Spacer()
+                        Text("\(balanceDetails.totalAnchorChannelsReserveSats)")
+                    }
+
+                    HStack {
+                        Text("Total lightning:")
+                        Spacer()
+                        Text("\(balanceDetails.totalLightningBalanceSats)")
+                    }
+                }
+
+                Section("Lightning Balances") {
+                    ForEach(balanceDetails.lightningBalances.map { IdentifiableLightningBalance($0) }) { identifiableBalance in
+                        LightningBalanceRow(balance: identifiableBalance.balance)
+                    }
+                }
+            }
         }
+        .navigationBarTitle("Node State")
     }
 }
 
