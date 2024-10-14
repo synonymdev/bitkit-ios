@@ -43,7 +43,7 @@ class LightningService {
         config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
         config.anchorChannelsConfig = .init(
             trustedPeersNoReserve: Env.trustedLnPeers.map { $0.nodeId },
-            perChannelReserveSats: 2000 // TODO: set correctly
+            perChannelReserveSats: 1000
         )
         
         let builder = Builder.fromConfig(config: config)
@@ -181,19 +181,25 @@ class LightningService {
         }
     }
     
-    func receive(amountSats: UInt64, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
+    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
         
         return try await ServiceQueue.background(.ldk) {
-            try node
-                .bolt11Payment()
-                .receive(
-                    amountMsat: amountSats * 1000,
-                    description: description,
-                    expirySecs: expirySecs
-                )
+            if let amountSats {
+                try node
+                    .bolt11Payment()
+                    .receive(
+                        amountMsat: amountSats * 1000,
+                        description: description,
+                        expirySecs: expirySecs
+                    )
+            } else {
+                try node
+                    .bolt11Payment()
+                    .receiveVariableAmount(description: description, expirySecs: expirySecs)
+            }
         }
     }
     

@@ -77,6 +77,16 @@ struct HomeView: View {
                         }
                     }
                 }
+
+                NavigationLink(
+                    destination: ScannerView(),
+                    isActive: $app.showScanner
+                ) {
+                    EmptyView()
+                }
+                .onChange(of: app.showScanner) { showScanner in
+                    app.showTabBar = !showScanner
+                }
             }
             .refreshable {
                 do {
@@ -123,7 +133,9 @@ struct HomeView: View {
             }
         }
         .sheet(isPresented: $showNodeState) {
-            NodeStateView()
+            NavigationView {
+                NodeStateView()
+            }
         }
     }
 }

@@ -24,12 +24,15 @@ struct TabBar: View {
                     })
                     Spacer()
 
-                    NavigationLink(destination: ScannerView()) {
+                    Button(action: {
+                        app.showScanner = true
+                    }, label: {
                         Image(systemName: "viewfinder")
                             .resizable()
                             .frame(width: 30, height: 30)
                             .padding()
-                    }
+                    })
+
                     Spacer()
 
                     Button(action: {
