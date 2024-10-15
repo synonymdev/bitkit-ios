@@ -48,9 +48,12 @@ struct SendOptionsView: View {
                                         case .onchain(let address, let amount, let label, let message):
                                             app.toast(type: .success, title: "Onchain", description: "Onchain")
                                         case .bolt11(let invoice):
-                                            app.toast(type: .success, title: "Bolt11", description: "Bolt11")
                                             Task {
-                                                try? await wallet.send(bolt11: invoice)
+                                                do {
+                                                    try await wallet.send(bolt11: invoice)
+                                                } catch {
+                                                    app.toast(error)
+                                                }
                                             }
                                         }
                                     }
