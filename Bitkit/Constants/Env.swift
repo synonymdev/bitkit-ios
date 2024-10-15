@@ -33,14 +33,14 @@ enum Env {
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
     static let onchainWalletStopGap: UInt64 = 20
-    static let walletSyncIntervalSecs: UInt64 = 30
-    static let esploraParallelRequests: UInt64 = 5
+    static let walletSyncIntervalSecs: UInt64 = 300
+    static let esploraParallelRequests: UInt64 = 10
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
             return "https://electrs-regtest.synonym.to"
         // cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-        // return "http://127.0.0.1:3000"
+//            return "http://localhost:3000"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -136,11 +136,11 @@ enum Env {
     }
     
     static var blocktankPushNotificationServer: String {
-        return "\(blocktankBaseUrl)/notifications/api"
+        "\(blocktankBaseUrl)/notifications/api"
     }
     
     static var blocktankClientServer: String {
-        return "\(blocktankBaseUrl)/blocktank/api/v2"
+        "\(blocktankBaseUrl)/blocktank/api/v2"
     }
     
     static var pushNotificationFeatures: [BlocktankNotificationType] = [

@@ -81,12 +81,26 @@ struct NodeStateView: View {
             if let channels = wallet.channels {
                 Section("Channels: \(channels.count)") {
                     ForEach(channels, id: \.channelId) { channel in
-                        HStack {
+                        VStack(alignment: .leading) {
                             Text(channel.channelId)
                                 .font(.caption)
-                            Spacer()
-                            Text(channel.isChannelReady ? "✅" : "❌")
-                            Text(channel.isPublic ? "🌐" : "🔒")
+
+                            Text("Ready: \(channel.isChannelReady ? "✅" : "❌")")
+                            Text("Public: \(channel.isPublic ? "🌐" : "🔒")")
+                            Text("Inbound capacity: \(channel.inboundCapacityMsat / 1000) sats")
+                            Text("Inbound htlc max: \(channel.inboundHtlcMaximumMsat ?? 0 / 1000) sats")
+                            Text("Inbound htlc min: \(channel.inboundHtlcMinimumMsat / 1000) sats")
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button {
+                                Task {
+                                    try await wallet.closeChannel(channel)
+                                    // TODO: show loading indicator
+                                }
+                            } label: {
+                                Label("Close Channel", systemImage: "xmark")
+                            }
+                            .tint(.red)
                         }
                     }
                 }

@@ -43,11 +43,11 @@ struct ContentView: View {
                             case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
                                 app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
                             case .paymentSuccessful:
-                                break
+                                app.toast(type: .success, title: "Payment successful", description: "Payment sent")
                             case .paymentClaimable:
                                 break
-                            case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
-                                break
+                            case .paymentFailed(paymentId: _, paymentHash: _, reason: let reason):
+                                app.toast(type: .error, title: "Payment failed", description: reason.debugDescription)
                             }
                         }
 

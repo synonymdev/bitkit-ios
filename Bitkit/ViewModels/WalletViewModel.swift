@@ -121,6 +121,11 @@ class WalletViewModel: ObservableObject {
         return hash
     }
     
+    func closeChannel(_ channel: ChannelDetails) async throws {
+        try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
+        syncState()
+    }
+    
     internal func syncState() {
         nodeStatus = LightningService.shared.status
         nodeId = LightningService.shared.nodeId
