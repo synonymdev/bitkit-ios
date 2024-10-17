@@ -33,6 +33,7 @@ struct CreateCjitView: View {
                     .foregroundColor(.gray)
 
                 // TODO: get from API
+                // FROM BT model
 
                 Spacer()
 

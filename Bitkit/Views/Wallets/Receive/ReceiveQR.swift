@@ -17,7 +17,8 @@ struct CopyAddressCard: View {
                 .font(.title2)
                 .padding(.bottom)
 
-            Text(address)
+            // Ellipse the address if it's too long
+            Text(address.count > 40 ? address.prefix(35) + "..." : address)
                 .font(.caption)
                 .padding(.bottom)
 
@@ -51,6 +52,7 @@ struct ReceiveQR: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
 
+    @State private var selectedTab = 0
     @State private var cjitActive = false
     @State private var showCreateCjit = false
     @State private var cjitInvoice: String? = nil
@@ -61,16 +63,20 @@ struct ReceiveQR: View {
                 Text("Receive Bitcoin")
                     .padding()
 
-                TabView {
+                TabView(selection: $selectedTab) {
                     receiveQR
+                        .tag(0)
                     copyValues
+                        .tag(1)
                 }
                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
                 .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
 
                 Spacer()
 
-                receiveLightningFunds
+                if wallet.channels?.count ?? 0 == 0 {
+                    receiveLightningFunds
+                }
             }
             .padding()
         }
@@ -127,6 +133,8 @@ struct ReceiveQR: View {
 
             if !wallet.bolt11.isEmpty {
                 CopyAddressCard(title: "Lightning Invoice", address: wallet.bolt11)
+            } else if let cjitInvoice {
+                CopyAddressCard(title: "Lightning Invoice", address: cjitInvoice)
             }
 
             Spacer()
@@ -156,6 +164,7 @@ struct ReceiveQR: View {
             NavigationLink(
                 destination: CreateCjitView { invoice in
                     cjitInvoice = invoice
+                    selectedTab = 0
                     showCreateCjit = false
                 },
                 isActive: $showCreateCjit
@@ -163,12 +172,17 @@ struct ReceiveQR: View {
                 EmptyView()
             }
         }
+        .onAppear {
+            if cjitInvoice == nil {
+                cjitActive = false
+            }
+        }
         .onChange(of: cjitActive) { cjitActive in
             if cjitActive {
                 showCreateCjit = true
+            } else {
+                cjitInvoice = nil
             }
-
-            // TODO: disable toggle of no invoice created
         }
     }
 }

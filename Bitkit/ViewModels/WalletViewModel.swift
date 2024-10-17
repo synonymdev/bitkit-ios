@@ -155,7 +155,7 @@ class WalletViewModel: ObservableObject {
             case .onchain:
                 return true
             case .bolt11(hash: let hash, preimage: let preimage, secret: let secret):
-                return !(details.status == .pending && details.direction == .inbound)
+                return details.status != .pending
             case .bolt11Jit(hash: let hash, preimage: let preimage, secret: let secret, lspFeeLimits: let lspFeeLimits):
                 return false
             case .bolt12Offer(hash: let hash, preimage: let preimage, secret: let secret, offerId: let offerId):
@@ -168,6 +168,18 @@ class WalletViewModel: ObservableObject {
         }
     }
     
+    var incomingLightningCapacitySats: UInt64? {
+        guard let channels else {
+            return nil
+        }
+        
+        var capacity: UInt64 = 0
+        channels.forEach { channel in
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+    
     func refreshBip21() async throws {
         if onchainAddress.isEmpty {
             onchainAddress = try await LightningService.shared.newAddress()
@@ -177,7 +189,17 @@ class WalletViewModel: ObservableObject {
         
         bip21 = "bitcoin:\(onchainAddress)"
         
-        // TODO: append lightning invoice if we have incoming capacity
-        // TODO: cherck current bolt11 for expiry
+        // TODO: check current bolt11 for expiry
+        
+        if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
+            // Append lightning invoice if we have incoming capacity
+            if bolt11.isEmpty {
+                bolt11 = try await LightningService.shared.receive(description: "Bitkit")
+            }
+            
+            bip21 += "?lightning=\(bolt11)"
+        } else {
+            bolt11 = ""
+        }
     }
 }
