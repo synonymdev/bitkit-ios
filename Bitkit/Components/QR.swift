@@ -19,7 +19,7 @@ struct QR: View {
             .interpolation(.none)
             .resizable()
             .scaledToFit()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
     }
 
     func generateQRCode(from string: String) -> UIImage {

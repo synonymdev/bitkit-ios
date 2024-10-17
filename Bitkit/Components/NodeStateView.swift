@@ -37,6 +37,8 @@ struct IdentifiableLightningBalance: Identifiable {
 struct NodeStateView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var closingChannels: [String] = []
+
     var body: some View {
         List {
             Section {
@@ -50,7 +52,7 @@ struct NodeStateView: View {
                     HStack {
                         Text("Ready:")
                         Spacer()
-                        Text(status.isRunning == true ? "Yes" : "No")
+                        Text(status.isRunning == true ? "✅" : "⏳")
                     }
 
                     HStack {
@@ -62,6 +64,23 @@ struct NodeStateView: View {
                             Text("Never")
                         }
                     }
+
+                    HStack {
+                        Text("Block height:")
+                        Spacer()
+                        Text("\(status.currentBestBlock.height)")
+                    }
+                }
+            }
+
+            if let nodeId = wallet.nodeId {
+                Section("Node ID") {
+                    Text(nodeId)
+                        .font(.caption)
+                        .onTapGesture {
+                            UIPasteboard.general.string = nodeId
+                            Haptics.play(.copiedToClipboard)
+                        }
                 }
             }
 
@@ -90,16 +109,28 @@ struct NodeStateView: View {
                             Text("Inbound capacity: \(channel.inboundCapacityMsat / 1000) sats")
                             Text("Inbound htlc max: \(channel.inboundHtlcMaximumMsat ?? 0 / 1000) sats")
                             Text("Inbound htlc min: \(channel.inboundHtlcMinimumMsat / 1000) sats")
+                            Text("Next outbound htlc limit: \(channel.nextOutboundHtlcLimitMsat / 1000) sats")
+                            Text("Next outbound htlc min: \(channel.nextOutboundHtlcMinimumMsat / 1000) sats")
+                        }
+                        .opacity(closingChannels.contains(channel.channelId) ? 0.1 : 1.0)
+                        .overlay {
+                            if closingChannels.contains(channel.channelId) {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                                    .padding()
+                            }
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button {
-                                Task {
+                                Task { @MainActor in
+                                    closingChannels.append(channel.channelId)
                                     try await wallet.closeChannel(channel)
-                                    // TODO: show loading indicator
+                                    closingChannels.removeAll { $0 == channel.channelId }
                                 }
                             } label: {
-                                Label("Close Channel", systemImage: "xmark")
+                                Label(closingChannels.contains(channel.channelId) ? "Closing..." : "Close Channel", systemImage: "xmark")
                             }
+                            .disabled(closingChannels.contains(channel.channelId))
                             .tint(.red)
                         }
                     }
@@ -161,7 +192,7 @@ struct LightningBalanceRow: View {
     private var balanceTypeString: String {
         switch balance {
         case .claimableOnChannelClose: return "Claimable on Channel Close"
-        case .claimableAwaitingConfirmations: return "Claimable Awaiting Confirmations"
+        case .claimableAwaitingConfirmations(_, _, _, let confirmationHeight): return "Claimable Awaiting Confirmations (Height: \(confirmationHeight))"
         case .contentiousClaimable: return "Contentious Claimable"
         case .maybeTimeoutClaimableHtlc: return "Maybe Timeout Claimable HTLC"
         case .maybePreimageClaimableHtlc: return "Maybe Preimage Claimable HTLC"

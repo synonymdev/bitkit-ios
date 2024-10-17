@@ -13,7 +13,7 @@ struct HomeView: View {
 
     @State private var showNodeState = false
 
-    private let sheetHeight = UIScreen.screenHeight - 200
+    private let sheetHeight = UIScreen.screenHeight - 120
 
     var body: some View {
         NavigationView {
