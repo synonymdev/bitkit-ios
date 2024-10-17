@@ -84,6 +84,7 @@
 		964E6E632CB90E7C00CBC97C /* SendAmount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964E6E622CB90E7C00CBC97C /* SendAmount.swift */; };
 		965F243A2C6CF1B1005A5B31 /* BlocktankService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965F24392C6CF1B1005A5B31 /* BlocktankService.swift */; };
 		965F243C2C6E13D1005A5B31 /* ScenePhase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 965F243B2C6E13D1005A5B31 /* ScenePhase.swift */; };
+		9666A1182CC1034B00BA8A6C /* CreateCjitView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9666A1172CC1034B00BA8A6C /* CreateCjitView.swift */; };
 		966DE6612C502C7E00A7B0EF /* Env.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9637E6D22C32CE79004A92FC /* Env.swift */; };
 		966DE6622C502C8600A7B0EF /* Errors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96F261352C369D2400167439 /* Errors.swift */; };
 		966DE6632C502C8600A7B0EF /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FE5A1A2C46A4DD00860ADC /* Logger.swift */; };
@@ -278,6 +279,7 @@
 		964E6E622CB90E7C00CBC97C /* SendAmount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SendAmount.swift; sourceTree = "<group>"; };
 		965F24392C6CF1B1005A5B31 /* BlocktankService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BlocktankService.swift; sourceTree = "<group>"; };
 		965F243B2C6E13D1005A5B31 /* ScenePhase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScenePhase.swift; sourceTree = "<group>"; };
+		9666A1172CC1034B00BA8A6C /* CreateCjitView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateCjitView.swift; sourceTree = "<group>"; };
 		966DE66A2C50FA6A00A7B0EF /* channel_manager.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = channel_manager.bin; sourceTree = "<group>"; };
 		966DE66C2C50FA7600A7B0EF /* adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin; sourceTree = "<group>"; };
 		966DE6712C512C1E00A7B0EF /* seed.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = seed.bin; sourceTree = "<group>"; };
@@ -487,6 +489,7 @@
 			isa = PBXGroup;
 			children = (
 				964DF71A2C78A63400EDE6DE /* ReceiveQR.swift */,
+				9666A1172CC1034B00BA8A6C /* CreateCjitView.swift */,
 			);
 			path = Receive;
 			sourceTree = "<group>";
@@ -925,6 +928,7 @@
 				96E733AC2CB03593003E299D /* NodeStateView.swift in Sources */,
 				963859BD2C7F619C00FD4C5E /* BtOrderState2.swift in Sources */,
 				963859BB2C7F619C00FD4C5E /* BtOnchainTransaction.swift in Sources */,
+				9666A1182CC1034B00BA8A6C /* CreateCjitView.swift in Sources */,
 				963859B42C7F619C00FD4C5E /* BtBolt11Invoice.swift in Sources */,
 				962B921E2C5A20EF00B21057 /* WelcomeView.swift in Sources */,
 				964DF7252C78AE7200EDE6DE /* QR.swift in Sources */,

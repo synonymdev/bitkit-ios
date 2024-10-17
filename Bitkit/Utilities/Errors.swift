@@ -180,7 +180,8 @@ struct AppError: LocalizedError {
             message = "Failed to create refund"
             debugMessage = ldkMessage
         case .PaymentSendingFailed(message: let ldkMessage):
-            message = "Failed to send payment"
+//            message = "Failed to send payment. \(ldkMessage)"
+            message = ldkMessage
             debugMessage = ldkMessage
         case .ProbeSendingFailed(message: let ldkMessage):
             message = "Failed to send probe"

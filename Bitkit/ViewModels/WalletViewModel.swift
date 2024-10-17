@@ -12,18 +12,22 @@ import SwiftUI
 class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
-    @Published var bip21: String? = nil
     @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
+
+    // Receiving
+    @AppStorage("onchainAddress") var onchainAddress = ""
+    @AppStorage("bolt11") var bolt11 = ""
+    @AppStorage("bip21") var bip21 = ""
+
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
     @Published var nodeId: String?
     @Published var balanceDetails: BalanceDetails?
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
-    @Published var onchainAddress: String? = nil
     private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
     private var syncTimer: Timer?
 
@@ -73,6 +77,12 @@ class WalletViewModel: ObservableObject {
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
             try await stopLightningNode()
         }
+        
+        // Reset AppStorage display values
+        totalBalanceSats = 0
+        totalOnchainSats = 0
+        totalLightningSats = 0
+        // TODO: reset display address
         
         try await LightningService.shared.wipeStorage(walletIndex: 0)
     }
@@ -158,9 +168,16 @@ class WalletViewModel: ObservableObject {
         }
     }
     
-    // TODO: create LN invoice as well
-    func createBip21() async throws {
-        let address = try await LightningService.shared.newAddress()
-        bip21 = "bitcoin:\(address)"
+    func refreshBip21() async throws {
+        if onchainAddress.isEmpty {
+            onchainAddress = try await LightningService.shared.newAddress()
+        } else {
+            // TODO: check if onchain has been used and generate new on if it has
+        }
+        
+        bip21 = "bitcoin:\(onchainAddress)"
+        
+        // TODO: append lightning invoice if we have incoming capacity
+        // TODO: cherck current bolt11 for expiry
     }
 }
