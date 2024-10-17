@@ -11,6 +11,8 @@ import SwiftUI
 class BlocktankViewModel: ObservableObject {
     @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
     @Published var cJitEntries: [CJitEntry] = []
+    
+    @AppStorage("cjitActive") var cjitActive = false
 
     func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> BtOrder {
         guard let nodeId = LightningService.shared.nodeId else {

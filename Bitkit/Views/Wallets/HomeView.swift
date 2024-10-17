@@ -64,9 +64,9 @@ struct HomeView: View {
                     if let activityItems = wallet.activityItems {
                         ForEach(activityItems, id: \.self) { item in
                             HStack {
-                                Text(item.statusDebugEmoji)
-                                Text(item.kind == .onchain ? "⛓️" : "⚡️")
-                                Text("\(item.direction == .outbound ? "⬆️" : "⬇️")")
+                                Image(systemName: item.kind == .onchain ? "link" : "bolt")
+                                Image(systemName: item.direction == .outbound ? "arrow.up" : "arrow.down")
+
                                 Spacer()
                                 if let amountSats = item.amountSats {
                                     Text("\(amountSats)")

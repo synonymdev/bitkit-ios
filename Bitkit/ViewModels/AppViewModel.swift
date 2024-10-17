@@ -17,6 +17,9 @@ class AppViewModel: ObservableObject {
     @Published var showTabBar = true
 
     @Published var currentToast: Toast?
+
+    @Published var showNewTransaction = false
+    @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
 }
 
 // MARK: Toast notifications
@@ -55,6 +58,25 @@ extension AppViewModel {
     func hideToast() {
         withAnimation {
             currentToast = nil
+        }
+    }
+
+    func showNewTransactionSheet(details: NewTransactionSheetDetails) {
+        newTransaction = details
+
+        // Hide these first if they're visible
+        if showReceiveSheet || showSendSheet {
+            showReceiveSheet = false
+            showSendSheet = false
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                guard let self = self else { return }
+                self.showNewTransaction = true
+                Haptics.notify(.success)
+            }
+        } else {
+            showNewTransaction = true
+            Haptics.notify(.success)
         }
     }
 }

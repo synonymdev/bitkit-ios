@@ -23,6 +23,9 @@ struct ContentView: View {
             }
         }
         .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
+        .sheet(isPresented: $app.showNewTransaction) {
+            NewTransactionSheet(details: $app.newTransaction)
+        }
         .onChange(of: wallet.walletExists) { _ in
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
@@ -31,7 +34,7 @@ struct ContentView: View {
                         wallet.setOnEvent { lighntingEvent in
                             switch lighntingEvent {
                             case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
-                                app.toast(type: .success, title: "Received ⚡ \(amountMsat / 1000) sats", description: "Payment received")
+                                app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
                             case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
                                 app.toast(type: .success, title: "Channel pending", description: "Waiting for confirmation")
                             case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
@@ -42,8 +45,8 @@ struct ContentView: View {
                                 }
                             case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
                                 app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
-                            case .paymentSuccessful:
-                                app.toast(type: .success, title: "Payment successful", description: "Payment sent")
+                            case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
+                                app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
                             case .paymentClaimable:
                                 break
                             case .paymentFailed(paymentId: _, paymentHash: _, reason: let reason):
