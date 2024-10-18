@@ -36,11 +36,12 @@ struct ContentView: View {
                             case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
                                 app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
                             case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-                                app.toast(type: .success, title: "Channel pending", description: "Waiting for confirmation")
+                                // Only relevant for channels to external nodes
+                                break
                             case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
                                 // TODO: handle cjit as payment received
                                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                                    app.toast(type: .success, title: "Channel opened", description: "Ready to send \(channel.outboundCapacityMsat / 1000) sats")
+                                    app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: channel.inboundCapacityMsat / 1000))
                                 } else {
                                     app.toast(type: .error, title: "Channel opened", description: "Ready to send")
                                 }
