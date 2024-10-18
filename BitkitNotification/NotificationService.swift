@@ -148,8 +148,10 @@ class NotificationService: UNNotificationServiceExtension {
         switch event {
         case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
             self.bestAttemptContent?.title = "Payment Received"
-            self.bestAttemptContent?.body = "⚡ \(amountMsat / 1000)"
-            
+            let sats = amountMsat / 1000
+            self.bestAttemptContent?.body = "⚡ \(sats)"
+            NewTransactionSheetDetails(type: .lightning, direction: .received, sats: sats).save() // Save for UI to pick up
+        
             if self.notificationType == .incomingHtlc {
                 self.deliver()
             }
@@ -163,7 +165,9 @@ class NotificationService: UNNotificationServiceExtension {
                 self.bestAttemptContent?.body = "Via new channel"
                 
                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                    self.bestAttemptContent?.title = "Received ⚡ \(channel.outboundCapacityMsat / 1000) sats"
+                    let sats = channel.inboundCapacityMsat / 1000
+                    self.bestAttemptContent?.title = "Received ⚡ \(sats) sats"
+                    NewTransactionSheetDetails(type: .lightning, direction: .received, sats: sats).save() // Save for UI to pick u
                 }
             } else if self.notificationType == .orderPaymentConfirmed {
                 self.bestAttemptContent?.title = "Channel opened"

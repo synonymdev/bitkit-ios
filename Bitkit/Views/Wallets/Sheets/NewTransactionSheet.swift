@@ -7,22 +7,6 @@
 
 import SwiftUI
 
-struct NewTransactionSheetDetails {
-    enum NewTransactionSheetType {
-        case onchain
-        case lightning
-    }
-
-    enum NewTransactionSheetDirection {
-        case sent
-        case received
-    }
-
-    let type: NewTransactionSheetType
-    let direction: NewTransactionSheetDirection
-    let sats: UInt64
-}
-
 struct NewTransactionSheet: View {
     @Binding var details: NewTransactionSheetDetails
 
@@ -66,7 +50,7 @@ struct NewTransactionSheet: View {
             Spacer()
 
             Button("Close") {
-                // Close sheet
+                app.showNewTransaction = false
             }
         }
         .onAppear {

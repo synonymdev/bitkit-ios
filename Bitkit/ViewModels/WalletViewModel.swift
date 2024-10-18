@@ -170,8 +170,10 @@ class WalletViewModel: ObservableObject {
                     allActivity.append(details)
                     latestOnchainActivity.append(details)
                 case .bolt11(hash: _, preimage: _, secret: _):
-                    allActivity.append(details)
-                    latestLightningActivity.append(details)
+                    if !(details.status == .pending && details.direction == .inbound) {
+                        allActivity.append(details)
+                        latestLightningActivity.append(details)
+                    }
                 case .spontaneous(hash: _, preimage: _):
                     allActivity.append(details)
                     latestLightningActivity.append(details)
@@ -215,17 +217,17 @@ class WalletViewModel: ObservableObject {
         
         bip21 = "bitcoin:\(onchainAddress)"
         
+        if !bolt11.isEmpty {
+            bip21 += "?lightning=\(bolt11)"
+        }
+        
         // TODO: check current bolt11 for expiry and/or if it's been used
         
         if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
             // Append lightning invoice if we have incoming capacity
-            if bolt11.isEmpty {
-                bolt11 = try await LightningService.shared.receive(description: "Bitkit")
-            }
+            bolt11 = try await LightningService.shared.receive(description: "Bitkit")
             
-            bip21 += "?lightning=\(bolt11)"
-        } else {
-            bolt11 = ""
+            bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
         }
     }
 }

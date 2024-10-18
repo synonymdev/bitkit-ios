@@ -49,14 +49,19 @@ struct ActivityRow: View {
 
     @ViewBuilder
     var icon: some View {
-        let systemName = item.direction == .outbound ? "arrow.up" : "arrow.down"
-
-        if item.kind == .onchain {
-            Image(systemName: systemName)
-                .foregroundColor(.orange)
+        if item.status == .failed {
+            Image(systemName: "xmark")
+                .foregroundColor(.red)
         } else {
-            Image(systemName: systemName)
-                .foregroundColor(.purple)
+            let systemName = item.direction == .outbound ? "arrow.up" : "arrow.down"
+
+            if item.kind == .onchain {
+                Image(systemName: systemName)
+                    .foregroundColor(.orange)
+            } else {
+                Image(systemName: systemName)
+                    .foregroundColor(.purple)
+            }
         }
     }
 }
