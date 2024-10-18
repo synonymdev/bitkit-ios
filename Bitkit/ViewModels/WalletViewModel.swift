@@ -63,6 +63,10 @@ class WalletViewModel: ObservableObject {
         
         syncState()
         
+        Task { @MainActor in
+            try await refreshBip21()
+        }
+        
         // Always sync on start but don't need to wait for this
         Task { @MainActor in
             try await sync()
@@ -152,7 +156,9 @@ class WalletViewModel: ObservableObject {
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
         
-        if let payments = LightningService.shared.payments {
+        if var payments = LightningService.shared.payments {
+            payments.sort { $0.latestUpdateTimestamp > $1.latestUpdateTimestamp }
+            
             // TODO: eventually load other activity types from local storage
             var allActivity: [PaymentDetails] = []
             var latestLightningActivity: [PaymentDetails] = []
@@ -177,6 +183,8 @@ class WalletViewModel: ObservableObject {
                     break
                 }
             }
+            
+            // TODO: append activity items from lightning balances
             
             let limitLatest = 3
             activityItems = allActivity

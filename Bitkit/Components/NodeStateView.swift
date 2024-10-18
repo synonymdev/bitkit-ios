@@ -45,7 +45,8 @@ struct NodeStateView: View {
                 HStack {
                     Text("Node state:")
                     Spacer()
-                    Text("\(wallet.nodeLifecycleState.debugEmoji) \(wallet.nodeLifecycleState.displayState)")
+                    Image(systemName: wallet.nodeLifecycleState.systemImage)
+                    Text(wallet.nodeLifecycleState.displayState)
                 }
 
                 if let status = wallet.nodeStatus {

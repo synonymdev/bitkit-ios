@@ -108,7 +108,7 @@ struct HomeView: View {
 
     var rightNavigationItem: some View {
         HStack {
-            Text(wallet.nodeLifecycleState.debugEmoji)
+            Image(systemName: wallet.nodeLifecycleState.systemImage)
                 .onTapGesture {
                     showNodeState = true
                 }

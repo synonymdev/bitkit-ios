@@ -12,6 +12,7 @@ struct CreateCjitView: View {
 
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var blocktank: BlocktankViewModel
 
     @State private var amount: String = ""
     @FocusState private var isAmountFocused: Bool
@@ -27,36 +28,45 @@ struct CreateCjitView: View {
 
             Spacer()
 
-            HStack {
-                Text("Minimum")
-                    .font(.caption)
-                    .foregroundColor(.gray)
+            if let info = blocktank.info {
+                HStack {
+                    // TODO: CJIT LIMITS
 
-                // TODO: get from API
-                // FROM BT model
+                    // minChannelSizeSat
+                    // maxChannelSizeSat
+                    /// const maxAmount = maxChannelSizeSat / 2;
 
-                Spacer()
+                    VStack {
+                        Text("Minimum")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text("\(info.options.minChannelSizeSat / 2)")
+                    }
+                    .padding(.trailing)
 
-                // TODO: switch to USD
+                    VStack {
+                        Text("Maximum")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                        Text("\(info.options.maxChannelSizeSat / 2)")
+                    }
+
+                    // TODO: get from API
+                    // FROM BT model
+
+                    Spacer()
+
+                    // TODO: switch to USD
+                }
             }
 
             Divider()
             Button("Continue") {
                 Task { @MainActor in
-                    if let amountInt = UInt64(amount), let nodeId = wallet.nodeId {
+                    if let amount = UInt64(amount), let nodeId = wallet.nodeId {
                         isCreatingInvoice = true
                         do {
-                            // TODO: move to Blocktank view model when ready
-
-                            let entry = try await BlocktankService.shared.createCJitEntry(
-                                channelSizeSat: amountInt * 2, // TODO: check this amount default from RN app
-                                invoiceSat: amountInt,
-                                invoiceDescription: "Pay me please",
-                                nodeId: nodeId,
-                                channelExpiryWeeks: 2, // TODO: check this amount default from RN app
-                                options: .init()
-                            )
-
+                            let entry = try await blocktank.createCjit(amountSats: amount, description: "Bitkit")
                             onCjitCreated(entry.invoice.request)
                         } catch {
                             app.toast(error)
@@ -82,4 +92,5 @@ struct CreateCjitView: View {
     CreateCjitView { _ in }
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(BlocktankViewModel())
 }
