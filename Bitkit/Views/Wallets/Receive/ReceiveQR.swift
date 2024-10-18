@@ -7,50 +7,12 @@
 
 import SwiftUI
 
-struct CopyAddressCard: View {
-    let title: String
-    let address: String
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            Text(title)
-                .font(.title2)
-                .padding(.bottom)
-
-            // Ellipse the address if it's too long
-            Text(address.count > 40 ? address.prefix(35) + "..." : address)
-                .font(.caption)
-                .padding(.bottom)
-
-            HStack {
-                Button("Copy") {
-                    UIPasteboard.general.string = address
-                    Haptics.play(.copiedToClipboard)
-                }
-                .padding(.horizontal)
-
-                if #available(iOS 16.0, *) {
-                    ShareLink(item: URL(string: address)!) {
-                        Text("Share")
-                    }
-                    .padding(.horizontal)
-                } else {
-                    // TODO: Add share sheet for iOS 15
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(.gray.opacity(0.25))
-        .cornerRadius(10)
-    }
-}
-
 struct ReceiveQR: View {
     @State var isCreatingInvoice = false
 
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var blocktank: BlocktankViewModel
 
     @State private var selectedTab = 0
     @State private var cjitActive = false
@@ -74,7 +36,7 @@ struct ReceiveQR: View {
 
                 Spacer()
 
-                if wallet.channels?.count ?? 0 == 0 {
+                if wallet.nodeLifecycleState == .running && wallet.channels?.count ?? 0 == 0 {
                     receiveLightningFunds
                 }
             }
@@ -82,8 +44,11 @@ struct ReceiveQR: View {
         }
         .task {
             do {
-                // Refresh the bip21 string if required
-                try await wallet.refreshBip21()
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { try await wallet.refreshBip21() }
+                    group.addTask { try await blocktank.refreshInfo() }
+                    try await group.waitForAll()
+                }
             } catch {
                 app.toast(error)
             }
@@ -191,4 +156,5 @@ struct ReceiveQR: View {
     ReceiveQR()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(BlocktankViewModel())
 }

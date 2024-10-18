@@ -12,17 +12,52 @@ struct ActivityRow: View {
     let item: PaymentDetails
 
     var body: some View {
-        HStack {
-            Image(systemName: item.kind == .onchain ? "link" : "bolt")
-            Image(systemName: item.direction == .outbound ? "arrow.up" : "arrow.down")
+        NavigationLink(destination: ActivityItemView(item: item)) {
+            HStack {
+                icon
+                    .padding(.trailing, 4)
 
-            Spacer()
-            if let amountSats = item.amountSats {
-                Text("\(amountSats)")
+                if item.direction == .outbound {
+                    switch item.status {
+                    case .failed:
+                        Text("Sending Failed")
+                    case .pending:
+                        Text("Sending...")
+                    case .succeeded:
+                        Text("Sent")
+                    }
+                } else {
+                    switch item.status {
+                    case .failed:
+                        Text("Receive Failed")
+                    case .pending:
+                        Text("Receiving...")
+                    case .succeeded:
+                        Text("Received")
+                    }
+                }
+
+                Spacer()
+                if let amountSats = item.amountSats {
+                    Text("\(amountSats)")
+                }
             }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    var icon: some View {
+        let systemName = item.direction == .outbound ? "arrow.up" : "arrow.down"
+
+        if item.kind == .onchain {
+            Image(systemName: systemName)
+                .foregroundColor(.orange)
+        } else {
+            Image(systemName: systemName)
+                .foregroundColor(.purple)
+        }
     }
 }
 
@@ -54,6 +89,10 @@ struct ActivityLatest: View {
             LazyVStack {
                 ForEach(items, id: \.self) { item in
                     ActivityRow(item: item)
+
+                    if item != items.last {
+                        Divider()
+                    }
                 }
 
                 if items.count == 0 {
@@ -81,6 +120,10 @@ struct AllActivityView: View {
                 LazyVStack {
                     ForEach(items, id: \.self) { item in
                         ActivityRow(item: item)
+
+                        if item != items.last {
+                            Divider()
+                        }
                     }
 
                     VStack {}.frame(height: 120)

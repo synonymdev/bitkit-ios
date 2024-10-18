@@ -38,6 +38,7 @@ struct ContentView: View {
                             case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
                                 app.toast(type: .success, title: "Channel pending", description: "Waiting for confirmation")
                             case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
+                                // TODO: handle cjit as payment received
                                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
                                     app.toast(type: .success, title: "Channel opened", description: "Ready to send \(channel.outboundCapacityMsat / 1000) sats")
                                 } else {

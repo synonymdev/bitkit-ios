@@ -29,18 +29,18 @@ enum NodeLifecycleState {
         }
     }
 
-    var debugEmoji: String {
+    var systemImage: String {
         switch self {
         case .stopped:
-            return "❌"
+            return "bolt.badge.xmark"
         case .starting:
-            return "⏳"
+            return "bolt.badge.clock"
         case .running:
-            return "⚡️"
+            return "bolt.badge.checkmark.fill"
         case .stopping:
-            return "🛑"
+            return "bolt.badge.xmark"
         case .errorStarting:
-            return "❌"
+            return "bolt.trianglebadge.exclamationmark.fill"
         }
     }
 
