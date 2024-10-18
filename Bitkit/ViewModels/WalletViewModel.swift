@@ -13,6 +13,9 @@ class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
+    @Published var latestActivityItems: [PaymentDetails]? = nil
+    @Published var latestLightningActivityItems: [PaymentDetails]? = nil
+    @Published var latestOnchainActivityItems: [PaymentDetails]? = nil
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
@@ -148,23 +151,38 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
-                
-        // TODO: eventually load other activity types from local storage
-        activityItems = (LightningService.shared.payments ?? []).reversed().filter { details in
-            switch details.kind {
-            case .onchain:
-                return true
-            case .bolt11(hash: let hash, preimage: let preimage, secret: let secret):
-                return details.status != .pending
-            case .bolt11Jit(hash: let hash, preimage: let preimage, secret: let secret, lspFeeLimits: let lspFeeLimits):
-                return false
-            case .bolt12Offer(hash: let hash, preimage: let preimage, secret: let secret, offerId: let offerId):
-                return false
-            case .bolt12Refund(hash: let hash, preimage: let preimage, secret: let secret):
-                return false
-            case .spontaneous(hash: let hash, preimage: let preimage):
-                return true
+        
+        if let payments = LightningService.shared.payments {
+            // TODO: eventually load other activity types from local storage
+            var allActivity: [PaymentDetails] = []
+            var latestLightningActivity: [PaymentDetails] = []
+            var latestOnchainActivity: [PaymentDetails] = []
+            
+            payments.forEach { details in
+                switch details.kind {
+                case .onchain:
+                    allActivity.append(details)
+                    latestOnchainActivity.append(details)
+                case .bolt11(hash: _, preimage: _, secret: _):
+                    allActivity.append(details)
+                    latestLightningActivity.append(details)
+                case .spontaneous(hash: _, preimage: _):
+                    allActivity.append(details)
+                    latestLightningActivity.append(details)
+                case .bolt11Jit(hash: _, preimage: _, secret: _, lspFeeLimits: _):
+                    break
+                case .bolt12Offer(hash: _, preimage: _, secret: _, offerId: _):
+                    break
+                case .bolt12Refund(hash: _, preimage: _, secret: _):
+                    break
+                }
             }
+            
+            let limitLatest = 3
+            activityItems = allActivity
+            latestActivityItems = Array(allActivity.prefix(limitLatest))
+            latestLightningActivityItems = Array(latestLightningActivity.prefix(limitLatest))
+            latestOnchainActivityItems = Array(latestOnchainActivity.prefix(limitLatest))
         }
     }
     
@@ -189,7 +207,7 @@ class WalletViewModel: ObservableObject {
         
         bip21 = "bitcoin:\(onchainAddress)"
         
-        // TODO: check current bolt11 for expiry
+        // TODO: check current bolt11 for expiry and/or if it's been used
         
         if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
             // Append lightning invoice if we have incoming capacity

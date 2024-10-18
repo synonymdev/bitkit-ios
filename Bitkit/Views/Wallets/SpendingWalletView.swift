@@ -25,21 +25,7 @@ struct SpendingWalletView: View {
             Divider()
 
             ScrollView {
-                if let activityItems = wallet.activityItems?.filter({ $0.kind != .onchain }) {
-                    ForEach(activityItems, id: \.self) { item in
-                        HStack {
-                            Text(item.statusDebugEmoji)
-                            Text(item.kind == .onchain ? "⛓️" : "⚡️")
-                            Text("\(item.direction == .outbound ? "⬆️" : "⬇️")")
-                            Spacer()
-                            if let amountSats = item.amountSats {
-                                Text("\(amountSats)")
-                            }
-                        }
-                        .padding(.horizontal)
-                        .padding(.vertical, 2)
-                    }
-                }
+                ActivityLatest(type: .lightning)
             }
             .refreshable {
                 do {

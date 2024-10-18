@@ -60,23 +60,7 @@ struct HomeView: View {
                 Text("Activity")
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                VStack {
-                    if let activityItems = wallet.activityItems {
-                        ForEach(activityItems, id: \.self) { item in
-                            HStack {
-                                Image(systemName: item.kind == .onchain ? "link" : "bolt")
-                                Image(systemName: item.direction == .outbound ? "arrow.up" : "arrow.down")
-
-                                Spacer()
-                                if let amountSats = item.amountSats {
-                                    Text("\(amountSats)")
-                                }
-                            }
-                            .padding(.horizontal)
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
+                ActivityLatest(type: .all)
 
                 NavigationLink(
                     destination: ScannerView(),
