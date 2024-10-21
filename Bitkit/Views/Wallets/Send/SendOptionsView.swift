@@ -8,33 +8,85 @@
 import SwiftUI
 
 struct SendOptionsView: View {
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
-        VStack {
-            Text("Send")
+        NavigationView {
+            VStack {
+                Text("Send Bitcoin")
+                    .font(.title)
+                    .padding()
 
-            Spacer()
+                Spacer()
 
-            Button("Paste") {
-                // TODO: handle proper sending flow and decode multiple strings
-                Task {
-                    do {
-                        if let invoice = UIPasteboard.general.string {
-                            let _ = try await LightningService.shared.send(bolt11: invoice)
+                List {
+                    Section("To") {
+                        HStack {
+                            Button("Contact") {
+                                app.toast(type: .warning, title: "Coming soon", description: "This feature is not available yet")
+                            }
                         }
-                    } catch {
-                        toast.show(error)
+
+                        HStack {
+                            Button("Paste Invoice") {
+                                guard let uri = UIPasteboard.general.string else {
+                                    Logger.error("No data in clipboard")
+                                    return
+                                }
+
+                                do {
+                                    let data = try ScannedData(uri)
+                                    Logger.debug("Pasted data: \(data)")
+                                    app.scannedData = data
+
+                                    Haptics.play(.pastedFromClipboard)
+
+                                    // TODO: nav to next view instead
+                                    if let option = data.options.first {
+                                        switch option {
+                                        case .onchain(let address, let amount, let label, let message):
+                                            app.toast(type: .success, title: "Onchain", description: "Onchain")
+                                        case .bolt11(let invoice):
+                                            Task {
+                                                do {
+                                                    try await wallet.send(bolt11: invoice)
+                                                } catch {
+                                                    app.toast(error)
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch {
+                                    Logger.error(error, context: "Failed to read data from clipboard")
+                                    app.toast(error)
+                                }
+                            }
+                        }
+
+                        HStack {
+                            NavigationLink(destination: SendEnterManually()) {
+                                Text("Enter Manually")
+                            }
+                        }
+
+                        HStack {
+                            NavigationLink(destination: ScannerView()) {
+                                Text("Scan QR Code")
+                            }
+                        }
                     }
                 }
             }
-
-            Spacer()
+        }
+        .onAppear {
+            wallet.syncState()
         }
     }
 }
 
 #Preview {
     SendOptionsView()
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
+        .environmentObject(WalletViewModel())
 }

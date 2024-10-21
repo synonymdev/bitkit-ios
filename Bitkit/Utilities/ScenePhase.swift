@@ -10,6 +10,7 @@ import SwiftUI
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var app: AppViewModel
     
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
     
@@ -33,6 +34,12 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     }
                     
                     if newPhase == .active {
+                        if let transaction = NewTransactionSheetDetails.load() {
+                            // Background extension received a transaction
+                            NewTransactionSheetDetails.clear()
+                            app.showNewTransactionSheet(details: transaction)
+                        }
+                        
                         do {
                             try await startNodeIfNeeded()
                         } catch {
@@ -86,9 +93,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         
         Logger.debug("App active, starting LN service...")
 
-        try await wallet.start { _ in
-            // TODO: handle events here like in ContentView
-        }
+        try await wallet.start()
     }
 }
 

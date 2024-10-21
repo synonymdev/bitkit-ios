@@ -16,4 +16,15 @@ extension PaymentDetails {
 
         return nil
     }
+
+    var statusDebugEmoji: String {
+        switch status {
+        case .failed:
+            return "❌"
+        case .pending:
+            return "⏳"
+        case .succeeded:
+            return "✅"
+        }
+    }
 }

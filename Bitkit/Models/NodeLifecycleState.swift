@@ -7,11 +7,12 @@
 
 import LDKNode
 
-enum NodeLifecycleState: String {
+enum NodeLifecycleState {
     case stopped
     case starting
     case running
     case stopping
+    case errorStarting(cause: Error)
 
     var displayState: String {
         switch self {
@@ -23,19 +24,41 @@ enum NodeLifecycleState: String {
             return "Running"
         case .stopping:
             return "Stopping"
+        case .errorStarting(let cause):
+            return "Error starting: \(cause.localizedDescription)"
         }
     }
 
-    var debugEmoji: String {
+    var systemImage: String {
         switch self {
         case .stopped:
-            return "❌"
+            return "bolt.badge.xmark"
         case .starting:
-            return "⏳"
+            return "bolt.badge.clock"
         case .running:
-            return "⚡️"
+            return "bolt.badge.checkmark.fill"
         case .stopping:
-            return "🛑"
+            return "bolt.badge.xmark"
+        case .errorStarting:
+            return "bolt.trianglebadge.exclamationmark.fill"
         }
+    }
+
+    static func == (lhs: NodeLifecycleState, rhs: NodeLifecycleState) -> Bool {
+        switch (lhs, rhs) {
+        case (.stopped, .stopped),
+             (.starting, .starting),
+             (.running, .running),
+             (.stopping, .stopping):
+            return true
+        case (.errorStarting(let lhsCause), .errorStarting(let rhsCause)):
+            return lhsCause.localizedDescription == rhsCause.localizedDescription
+        default:
+            return false
+        }
+    }
+
+    static func != (lhs: NodeLifecycleState, rhs: NodeLifecycleState) -> Bool {
+        return !(lhs == rhs)
     }
 }

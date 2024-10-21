@@ -12,36 +12,60 @@ import SwiftUI
 class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
-    @Published var bip21: String? = nil
     @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
-    @Published var totalBalanceSats: UInt64? = nil // Combined onchain and LN
+    @Published var latestActivityItems: [PaymentDetails]? = nil
+    @Published var latestLightningActivityItems: [PaymentDetails]? = nil
+    @Published var latestOnchainActivityItems: [PaymentDetails]? = nil
+    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
+    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
+    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
+
+    // Receiving
+    @AppStorage("onchainAddress") var onchainAddress = ""
+    @AppStorage("bolt11") var bolt11 = ""
+    @AppStorage("bip21") var bip21 = ""
+
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
     @Published var nodeId: String?
     @Published var balanceDetails: BalanceDetails?
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
-    @Published var onchainAddress: String? = nil
-    
+    private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
+    private var syncTimer: Timer?
+
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
     
-    func start(walletIndex: Int = 0, onEvent: ((Event) -> Void)? = nil) async throws {
+    func setOnEvent(_ onEvent: @escaping (Event) -> Void) {
+        self.onEvent = onEvent
+    }
+    
+    func start(walletIndex: Int = 0) async throws {
         nodeLifecycleState = .starting
         syncState()
-        try await LightningService.shared.setup(walletIndex: walletIndex)
-        try await LightningService.shared.start(onEvent: { event in
-            // On every lightning event just sync UI
-            Task { @MainActor in
-                self.syncState()
-                onEvent?(event)
-            }
-        })
+        do {
+            try await LightningService.shared.setup(walletIndex: walletIndex)
+            try await LightningService.shared.start(onEvent: { event in
+                // On every lightning event just sync UI
+                Task { @MainActor in
+                    self.syncState()
+                    self.onEvent?(event)
+                }
+            })
+        } catch {
+            nodeLifecycleState = .errorStarting(cause: error)
+            throw error
+        }
         
         nodeLifecycleState = .running
         
         syncState()
+        
+        Task { @MainActor in
+            try await refreshBip21()
+        }
         
         // Always sync on start but don't need to wait for this
         Task { @MainActor in
@@ -57,7 +81,16 @@ class WalletViewModel: ObservableObject {
     }
     
     func wipeLightningWallet() async throws {
-        try await stopLightningNode()
+        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
+            try await stopLightningNode()
+        }
+        
+        // Reset AppStorage display values
+        totalBalanceSats = 0
+        totalOnchainSats = 0
+        totalLightningSats = 0
+        // TODO: reset display address
+        
         try await LightningService.shared.wipeStorage(walletIndex: 0)
     }
     
@@ -65,7 +98,7 @@ class WalletViewModel: ObservableObject {
         try await LightningService.shared.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
     }
     
-    func sync(fullOnchainScan: Bool = false) async throws {
+    func sync() async throws {
         syncState()
         
         if isSyncingWallet {
@@ -99,10 +132,15 @@ class WalletViewModel: ObservableObject {
         return txid
     }
     
-    func send(bolt11: String, sats: UInt64?) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
         let hash = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
         syncState()
         return hash
+    }
+    
+    func closeChannel(_ channel: ChannelDetails) async throws {
+        try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
+        syncState()
     }
     
     internal func syncState() {
@@ -113,16 +151,83 @@ class WalletViewModel: ObservableObject {
         channels = LightningService.shared.channels
         
         if let balanceDetails {
-            totalBalanceSats = balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats
+            totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
+            totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
+            totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
         
-        // TODO: eventually load other activity types from local storage
-        activityItems = (LightningService.shared.payments ?? []).filter { $0.status != .failed }
+        if var payments = LightningService.shared.payments {
+            payments.sort { $0.latestUpdateTimestamp > $1.latestUpdateTimestamp }
+            
+            // TODO: eventually load other activity types from local storage
+            var allActivity: [PaymentDetails] = []
+            var latestLightningActivity: [PaymentDetails] = []
+            var latestOnchainActivity: [PaymentDetails] = []
+            
+            payments.forEach { details in
+                switch details.kind {
+                case .onchain:
+                    allActivity.append(details)
+                    latestOnchainActivity.append(details)
+                case .bolt11(hash: _, preimage: _, secret: _):
+                    if !(details.status == .pending && details.direction == .inbound) {
+                        allActivity.append(details)
+                        latestLightningActivity.append(details)
+                    }
+                case .spontaneous(hash: _, preimage: _):
+                    allActivity.append(details)
+                    latestLightningActivity.append(details)
+                case .bolt11Jit(hash: _, preimage: _, secret: _, lspFeeLimits: _):
+                    break
+                case .bolt12Offer(hash: _, preimage: _, secret: _, offerId: _):
+                    break
+                case .bolt12Refund(hash: _, preimage: _, secret: _):
+                    break
+                }
+            }
+            
+            // TODO: append activity items from lightning balances
+            
+            let limitLatest = 3
+            activityItems = allActivity
+            latestActivityItems = Array(allActivity.prefix(limitLatest))
+            latestLightningActivityItems = Array(latestLightningActivity.prefix(limitLatest))
+            latestOnchainActivityItems = Array(latestOnchainActivity.prefix(limitLatest))
+        }
     }
     
-    // TODO: create LN invoice as well
-    func createBip21() async throws {
-        let address = try await LightningService.shared.newAddress()
-        bip21 = "bitcoin:\(address)"
+    var incomingLightningCapacitySats: UInt64? {
+        guard let channels else {
+            return nil
+        }
+        
+        var capacity: UInt64 = 0
+        channels.forEach { channel in
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+    
+    func refreshBip21() async throws {
+        if onchainAddress.isEmpty {
+            onchainAddress = try await LightningService.shared.newAddress()
+        } else {
+            // TODO: check if onchain has been used and generate new on if it has
+        }
+        
+        bip21 = "bitcoin:\(onchainAddress)"
+        
+        if !bolt11.isEmpty {
+            bip21 += "?lightning=\(bolt11)"
+        }
+        
+        // TODO: check current bolt11 for expiry and/or if it's been used
+        
+        if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
+            // Append lightning invoice if we have incoming capacity
+            bolt11 = try await LightningService.shared.receive(description: "Bitkit")
+            
+            bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
+        }
     }
 }

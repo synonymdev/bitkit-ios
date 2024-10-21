@@ -8,59 +8,49 @@
 import SwiftUI
 
 struct TabBar: View {
-    @State private var showReceiveNavigation = false
-    @State private var showSendNavigation = false
-
-    private let sheetHeight = UIScreen.screenHeight - 200
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         VStack {
             Spacer()
-            HStack {
-                Spacer()
-                Button(action: {
-                    showSendNavigation = true
-                }, label: {
-                    Text("Send")
-                })
-                Spacer()
+            if app.showTabBar {
+                HStack {
+                    Spacer()
+                    Button(action: {
+                        app.showSendSheet = true
+                        Haptics.play(.openSheet)
+                    }, label: {
+                        Text("Send")
+                    })
+                    Spacer()
 
-                NavigationLink(destination: ScannerView()) {
-                    Image(systemName: "viewfinder")
-                        .resizable()
-                        .frame(width: 30, height: 30)
-                        .padding()
+                    Button(action: {
+                        app.showScanner = true
+                    }, label: {
+                        Image(systemName: "viewfinder")
+                            .resizable()
+                            .frame(width: 30, height: 30)
+                            .padding()
+                    })
+
+                    Spacer()
+
+                    Button(action: {
+                        app.showReceiveSheet = true
+                        Haptics.play(.openSheet)
+                    }, label: {
+                        Text("Receive")
+                    })
+
+                    Spacer()
                 }
-                Spacer()
-
-                Button(action: {
-                    showReceiveNavigation = true
-                }, label: {
-                    Text("Receive")
-                })
-
-                Spacer()
+                .background(.regularMaterial)
+                .cornerRadius(30)
+                .padding()
+                .transition(.move(edge: .bottom))
             }
-            .background(.regularMaterial)
-            .cornerRadius(30)
-            .padding()
         }
-        .sheet(isPresented: $showSendNavigation, content: {
-            if #available(iOS 16.0, *) {
-                SendOptionsView()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                SendOptionsView() // Will just consume full screen
-            }
-        })
-        .sheet(isPresented: $showReceiveNavigation, content: {
-            if #available(iOS 16.0, *) {
-                ReceiveQR()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                ReceiveQR() // Will just consume full screen
-            }
-        })
+        .animation(.easeInOut, value: app.showTabBar)
     }
 }
 
@@ -71,5 +61,6 @@ struct TabBar: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .overlay {
         TabBar()
+            .environmentObject(AppViewModel())
     }
 }

@@ -14,42 +14,42 @@ struct ConfirmOrderView: View {
     @State private var txId = ""
 
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         Form {
             Section {
-                Text("Order ID: \(order.id)")
-                Text("Fees: \(order.feeSat) sats")
-                Text("Spending: \(order.clientBalanceSat) sats")
-                Text("Receiving: \(order.lspBalanceSat) sats")
+                Text("Order ID: \(self.order.id)")
+                Text("Fees: \(self.order.feeSat) sats")
+                Text("Spending: \(self.order.clientBalanceSat) sats")
+                Text("Receiving: \(self.order.lspBalanceSat) sats")
             }
 
-            if txId.isEmpty {
+            if self.txId.isEmpty {
                 Section {
-                    Button(isPaying ? "Transfering" : "Confirm") {
+                    Button(self.isPaying ? "Transfering" : "Confirm") {
                         Task { @MainActor in
-                            isPaying = true
+                            self.isPaying = true
 
                             do {
-                                txId = try await wallet.send(
-                                    address: order.payment.onchain.address,
-                                    sats: order.feeSat
+                                self.txId = try await self.wallet.send(
+                                    address: self.order.payment.onchain.address,
+                                    sats: self.order.feeSat
                                 )
 
                                 // TODO: tell BT model to watch this order for payment
                             } catch {
-                                toast.show(error)
+                                self.app.toast(error)
                             }
 
-                            isPaying = false
+                            self.isPaying = false
                         }
                     }
-                    .disabled(isPaying)
+                    .disabled(self.isPaying)
                 }
             } else {
                 Section {
-                    Text("Payment sent: \(txId)")
+                    Text("Payment sent: \(self.txId)")
                     Text("You can close the app now. We will notify you when the channel is ready.")
                 }
 
@@ -57,9 +57,11 @@ struct ConfirmOrderView: View {
                     Button("Try manual open") {
                         Task {
                             do {
-                                try await BlocktankService.shared.openChannel(orderId: order.id)
+                                try await BlocktankService.shared.openChannel(orderId: self.order.id)
                             } catch {
-                                toast.show(error)
+                                self.app.toast(error)
+
+                                self.dumpLdkLogs()
                             }
                         }
                     }
@@ -67,6 +69,22 @@ struct ConfirmOrderView: View {
             }
         }
         .navigationTitle("Confirm Order")
+    }
+
+    func dumpLdkLogs() {
+        let dir = Env.ldkStorage(walletIndex: 0)
+        let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
+
+        do {
+            let text = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            print("*****LDK-NODE LOG******")
+            for line in lines.suffix(20) {
+                print(line)
+            }
+        } catch {
+            Logger.error(error, context: "failed to load ldk log file")
+        }
     }
 }
 

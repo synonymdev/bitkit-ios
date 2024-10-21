@@ -12,7 +12,7 @@ struct RestoreView: View {
     @State var bip39Passphrase: String? = nil
     
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
     
     var body: some View {
         VStack {
@@ -35,7 +35,7 @@ struct RestoreView: View {
                         // TODO: handle full sync here before revealing the UI so balances are pre populated
                         try wallet.setWalletExistsState()
                     } catch {
-                        toast.show(error)
+                        app.toast(error)
                     }
                 }
                 .padding()
@@ -50,7 +50,7 @@ struct WelcomeView: View {
     @State var showRestore = false
     
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
     
     var body: some View {
         VStack {
@@ -72,7 +72,7 @@ struct WelcomeView: View {
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
                         try wallet.setWalletExistsState()
                     } catch {
-                        toast.show(error)
+                        app.toast(error)
                     }
                 }
                 .padding()
@@ -93,5 +93,5 @@ struct WelcomeView: View {
 #Preview {
     WelcomeView()
         .environmentObject(WalletViewModel())
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
 }

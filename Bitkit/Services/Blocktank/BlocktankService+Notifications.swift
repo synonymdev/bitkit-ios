@@ -58,7 +58,7 @@ extension BlocktankService {
         let params = [
             "data": [
                 "source": "blocktank",
-                "type": "incomingHtlc",
+                "type": BlocktankNotificationType.orderPaymentConfirmed.rawValue,
                 "payload": ["secretMessage": "hello"]
             ]
         ] as [String: Any]
