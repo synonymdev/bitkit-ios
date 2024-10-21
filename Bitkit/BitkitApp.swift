@@ -12,6 +12,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
         return true
     }
+    
+    func applicationWillTerminate(_ application: UIApplication) {
+        // Unlock so LDK can run in the background
+        try? StateLocker.unlock(.lightning)
+    }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {

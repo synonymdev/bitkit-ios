@@ -7,6 +7,25 @@
 
 import Foundation
 
+enum StateLockerError: Error {
+    case alreadyLocked
+    case differentEnvironmentLocked
+    case staleLock
+}
+
+extension StateLockerError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .alreadyLocked:
+            return "State already locked"
+        case .differentEnvironmentLocked:
+            return "Different environment has the lock"
+        case .staleLock:
+            return "Stale lock"
+        }
+    }
+}
+
 class StateLocker {
     enum Environment: String, Codable {
         case foregroundApp
@@ -15,9 +34,9 @@ class StateLocker {
         var expiryTime: TimeInterval {
             switch self {
             case .pushNotificationExtension:
-                return 300
-            default:
-                return 60 * 60
+                return 35 // Should never run over 30s
+            case .foregroundApp:
+                return 5 * 60 // TODO: test this out
             }
         }
 
@@ -67,12 +86,6 @@ class StateLocker {
 
     private static func lockfile(_ process: ProcessType) -> URL {
         Env.appStorageUrl.appendingPathComponent("\(process.rawValue).lock")
-    }
-
-    enum StateLockerError: Error {
-        case alreadyLocked
-        case differentEnvironmentLocked
-        case staleLock
     }
 
     private static func lockFileContent(_ process: ProcessType) -> LockFileContent? {

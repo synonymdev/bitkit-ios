@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SettingsListView: View {
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var toast: ToastViewModel
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         List {
@@ -25,7 +25,7 @@ struct SettingsListView: View {
                 Task {
                     guard Env.network == .regtest else {
                         Logger.error("Can only nuke on regtest")
-                        toast.show(type: .error, title: "Error", description: "Can only nuke on regtest")
+                        app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
                         return
                     }
                     do {
@@ -35,17 +35,20 @@ struct SettingsListView: View {
                         try Keychain.wipeEntireKeychain()
                         try wallet.setWalletExistsState()
                     } catch {
-                        toast.show(error)
+                        app.toast(error)
                     }
                 }
             }
         }
         .navigationTitle("Settings")
+        .onAppear {
+            app.showTabBar = false
+        }
     }
 }
 
 #Preview {
     SettingsListView()
         .environmentObject(WalletViewModel())
-        .environmentObject(ToastViewModel())
+        .environmentObject(AppViewModel())
 }

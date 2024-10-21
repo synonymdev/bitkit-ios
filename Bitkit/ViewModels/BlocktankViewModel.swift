@@ -10,7 +10,33 @@ import SwiftUI
 @MainActor
 class BlocktankViewModel: ObservableObject {
     @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
-    @Published var cJitEntries: [CJitEntry] = []
+    @Published var cJitEntries: [CJitEntry] = [] // TODO: cache cJitEntries
+    @Published var info: BtInfo? = nil // TODO: cache this
+
+    @AppStorage("cjitActive") var cjitActive = false
+
+    func refreshInfo() async throws {
+        info = try await BlocktankService.shared.getInfo()
+    }
+
+    func createCjit(amountSats: UInt64, description: String) async throws -> CJitEntry {
+        guard let nodeId = LightningService.shared.nodeId else {
+            throw CustomServiceError.nodeNotStarted
+        }
+
+        let entry = try await BlocktankService.shared.createCJitEntry(
+            channelSizeSat: amountSats * 2, // TODO: check this amount default from RN app
+            invoiceSat: amountSats,
+            invoiceDescription: description,
+            nodeId: nodeId,
+            channelExpiryWeeks: 2, // TODO: check this amount default from RN app
+            options: .init()
+        )
+
+        cJitEntries.append(entry)
+
+        return entry
+    }
 
     func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> BtOrder {
         guard let nodeId = LightningService.shared.nodeId else {

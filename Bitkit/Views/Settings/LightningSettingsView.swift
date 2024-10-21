@@ -8,73 +8,11 @@
 import SwiftUI
 
 struct LightningSettingsView: View {
-    @EnvironmentObject var wallet: WalletViewModel
-
     var body: some View {
         List {
-            Section("Node") {
-                Text(wallet.nodeLifecycleState.displayState)
-                    .font(.caption)
-
-                if let nodeId = wallet.nodeId {
-                    Text("LN Node ID: \(nodeId)")
-                        .font(.caption)
-                        .onTapGesture {
-                            UIPasteboard.general.string = nodeId
-                        }
-                }
-            }
-
-            if let peers = wallet.peers {
-                Section("Peers") {
-                    ForEach(peers, id: \.nodeId) { peer in
-                        HStack {
-                            Text("\(peer.nodeId)@\(peer.address)")
-                                .font(.caption2)
-                            Spacer()
-                            Text(peer.isConnected ? "✅" : "❌")
-                        }
-                    }
-                }
-            }
-
-            Button("Create bolt11") {
-                Task {
-                    let invoice = try await LightningService.shared.receive(amountSats: 123, description: "paymeplz")
-                    Logger.info(invoice, context: "Created invoice")
-                    UIPasteboard.general.string = invoice
-                }
-            }
-
-            if let channels = wallet.channels {
-                Section("Channels") {
-                    ForEach(channels, id: \.channelId) { channel in
-                        VStack {
-                            Text(channel.counterpartyNodeId).font(.caption2)
-                                .multilineTextAlignment(.leading)
-                            HStack {
-                                Text("Out: \(channel.outboundCapacityMsat / 1000)")
-                                Spacer()
-                                Text("In: \(channel.inboundCapacityMsat / 1000)")
-                                Text(channel.isChannelReady ? "🟢" : "🔴")
-                                Text(channel.isUsable ? "🟢" : "🔴")
-                            }
-                        }
-                        .onLongPressGesture {
-                            Task {
-                                do {
-                                    try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
-                                    Logger.info("Channel closed")
-                                    try await wallet.sync()
-                                } catch {}
-                            }
-                        }
-                    }
-
-                    Button("Copy open channel command") {
-                        let cmd = "lncli openchannel --node_key=\(wallet.nodeId ?? "") --local_amt=200000 --push_amt=10000 --private=true --zero_conf --channel_type=anchors"
-                        UIPasteboard.general.string = cmd
-                    }
+            Section("LDK") {
+                NavigationLink(destination: NodeStateView()) {
+                    Text("Node state")
                 }
             }
 
@@ -120,5 +58,4 @@ struct LightningSettingsView: View {
 
 #Preview {
     LightningSettingsView()
-        .environmentObject(WalletViewModel())
 }
