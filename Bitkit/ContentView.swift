@@ -41,7 +41,7 @@ struct ContentView: View {
                             case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
                                 // TODO: handle cjit as payment received
                                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                                    app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: channel.inboundCapacityMsat / 1000))
+                                    app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
                                 } else {
                                     app.toast(type: .error, title: "Channel opened", description: "Ready to send")
                                 }
