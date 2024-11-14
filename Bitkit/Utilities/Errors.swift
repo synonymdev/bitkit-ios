@@ -150,6 +150,9 @@ struct AppError: LocalizedError {
         case .LoggerSetupFailed(message: let ldkMessage):
             message = "Logger setup failed"
             debugMessage = ldkMessage
+        case .InvalidNodeAlias(message: let ldkMessage):
+            message = ldkMessage
+            debugMessage = nil
         }
     }
     
@@ -212,9 +215,6 @@ struct AppError: LocalizedError {
             debugMessage = ldkMessage
         case .OnchainTxSigningFailed(message: let ldkMessage):
             message = "Failed to sign onchain transaction"
-            debugMessage = ldkMessage
-        case .MessageSigningFailed(message: let ldkMessage):
-            message = "Failed to sign message"
             debugMessage = ldkMessage
         case .TxSyncFailed(message: let ldkMessage):
             message = "Failed to sync transaction"
@@ -293,6 +293,18 @@ struct AppError: LocalizedError {
             debugMessage = ldkMessage
         case .LiquidityFeeTooHigh(message: let ldkMessage):
             message = "Liquidity fee too high"
+            debugMessage = ldkMessage
+        case .UriParameterParsingFailed(message: let ldkMessage):
+            message = "Uri parameter parsing failed"
+            debugMessage = ldkMessage
+        case .InvalidUri(message: let ldkMessage):
+            message = "Invalid URI"
+            debugMessage = ldkMessage
+        case .InvalidQuantity(message: let ldkMessage):
+            message = "Invalid quantity"
+            debugMessage = ldkMessage
+        case .InvalidNodeAlias(message: let ldkMessage):
+            message = "Invalid node alias"
             debugMessage = ldkMessage
         }
         

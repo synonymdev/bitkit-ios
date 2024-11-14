@@ -36,7 +36,6 @@ class LightningService {
         config.logDirPath = ldkStoragePath
         config.network = Env.network
         config.logLevel = .trace
-        config.walletSyncIntervalSecs = Env.walletSyncIntervalSecs
                 
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
         
@@ -47,7 +46,13 @@ class LightningService {
         )
         
         let builder = Builder.fromConfig(config: config)
-        builder.setEsploraServer(esploraServerUrl: Env.esploraServerUrl)
+        
+        let esploraConfig = EsploraSyncConfig(
+            onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+            lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+            feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+        )
+        builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
         
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
@@ -140,23 +145,23 @@ class LightningService {
     }
     
     /// Temp fix for regtest where nodes might not agree on current fee rates
-    private func setMaxDustHtlcExposureForCurrentChannels() throws {
-        guard Env.network == .regtest else {
-            Logger.debug("Not updating channel config for non-regtest network")
-            return
-        }
-        
-        guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
-        }
-        
-        for channel in node.listChannels() {
-            let config = channel.config
-            config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
-            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
-            Logger.info("Updated channel config for: \(channel.userChannelId)")
-        }
-    }
+//    private func setMaxDustHtlcExposureForCurrentChannels() throws {
+//        guard Env.network == .regtest else {
+//            Logger.debug("Not updating channel config for non-regtest network")
+//            return
+//        }
+//
+//        guard let node else {
+//            throw AppError(serviceError: .nodeNotSetup)
+//        }
+//
+//        for channel in node.listChannels() {
+//            let config = channel.config
+//            config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
+//            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
+//            Logger.info("Updated channel config for: \(channel.userChannelId)")
+//        }
+//    }
     
     func sync() async throws {
         guard let node else {
@@ -166,7 +171,7 @@ class LightningService {
         Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
-            try? self.setMaxDustHtlcExposureForCurrentChannels()
+//            try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
         Logger.info("LDK synced")
     }
@@ -211,11 +216,11 @@ class LightningService {
         Logger.info("Sending \(sats) sats to \(address)")
         
         return try await ServiceQueue.background(.ldk) {
-            try node.onchainPayment().sendToAddress(address: address, amountMsat: sats)
+            try node.onchainPayment().sendToAddress(address: address, amountSats: sats)
         }
     }
     
-    func send(bolt11: Bolt11Invoice, sats: UInt64? = nil) async throws -> PaymentHash {
+    func send(bolt11: Bolt11Invoice, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -224,9 +229,9 @@ class LightningService {
         
         return try await ServiceQueue.background(.ldk) {
             if let sats {
-                try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000)
+                try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
             } else {
-                try node.bolt11Payment().send(invoice: bolt11)
+                try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
             }
         }
     }
@@ -254,23 +259,22 @@ class LightningService {
         }
         
         return try await ServiceQueue.background(.ldk) {
-            try node.signMessage(msg: [UInt8](msg))
+            node.signMessage(msg: [UInt8](msg))
         }
     }
     
-    func openChannel(peer: LnPeer, channelAmountSats: UInt64, pushToCounterpartySats: UInt64? = nil) async throws -> UserChannelId {
+    func openChannel(peer: LnPeer, channelAmountSats: UInt64, pushToCounterpartySats: UInt64? = nil, channelConfig: ChannelConfig? = nil) async throws -> UserChannelId {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
         
         return try await ServiceQueue.background(.ldk) {
-            try node.connectOpenChannel(
+            try node.openChannel(
                 nodeId: peer.nodeId,
                 address: peer.address,
                 channelAmountSats: channelAmountSats,
                 pushToCounterpartyMsat: pushToCounterpartySats == nil ? nil : pushToCounterpartySats! * 1000,
-                channelConfig: nil,
-                announceChannel: false
+                channelConfig: channelConfig
             )
         }
     }
@@ -306,7 +310,7 @@ extension LightningService {
                 case .paymentSuccessful(paymentId: let paymentId, paymentHash: let paymentHash, feePaidMsat: let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
                 case .paymentFailed(paymentId: let paymentId, paymentHash: let paymentHash, reason: let reason):
-                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) reason: \(reason.debugDescription)")
+                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
                 case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
                 case .paymentClaimable(paymentId: let paymentId, paymentHash: let paymentHash, claimableAmountMsat: let claimableAmountMsat, claimDeadline: let claimDeadline):
