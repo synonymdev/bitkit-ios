@@ -15,10 +15,16 @@ extension NodeStatus {
         Current best block \(currentBestBlock.height)
         """
 
-        if let latestWalletSyncTimestamp {
-            debug += "\nLast synced \(Date(timeIntervalSince1970: TimeInterval(latestWalletSyncTimestamp)).description)\n"
+        if let latestLightningWalletSyncTimestamp {
+            debug += "\nLightning synced \(Date(timeIntervalSince1970: TimeInterval(latestLightningWalletSyncTimestamp)).description)\n"
         } else {
-            debug += "\nLast synced never\n"
+            debug += "\nLightning synced never\n"
+        }
+
+        if let latestOnchainWalletSyncTimestamp {
+            debug += "\nOnchain synced \(Date(timeIntervalSince1970: TimeInterval(latestOnchainWalletSyncTimestamp)).description)\n"
+        } else {
+            debug += "\nOnchain synced never\n"
         }
 
         return debug

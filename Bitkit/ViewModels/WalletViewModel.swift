@@ -89,6 +89,11 @@ class WalletViewModel: ObservableObject {
         totalBalanceSats = 0
         totalOnchainSats = 0
         totalLightningSats = 0
+        
+        onchainAddress = ""
+        bolt11 = ""
+        bip21 = ""
+        
         // TODO: reset display address
         
         try await LightningService.shared.wipeStorage(walletIndex: 0)
@@ -159,7 +164,7 @@ class WalletViewModel: ObservableObject {
         if var payments = LightningService.shared.payments {
             payments.sort { $0.latestUpdateTimestamp > $1.latestUpdateTimestamp }
             
-            // TODO: eventually load other activity types from local storage
+            // TODO: eventually load other activity types from local storage / sqlite
             var allActivity: [PaymentDetails] = []
             var latestLightningActivity: [PaymentDetails] = []
             var latestOnchainActivity: [PaymentDetails] = []
@@ -169,19 +174,18 @@ class WalletViewModel: ObservableObject {
                 case .onchain:
                     allActivity.append(details)
                     latestOnchainActivity.append(details)
-                case .bolt11(hash: _, preimage: _, secret: _):
+                case .bolt11(hash: let hash, preimage: let preimage, secret: let secret):
                     if !(details.status == .pending && details.direction == .inbound) {
                         allActivity.append(details)
                         latestLightningActivity.append(details)
                     }
-                case .spontaneous(hash: _, preimage: _):
-                    allActivity.append(details)
-                    latestLightningActivity.append(details)
-                case .bolt11Jit(hash: _, preimage: _, secret: _, lspFeeLimits: _):
+                case .bolt11Jit(hash: let hash, preimage: let preimage, secret: let secret, lspFeeLimits: let lspFeeLimits):
                     break
-                case .bolt12Offer(hash: _, preimage: _, secret: _, offerId: _):
+                case .bolt12Offer(hash: let hash, preimage: let preimage, secret: let secret, offerId: let offerId, payerNote: let payerNote, quantity: let quantity):
                     break
-                case .bolt12Refund(hash: _, preimage: _, secret: _):
+                case .bolt12Refund(hash: let hash, preimage: let preimage, secret: let secret, payerNote: let payerNote, quantity: let quantity):
+                    break
+                case .spontaneous(hash: let hash, preimage: let preimage):
                     break
                 }
             }
