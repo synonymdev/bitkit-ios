@@ -61,6 +61,8 @@ class WalletViewModel: ObservableObject {
         
         nodeLifecycleState = .running
         
+        startPolling()
+        
         syncState()
         
         Task { @MainActor in
@@ -75,6 +77,7 @@ class WalletViewModel: ObservableObject {
     
     func stopLightningNode() async throws {
         nodeLifecycleState = .stopping
+        stopPolling()
         try await LightningService.shared.stop()
         nodeLifecycleState = .stopped
         syncState()
@@ -149,6 +152,7 @@ class WalletViewModel: ObservableObject {
     }
     
     internal func syncState() {
+        Logger.debug("Syncing wallet state")
         nodeStatus = LightningService.shared.status
         nodeId = LightningService.shared.nodeId
         balanceDetails = LightningService.shared.balances
@@ -233,5 +237,23 @@ class WalletViewModel: ObservableObject {
             
             bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
         }
+    }
+    
+    private func startPolling() {
+        stopPolling()
+        
+        syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                if self.nodeLifecycleState == .running {
+                    self.syncState()
+                }
+            }
+        }
+    }
+    
+    private func stopPolling() {
+        syncTimer?.invalidate()
+        syncTimer = nil
     }
 }
