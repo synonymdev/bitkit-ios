@@ -15,14 +15,12 @@ class AppViewModel: ObservableObject {
 
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var sendAmountSats: UInt64?
-    @Published var showSendAmountView = false // Scanned an invoice without an amount and need to enter it manually
-    @Published var showSendConfirmationView = false // Scanned an invoice with an amount and need to just confirm payment
-    @Published var showSendConfirmationViewAfterCustomAmount = false // Scanned an invoice without an amount but has manually entered one
 
     // Bottom sheets
     @Published var showReceiveSheet = false
     @Published var showSendOptionsSheet = false
     @Published var showScanner = false
+    @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
 
@@ -140,12 +138,8 @@ extension AppViewModel {
 
         if invoice.amountSatoshis > 0 {
             Logger.info("Found amount in invoice, proceeding with payment")
-            // TODO: show confirmation view
-            showSendConfirmationView = true
         } else {
             Logger.info("No amount found in invoice, proceeding entering amount manually")
-            // TODO: show send amount
-            showSendAmountView = true
         }
     }
 
@@ -155,20 +149,24 @@ extension AppViewModel {
 
         if invoice.amountSatoshis > 0 {
             Logger.info("Found amount in invoice, proceeding with payment")
-            showSendConfirmationView = true
         } else {
             Logger.info("No amount found in invoice, proceeding entering amount manually")
-            showSendAmountView = true
         }
     }
 
-    func setAmountToSend(sats: UInt64) {
-        sendAmountSats = sats
-        showSendConfirmationViewAfterCustomAmount = true
+    var invoiceRequiresCustomAmount: Bool? {
+        if let invoice = scannedLightningInvoice {
+            return invoice.amountSatoshis == 0
+        } else if let invoice = scannedOnchainInvoice {
+            return invoice.amountSatoshis == 0
+        } else {
+            return nil
+        }
     }
 
     func resetSendState() {
         showSendOptionsSheet = false
+        resetSendStateToggle.toggle()
 
         // After dropping the sheet reset displayed values
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -176,9 +174,6 @@ extension AppViewModel {
             self.scannedLightningInvoice = nil
             self.scannedOnchainInvoice = nil
             self.sendAmountSats = nil
-            self.showSendAmountView = false
-            self.showSendConfirmationView = false
-            self.showSendConfirmationViewAfterCustomAmount = false
         }
     }
 }

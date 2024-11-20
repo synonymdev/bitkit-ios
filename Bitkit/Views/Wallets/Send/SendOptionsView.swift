@@ -11,6 +11,9 @@ struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var showSendAmountView = false
+    @State private var showSendConfirmationView = false
+
     var body: some View {
         NavigationView {
             sendOptionsContent
@@ -40,7 +43,18 @@ struct SendOptionsView: View {
                     }
 
                     HStack {
-                        NavigationLink(destination: ScannerView()) {
+                        NavigationLink(destination: ScannerView {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                // If nil then it's not an invoice we're dealing with
+                                if app.invoiceRequiresCustomAmount == true {
+                                    showSendAmountView = true
+                                } else if app.invoiceRequiresCustomAmount == false {
+                                    showSendConfirmationView = true
+                                } else {
+                                    // TODO: Scanned something else that isn't being handled yet
+                                }
+                            }
+                        }) {
                             Text("Scan QR Code")
                         }
                     }
@@ -53,13 +67,13 @@ struct SendOptionsView: View {
         .background(
             NavigationLink(
                 destination: SendAmountView(),
-                isActive: $app.showSendAmountView
+                isActive: $showSendAmountView
             ) { EmptyView() }
         )
         .background(
             NavigationLink(
                 destination: SendConfirmationView(),
-                isActive: $app.showSendConfirmationView
+                isActive: $showSendConfirmationView
             ) { EmptyView() }
         )
     }
@@ -76,6 +90,13 @@ struct SendOptionsView: View {
         Task { @MainActor in
             do {
                 try await app.handleScannedData(uri)
+
+                // If nil then it's not an invoice we're dealing with
+                if app.invoiceRequiresCustomAmount == true {
+                    showSendAmountView = true
+                } else if app.invoiceRequiresCustomAmount == false {
+                    showSendConfirmationView = true
+                }
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
                 app.toast(error)
