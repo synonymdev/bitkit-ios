@@ -14,17 +14,44 @@ struct ScannerView: View {
 
     var body: some View {
         CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false) { response in
-            if case let .success(result) = response {
+            if case .success(let result) = response {
                 presentationMode.wrappedValue.dismiss()
 
-                do {
-                    let scannedData = try ScannedData(result.string)
-                    Logger.debug("Scanned data: \(scannedData)")
-                    Haptics.play(.scanSuccess)
-                    app.scannedData = scannedData
-                    app.showSendSheet = true
-                } catch {
-                    Logger.error("Failed to scan data: \(error)")
+                Task { @MainActor in
+                    do {
+                        let data = try await decode(invoice: result.string)
+
+                        Haptics.play(.scanSuccess)
+                        Logger.debug("Scanned data: \(data)")
+
+                        switch data {
+                        case .onChain(invoice: let invoice):
+                            if let lnInvoice = invoice.params?["lightning"] as? String {
+                                // Lightning invoice param found, prefer lightning payment if possible
+                                if case .lightning(invoice: let lightningInvoice) = try await decode(invoice: lnInvoice) {
+                                    if LightningService.shared.canSend(amountSats: lightningInvoice.amountSatoshis) {
+//                                        handleLightningPayment(lightningInvoice)
+                                        return
+                                    }
+                                }
+                            }
+
+                            // No invoice found, proceed with onchain payment
+                            Logger.debug("Onchain: \(invoice)")
+                        case .lightning(invoice: let invoice):
+                            Logger.debug("Lightning: \(invoice)")
+                            if LightningService.shared.canSend(amountSats: invoice.amountSatoshis) {
+//                                handleLightningPayment(invoice)
+                            } else {
+                                app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
+                            }
+                        default:
+                            Logger.warn("Unhandled invoice type: \(data)")
+                            app.toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
+                        }
+                    } catch {
+                        Logger.error("Failed to scan data: \(error)")
+                    }
                 }
             }
         }

@@ -88,7 +88,7 @@ struct HomeView: View {
         .overlay {
             TabBar()
         }
-        .sheet(isPresented: $app.showSendSheet, content: {
+        .sheet(isPresented: $app.showSendOptionsSheet, content: {
             if #available(iOS 16.0, *) {
                 SendOptionsView()
                     .presentationDetents([.height(sheetHeight)])
