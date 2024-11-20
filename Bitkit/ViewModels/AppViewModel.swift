@@ -11,6 +11,8 @@ import SwiftUI
 class AppViewModel: ObservableObject {
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
+    @Published var scannedLightningBolt11Invoice: String? // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
+
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var sendAmountSats: UInt64?
     @Published var showSendAmountView = false // Scanned an invoice without an amount and need to enter it manually
@@ -97,11 +99,15 @@ extension AppViewModel {
 
         switch data {
         case .onChain(invoice: let invoice):
+            guard LightningService.shared.status?.isRunning == true else {
+                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+                return
+            }
             if let lnInvoice = invoice.params?["lightning"] as? String {
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(invoice: let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if LightningService.shared.canSend(amountSats: lightningInvoice.amountSatoshis) {
-                        handleScannedLightningInvoice(lightningInvoice)
+                        handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice)
                         return
                     }
                 }
@@ -110,9 +116,14 @@ extension AppViewModel {
             // No LN invoice found, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
         case .lightning(invoice: let invoice):
+            guard LightningService.shared.status?.isRunning == true else {
+                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+                return
+            }
+
             Logger.debug("Lightning: \(invoice)")
             if LightningService.shared.canSend(amountSats: invoice.amountSatoshis) {
-                handleScannedLightningInvoice(invoice)
+                handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
             }
@@ -122,8 +133,9 @@ extension AppViewModel {
         }
     }
 
-    private func handleScannedLightningInvoice(_ invoice: LightningInvoice) {
+    private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String) {
         scannedLightningInvoice = invoice
+        scannedLightningBolt11Invoice = bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
         scannedOnchainInvoice = nil
 
         if invoice.amountSatoshis > 0 {
@@ -156,11 +168,17 @@ extension AppViewModel {
     }
 
     func resetSendState() {
-        scannedLightningInvoice = nil
-        scannedOnchainInvoice = nil
-        sendAmountSats = nil
-        showSendAmountView = false
-        showSendConfirmationView = false
-        showSendConfirmationViewAfterCustomAmount = false
+        showSendOptionsSheet = false
+
+        // After dropping the sheet reset displayed values
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            self.scannedLightningInvoice = nil
+            self.scannedOnchainInvoice = nil
+            self.sendAmountSats = nil
+            self.showSendAmountView = false
+            self.showSendConfirmationView = false
+            self.showSendConfirmationViewAfterCustomAmount = false
+        }
     }
 }
