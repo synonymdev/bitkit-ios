@@ -8,10 +8,11 @@
 import SwiftUI
 
 struct SwipeButton: View {
-    let onComplete: () -> Void
+    let onComplete: () async -> Void
 
     @State private var offset: CGFloat = 0
     @State private var isDragging = false
+    @State private var isLoading = false
 
     private let buttonHeight: CGFloat = 70
     private let innerPadding: CGFloat = 10
@@ -23,39 +24,69 @@ struct SwipeButton: View {
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
                     .fill(Color.gray)
                     .opacity(0.2)
-                    .overlay {
-                        Text("Swipe To Pay")
-                            .bold()
-                            .opacity(1.0 - (offset / (geometry.size.width - 80)))
+
+                // Green trail
+                RoundedRectangle(cornerRadius: buttonHeight / 2)
+                    .fill(Color.green.opacity(0.2))
+                    .frame(width: max(0, min(offset + (buttonHeight - innerPadding), geometry.size.width - innerPadding)))
+                    .frame(height: buttonHeight - innerPadding)
+                    .padding(.horizontal, innerPadding / 2)
+                    .mask {
+                        RoundedRectangle(cornerRadius: buttonHeight / 2)
+                            .frame(height: buttonHeight - innerPadding)
+                            .padding(.horizontal, innerPadding / 2)
                     }
+
+                // "Swipe To Pay" text
+                Text("Swipe To Pay")
+                    .bold()
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .opacity(1.0 - (offset / (geometry.size.width - buttonHeight)))
 
                 // Sliding circle
                 Circle()
                     .fill(Color.green)
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
-                        Image(systemName: "arrow.right")
-                            .foregroundColor(.white)
+                        ZStack {
+                            if isLoading {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            } else {
+                                Image(systemName: "arrow.right")
+                                    .foregroundColor(.white)
+                                    .opacity(1.0 - (offset / (geometry.size.width / 2)))
+
+                                Image(systemName: "checkmark")
+                                    .foregroundColor(.white)
+                                    .opacity(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2)))
+                            }
+                        }
                     )
-                    .offset(x: max(0, min(offset, geometry.size.width - 60)))
+                    .offset(x: max(0, min(offset, geometry.size.width - buttonHeight)))
                     .padding(.horizontal, innerPadding / 2)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
-                                isDragging = true
-                                offset = value.translation.width
+                                guard !isLoading else { return }
+                                withAnimation(.interactiveSpring()) {
+                                    isDragging = true
+                                    offset = value.translation.width
+                                }
                             }
                             .onEnded { _ in
+                                guard !isLoading else { return }
                                 isDragging = false
-                                if offset > geometry.size.width - 80 {
-                                    // Completed the swipe
-                                    withAnimation {
-                                        offset = geometry.size.width - 60
-                                    }
-                                    onComplete()
-                                } else {
-                                    // Reset position
-                                    withAnimation {
+                                withAnimation(.spring()) {
+                                    let threshold = geometry.size.width * 0.7
+                                    if offset > threshold {
+                                        Haptics.play(.medium)
+                                        offset = geometry.size.width - buttonHeight
+                                        isLoading = true
+                                        Task { @MainActor in
+                                            await onComplete()
+                                        }
+                                    } else {
                                         offset = 0
                                     }
                                 }
