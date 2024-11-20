@@ -152,7 +152,6 @@ class WalletViewModel: ObservableObject {
     }
     
     internal func syncState() {
-        Logger.debug("Syncing wallet state")
         nodeStatus = LightningService.shared.status
         nodeId = LightningService.shared.nodeId
         balanceDetails = LightningService.shared.balances
