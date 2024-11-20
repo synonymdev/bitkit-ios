@@ -13,6 +13,7 @@ struct SendAmountView: View {
 
     @State private var amount: String = ""
     @FocusState private var isAmountFocused: Bool
+    @State private var showSendConfirmationView = false
 
     var body: some View {
         VStack {
@@ -53,7 +54,8 @@ struct SendAmountView: View {
                 Button("Continue") {
                     Task { @MainActor in
                         if let amount = UInt64(amount) {
-                            app.setAmountToSend(sats: amount)
+                            app.sendAmountSats = amount
+                            showSendConfirmationView = true
                         } else {
                             Logger.error("Invalid amount: \(amount)")
                         }
@@ -65,7 +67,7 @@ struct SendAmountView: View {
         .background(
             NavigationLink(
                 destination: SendConfirmationView(),
-                isActive: $app.showSendConfirmationViewAfterCustomAmount
+                isActive: $showSendConfirmationView
             ) { EmptyView() }
         )
         .onAppear {

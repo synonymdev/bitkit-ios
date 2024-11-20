@@ -32,14 +32,18 @@ struct SendConfirmationView: View {
                     if let _ = app.scannedLightningInvoice, let bolt11 = app.scannedLightningBolt11Invoice {
                         let paymentHash = try await wallet.send(bolt11: bolt11, sats: app.sendAmountSats) // If sendAmountSats is nil that implies it's a non zero invoice
                         Logger.info("Lightning send result payment hash: \(paymentHash)")
+                        // Reset send state happens at success send event
                     } else if let invoice = app.scannedOnchainInvoice {
-                        let txid = try await wallet.send(address: invoice.address, sats: app.sendAmountSats ?? invoice.amountSatoshis)
+                        let sats = app.sendAmountSats ?? invoice.amountSatoshis
+                        let txid = try await wallet.send(address: invoice.address, sats: sats)
 
                         Logger.info("Onchain send result txid: \(txid)")
 
                         // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
                         try? await Task.sleep(nanoseconds: 3_000_000_000)
                         app.resetSendState()
+                        // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
+                        app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
                     }
                 } catch {
                     app.toast(error)
@@ -67,6 +71,8 @@ struct SendConfirmationView: View {
                 .foregroundColor(.secondary)
                 .font(.caption)
             Text(address)
+                .lineLimit(2)
+                .truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical)
@@ -103,7 +109,28 @@ struct SendConfirmationView: View {
     @ViewBuilder
     func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack {
-            // Add lightning invoice details here
+            toView(app.scannedLightningBolt11Invoice ?? "")
+
+            Divider()
+
+            HStack {
+                VStack(alignment: .leading) {
+                    Text("Speed and fee")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    Text("TODO")
+                }
+                Spacer()
+                VStack(alignment: .leading) {
+                    Text("Confirming in")
+                        .foregroundColor(.secondary)
+                        .font(.caption)
+                    Text("TODO")
+                }
+            }
+            .padding(.vertical)
+
+            Divider()
         }
     }
 }
