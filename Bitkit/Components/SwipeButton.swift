@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SwipeButton: View {
-    let onComplete: () async -> Void
+    let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
     @State private var isDragging = false
@@ -84,7 +84,18 @@ struct SwipeButton: View {
                                         offset = geometry.size.width - buttonHeight
                                         isLoading = true
                                         Task { @MainActor in
-                                            await onComplete()
+                                            do {
+                                                try await onComplete()
+                                            } catch {
+                                                // Reset the slider back to the start on error
+                                                withAnimation(.spring(duration: 0.3)) {
+                                                    offset = 0
+                                                }
+
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { // Adjust the delay to match animation duration
+                                                    isLoading = false
+                                                }
+                                            }
                                         }
                                     } else {
                                         offset = 0

@@ -28,7 +28,24 @@ struct SendConfirmationView: View {
             Spacer()
 
             SwipeButton {
-                Logger.info("TODO")
+                do {
+                    if let _ = app.scannedLightningInvoice, let bolt11 = app.scannedLightningBolt11Invoice {
+                        let paymentHash = try await wallet.send(bolt11: bolt11, sats: app.sendAmountSats) // If sendAmountSats is nil that implies it's a non zero invoice
+                        Logger.info("Lightning send result payment hash: \(paymentHash)")
+                    } else if let invoice = app.scannedOnchainInvoice {
+                        let txid = try await wallet.send(address: invoice.address, sats: app.sendAmountSats ?? invoice.amountSatoshis)
+
+                        Logger.info("Onchain send result txid: \(txid)")
+
+                        // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
+                        try? await Task.sleep(nanoseconds: 3_000_000_000)
+                        app.resetSendState()
+                    }
+                } catch {
+                    app.toast(error)
+                    Logger.error("Error sending: \(error)")
+                    throw error // Passing error up to SwipeButton so it knows to reset state
+                }
             }
         }
         .padding()
