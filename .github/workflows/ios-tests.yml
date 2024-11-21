@@ -19,6 +19,13 @@ jobs:
         with:
           xcode-version: "15.0"
 
+      - name: Clean Package.resolved
+        run: |
+          rm -f Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved || true
+
+      - name: Resolve Swift Package Dependencies
+        run: xcodebuild -resolvePackageDependencies -scheme Bitkit
+
       - name: Build and Test
         run: |
           xcodebuild test \
