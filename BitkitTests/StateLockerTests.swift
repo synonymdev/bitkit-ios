@@ -39,7 +39,7 @@ final class StateLockerTests: XCTestCase {
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
         
         XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
-            XCTAssertEqual(error as? StateLocker.StateLockerError, .alreadyLocked)
+            XCTAssertEqual(error as? StateLockerError, .alreadyLocked)
         }
         StateLocker.injectTestEnvironment(nil)
     }
@@ -88,7 +88,7 @@ final class StateLockerTests: XCTestCase {
         // Attempt to lock in push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
         XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
-            XCTAssertEqual(error as? StateLocker.StateLockerError, .alreadyLocked)
+            XCTAssertEqual(error as? StateLockerError, .alreadyLocked)
         }
 
         StateLocker.injectTestEnvironment(.foregroundApp)
