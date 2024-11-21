@@ -24,12 +24,13 @@ jobs:
           rm -f Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved || true
 
       - name: Resolve Swift Package Dependencies
-        run: xcodebuild -resolvePackageDependencies -scheme Bitkit
+        run: xcodebuild -resolvePackageDependencies -scheme Bitkit -sdk iphoneos
 
       - name: Build and Test
         run: |
           xcodebuild test \
             -scheme Bitkit \
+            -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 14,OS=16.0' \
             -allowProvisioningUpdates \
             -skipPackagePluginValidation \
