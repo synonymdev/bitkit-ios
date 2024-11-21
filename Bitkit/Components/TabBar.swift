@@ -17,7 +17,7 @@ struct TabBar: View {
                 HStack {
                     Spacer()
                     Button(action: {
-                        app.showSendSheet = true
+                        app.showSendOptionsSheet = true
                         Haptics.play(.openSheet)
                     }, label: {
                         Text("Send")

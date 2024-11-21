@@ -12,8 +12,11 @@ struct HomeView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showNodeState = false
-
     private let sheetHeight = UIScreen.screenHeight - 120
+
+    // If scanned directly from home screen
+    @State private var showSendAmountView = false
+    @State private var showSendConfirmationView = false
 
     var body: some View {
         NavigationView {
@@ -63,7 +66,14 @@ struct HomeView: View {
                 ActivityLatest(type: .all)
 
                 NavigationLink(
-                    destination: ScannerView(),
+                    destination: ScannerView {
+                        // If nil then it's not an invoice we're dealing with
+                        if app.invoiceRequiresCustomAmount == true {
+                            showSendAmountView = true
+                        } else if app.invoiceRequiresCustomAmount == false {
+                            showSendConfirmationView = true
+                        }
+                    },
                     isActive: $app.showScanner
                 ) {
                     EmptyView()
@@ -88,7 +98,7 @@ struct HomeView: View {
         .overlay {
             TabBar()
         }
-        .sheet(isPresented: $app.showSendSheet, content: {
+        .sheet(isPresented: $app.showSendOptionsSheet, content: {
             if #available(iOS 16.0, *) {
                 SendOptionsView()
                     .presentationDetents([.height(sheetHeight)])
@@ -104,6 +114,31 @@ struct HomeView: View {
                 ReceiveQR() // Will just consume full screen on older iOS versions
             }
         })
+        .sheet(isPresented: $showSendAmountView, content: {
+            NavigationView {
+                if #available(iOS 16.0, *) {
+                    SendAmountView()
+                        .presentationDetents([.height(sheetHeight)])
+                } else {
+                    SendAmountView() // Will just consume full screen on older iOS versions
+                }
+            }
+        })
+        .sheet(isPresented: $showSendConfirmationView, content: {
+            NavigationView {
+                if #available(iOS 16.0, *) {
+                    SendConfirmationView()
+                        .presentationDetents([.height(sheetHeight)])
+                } else {
+                    SendConfirmationView() // Will just consume full screen on older iOS versions
+                }
+            }
+        })
+        .onChange(of: app.resetSendStateToggle) { _ in
+            // If this is triggered it means we had a successful send and need to drop the sheet
+            showSendAmountView = false
+            showSendConfirmationView = false
+        }
     }
 
     var rightNavigationItem: some View {
