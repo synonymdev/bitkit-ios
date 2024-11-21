@@ -26,9 +26,9 @@ jobs:
       - name: Resolve Swift Package Dependencies
         run: xcodebuild -resolvePackageDependencies -scheme Bitkit -sdk iphoneos
 
-      - name: Build and Test
+      - name: Build Test Host App
         run: |
-          xcodebuild clean test \
+          xcodebuild build-for-testing \
             -scheme Bitkit \
             -project Bitkit.xcodeproj \
             -configuration Debug \
@@ -40,4 +40,14 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
+            | xcpretty
+
+      - name: Run Tests
+        run: |
+          xcodebuild test-without-building \
+            -scheme Bitkit \
+            -project Bitkit.xcodeproj \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 14,OS=16.0' \
             | xcpretty && exit ${PIPESTATUS[0]}
