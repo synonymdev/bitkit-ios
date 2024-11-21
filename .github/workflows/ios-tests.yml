@@ -30,7 +30,7 @@ jobs:
         run: |
           xcodebuild clean build test \
             -project Bitkit.xcodeproj \
-            -scheme BitkitTests \
+            -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 14,OS=16.0' \
             -configuration Debug \
             -enableCodeCoverage NO \
