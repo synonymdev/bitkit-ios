@@ -208,6 +208,28 @@ class LightningService {
         }
     }
     
+    /// Checks if we have the correct outbound capacity to send the amount
+    /// - Parameter amountSats
+    /// - Returns: True if we can send the amount
+    func canSend(amountSats: UInt64) -> Bool {
+        guard let channels else {
+            Logger.warn("Channels not available")
+            return false
+        }
+        
+        let totalNextOutboundHtlcLimitSats = channels
+            .filter { $0.isUsable }
+            .map { $0.nextOutboundHtlcLimitMsat }
+            .reduce(0, +) * 1000
+        
+        guard totalNextOutboundHtlcLimitSats > amountSats else {
+            Logger.warn("Insufficient outbound capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)")
+            return false
+        }
+        
+        return true
+    }
+    
     func send(address: String, sats: UInt64) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

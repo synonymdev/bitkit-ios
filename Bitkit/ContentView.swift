@@ -48,6 +48,7 @@ struct ContentView: View {
                             case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
                                 app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
                             case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
+                                app.resetSendState() // Likely send sheet is showing still so reset it
                                 app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
                             case .paymentClaimable:
                                 break

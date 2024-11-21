@@ -11,69 +11,51 @@ struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var showSendAmountView = false
+    @State private var showSendConfirmationView = false
+
     var body: some View {
         NavigationView {
-            VStack {
-                Text("Send Bitcoin")
-                    .font(.title)
-                    .padding()
+            sendOptionsContent
+        }
+    }
 
-                Spacer()
+    var sendOptionsContent: some View {
+        VStack {
+            Text("Send Bitcoin")
+                .font(.title)
+                .padding()
 
-                List {
-                    Section("To") {
-                        HStack {
-                            Button("Contact") {
-                                app.toast(type: .warning, title: "Coming soon", description: "This feature is not available yet")
-                            }
+            Spacer()
+
+            List {
+                Section("To") {
+                    HStack {
+                        Button("Paste Invoice") {
+                            handlePaste()
                         }
+                    }
 
-                        HStack {
-                            Button("Paste Invoice") {
-                                guard let uri = UIPasteboard.general.string else {
-                                    Logger.error("No data in clipboard")
-                                    return
-                                }
+                    HStack {
+                        NavigationLink(destination: SendEnterManuallyView()) {
+                            Text("Enter Manually")
+                        }
+                    }
 
-                                do {
-                                    let data = try ScannedData(uri)
-                                    Logger.debug("Pasted data: \(data)")
-                                    app.scannedData = data
-
-                                    Haptics.play(.pastedFromClipboard)
-
-                                    // TODO: nav to next view instead
-                                    if let option = data.options.first {
-                                        switch option {
-                                        case .onchain(let address, let amount, let label, let message):
-                                            app.toast(type: .success, title: "Onchain", description: "Onchain")
-                                        case .bolt11(let invoice):
-                                            Task {
-                                                do {
-                                                    try await wallet.send(bolt11: invoice)
-                                                } catch {
-                                                    app.toast(error)
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch {
-                                    Logger.error(error, context: "Failed to read data from clipboard")
-                                    app.toast(error)
+                    HStack {
+                        NavigationLink(destination: ScannerView {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                // If nil then it's not an invoice we're dealing with
+                                if app.invoiceRequiresCustomAmount == true {
+                                    showSendAmountView = true
+                                } else if app.invoiceRequiresCustomAmount == false {
+                                    showSendConfirmationView = true
+                                } else {
+                                    // TODO: Scanned something else that isn't being handled yet
                                 }
                             }
-                        }
-
-                        HStack {
-                            NavigationLink(destination: SendEnterManually()) {
-                                Text("Enter Manually")
-                            }
-                        }
-
-                        HStack {
-                            NavigationLink(destination: ScannerView()) {
-                                Text("Scan QR Code")
-                            }
+                        }) {
+                            Text("Scan QR Code")
                         }
                     }
                 }
@@ -81,6 +63,44 @@ struct SendOptionsView: View {
         }
         .onAppear {
             wallet.syncState()
+        }
+        .background(
+            NavigationLink(
+                destination: SendAmountView(),
+                isActive: $showSendAmountView
+            ) { EmptyView() }
+        )
+        .background(
+            NavigationLink(
+                destination: SendConfirmationView(),
+                isActive: $showSendConfirmationView
+            ) { EmptyView() }
+        )
+    }
+
+    func handlePaste() {
+        guard let uri = UIPasteboard.general.string else {
+            Logger.error("No data in clipboard")
+            app.toast(type: .warning, title: "No data in clipboard", description: "")
+            return
+        }
+
+        Haptics.play(.pastedFromClipboard)
+
+        Task { @MainActor in
+            do {
+                try await app.handleScannedData(uri)
+
+                // If nil then it's not an invoice we're dealing with
+                if app.invoiceRequiresCustomAmount == true {
+                    showSendAmountView = true
+                } else if app.invoiceRequiresCustomAmount == false {
+                    showSendConfirmationView = true
+                }
+            } catch {
+                Logger.error(error, context: "Failed to read data from clipboard")
+                app.toast(error)
+            }
         }
     }
 }
