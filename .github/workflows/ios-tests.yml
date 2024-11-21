@@ -31,6 +31,7 @@ jobs:
           xcodebuild clean build test \
             -project Bitkit.xcodeproj \
             -scheme Bitkit \
+            -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 14,OS=16.0' \
             -configuration Debug \
             -enableCodeCoverage NO \
@@ -40,4 +41,6 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=YES \
+            PLATFORM_NAME=iphonesimulator \
+            TARGETED_DEVICE_FAMILY=1 \
             | xcpretty && exit ${PIPESTATUS[0]}
