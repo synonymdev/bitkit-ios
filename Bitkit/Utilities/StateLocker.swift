@@ -85,7 +85,11 @@ class StateLocker {
     }
 
     private static func lockfile(_ process: ProcessType) -> URL {
-        Env.appStorageUrl.appendingPathComponent("\(process.rawValue).lock")
+        if !FileManager.default.fileExists(atPath: Env.appStorageUrl.path) {
+            try? FileManager.default.createDirectory(at: Env.appStorageUrl, withIntermediateDirectories: true)
+        }
+
+        return Env.appStorageUrl.appendingPathComponent("\(process.rawValue).lock")
     }
 
     private static func lockFileContent(_ process: ProcessType) -> LockFileContent? {
