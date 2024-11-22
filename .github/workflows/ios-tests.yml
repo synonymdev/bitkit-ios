@@ -19,12 +19,21 @@ jobs:
         with:
           xcode-version: "15.0"
 
+      - name: Check Project Structure
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "\nXcode project directory contents:"
+          ls -la Bitkit.xcodeproj || echo "Project directory not found"
+          echo "\nProject.pbxproj contents (if exists):"
+          cat Bitkit.xcodeproj/project.pbxproj || echo "Project file not found"
+
       - name: Clean Package.resolved
         run: |
           rm -f Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved || true
 
       - name: List Schemes
-        run: xcodebuild -list -project Bitkit.xcodeproj
+        run: xcodebuild -list -project Bitkit.xcodeproj || echo "Failed to list schemes"
 
       - name: Build and Test
         run: |
