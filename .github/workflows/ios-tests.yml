@@ -34,6 +34,7 @@ jobs:
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 14,OS=latest' \
             -enableCodeCoverage YES \
+            -parallel-testing-enabled NO \
             | xcbeautify --report junit
 
       - name: Upload test results
