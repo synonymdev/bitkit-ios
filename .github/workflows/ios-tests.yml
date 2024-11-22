@@ -18,6 +18,17 @@ jobs:
         run: sudo xcode-select -s /Applications/Xcode_15.0.app
       - name: Set Default Scheme
         run: |
+          # Debug: Show current directory and contents
+          pwd
+          ls -la
+
+          # Try to find the Xcode project/workspace
+          echo "Looking for Xcode project files:"
+          find . -name "*.xcodeproj"
+          echo "Looking for workspace files:"
+          find . -name "*.xcworkspace"
+
+          # Original commands
           scheme_list=$(xcodebuild -list -json | tr -d "\n")
           default=$(echo $scheme_list | ruby -e "require 'json'; puts JSON.parse(STDIN.gets)['project']['targets'][0]")
           echo $default | cat >default
