@@ -20,13 +20,21 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Install xcbeautify
+        run: |
+          brew install xcbeautify
+
       - name: Install dependencies
         run: |
-          xcodebuild -resolvePackageDependencies
+          xcodebuild -resolvePackageDependencies | xcbeautify
 
       - name: Run tests
         run: |
-          xcodebuild test -scheme Bitkit -destination 'platform=iOS Simulator,name=iPhone 14,OS=latest' -enableCodeCoverage YES
+          set -o pipefail && xcodebuild test \
+            -scheme Bitkit \
+            -destination 'platform=iOS Simulator,name=iPhone 14,OS=latest' \
+            -enableCodeCoverage YES \
+            | xcbeautify --report junit
 
       - name: Upload test results
         uses: actions/upload-artifact@v3
