@@ -1,0 +1,45 @@
+name: iOS Tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install xcbeautify
+        run: |
+          brew install xcbeautify
+
+      - name: Install dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies | xcbeautify
+
+      - name: Run tests
+        run: |
+          set -o pipefail && xcodebuild test \
+            -scheme Bitkit \
+            -destination 'platform=iOS Simulator,name=iPhone 14,OS=latest' \
+            -enableCodeCoverage YES \
+            -parallel-testing-enabled NO \
+            | xcbeautify --report junit
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: success() || failure()
+        with:
+          name: test-results
+          path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
