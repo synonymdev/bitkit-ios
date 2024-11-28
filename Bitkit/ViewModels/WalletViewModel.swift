@@ -10,6 +10,8 @@ import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
+    static let shared = WalletViewModel()
+    
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
@@ -34,6 +36,12 @@ class WalletViewModel: ObservableObject {
     private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
     private var syncTimer: Timer?
 
+    private let lightningService: LightningService
+    
+    init(lightningService: LightningService = .shared) {
+        self.lightningService = lightningService
+    }
+    
     deinit {
         Task { @MainActor in
             stopPolling()
@@ -52,8 +60,8 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .starting
         syncState()
         do {
-            try await LightningService.shared.setup(walletIndex: walletIndex)
-            try await LightningService.shared.start(onEvent: { event in
+            try await lightningService.setup(walletIndex: walletIndex)
+            try await lightningService.start(onEvent: { event in
                 // On every lightning event just sync UI
                 Task { @MainActor in
                     self.syncState()
@@ -84,7 +92,7 @@ class WalletViewModel: ObservableObject {
     func stopLightningNode() async throws {
         nodeLifecycleState = .stopping
         stopPolling()
-        try await LightningService.shared.stop()
+        try await lightningService.stop()
         nodeLifecycleState = .stopped
         syncState()
     }
@@ -105,11 +113,11 @@ class WalletViewModel: ObservableObject {
         
         // TODO: reset display address
         
-        try await LightningService.shared.wipeStorage(walletIndex: 0)
+        try await lightningService.wipeStorage(walletIndex: 0)
     }
     
     func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {
-        try await LightningService.shared.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+        try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
     }
     
     func sync() async throws {
@@ -127,7 +135,7 @@ class WalletViewModel: ObservableObject {
         syncState()
         
         do {
-            try await LightningService.shared.sync()
+            try await lightningService.sync()
         } catch {
             isSyncingWallet = false
             throw error
@@ -138,7 +146,7 @@ class WalletViewModel: ObservableObject {
     }
     
     func send(address: String, sats: UInt64) async throws -> Txid {
-        let txid = try await LightningService.shared.send(address: address, sats: sats)
+        let txid = try await lightningService.send(address: address, sats: sats)
         Task {
             // Best to auto sync on chain so we have latest state
             try await sync()
@@ -147,22 +155,22 @@ class WalletViewModel: ObservableObject {
     }
     
     func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
-        let hash = try await LightningService.shared.send(bolt11: bolt11, sats: sats)
+        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         syncState()
         return hash
     }
     
     func closeChannel(_ channel: ChannelDetails) async throws {
-        try await LightningService.shared.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
+        try await lightningService.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
         syncState()
     }
     
     internal func syncState() {
-        nodeStatus = LightningService.shared.status
-        nodeId = LightningService.shared.nodeId
-        balanceDetails = LightningService.shared.balances
-        peers = LightningService.shared.peers
-        channels = LightningService.shared.channels
+        nodeStatus = lightningService.status
+        nodeId = lightningService.nodeId
+        balanceDetails = lightningService.balances
+        peers = lightningService.peers
+        channels = lightningService.channels
         
         if let balanceDetails {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
@@ -170,7 +178,7 @@ class WalletViewModel: ObservableObject {
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
         
-        if var payments = LightningService.shared.payments {
+        if var payments = lightningService.payments {
             payments.sort { $0.latestUpdateTimestamp > $1.latestUpdateTimestamp }
             
             // TODO: eventually load other activity types from local storage / sqlite
@@ -223,7 +231,7 @@ class WalletViewModel: ObservableObject {
     
     func refreshBip21() async throws {
         if onchainAddress.isEmpty {
-            onchainAddress = try await LightningService.shared.newAddress()
+            onchainAddress = try await lightningService.newAddress()
         } else {
             // TODO: check if onchain has been used and generate new on if it has
         }
@@ -238,7 +246,7 @@ class WalletViewModel: ObservableObject {
         
         if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
             // Append lightning invoice if we have incoming capacity
-            bolt11 = try await LightningService.shared.receive(description: "Bitkit")
+            bolt11 = try await lightningService.receive(description: "Bitkit")
             
             bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
         }
