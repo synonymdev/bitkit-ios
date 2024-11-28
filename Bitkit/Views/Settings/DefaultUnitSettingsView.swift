@@ -5,7 +5,7 @@ struct DefaultUnitSettingsView: View {
 
     var body: some View {
         List {
-            Section("Display Amounts In") {
+            Section {
                 HStack {
                     Label("Bitcoin", systemImage: "bitcoinsign.circle")
                     Spacer()
@@ -18,7 +18,7 @@ struct DefaultUnitSettingsView: View {
                 .onTapGesture {
                     currency.primaryDisplay = .bitcoin
                 }
-                
+
                 if let rate = currency.convert(sats: 1)?.currency {
                     HStack {
                         Label(rate, systemImage: "globe")
@@ -33,17 +33,16 @@ struct DefaultUnitSettingsView: View {
                         currency.primaryDisplay = .fiat
                     }
                 }
+            } header: {
+                Text("Display Amounts In")
+            } footer: {
+                Text("Tip: Quickly toggle between Bitcoin and \(currency.convert(sats: 1)?.currency ?? "fiat") by tapping on your wallet balance.")
             }
 
             Section("Bitcoin Denomination") {
                 ForEach(BitcoinDisplayUnit.allCases, id: \.self) { unit in
                     HStack {
-                        VStack(alignment: .leading) {
-                            Text(unit.rawValue)
-                            Text(unit == .modern ? "Display in satoshis" : "Display in bitcoin")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                        Text("\(unit.display) (\(unit == .modern ? "₿ 10 000" : "₿ 0.00010000"))")
                         Spacer()
                         if currency.displayUnit == unit {
                             Image(systemName: "checkmark")
@@ -70,4 +69,4 @@ extension View {
             self
         }
     }
-} 
+}

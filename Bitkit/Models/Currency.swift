@@ -25,8 +25,18 @@ struct FxRate: Codable, Equatable {
 }
 
 enum BitcoinDisplayUnit: String, CaseIterable {
-    case modern = "Modern" // Display in sats
-    case classic = "Classic" // Display in BTC
+    case modern
+    case classic
+
+    // TODO: get translations here
+    var display: String {
+        switch self {
+        case .modern:
+            return "Modern"
+        case .classic:
+            return "Classic"
+        }
+    }
 }
 
 struct ConvertedAmount {
@@ -53,13 +63,16 @@ struct ConvertedAmount {
     func bitcoinDisplay(unit: BitcoinDisplayUnit) -> String {
         switch unit {
         case .modern:
-            return "\(sats) sats"
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.groupingSeparator = " "
+            return "₿ \(formatter.string(from: NSNumber(value: sats)) ?? String(sats))"
         case .classic:
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
             formatter.minimumFractionDigits = 8
             formatter.maximumFractionDigits = 8
-            return "\(formatter.string(from: btcValue as NSDecimalNumber) ?? "0") BTC"
+            return "₿ \(formatter.string(from: btcValue as NSDecimalNumber) ?? "0")"
         }
     }
 }
