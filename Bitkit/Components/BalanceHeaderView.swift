@@ -9,24 +9,30 @@ struct BalanceHeaderView: View {
             if let converted = currency.convert(sats: sats) {
                 if currency.primaryDisplay == .bitcoin {
                     HStack {
-                        Text(converted.symbol)
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.bottom, 4)
-                        Text(converted.formatted)
+                        Text("\(converted.symbol) \(converted.formatted)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .padding(.bottom, 4)
                     }
 
-                    Text(converted.bitcoinDisplay(unit: currency.displayUnit)) // TODO: display unit separately to add opacity
-                        .font(.largeTitle)
-                        .bold()
+                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                    HStack {
+                        Text(btcComponents.symbol)
+                            .font(.largeTitle)
+                            .bold()
+                            .opacity(0.6)
+                        Text(btcComponents.value)
+                            .font(.largeTitle)
+                            .bold()
+                    }
                 } else {
-                    Text(converted.bitcoinDisplay(unit: currency.displayUnit))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .padding(.bottom, 4)
+                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                    HStack {
+                        Text("\(btcComponents.symbol) \(btcComponents.value)")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.bottom, 4)
 
                     HStack {
                         Text(converted.symbol)
