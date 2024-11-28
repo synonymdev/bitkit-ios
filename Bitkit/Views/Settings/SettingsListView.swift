@@ -17,6 +17,10 @@ struct SettingsListView: View {
                 Text("Default Unit")
             }
 
+            NavigationLink(destination: LocalCurrencySettingsView()) {
+                Text("Local Currency")
+            }
+
             NavigationLink(destination: LightningSettingsView()) {
                 Text("Lightning")
             }

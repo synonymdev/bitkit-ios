@@ -84,8 +84,4 @@ extension CurrencyViewModel {
         
         return currencyService.convert(sats: sats, rate: rate)
     }
-    
-    var availableCurrencies: [String] {
-        currencyService.getAvailableCurrencies(from: rates)
-    }
 }

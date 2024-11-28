@@ -60,19 +60,27 @@ struct ConvertedAmount {
         self.btcValue = Decimal(sats) / 100_000_000
     }
 
-    func bitcoinDisplay(unit: BitcoinDisplayUnit) -> String {
+    struct BitcoinDisplayComponents {
+        let symbol: String
+        let value: String
+    }
+
+    func bitcoinDisplay(unit: BitcoinDisplayUnit) -> BitcoinDisplayComponents {
         switch unit {
         case .modern:
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
             formatter.groupingSeparator = " "
-            return "₿ \(formatter.string(from: NSNumber(value: sats)) ?? String(sats))"
+            let formattedValue = formatter.string(from: NSNumber(value: sats)) ?? String(sats)
+            return BitcoinDisplayComponents(symbol: "₿", value: formattedValue)
+            
         case .classic:
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal
             formatter.minimumFractionDigits = 8
             formatter.maximumFractionDigits = 8
-            return "₿ \(formatter.string(from: btcValue as NSDecimalNumber) ?? "0")"
+            let formattedValue = formatter.string(from: btcValue as NSDecimalNumber) ?? "0"
+            return BitcoinDisplayComponents(symbol: "₿", value: formattedValue)
         }
     }
 }
