@@ -2,19 +2,34 @@ import Foundation
 
 class ForexService {
     static let shared = ForexService()
+    private let maxRetries = 3
     
     private init() {}
     
     func fetchLatestRates() async throws -> [ForexRate] {
-        try await ServiceQueue.background(.forex) {
-            guard let url = URL(string: Env.blocktankFxRateServer) else {
-                throw URLError(.badURL)
+        var lastError: Error?
+        
+        for attempt in 0..<maxRetries {
+            do {
+                return try await ServiceQueue.background(.forex) {
+                    guard let url = URL(string: Env.blocktankFxRateServer) else {
+                        throw URLError(.badURL)
+                    }
+                    
+                    let (data, _) = try await URLSession.shared.data(from: url)
+                    let response = try JSONDecoder().decode(ForexRateResponse.self, from: data)
+                    return response.tickers
+                }
+            } catch {
+                lastError = error
+                if attempt < maxRetries - 1 {
+                    // Wait a bit before retrying, with exponential backoff
+                    try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
+                }
             }
-            
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONDecoder().decode(ForexRateResponse.self, from: data)
-            return response.tickers
         }
+        
+        throw lastError ?? URLError(.unknown)
     }
 }
 
