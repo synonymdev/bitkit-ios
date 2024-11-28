@@ -41,8 +41,9 @@ extension CurrencyService {
         let value = btcAmount * rate.rate
         
         let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = rate.quote
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 2
+        formatter.maximumFractionDigits = 2
         formatter.locale = Locale.current
         
         guard let formatted = formatter.string(from: value as NSDecimalNumber) else {
