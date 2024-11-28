@@ -1,12 +1,19 @@
 import Foundation
 import SwiftUI
 
+enum PrimaryDisplay: String {
+    case bitcoin = "Bitcoin"
+    case fiat = "Fiat"
+}
+
 @MainActor
 class ForexViewModel: ObservableObject {
     @Published private(set) var rates: [ForexRate] = []
     @Published private(set) var error: Error?
     @Published private(set) var hasStaleData: Bool = false
     @AppStorage("selectedCurrency") var selectedCurrency: String = "USD"
+    @AppStorage("bitcoinDisplayUnit") var displayUnit: BitcoinDisplayUnit = .modern
+    @AppStorage("primaryDisplay") var primaryDisplay: PrimaryDisplay = .bitcoin
     
     private let forexService: ForexService
     private var refreshTimer: Timer?
@@ -59,6 +66,10 @@ class ForexViewModel: ObservableObject {
     private func stopPolling() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+    }
+    
+    func togglePrimaryDisplay() {
+        primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
     }
 }
 

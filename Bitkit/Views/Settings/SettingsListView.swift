@@ -13,6 +13,10 @@ struct SettingsListView: View {
 
     var body: some View {
         List {
+            NavigationLink(destination: DefaultUnitSettingsView()) {
+                Text("Default Unit")
+            }
+
             NavigationLink(destination: LightningSettingsView()) {
                 Text("Lightning")
             }
