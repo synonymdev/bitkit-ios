@@ -27,6 +27,11 @@ struct ContentView: View {
         .sheet(isPresented: $app.showNewTransaction) {
             NewTransactionSheet(details: $app.newTransaction)
         }
+        .onChange(of: forex.hasStaleData) { _ in
+            if forex.hasStaleData {
+                app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
+            }
+        }
         .onChange(of: wallet.walletExists) { _ in
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
             if wallet.walletExists == true {
