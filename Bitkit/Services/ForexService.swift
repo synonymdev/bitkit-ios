@@ -9,7 +9,7 @@ class ForexService {
     func fetchLatestRates() async throws -> [ForexRate] {
         var lastError: Error?
         
-        for attempt in 0..<maxRetries {
+        for attempt in 0 ..< maxRetries {
             do {
                 return try await ServiceQueue.background(.forex) {
                     guard let url = URL(string: Env.blocktankFxRateServer) else {
@@ -54,7 +54,8 @@ extension ForexService {
             formatted: formatted,
             symbol: rate.currencySymbol,
             currency: rate.quote,
-            flag: rate.currencyFlag
+            flag: rate.currencyFlag,
+            sats: sats
         )
     }
     
@@ -65,4 +66,4 @@ extension ForexService {
     func getCurrentRate(for currency: String, from rates: [ForexRate]) -> ForexRate? {
         rates.first { $0.quote == currency }
     }
-} 
+}

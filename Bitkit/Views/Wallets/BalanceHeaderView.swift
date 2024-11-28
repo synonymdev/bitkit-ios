@@ -6,20 +6,30 @@ struct BalanceHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            // Main balance in sats
-            Text("\(sats)")
-                .font(.caption)
-                .foregroundColor(.secondary)
-
-            // Forex rate if available
             if let converted = forex.convert(sats: sats) {
-                HStack(spacing: 4) {
+                if forex.primaryDisplay == .bitcoin {
+                    Text(converted.formatted)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .opacity(forex.hasStaleData ? 0.5 : 1)
+                    
+                    Text(converted.bitcoinDisplay(unit: forex.displayUnit))
+                        .font(.title)
+                        .bold()
+                } else {
+                    Text(converted.bitcoinDisplay(unit: forex.displayUnit))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
                     Text(converted.formatted)
                         .font(.title)
                         .bold()
                 }
-                .opacity(forex.hasStaleData ? 0.5 : 1)
             }
+        }
+        .contentShape(Rectangle())  // Makes the entire VStack tappable
+        .onTapGesture {
+            forex.togglePrimaryDisplay()
         }
     }
 }
