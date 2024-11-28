@@ -7,20 +7,20 @@ enum PrimaryDisplay: String {
 }
 
 @MainActor
-class ForexViewModel: ObservableObject {
-    @Published private(set) var rates: [ForexRate] = []
+class CurrencyViewModel: ObservableObject {
+    @Published private(set) var rates: [FxRate] = []
     @Published private(set) var error: Error?
     @Published private(set) var hasStaleData: Bool = false
     @AppStorage("selectedCurrency") var selectedCurrency: String = "USD"
     @AppStorage("bitcoinDisplayUnit") var displayUnit: BitcoinDisplayUnit = .modern
     @AppStorage("primaryDisplay") var primaryDisplay: PrimaryDisplay = .bitcoin
     
-    private let forexService: ForexService
+    private let currencyService: CurrencyService
     private var refreshTimer: Timer?
     private var lastSuccessfulRefresh: Date?
     
-    init(forexService: ForexService = .shared) {
-        self.forexService = forexService
+    init(currencyService: CurrencyService = .shared) {
+        self.currencyService = currencyService
         startPolling()
     }
     
@@ -32,13 +32,13 @@ class ForexViewModel: ObservableObject {
     
     func refresh() async {
         do {
-            rates = try await forexService.fetchLatestRates()
+            rates = try await currencyService.fetchLatestRates()
             lastSuccessfulRefresh = Date()
             error = nil
             hasStaleData = false
         } catch {
             self.error = error
-            Logger.error(error, context: "Forex refresh failed")
+            Logger.error(error, context: "Currency rates refresh failed")
             
             // Set stale data flag if no successful refresh in last 10 minutes
             if let lastRefresh = lastSuccessfulRefresh {
@@ -75,17 +75,17 @@ class ForexViewModel: ObservableObject {
 
 // MARK: - UI Helpers
 
-extension ForexViewModel {
+extension CurrencyViewModel {
     func convert(sats: UInt64, to currency: String? = nil) -> ConvertedAmount? {
         let targetCurrency = currency ?? selectedCurrency
-        guard let rate = forexService.getCurrentRate(for: targetCurrency, from: rates) else {
+        guard let rate = currencyService.getCurrentRate(for: targetCurrency, from: rates) else {
             return nil
         }
         
-        return forexService.convert(sats: sats, rate: rate)
+        return currencyService.convert(sats: sats, rate: rate)
     }
     
     var availableCurrencies: [String] {
-        forexService.getAvailableCurrencies(from: rates)
+        currencyService.getAvailableCurrencies(from: rates)
     }
-} 
+}

@@ -10,8 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var app = AppViewModel()
     @StateObject private var wallet = WalletViewModel()
-    @StateObject private var blocktank = BlocktankViewModel()
-    @StateObject private var forex = ForexViewModel()
+    @StateObject private var currency = CurrencyViewModel()
 
     var body: some View {
         VStack {
@@ -27,8 +26,8 @@ struct ContentView: View {
         .sheet(isPresented: $app.showNewTransaction) {
             NewTransactionSheet(details: $app.newTransaction)
         }
-        .onChange(of: forex.hasStaleData) { _ in
-            if forex.hasStaleData {
+        .onChange(of: currency.hasStaleData) { _ in
+            if currency.hasStaleData {
                 app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
             }
         }
@@ -95,8 +94,7 @@ struct ContentView: View {
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(wallet)
-        .environmentObject(blocktank)
-        .environmentObject(forex)
+        .environmentObject(currency)
     }
 }
 

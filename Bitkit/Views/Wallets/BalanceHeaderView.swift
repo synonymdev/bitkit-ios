@@ -2,34 +2,35 @@ import SwiftUI
 
 struct BalanceHeaderView: View {
     let sats: UInt64
-    @EnvironmentObject var forex: ForexViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let converted = forex.convert(sats: sats) {
-                if forex.primaryDisplay == .bitcoin {
+            if let converted = currency.convert(sats: sats) {
+                if currency.primaryDisplay == .bitcoin {
                     Text(converted.formatted)
-                        .font(.caption)
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
-                        .opacity(forex.hasStaleData ? 0.5 : 1)
-                    
-                    Text(converted.bitcoinDisplay(unit: forex.displayUnit))
-                        .font(.title)
+                        .padding(.bottom, 4)
+
+                    Text(converted.bitcoinDisplay(unit: currency.displayUnit))
+                        .font(.largeTitle)
                         .bold()
                 } else {
-                    Text(converted.bitcoinDisplay(unit: forex.displayUnit))
-                        .font(.caption)
+                    Text(converted.bitcoinDisplay(unit: currency.displayUnit))
+                        .font(.subheadline)
                         .foregroundColor(.secondary)
-                    
+                        .padding(.bottom, 4)
+
                     Text(converted.formatted)
-                        .font(.title)
+                        .font(.largeTitle)
                         .bold()
                 }
             }
         }
-        .contentShape(Rectangle())  // Makes the entire VStack tappable
+        .contentShape(Rectangle()) // Makes the entire VStack tappable
         .onTapGesture {
-            forex.togglePrimaryDisplay()
+            currency.togglePrimaryDisplay()
         }
     }
 }

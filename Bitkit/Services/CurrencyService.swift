@@ -1,12 +1,12 @@
 import Foundation
 
-class ForexService {
-    static let shared = ForexService()
+class CurrencyService {
+    static let shared = CurrencyService()
     private let maxRetries = 3
     
     private init() {}
     
-    func fetchLatestRates() async throws -> [ForexRate] {
+    func fetchLatestRates() async throws -> [FxRate] {
         var lastError: Error?
         
         for attempt in 0 ..< maxRetries {
@@ -17,7 +17,7 @@ class ForexService {
                     }
                     
                     let (data, _) = try await URLSession.shared.data(from: url)
-                    let response = try JSONDecoder().decode(ForexRateResponse.self, from: data)
+                    let response = try JSONDecoder().decode(FxRateResponse.self, from: data)
                     return response.tickers
                 }
             } catch {
@@ -33,10 +33,10 @@ class ForexService {
     }
 }
 
-// MARK: UI Helpers (Published via ForexViewModel)
+// MARK: UI Helpers (Published via CurrencyViewModel)
 
-extension ForexService {
-    func convert(sats: UInt64, rate: ForexRate) -> ConvertedAmount? {
+extension CurrencyService {
+    func convert(sats: UInt64, rate: FxRate) -> ConvertedAmount? {
         let btcAmount = Decimal(sats) / 100_000_000
         let value = btcAmount * rate.rate
         
@@ -59,11 +59,11 @@ extension ForexService {
         )
     }
     
-    func getAvailableCurrencies(from rates: [ForexRate]) -> [String] {
+    func getAvailableCurrencies(from rates: [FxRate]) -> [String] {
         rates.map { $0.quote }
     }
     
-    func getCurrentRate(for currency: String, from rates: [ForexRate]) -> ForexRate? {
+    func getCurrentRate(for currency: String, from rates: [FxRate]) -> FxRate? {
         rates.first { $0.quote == currency }
     }
 }
