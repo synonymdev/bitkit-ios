@@ -9,6 +9,8 @@ import SwiftUI
 
 @MainActor
 class AppViewModel: ObservableObject {
+    static let shared = AppViewModel()
+    
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedLightningBolt11Invoice: String? // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
@@ -29,6 +31,12 @@ class AppViewModel: ObservableObject {
 
     // In app notifications
     @Published var currentToast: Toast?
+
+    private let lightningService: LightningService
+    
+    init(lightningService: LightningService = .shared) {
+        self.lightningService = lightningService
+    }
 }
 
 // MARK: Toast notifications
@@ -97,14 +105,14 @@ extension AppViewModel {
 
         switch data {
         case .onChain(invoice: let invoice):
-            guard LightningService.shared.status?.isRunning == true else {
+            guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
             if let lnInvoice = invoice.params?["lightning"] as? String {
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(invoice: let lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    if LightningService.shared.canSend(amountSats: lightningInvoice.amountSatoshis) {
+                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice)
                         return
                     }
@@ -114,13 +122,13 @@ extension AppViewModel {
             // No LN invoice found, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
         case .lightning(invoice: let invoice):
-            guard LightningService.shared.status?.isRunning == true else {
+            guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
 
             Logger.debug("Lightning: \(invoice)")
-            if LightningService.shared.canSend(amountSats: invoice.amountSatoshis) {
+            if lightningService.canSend(amountSats: invoice.amountSatoshis) {
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
