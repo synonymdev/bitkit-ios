@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct DefaultUnitSettingsView: View {
-    @EnvironmentObject var forex: ForexViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
         List {
@@ -9,28 +9,28 @@ struct DefaultUnitSettingsView: View {
                 HStack {
                     Label("Bitcoin", systemImage: "bitcoinsign.circle")
                     Spacer()
-                    if forex.primaryDisplay == .bitcoin {
+                    if currency.primaryDisplay == .bitcoin {
                         Image(systemName: "checkmark")
                             .foregroundColor(.accentColor)
                     }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    forex.primaryDisplay = .bitcoin
+                    currency.primaryDisplay = .bitcoin
                 }
                 
-                if let rate = forex.convert(sats: 1)?.currency {
+                if let rate = currency.convert(sats: 1)?.currency {
                     HStack {
                         Label(rate, systemImage: "globe")
                         Spacer()
-                        if forex.primaryDisplay == .fiat {
+                        if currency.primaryDisplay == .fiat {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)
                         }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        forex.primaryDisplay = .fiat
+                        currency.primaryDisplay = .fiat
                     }
                 }
             }
@@ -45,14 +45,14 @@ struct DefaultUnitSettingsView: View {
                                 .foregroundColor(.secondary)
                         }
                         Spacer()
-                        if forex.displayUnit == unit {
+                        if currency.displayUnit == unit {
                             Image(systemName: "checkmark")
                                 .foregroundColor(.accentColor)
                         }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        forex.displayUnit = unit
+                        currency.displayUnit = unit
                     }
                 }
             }
