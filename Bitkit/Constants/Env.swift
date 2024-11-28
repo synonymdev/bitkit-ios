@@ -143,6 +143,13 @@ enum Env {
         "\(blocktankBaseUrl)/blocktank/api/v2"
     }
     
+    static var blocktankFxRateServer: String {
+        "\(blocktankBaseUrl)/fx/rates/btc"
+    }
+    
+    static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
+    static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
+    
     static var pushNotificationFeatures: [BlocktankNotificationType] = [
         .incomingHtlc,
         .mutualClose,

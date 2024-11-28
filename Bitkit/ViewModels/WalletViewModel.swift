@@ -34,6 +34,12 @@ class WalletViewModel: ObservableObject {
     private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
     private var syncTimer: Timer?
 
+    deinit {
+        Task { @MainActor in
+            stopPolling()
+        }
+    }
+
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }

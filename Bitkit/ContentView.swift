@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var app = AppViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
+    @StateObject private var forex = ForexViewModel()
 
     var body: some View {
         VStack {
@@ -90,6 +91,7 @@ struct ContentView: View {
         .environmentObject(app)
         .environmentObject(wallet)
         .environmentObject(blocktank)
+        .environmentObject(forex)
     }
 }
 

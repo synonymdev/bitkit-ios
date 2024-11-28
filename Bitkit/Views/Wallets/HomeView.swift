@@ -22,11 +22,7 @@ struct HomeView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading) {
-                    Text("Total balance")
-                        .font(.caption)
-                    Text("\(wallet.totalBalanceSats)")
-                        .font(.title)
-                        .bold()
+                    BalanceHeaderView(sats: UInt64(wallet.totalBalanceSats))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
