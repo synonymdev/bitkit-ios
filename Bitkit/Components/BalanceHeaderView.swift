@@ -14,6 +14,12 @@ struct BalanceHeaderView: View {
                             .foregroundColor(.secondary)
                             .padding(.bottom, 4)
                     }
+                    .transition(
+                        .move(edge: .bottom)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 1.5, anchor: .center))
+                        .combined(with: .offset(x: 20, y: 0))
+                    )
 
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
@@ -25,14 +31,26 @@ struct BalanceHeaderView: View {
                             .font(.largeTitle)
                             .bold()
                     }
+                    .transition(
+                        .move(edge: .top)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 0.5, anchor: .center))
+                        .combined(with: .offset(x: -20, y: 0))
+                    )
                 } else {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
                         Text("\(btcComponents.symbol) \(btcComponents.value)")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
+                            .padding(.bottom, 4)
                     }
-                    .padding(.bottom, 4)
+                    .transition(
+                        .move(edge: .bottom)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 1.5, anchor: .center))
+                        .combined(with: .offset(x: 20, y: 0))
+                    )
 
                     HStack {
                         Text(converted.symbol)
@@ -43,13 +61,22 @@ struct BalanceHeaderView: View {
                             .font(.largeTitle)
                             .bold()
                     }
+                    .transition(
+                        .move(edge: .top)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 0.5, anchor: .center))
+                        .combined(with: .offset(x: -20, y: 0))
+                    )
                 }
             }
         }
-        .contentShape(Rectangle()) // Makes the entire VStack tappable
+        .contentShape(Rectangle())
         .onTapGesture {
-            currency.togglePrimaryDisplay()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                currency.togglePrimaryDisplay()
+            }
             Haptics.play(.medium)
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currency.primaryDisplay)
     }
 }
