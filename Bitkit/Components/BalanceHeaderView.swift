@@ -11,6 +11,7 @@ struct BalanceHeaderView: View {
                     HStack {
                         Text("\(converted.symbol) \(converted.formatted)")
                             .font(.subheadline)
+                            .bold()
                             .foregroundColor(.secondary)
                             .padding(.bottom, 4)
                     }
@@ -24,11 +25,11 @@ struct BalanceHeaderView: View {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
                         Text(btcComponents.symbol)
-                            .font(.largeTitle)
+                            .font(.system(size: 46, weight: .bold))
                             .bold()
                             .opacity(0.6)
                         Text(btcComponents.value)
-                            .font(.largeTitle)
+                            .font(.system(size: 46, weight: .bold))
                             .bold()
                     }
                     .transition(
@@ -42,6 +43,7 @@ struct BalanceHeaderView: View {
                     HStack {
                         Text("\(btcComponents.symbol) \(btcComponents.value)")
                             .font(.subheadline)
+                            .bold()
                             .foregroundColor(.secondary)
                             .padding(.bottom, 4)
                     }
@@ -54,11 +56,11 @@ struct BalanceHeaderView: View {
 
                     HStack {
                         Text(converted.symbol)
-                            .font(.largeTitle)
+                            .font(.system(size: 46, weight: .bold))
                             .bold()
                             .opacity(0.6)
                         Text(converted.formatted)
-                            .font(.largeTitle)
+                            .font(.system(size: 46, weight: .bold))
                             .bold()
                     }
                     .transition(

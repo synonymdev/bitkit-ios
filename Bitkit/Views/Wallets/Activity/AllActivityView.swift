@@ -29,10 +29,11 @@ struct ActivityRow: View {
         {
             VStack(alignment: .trailing, spacing: 2) {
                 if currency.primaryDisplay == .bitcoin {
+                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack(spacing: 1) {
                         Text(amountPrefix)
                             .foregroundColor(.primary.opacity(0.8))
-                        Text("\(amountSats)")
+                        Text(btcComponents.value)
                     }
 
                     Text("\(converted.symbol) \(converted.formatted)")
@@ -45,7 +46,8 @@ struct ActivityRow: View {
                         Text("\(converted.symbol) \(converted.formatted)")
                     }
 
-                    Text("\(amountSats)")
+                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                    Text(btcComponents.value)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
