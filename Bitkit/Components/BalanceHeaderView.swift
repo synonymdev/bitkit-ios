@@ -2,6 +2,8 @@ import SwiftUI
 
 struct BalanceHeaderView: View {
     let sats: Int
+    var prefix: String? = nil
+    var showBitcoinSymbol: Bool = true
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
@@ -9,6 +11,12 @@ struct BalanceHeaderView: View {
             if let converted = currency.convert(sats: UInt64(sats)) {
                 if currency.primaryDisplay == .bitcoin {
                     HStack {
+                        if let prefix {
+                            Text(prefix)
+                                .font(.subheadline)
+                                .bold()
+                                .foregroundColor(.secondary)
+                        }
                         Text("\(converted.symbol) \(converted.formatted)")
                             .font(.subheadline)
                             .bold()
@@ -24,10 +32,18 @@ struct BalanceHeaderView: View {
 
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
-                        Text(btcComponents.symbol)
-                            .font(.system(size: 46, weight: .bold))
-                            .bold()
-                            .opacity(0.6)
+                        if let prefix {
+                            Text(prefix)
+                                .font(.system(size: 46, weight: .bold))
+                                .bold()
+                                .opacity(0.6)
+                        }
+                        if showBitcoinSymbol {
+                            Text(btcComponents.symbol)
+                                .font(.system(size: 46, weight: .bold))
+                                .bold()
+                                .opacity(0.6)
+                        }
                         Text(btcComponents.value)
                             .font(.system(size: 46, weight: .bold))
                             .bold()
@@ -41,6 +57,12 @@ struct BalanceHeaderView: View {
                 } else {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
+                        if let prefix {
+                            Text(prefix)
+                                .font(.subheadline)
+                                .bold()
+                                .foregroundColor(.secondary)
+                        }
                         Text("\(btcComponents.symbol) \(btcComponents.value)")
                             .font(.subheadline)
                             .bold()
@@ -55,6 +77,12 @@ struct BalanceHeaderView: View {
                     )
 
                     HStack {
+                        if let prefix {
+                            Text(prefix)
+                                .font(.system(size: 46, weight: .bold))
+                                .bold()
+                                .opacity(0.6)
+                        }
                         Text(converted.symbol)
                             .font(.system(size: 46, weight: .bold))
                             .bold()
