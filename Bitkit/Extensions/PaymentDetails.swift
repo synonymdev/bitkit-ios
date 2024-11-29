@@ -27,4 +27,9 @@ extension PaymentDetails {
             return "✅"
         }
     }
+
+    var creationTime: Date {
+        // LDKNode timestamps are in seconds since Unix epoch
+        Date(timeIntervalSince1970: TimeInterval(latestUpdateTimestamp))
+    }
 }

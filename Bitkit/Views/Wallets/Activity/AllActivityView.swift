@@ -10,6 +10,48 @@ import SwiftUI
 
 struct ActivityRow: View {
     let item: PaymentDetails
+    @EnvironmentObject var currency: CurrencyViewModel
+
+    private var formattedTime: String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: item.creationTime)
+    }
+
+    private var amountPrefix: String {
+        item.direction == .outbound ? "-" : "+"
+    }
+
+    @ViewBuilder
+    private var amountView: some View {
+        if let amountSats = item.amountSats,
+           let converted = currency.convert(sats: amountSats)
+        {
+            VStack(alignment: .trailing, spacing: 2) {
+                if currency.primaryDisplay == .bitcoin {
+                    HStack(spacing: 1) {
+                        Text(amountPrefix)
+                            .foregroundColor(.primary.opacity(0.8))
+                        Text("\(amountSats)")
+                    }
+
+                    Text("\(converted.symbol) \(converted.formatted)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    HStack(spacing: 1) {
+                        Text(amountPrefix)
+                            .foregroundColor(.primary.opacity(0.8))
+                        Text("\(converted.symbol) \(converted.formatted)")
+                    }
+
+                    Text("\(amountSats)")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
 
     var body: some View {
         NavigationLink(destination: ActivityItemView(item: item)) {
@@ -17,30 +59,34 @@ struct ActivityRow: View {
                 icon
                     .padding(.trailing, 4)
 
-                if item.direction == .outbound {
-                    switch item.status {
-                    case .failed:
-                        Text("Sending Failed")
-                    case .pending:
-                        Text("Sending...")
-                    case .succeeded:
-                        Text("Sent")
+                VStack(alignment: .leading, spacing: 4) {
+                    if item.direction == .outbound {
+                        switch item.status {
+                        case .failed:
+                            Text("Sending Failed")
+                        case .pending:
+                            Text("Sending...")
+                        case .succeeded:
+                            Text("Sent")
+                        }
+                    } else {
+                        switch item.status {
+                        case .failed:
+                            Text("Receive Failed")
+                        case .pending:
+                            Text("Receiving...")
+                        case .succeeded:
+                            Text("Received")
+                        }
                     }
-                } else {
-                    switch item.status {
-                    case .failed:
-                        Text("Receive Failed")
-                    case .pending:
-                        Text("Receiving...")
-                    case .succeeded:
-                        Text("Received")
-                    }
+
+                    Text(formattedTime)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
 
                 Spacer()
-                if let amountSats = item.amountSats {
-                    Text("\(amountSats)")
-                }
+                amountView
             }
             .padding(.horizontal)
             .padding(.vertical, 8)

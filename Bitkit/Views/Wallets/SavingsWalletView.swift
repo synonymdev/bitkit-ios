@@ -13,15 +13,9 @@ struct SavingsWalletView: View {
 
     var body: some View {
         VStack {
-            VStack(alignment: .leading) {
-                Text("SAVINGS BALANCE")
-                    .font(.caption2)
-                Text("\(wallet.totalOnchainSats)")
-                    .font(.title)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-
+            BalanceHeaderView(sats: wallet.totalOnchainSats)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
             Divider()
 
             NavigationLink(destination: {
