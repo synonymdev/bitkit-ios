@@ -60,23 +60,6 @@ struct HomeView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
                 ActivityLatest(type: .all)
-
-                NavigationLink(
-                    destination: ScannerView {
-                        // If nil then it's not an invoice we're dealing with
-                        if app.invoiceRequiresCustomAmount == true {
-                            showSendAmountView = true
-                        } else if app.invoiceRequiresCustomAmount == false {
-                            showSendConfirmationView = true
-                        }
-                    },
-                    isActive: $app.showScanner
-                ) {
-                    EmptyView()
-                }
-                .onChange(of: app.showScanner) { showScanner in
-                    app.showTabBar = !showScanner
-                }
             }
             .refreshable {
                 do {
@@ -87,6 +70,20 @@ struct HomeView: View {
             }
             .navigationBarItems(trailing: rightNavigationItem)
             .navigationTitle("Bitkit")
+            .background {
+                NavigationLink(
+                    destination: ScannerView(
+                        showSendAmountView: $showSendAmountView,
+                        showSendConfirmationView: $showSendConfirmationView
+                    ),
+                    isActive: $app.showScanner
+                ) {
+                    EmptyView()
+                }
+                .onChange(of: app.showScanner) { showScanner in
+                    app.showTabBar = !showScanner
+                }
+            }
         }
         .onAppear {
             app.showTabBar = true

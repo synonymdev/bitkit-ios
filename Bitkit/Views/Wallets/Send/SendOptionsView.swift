@@ -36,18 +36,11 @@ struct SendOptionsView: View {
                 }
 
                 HStack {
-                    NavigationLink(destination: ScannerView {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            // If nil then it's not an invoice we're dealing with
-                            if app.invoiceRequiresCustomAmount == true {
-                                showSendAmountView = true
-                            } else if app.invoiceRequiresCustomAmount == false {
-                                showSendConfirmationView = true
-                            } else {
-                                // TODO: Scanned something else that isn't being handled yet
-                            }
-                        }
-                    }) {
+                    NavigationLink(destination: ScannerView(
+                        showSendAmountView: $showSendAmountView,
+                        showSendConfirmationView: $showSendConfirmationView,
+                        onResultDelay: 0.65 // Slight delay so this view can dismiss before the next view appears
+                    )) {
                         Text("Scan QR Code")
                     }
                 }
