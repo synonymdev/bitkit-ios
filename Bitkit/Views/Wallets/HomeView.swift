@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
 
     @State private var showNodeState = false
     private let sheetHeight = UIScreen.screenHeight - 120
@@ -29,28 +30,24 @@ struct HomeView: View {
 
                 HStack {
                     NavigationLink(destination: SavingsWalletView()) {
-                        VStack(alignment: .leading) {
-                            Text("SAVINGS")
-                                .font(.caption)
-                            Text("\(wallet.totalOnchainSats)")
-                                .font(.title3)
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        WalletBalanceView(
+                            title: "SAVINGS",
+                            sats: UInt64(wallet.totalOnchainSats),
+                            icon: "bitcoinsign.circle",
+                            iconColor: .orange
+                        )
                     }
 
                     Divider()
                         .frame(height: 50)
 
                     NavigationLink(destination: SpendingWalletView()) {
-                        VStack(alignment: .leading) {
-                            Text("SPENDING")
-                                .font(.caption)
-                            Text("\(wallet.totalLightningSats)")
-                                .font(.title3)
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        WalletBalanceView(
+                            title: "SPENDING",
+                            sats: UInt64(wallet.totalLightningSats),
+                            icon: "bolt.circle",
+                            iconColor: .purple
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
