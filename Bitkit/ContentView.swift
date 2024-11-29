@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var app = AppViewModel()
     @StateObject private var wallet = WalletViewModel()
+    @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
 
     var body: some View {
@@ -25,6 +26,11 @@ struct ContentView: View {
         .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
         .sheet(isPresented: $app.showNewTransaction) {
             NewTransactionSheet(details: $app.newTransaction)
+        }
+        .onChange(of: currency.hasStaleData) { _ in
+            if currency.hasStaleData {
+                app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
+            }
         }
         .onChange(of: wallet.walletExists) { _ in
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
@@ -85,10 +91,11 @@ struct ContentView: View {
                 app.toast(error)
             }
         }
-        .handleLightningStateOnScenePhaseChange() // Will stop and start LN node as needed
+        .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(wallet)
+        .environmentObject(currency)
         .environmentObject(blocktank)
     }
 }

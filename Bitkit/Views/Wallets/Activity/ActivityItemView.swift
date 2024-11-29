@@ -11,12 +11,15 @@ import SwiftUI
 struct ActivityItemView: View {
     let item: PaymentDetails
 
+    private var amountPrefix: String {
+        item.direction == .outbound ? "-" : "+"
+    }
+
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
                 if let amountSats = item.amountSats {
-                    Text("\(item.direction == .outbound ? "-" : "+") \(amountSats)")
-                        .font(.title)
+                    BalanceHeaderView(sats: Int(amountSats), prefix: amountPrefix, showBitcoinSymbol: false)
                 }
 
                 Spacer()
@@ -33,32 +36,42 @@ struct ActivityItemView: View {
                         .opacity(0.8)
                 }
             }
+            .padding(.vertical)
 
-            HStack {
-                switch item.status {
-                case .pending:
-                    Image(systemName: "clock")
-                        .foregroundColor(.gray)
-                    Text("Pending")
-                        .foregroundColor(.gray)
-                case .succeeded:
-                    Image(systemName: "checkmark")
-                        .foregroundColor(.green)
-                    Text("Confirmed")
-                        .foregroundColor(.green)
-                case .failed:
-                    Image(systemName: "xmark")
-                        .foregroundColor(.red)
-                    Text("Failed")
+            VStack(alignment: .leading) {
+                Text("Status")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                HStack {
+                    switch item.status {
+                    case .pending:
+                        Image(systemName: "clock")
+                            .foregroundColor(.gray)
+                        Text("Pending")
+                            .foregroundColor(.gray)
+                    case .succeeded:
+                        Image(systemName: "checkmark")
+                            .foregroundColor(.green)
+                        Text("Successful")
+                            .foregroundColor(.green)
+                    case .failed:
+                        Image(systemName: "xmark")
+                            .foregroundColor(.red)
+                        Text("Failed")
+                    }
                 }
             }
+            .padding(.vertical)
 
             Divider()
 
-            Text("Date")
-            Text(Date(timeIntervalSince1970: TimeInterval(item.latestUpdateTimestamp)).formatted())
-                .font(.caption)
-                .padding(.bottom, 2)
+            VStack(alignment: .leading) {
+                Text("Date")
+                Text(Date(timeIntervalSince1970: TimeInterval(item.latestUpdateTimestamp)).formatted())
+                    .font(.caption)
+                    .padding(.bottom, 2)
+            }
+            .padding(.vertical)
 
             Divider()
 

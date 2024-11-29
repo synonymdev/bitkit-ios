@@ -13,15 +13,9 @@ struct SpendingWalletView: View {
 
     var body: some View {
         VStack {
-            VStack(alignment: .leading) {
-                Text("SPENDING BALANCE")
-                    .font(.caption2)
-                Text("\(wallet.totalLightningSats)")
-                    .font(.title)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
-
+            BalanceHeaderView(sats: wallet.totalLightningSats)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
             Divider()
 
             ScrollView {
