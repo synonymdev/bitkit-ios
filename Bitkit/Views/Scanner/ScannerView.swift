@@ -9,15 +9,18 @@ import CodeScanner
 import SwiftUI
 
 struct ScannerView: View {
-    let onDecodeSuccess: () -> Void
+    @Binding var showSendAmountView: Bool
+    @Binding var showSendConfirmationView: Bool
+    var onResultDelay: TimeInterval = 0
 
-    @EnvironmentObject var app: AppViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject private var app: AppViewModel
+    @Environment(\.presentationMode) private var presentationMode
 
     var body: some View {
         CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false) { response in
             if case .success(let result) = response {
                 presentationMode.wrappedValue.dismiss()
+
                 handleScan(result.string)
             } else if case .failure(let error) = response {
                 Logger.error(error, context: "Failed to scan QR code")
@@ -35,7 +38,14 @@ struct ScannerView: View {
             do {
                 try await app.handleScannedData(uri)
 
-                onDecodeSuccess()
+                DispatchQueue.main.asyncAfter(deadline: .now() + onResultDelay) {
+                    // If nil then it's not an invoice we're dealing with
+                    if app.invoiceRequiresCustomAmount == true {
+                        showSendAmountView = true
+                    } else if app.invoiceRequiresCustomAmount == false {
+                        showSendConfirmationView = true
+                    }
+                }
             } catch {
                 Logger.error(error, context: "Failed to read data from QR")
                 app.toast(error)
@@ -44,9 +54,10 @@ struct ScannerView: View {
     }
 }
 
-// TODO: all basic cases here for now
-
 #Preview {
-    ScannerView {}
-        .environmentObject(AppViewModel())
+    ScannerView(
+        showSendAmountView: .constant(false),
+        showSendConfirmationView: .constant(false)
+    )
+    .environmentObject(AppViewModel())
 }

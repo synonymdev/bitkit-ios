@@ -10,6 +10,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
 
     @State private var showNodeState = false
     private let sheetHeight = UIScreen.screenHeight - 120
@@ -18,69 +19,48 @@ struct HomeView: View {
     @State private var showSendAmountView = false
     @State private var showSendConfirmationView = false
 
+    @State private var showProfile = false
+
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading) {
-                    Text("Total balance")
-                        .font(.caption)
-                    Text("\(wallet.totalBalanceSats)")
-                        .font(.title)
-                        .bold()
+                    BalanceHeaderView(sats: wallet.totalBalanceSats)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
+                .padding(.top)
 
                 HStack {
                     NavigationLink(destination: SavingsWalletView()) {
-                        VStack(alignment: .leading) {
-                            Text("SAVINGS")
-                                .font(.caption)
-                            Text("\(wallet.totalOnchainSats)")
-                                .font(.title3)
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        WalletBalanceView(
+                            title: "SAVINGS",
+                            sats: UInt64(wallet.totalOnchainSats),
+                            icon: "bitcoinsign.circle",
+                            iconColor: .orange
+                        )
                     }
 
                     Divider()
                         .frame(height: 50)
 
                     NavigationLink(destination: SpendingWalletView()) {
-                        VStack(alignment: .leading) {
-                            Text("SPENDING")
-                                .font(.caption)
-                            Text("\(wallet.totalLightningSats)")
-                                .font(.title3)
-                        }
-                        .padding(.vertical, 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        WalletBalanceView(
+                            title: "SPENDING",
+                            sats: UInt64(wallet.totalLightningSats),
+                            icon: "bolt.circle",
+                            iconColor: .purple
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
 
-                Text("Activity")
+                Text("ACTIVITY")
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
-                ActivityLatest(type: .all)
 
-                NavigationLink(
-                    destination: ScannerView {
-                        // If nil then it's not an invoice we're dealing with
-                        if app.invoiceRequiresCustomAmount == true {
-                            showSendAmountView = true
-                        } else if app.invoiceRequiresCustomAmount == false {
-                            showSendConfirmationView = true
-                        }
-                    },
-                    isActive: $app.showScanner
-                ) {
-                    EmptyView()
-                }
-                .onChange(of: app.showScanner) { showScanner in
-                    app.showTabBar = !showScanner
-                }
+                ActivityLatest(type: .all)
             }
             .refreshable {
                 do {
@@ -89,8 +69,24 @@ struct HomeView: View {
                     app.toast(error)
                 }
             }
-            .navigationBarItems(trailing: rightNavigationItem)
-            .navigationTitle("Bitkit")
+            .navigationBarItems(
+                leading: leftNavigationItem,
+                trailing: rightNavigationItem
+            )
+            .background {
+                NavigationLink(
+                    destination: ScannerView(
+                        showSendAmountView: $showSendAmountView,
+                        showSendConfirmationView: $showSendConfirmationView
+                    ),
+                    isActive: $app.showScanner
+                ) {
+                    EmptyView()
+                }
+                .onChange(of: app.showScanner) { showScanner in
+                    app.showTabBar = !showScanner
+                }
+            }
         }
         .onAppear {
             app.showTabBar = true
@@ -138,6 +134,33 @@ struct HomeView: View {
             // If this is triggered it means we had a successful send and need to drop the sheet
             showSendAmountView = false
             showSendConfirmationView = false
+        }
+    }
+
+    var leftNavigationItem: some View {
+        Button(action: {
+            showProfile = true
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+
+                Text("Your Name")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+            }
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationView {
+                if #available(iOS 16.0, *) {
+                    Text("Profile View") // Placeholder for profile view
+                        .presentationDetents([.height(sheetHeight)])
+                } else {
+                    Text("Profile View") // Placeholder for profile view
+                }
+            }
         }
     }
 

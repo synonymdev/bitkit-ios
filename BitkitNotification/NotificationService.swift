@@ -29,7 +29,7 @@ class NotificationService: UNNotificationServiceExtension {
         self.bestAttemptContent = (request.content.mutableCopy() as? UNMutableNotificationContent)
     
         guard !StateLocker.isLocked(.lightning) else {
-            Logger.info("Lightning process already locked, app likely in foreground")
+            Logger.info("LDK-node process already locked, app likely in foreground")
             self.bestAttemptContent?.title = "Lightning process already locked"
             self.bestAttemptContent?.body = "App likely in foreground"
             self.deliver()
