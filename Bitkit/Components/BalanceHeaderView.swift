@@ -49,6 +49,7 @@ struct BalanceHeaderView: View {
         .contentShape(Rectangle()) // Makes the entire VStack tappable
         .onTapGesture {
             currency.togglePrimaryDisplay()
+            Haptics.play(.medium)
         }
     }
 }
