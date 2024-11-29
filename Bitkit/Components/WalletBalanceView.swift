@@ -12,6 +12,7 @@ struct WalletBalanceView: View {
         VStack(alignment: .leading) {
             Text(title)
                 .font(.caption)
+                .padding(.bottom, 4)
             
             if let converted = currency.convert(sats: sats) {
                 if currency.primaryDisplay == .bitcoin {
@@ -21,8 +22,6 @@ struct WalletBalanceView: View {
                             .font(.title3)
                             .foregroundColor(iconColor)
                             .padding(.trailing, 4)
-                        Text(btcComponents.symbol)
-                            .opacity(0.6)
                         Text(btcComponents.value)
                     }
                     .font(.title3)

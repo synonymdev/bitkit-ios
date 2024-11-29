@@ -72,6 +72,7 @@ struct SettingsListView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
         .onAppear {
             app.showTabBar = false
         }

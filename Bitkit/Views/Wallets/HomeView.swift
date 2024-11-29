@@ -19,6 +19,8 @@ struct HomeView: View {
     @State private var showSendAmountView = false
     @State private var showSendConfirmationView = false
 
+    @State private var showProfile = false
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -27,6 +29,7 @@ struct HomeView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
+                .padding(.top)
 
                 HStack {
                     NavigationLink(destination: SavingsWalletView()) {
@@ -53,9 +56,10 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
 
-                Text("Activity")
+                Text("ACTIVITY")
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
+
                 ActivityLatest(type: .all)
             }
             .refreshable {
@@ -65,8 +69,10 @@ struct HomeView: View {
                     app.toast(error)
                 }
             }
-            .navigationBarItems(trailing: rightNavigationItem)
-            .navigationTitle("Bitkit")
+            .navigationBarItems(
+                leading: leftNavigationItem,
+                trailing: rightNavigationItem
+            )
             .background {
                 NavigationLink(
                     destination: ScannerView(
@@ -128,6 +134,33 @@ struct HomeView: View {
             // If this is triggered it means we had a successful send and need to drop the sheet
             showSendAmountView = false
             showSendConfirmationView = false
+        }
+    }
+
+    var leftNavigationItem: some View {
+        Button(action: {
+            showProfile = true
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.circle.fill")
+                    .font(.title2)
+                    .foregroundColor(.secondary)
+
+                Text("Your Name")
+                    .font(.title3)
+                    .fontWeight(.bold)
+                    .foregroundColor(.primary)
+            }
+        }
+        .sheet(isPresented: $showProfile) {
+            NavigationView {
+                if #available(iOS 16.0, *) {
+                    Text("Profile View") // Placeholder for profile view
+                        .presentationDetents([.height(sheetHeight)])
+                } else {
+                    Text("Profile View") // Placeholder for profile view
+                }
+            }
         }
     }
 
