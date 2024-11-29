@@ -1,12 +1,12 @@
 import SwiftUI
 
 struct BalanceHeaderView: View {
-    let sats: UInt64
+    let sats: Int
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if let converted = currency.convert(sats: sats) {
+            if let converted = currency.convert(sats: UInt64(sats)) {
                 if currency.primaryDisplay == .bitcoin {
                     HStack {
                         Text("\(converted.symbol) \(converted.formatted)")
@@ -16,9 +16,9 @@ struct BalanceHeaderView: View {
                     }
                     .transition(
                         .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .center))
-                        .combined(with: .offset(x: 20, y: 0))
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 1.5, anchor: .center))
+                            .combined(with: .offset(x: 20, y: 0))
                     )
 
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
@@ -33,9 +33,9 @@ struct BalanceHeaderView: View {
                     }
                     .transition(
                         .move(edge: .top)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 0.5, anchor: .center))
-                        .combined(with: .offset(x: -20, y: 0))
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 0.5, anchor: .center))
+                            .combined(with: .offset(x: -20, y: 0))
                     )
                 } else {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
@@ -47,9 +47,9 @@ struct BalanceHeaderView: View {
                     }
                     .transition(
                         .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .center))
-                        .combined(with: .offset(x: 20, y: 0))
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 1.5, anchor: .center))
+                            .combined(with: .offset(x: 20, y: 0))
                     )
 
                     HStack {
@@ -63,9 +63,9 @@ struct BalanceHeaderView: View {
                     }
                     .transition(
                         .move(edge: .top)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 0.5, anchor: .center))
-                        .combined(with: .offset(x: -20, y: 0))
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 0.5, anchor: .center))
+                            .combined(with: .offset(x: -20, y: 0))
                     )
                 }
             }

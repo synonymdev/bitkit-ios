@@ -23,7 +23,7 @@ struct HomeView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading) {
-                    BalanceHeaderView(sats: UInt64(wallet.totalBalanceSats))
+                    BalanceHeaderView(sats: wallet.totalBalanceSats)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
