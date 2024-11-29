@@ -11,6 +11,7 @@ struct ContentView: View {
     @StateObject private var app = AppViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
+    @StateObject private var blocktank = BlocktankViewModel()
 
     var body: some View {
         VStack {
@@ -90,11 +91,12 @@ struct ContentView: View {
                 app.toast(error)
             }
         }
-        .handleLightningStateOnScenePhaseChange() // Will stop and start LN node as needed
+        .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(wallet)
         .environmentObject(currency)
+        .environmentObject(blocktank)
     }
 }
 
