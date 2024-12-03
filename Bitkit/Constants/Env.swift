@@ -161,7 +161,7 @@ enum Env {
     static var vssServerUrl: String {
         switch network {
         case .regtest:
-            return "http://127.0.0.1:8080/vss"
+            return "https://88c1-185-203-122-98.ngrok-free.app/vss"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -174,7 +174,7 @@ enum Env {
     static var vssStoreId: String {
         switch network {
         case .regtest:
-            return "regtest_0"
+            return "regtest_2"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:

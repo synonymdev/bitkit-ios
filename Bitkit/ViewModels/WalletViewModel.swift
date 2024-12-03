@@ -57,7 +57,11 @@ class WalletViewModel: ObservableObject {
     }
     
     func start(walletIndex: Int = 0) async throws {
-        nodeLifecycleState = .starting
+        if nodeLifecycleState != .initializing {
+            // Initilaizing means it's a wallet restore or create so we need to show the loading view
+            nodeLifecycleState = .starting
+        }
+        
         syncState()
         do {
             try await lightningService.setup(walletIndex: walletIndex)
