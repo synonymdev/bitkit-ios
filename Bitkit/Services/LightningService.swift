@@ -61,13 +61,17 @@ class LightningService {
         }
         
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
-        
+                
         Logger.debug(ldkStoragePath, context: "LDK storage path")
         
         Logger.debug("Building node...")
         
         try await ServiceQueue.background(.ldk) {
-            self.node = try builder.build()
+            self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                vssUrl: Env.vssServerUrl,
+                storeId: Env.vssStoreId,
+                fixedHeaders: [:]
+            )
         }
         
         Logger.info("LDK node setup")

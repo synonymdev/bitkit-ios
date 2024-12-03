@@ -157,4 +157,30 @@ enum Env {
         .cjitPaymentArrived,
         .wakeToTimeout
     ]
+    
+    static var vssServerUrl: String {
+        switch network {
+        case .regtest:
+            return "http://127.0.0.1:8080/vss"
+        case .bitcoin:
+            fatalError("Bitcoin network not implemented")
+        case .testnet:
+            fatalError("Testnet network not implemented")
+        case .signet:
+            fatalError("Signet network not implemented")
+        }
+    }
+    
+    static var vssStoreId: String {
+        switch network {
+        case .regtest:
+            return "regtest_0"
+        case .bitcoin:
+            fatalError("Bitcoin network not implemented")
+        case .testnet:
+            fatalError("Testnet network not implemented")
+        case .signet:
+            fatalError("Signet network not implemented")
+        }
+    }
 }
