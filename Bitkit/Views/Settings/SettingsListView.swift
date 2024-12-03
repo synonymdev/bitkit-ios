@@ -22,6 +22,14 @@ struct SettingsListView: View {
                     }
                 }
 
+                NavigationLink(destination: BackupSettingsView()) {
+                    Label {
+                        Text("Back Up Or Restore")
+                    } icon: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+
                 NavigationLink(destination: LightningSettingsView()) {
                     Label {
                         Text("Lightning")
