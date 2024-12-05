@@ -10,19 +10,24 @@ struct BackupWalletView: View {
         mnemonic.split(separator: " ").map(String.init)
     }
     
+    private var columnLength: Int {
+        let totalWords = mnemonicWords.count
+        return totalWords / 2
+    }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                Text("Write down these \(Env.defaultWalletWordCount) words in the right order and store them in a safe place.")
-                    .padding()
-                    .multilineTextAlignment(.center)
-                
                 if showMnemonic {
+                    Text("Write down these \(mnemonicWords.count) words in the right order and store them in a safe place.")
+                        .padding()
+                        .multilineTextAlignment(.center)
+                    
                     VStack(alignment: .leading) {
                         HStack(alignment: .top) {
-                            // First column (words 1-6)
+                            // First column
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(0..<6) { index in
+                                ForEach(0..<columnLength) { index in
                                     HStack(spacing: 8) {
                                         Text("\(index + 1).")
                                             .foregroundColor(.secondary)
@@ -34,9 +39,9 @@ struct BackupWalletView: View {
                             
                             Spacer(minLength: 24)
                             
-                            // Second column (words 7-12)
+                            // Second column
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(6..<12) { index in
+                                ForEach(columnLength..<mnemonicWords.count) { index in
                                     HStack(spacing: 8) {
                                         Text("\(index + 1).")
                                             .foregroundColor(.secondary)
