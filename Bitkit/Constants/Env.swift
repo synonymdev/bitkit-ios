@@ -123,8 +123,7 @@ enum Env {
     static var blocktankBaseUrl: String {
         switch network {
         case .regtest:
-            return "https://api.stag.blocktank.to"
-//            return "https://api.stag0.blocktank.to"
+            return "https://api.stag0.blocktank.to"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
