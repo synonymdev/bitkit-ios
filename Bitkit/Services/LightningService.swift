@@ -42,7 +42,7 @@ class LightningService {
         config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
         config.anchorChannelsConfig = .init(
             trustedPeersNoReserve: Env.trustedLnPeers.map { $0.nodeId },
-            perChannelReserveSats: 1000
+            perChannelReserveSats: 1
         )
         
         let builder = Builder.fromConfig(config: config)
