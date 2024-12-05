@@ -38,9 +38,7 @@ enum Env {
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
-            return "https://electrs-regtest.synonym.to"
-        // cargo run --release --bin electrs -- -vvv --jsonrpc-import --daemon-rpc-addr 127.0.0.1:18443 --cookie polaruser:polarpass
-//            return "http://localhost:3000"
+            return "https://bitkit.stag0.blocktank.to/electrs"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -105,13 +103,13 @@ enum Env {
             return nil
         }
     }
-    
+        
     static var trustedLnPeers: [LnPeer] {
         switch network {
         case .regtest:
             return [
                 // Staging Blocktank node
-                .init(nodeId: "03b9a456fb45d5ac98c02040d39aec77fa3eeb41fd22cf40b862b393bcfc43473a", address: "35.233.47.252:9400")
+                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", address: "34.65.86.104:9400")
             ]
         case .bitcoin:
             return []
@@ -126,6 +124,7 @@ enum Env {
         switch network {
         case .regtest:
             return "https://api.stag.blocktank.to"
+//            return "https://api.stag0.blocktank.to"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -143,8 +142,8 @@ enum Env {
         "\(blocktankBaseUrl)/blocktank/api/v2"
     }
     
-    static var blocktankFxRateServer: String {
-        "\(blocktankBaseUrl)/fx/rates/btc"
+    static var btcRatesServer: String {
+        "https://bitkit.stag0.blocktank.to/fx/rates/btc" // TODO: switch to prod when available
     }
     
     static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
@@ -161,7 +160,7 @@ enum Env {
     static var vssServerUrl: String {
         switch network {
         case .regtest:
-            return "https://88c1-185-203-122-98.ngrok-free.app/vss"
+            return "https://bitkit.stag0.blocktank.to/vss"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
@@ -174,7 +173,7 @@ enum Env {
     static var vssStoreId: String {
         switch network {
         case .regtest:
-            return "regtest_2"
+            return "bitkit_regtest_2"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
