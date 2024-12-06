@@ -1,4 +1,3 @@
-// ... existing code ...
 //
 //  LoadingView.swift
 //  Bitkit
@@ -11,7 +10,7 @@ import SwiftUI
 struct InitializingWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @State private var rocketOffset: CGSize = .zero
-    
+
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -25,10 +24,10 @@ struct InitializingWalletView: View {
                             width: -(geometry.size.width / 2) + 50,
                             height: geometry.size.height / 2 - 50
                         )
-                        
+
                         withAnimation(
                             .linear(duration: 2.0)
-                            .repeatForever(autoreverses: false)
+                                .repeatForever(autoreverses: false)
                         ) {
                             // Animate to top right
                             rocketOffset = CGSize(
@@ -37,13 +36,13 @@ struct InitializingWalletView: View {
                             )
                         }
                     }
-                
+
                 // Content second (front)
                 VStack(spacing: 24) {
                     Text("Setting up\nyour wallet")
                         .font(.title)
                         .fontWeight(.bold)
-                    
+
                     ProgressView()
                         .scaleEffect(1.5)
                 }
@@ -57,4 +56,3 @@ struct InitializingWalletView: View {
     InitializingWalletView()
         .environmentObject(WalletViewModel())
 }
-// ... existing code ... 
