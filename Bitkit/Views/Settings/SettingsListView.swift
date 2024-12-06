@@ -22,6 +22,14 @@ struct SettingsListView: View {
                     }
                 }
 
+                NavigationLink(destination: BackupSettingsView()) {
+                    Label {
+                        Text("Back Up Or Restore")
+                    } icon: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                    }
+                }
+
                 NavigationLink(destination: LightningSettingsView()) {
                     Label {
                         Text("Lightning")
@@ -40,35 +48,41 @@ struct SettingsListView: View {
             }
 
             Section {
-                Button {
-                    Task {
-                        guard Env.network == .regtest else {
-                            Logger.error("Can only nuke on regtest")
-                            app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
-                            return
-                        }
-                        do {
-                            // Delete storage (for current wallet only)
-                            try await wallet.wipeLightningWallet()
-                            // Delete entire keychain
-                            try Keychain.wipeEntireKeychain()
-                            try wallet.setWalletExistsState()
-                        } catch {
-                            app.toast(error)
+                if Env.network == .regtest {
+                    NavigationLink(destination: BlocktankRegtestView()) {
+                        Label {
+                            Text("Blocktank Regtest")
+                        } icon: {
+                            Image(systemName: "hammer.fill")
                         }
                     }
-                } label: {
-                    Label {
-                        Text("Wipe Wallet")
-                    } icon: {
-                        Image(systemName: "trash.fill")
+
+                    Button {
+                        Task {
+                            guard Env.network == .regtest else {
+                                Logger.error("Can only nuke on regtest")
+                                app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
+                                return
+                            }
+                            do {
+                                try await wallet.wipeLightningWallet()
+                                try Keychain.wipeEntireKeychain()
+                                try wallet.setWalletExistsState()
+                            } catch {
+                                app.toast(error)
+                            }
+                        }
+                    } label: {
+                        Label {
+                            Text("Wipe Wallet")
+                        } icon: {
+                            Image(systemName: "trash.fill")
+                        }
+                        .foregroundColor(.red)
                     }
-                    .foregroundColor(.red)
                 }
             } header: {
-                Text("Danger Zone")
-            } footer: {
-                Text("Only available in regtest mode")
+                Text("Regtest only")
             }
         }
         .navigationTitle("Settings")

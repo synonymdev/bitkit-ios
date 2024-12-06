@@ -18,7 +18,11 @@ struct ContentView: View {
             if wallet.walletExists == nil {
                 ProgressView()
             } else if wallet.walletExists == true {
-                HomeView()
+                if wallet.nodeLifecycleState == .initializing {
+                    InitializingWalletView()
+                } else {
+                    HomeView()
+                }
             } else {
                 WelcomeView()
             }

@@ -30,12 +30,7 @@ struct CreateCjitView: View {
 
             if let info = blocktank.info {
                 HStack {
-                    // TODO: CJIT LIMITS
-
-                    // minChannelSizeSat
-                    // maxChannelSizeSat
-                    /// const maxAmount = maxChannelSizeSat / 2;
-
+                    // Min amount view
                     VStack {
                         Text("Minimum")
                             .font(.caption)
@@ -43,12 +38,21 @@ struct CreateCjitView: View {
                         Text("\(info.options.minChannelSizeSat / 2)")
                     }
                     .padding(.trailing)
+                    .contentShape(Rectangle()) // Makes entire area tappable
+                    .onTapGesture {
+                        amount = String(info.options.minChannelSizeSat / 2)
+                    }
 
+                    // Max amount view
                     VStack {
                         Text("Maximum")
                             .font(.caption)
                             .foregroundColor(.gray)
                         Text("\(info.options.maxChannelSizeSat / 2)")
+                    }
+                    .contentShape(Rectangle()) // Makes entire area tappable
+                    .onTapGesture {
+                        amount = String(info.options.maxChannelSizeSat / 2)
                     }
 
                     // TODO: get from API
