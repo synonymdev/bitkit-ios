@@ -5,7 +5,7 @@ struct BlocktankRegtestView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @State private var result: String = ""
     @State private var mineBlockCount: String = "1"
-    @State private var depositAmount: String = "12300"
+    @State private var depositAmount: String = "123000"
     @State private var depositAddress: String = ""
     @State private var paymentInvoice: String = ""
     @State private var paymentAmount: String = ""
