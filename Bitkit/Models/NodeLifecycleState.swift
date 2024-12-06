@@ -13,6 +13,7 @@ enum NodeLifecycleState {
     case running
     case stopping
     case errorStarting(cause: Error)
+    case initializing
 
     var displayState: String {
         switch self {
@@ -26,6 +27,8 @@ enum NodeLifecycleState {
             return "Stopping"
         case .errorStarting(let cause):
             return "Error starting: \(cause.localizedDescription)"
+        case .initializing:
+            return "Setting up wallet..."
         }
     }
 
@@ -41,6 +44,8 @@ enum NodeLifecycleState {
             return "bolt.badge.xmark"
         case .errorStarting:
             return "bolt.trianglebadge.exclamationmark.fill"
+        case .initializing:
+            return "bolt.badge.clock.fill"
         }
     }
 
@@ -49,7 +54,8 @@ enum NodeLifecycleState {
         case (.stopped, .stopped),
              (.starting, .starting),
              (.running, .running),
-             (.stopping, .stopping):
+             (.stopping, .stopping),
+             (.initializing, .initializing):
             return true
         case (.errorStarting(let lhsCause), .errorStarting(let rhsCause)):
             return lhsCause.localizedDescription == rhsCause.localizedDescription

@@ -12,7 +12,7 @@ class CurrencyService {
         for attempt in 0 ..< maxRetries {
             do {
                 return try await ServiceQueue.background(.forex) {
-                    guard let url = URL(string: Env.blocktankFxRateServer) else {
+                    guard let url = URL(string: Env.btcRatesServer) else {
                         throw URLError(.badURL)
                     }
                     
