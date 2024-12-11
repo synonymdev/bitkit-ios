@@ -172,7 +172,7 @@ enum Env {
     static var vssStoreId: String {
         switch network {
         case .regtest:
-            return "bitkit_regtest_2"
+            return "bitkit_regtest_3"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
