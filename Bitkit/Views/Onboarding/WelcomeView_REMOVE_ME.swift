@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct RestoreView: View {
-    @State var bip39Mnemonic = Env.isDebug ? "idle tree bid neither prosper merge ranch prevent insane soul hurdle foot hold leaf chicken obey fold maple fan husband hedgehog hen simple bus" : ""
+    @State var bip39Mnemonic = ""
     @State var bip39Passphrase: String? = nil
     
     @EnvironmentObject var wallet: WalletViewModel
