@@ -24,7 +24,7 @@ struct ContentView: View {
                     HomeView()
                 }
             } else if wallet.walletExists == false {
-                WelcomeView()
+                OnboardingView()
             }
 
             SplashView()

@@ -25,7 +25,6 @@ class CurrencyViewModel: ObservableObject {
         // Load cached rates immediately
         if let cachedRates = currencyService.loadCachedRates() {
             self.rates = cachedRates
-            self.hasStaleData = true
         }
         
         startPolling()
