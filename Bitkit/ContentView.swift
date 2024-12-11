@@ -43,7 +43,7 @@ struct ContentView: View {
             Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
 
             if wallet.walletExists != nil {
-                withAnimation(.easeInOut(duration: 0.2).delay(0.5)) {
+                withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
                     hideSplash = true
                 }
             }
