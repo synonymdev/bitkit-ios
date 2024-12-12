@@ -22,10 +22,11 @@ struct ContentView: View {
         ZStack {
             if wallet.walletExists == true {
                 if walletIsInitializing == true {
-                    //Sneaky tricks to show percent complete. Incrementally gets slower until wallet is initialized and then it speeds up to finish
                     InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
                         walletIsInitializing = false
                     }
+                } else if wallet.isRestoringWallet {
+                    WalletRestoredSuccessfullyView()
                 } else {
                     HomeView()
                 }
@@ -36,7 +37,7 @@ struct ContentView: View {
                 }
                 .navigationViewStyle(.stack)
                 .onAppear {
-                    //Reset these values if the wallet is wiped
+                    // Reset these values if the wallet is wiped
                     walletIsInitializing = nil
                     walletInitShouldFinish = false
                 }
