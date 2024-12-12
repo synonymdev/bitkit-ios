@@ -11,7 +11,7 @@ struct TermsDeclarationText: View {
     var body: some View {
         Text("I declare that I have read and\naccept the [terms of use](https://bitkit.to/terms-of-use).")
             .foregroundColor(.secondary)
-            .tint(.orange) // This controls the link color
+            .tint(.brand) // This controls the link color
     }
 }
 
@@ -19,24 +19,31 @@ struct PrivacyDeclarationText: View {
     var body: some View {
         Text("I declare that I have read and\naccept the [privacy policy](https://bitkit.to/privacy-policy).")
             .foregroundColor(.secondary)
-            .tint(.orange)
+            .tint(.brand)
     }
 }
 
 struct TermsView: View {
     @State private var termsAccepted = false
     @State private var privacyAccepted = false
+    @State private var navigateToIntro = false
     
     var body: some View {
         ZStack(alignment: .bottom) {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
-                    Text("BITKIT\nTERMS OF USE")
-                        .font(.largeTitle)
-                        .bold()
-                        .multilineTextAlignment(.leading)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("BITKIT")
+                            .font(.largeTitle)
+                    .fontWeight(.black)
+                        Text("TERMS OF USE")
+                            .font(.largeTitle)
+                    .fontWeight(.black)
+                            .foregroundColor(Color.brand)
+                    }
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     
                     TosContent()
                         .padding(.bottom, 300) // Extra padding for footer
@@ -79,7 +86,7 @@ struct TermsView: View {
                         Spacer()
                         
                         Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(termsAccepted ? .accentColor : .gray)
+                            .foregroundColor(termsAccepted ? .brand : .gray)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle()) // Makes entire HStack tappable
@@ -102,7 +109,7 @@ struct TermsView: View {
                         Spacer()
                         
                         Image(systemName: privacyAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(privacyAccepted ? .accentColor : .gray)
+                            .foregroundColor(privacyAccepted ? .brand : .gray)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle()) // Makes entire HStack tappable
@@ -116,10 +123,11 @@ struct TermsView: View {
                 .padding(.horizontal)
                 
                 Button(action: {
-                    if !termsAccepted || !privacyAccepted {
+                    if termsAccepted && privacyAccepted {
+                        navigateToIntro = true
+                    } else {
                         Haptics.notify(.error)
                     }
-                    // Handle continue action
                 }) {
                     Text("Continue")
                         .font(.headline)
@@ -138,7 +146,15 @@ struct TermsView: View {
                     .shadow(radius: 8, y: -4)
                     .edgesIgnoringSafeArea(.bottom)
             )
+            
+            NavigationLink(isActive: $navigateToIntro) {
+                IntroView()
+            } label: {
+                EmptyView()
+            }
         }
+        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
     }
 }
 

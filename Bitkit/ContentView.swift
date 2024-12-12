@@ -24,7 +24,11 @@ struct ContentView: View {
                     HomeView()
                 }
             } else if wallet.walletExists == false {
-                OnboardingView()
+                NavigationView {
+                    TermsView()
+                        .navigationBarHidden(true)
+                }
+                .navigationViewStyle(.stack)
             }
 
             SplashView()
