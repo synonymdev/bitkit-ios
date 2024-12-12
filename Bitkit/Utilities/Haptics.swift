@@ -26,71 +26,77 @@ class Haptics {
     }
 
     static func rocket(duration: Double = 0.5, completion: (() -> Void)? = nil) {
-        // Add debug print to check if function is called
-        print("🚀 Attempting rocket haptics...")
-        
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
-            print("❌ Device doesn't support haptics")
+            Logger.error("Device doesn't support haptics")
             completion?()
             return
         }
 
         do {
-            // Create and retain engine reference
             engine = try CHHapticEngine()
-            print("✅ Created haptic engine")
             
             engine?.resetHandler = { [weak engine] in
-                print("⚠️ Restarting Haptic engine...")
+                Logger.warn("Restarting Haptic engine...")
                 do {
                     try engine?.start()
-                    print("✅ Engine restarted")
                 } catch {
-                    print("❌ Failed to restart engine: \(error)")
+                    Logger.error("Failed to restart engine: \(error)")
                 }
             }
             
             engine?.stoppedHandler = { reason in
-                print("⚠️ Haptic engine stopped: \(reason)")
+                Logger.warn("Haptic engine stopped: \(reason)")
                 completion?()
             }
             
             try engine?.start()
-            print("✅ Started haptic engine")
             
             var events = [CHHapticEvent]()
             
-            // Increase initial intensity for more noticeable effect
-            let initialIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
-            let initialSharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-            events.append(CHHapticEvent(eventType: .hapticTransient, 
-                                      parameters: [initialIntensity, initialSharpness], 
-                                      relativeTime: 0))
+            // Start soft (approaching)
+            let approachIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.15)
+            let approachSharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.15)
+            events.append(CHHapticEvent(eventType: .hapticContinuous,
+                                      parameters: [approachIntensity, approachSharpness],
+                                      relativeTime: 0,
+                                      duration: duration * 0.3))
             
-            // Increase intensity and reduce steps for more noticeable effect
-            let steps = 3
-            for i in 1 ... steps {
-                let progress = Double(i) / Double(steps)
-                let intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: Float(progress) * 0.8)
-                let sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: Float(progress))
-                let event = CHHapticEvent(eventType: .hapticContinuous,
-                                        parameters: [intensity, sharpness],
-                                        relativeTime: duration * progress * 0.5, // Compress timing
-                                        duration: 0.2)
-                events.append(event)
-            }
-
-            // Make final burst more intense
-            let finalIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0)
-            let finalSharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 1.0)
-            events.append(CHHapticEvent(eventType: .hapticTransient,
-                                      parameters: [finalIntensity, finalSharpness],
-                                      relativeTime: duration * 0.7))
+            // Middle section split into three parts
+            // First part of peak (building up)
+            let peak1Intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.25)
+            let peak1Sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.25)
+            events.append(CHHapticEvent(eventType: .hapticContinuous,
+                                      parameters: [peak1Intensity, peak1Sharpness],
+                                      relativeTime: duration * 0.3,
+                                      duration: duration * 0.133))
+            
+            // Second part of peak (maximum)
+            let peak2Intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.35)
+            let peak2Sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.35)
+            events.append(CHHapticEvent(eventType: .hapticContinuous,
+                                      parameters: [peak2Intensity, peak2Sharpness],
+                                      relativeTime: duration * 0.433,
+                                      duration: duration * 0.134))
+            
+            // Third part of peak (reducing)
+            let peak3Intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.25)
+            let peak3Sharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.25)
+            events.append(CHHapticEvent(eventType: .hapticContinuous,
+                                      parameters: [peak3Intensity, peak3Sharpness],
+                                      relativeTime: duration * 0.567,
+                                      duration: duration * 0.133))
+            
+            // Soft ending (flying away)
+            let departIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.15)
+            let departSharpness = CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.15)
+            events.append(CHHapticEvent(eventType: .hapticContinuous,
+                                      parameters: [departIntensity, departSharpness],
+                                      relativeTime: duration * 0.7,
+                                      duration: duration * 0.3))
 
             let pattern = try CHHapticPattern(events: events, parameters: [])
             let player = try engine?.makePlayer(with: pattern)
             try player?.start(atTime: 0)
-            print("✅ Started haptic pattern")
             
             if let completion = completion {
                 DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
@@ -99,25 +105,8 @@ class Haptics {
             }
             
         } catch {
-            print("❌ Haptic error: \(error)")
+            Logger.error("Haptic error: \(error)")
             completion?()
-        }
-    }
-
-    static func test() {
-        print("Testing basic haptics...")
-        
-        // Test UIImpactFeedbackGenerator
-        play(.heavy)
-        
-        // Test UINotificationFeedbackGenerator
-        notify(.success)
-        
-        // Test CoreHaptics
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            rocket(duration: 0.5) {
-                print("Rocket haptics completed")
-            }
         }
     }
 }

@@ -7,7 +7,7 @@
 
 import LDKNode
 
-enum NodeLifecycleState {
+enum NodeLifecycleState: Equatable {
     case stopped
     case starting
     case running
@@ -62,9 +62,5 @@ enum NodeLifecycleState {
         default:
             return false
         }
-    }
-
-    static func != (lhs: NodeLifecycleState, rhs: NodeLifecycleState) -> Bool {
-        return !(lhs == rhs)
     }
 }
