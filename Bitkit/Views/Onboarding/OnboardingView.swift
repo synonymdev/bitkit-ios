@@ -1,7 +1,11 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @State private var currentTab = 0
+    @State private var currentTab: Int
+    
+    init(initialTab: Int = 0) {
+        _currentTab = State(initialValue: initialTab)
+    }
     
     var body: some View {
         VStack {
@@ -15,6 +19,7 @@ struct OnboardingView: View {
                     secondLineColor: .blue
                 )
                 .padding(.bottom, 30)
+                .padding(.horizontal, 32)
                 .tag(0)
                 
                 // Tab 2: Features
@@ -27,6 +32,7 @@ struct OnboardingView: View {
                     secondLineColor: .purple
                 )
                 .padding(.bottom, 30)
+                .padding(.horizontal, 32)
                 .tag(1)
                 
                 // Tab 3: Security
@@ -38,6 +44,7 @@ struct OnboardingView: View {
                     secondLineColor: .yellow
                 )
                 .padding(.bottom, 30)
+                .padding(.horizontal, 32)
                 .tag(2)
                 
                 // Tab 4: Privacy
@@ -49,10 +56,12 @@ struct OnboardingView: View {
                     secondLineColor: .green
                 )
                 .padding(.bottom, 30)
+                .padding(.horizontal, 32)
                 .tag(3)
                 
                 // Tab 5: Get Started
                 CreateWalletView()
+                    .padding(.horizontal, 32)
                     .tag(4)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -70,7 +79,6 @@ struct OnboardingView: View {
             .animation(.easeInOut(duration: 0.3), value: currentTab)
             .padding(.bottom)
         }
-        .padding(.horizontal, 32)
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
