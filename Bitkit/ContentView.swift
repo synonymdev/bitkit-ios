@@ -15,23 +15,32 @@ struct ContentView: View {
 
     @State private var hideSplash = false
 
+    @State private var walletIsInitializing: Bool? = nil
+    @State private var walletInitShouldFinish = false
+
     var body: some View {
         ZStack {
-//            if wallet.walletExists == true {
-//                if wallet.nodeLifecycleState == .initializing {
-//                    InitializingWalletView()
-//                } else {
-//                    HomeView()
-//                }
-//            } else if wallet.walletExists == false {
-//                NavigationView {
-//                    TermsView()
-//                        .navigationBarHidden(true)
-//                }
-//                .navigationViewStyle(.stack)
-//            }
-
-            InitializingWalletView()
+            if wallet.walletExists == true {
+                if walletIsInitializing == true {
+                    //Sneaky tricks to show percent complete. Incrementally gets slower until wallet is initialized and then it speeds up to finish
+                    InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+                        walletIsInitializing = false
+                    }
+                } else {
+                    HomeView()
+                }
+            } else if wallet.walletExists == false {
+                NavigationView {
+                    TermsView()
+                        .navigationBarHidden(true)
+                }
+                .navigationViewStyle(.stack)
+                .onAppear {
+                    //Reset these values if the wallet is wiped
+                    walletIsInitializing = nil
+                    walletInitShouldFinish = false
+                }
+            }
 
             SplashView()
                 .opacity(hideSplash ? 0 : 1)
@@ -112,6 +121,13 @@ struct ContentView: View {
             }
         }
         .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
+        .onChange(of: wallet.nodeLifecycleState) { state in
+            if state == .initializing {
+                walletIsInitializing = true
+            } else if state == .running {
+                walletInitShouldFinish = true
+            }
+        }
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(wallet)

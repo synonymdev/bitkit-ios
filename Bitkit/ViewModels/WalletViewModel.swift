@@ -76,7 +76,7 @@ class WalletViewModel: ObservableObject {
             nodeLifecycleState = .errorStarting(cause: error)
             throw error
         }
-        
+
         nodeLifecycleState = .running
         
         startPolling()
