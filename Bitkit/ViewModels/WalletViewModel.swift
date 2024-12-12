@@ -38,6 +38,8 @@ class WalletViewModel: ObservableObject {
 
     private let lightningService: LightningService
     
+    @Published var isRestoringWallet = false
+    
     init(lightningService: LightningService = .shared) {
         self.lightningService = lightningService
     }
