@@ -17,19 +17,21 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            if wallet.walletExists == true {
-                if wallet.nodeLifecycleState == .initializing {
-                    InitializingWalletView()
-                } else {
-                    HomeView()
-                }
-            } else if wallet.walletExists == false {
-                NavigationView {
-                    TermsView()
-                        .navigationBarHidden(true)
-                }
-                .navigationViewStyle(.stack)
-            }
+//            if wallet.walletExists == true {
+//                if wallet.nodeLifecycleState == .initializing {
+//                    InitializingWalletView()
+//                } else {
+//                    HomeView()
+//                }
+//            } else if wallet.walletExists == false {
+//                NavigationView {
+//                    TermsView()
+//                        .navigationBarHidden(true)
+//                }
+//                .navigationViewStyle(.stack)
+//            }
+
+            InitializingWalletView()
 
             SplashView()
                 .opacity(hideSplash ? 0 : 1)
