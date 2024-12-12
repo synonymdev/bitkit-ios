@@ -1,16 +1,11 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @State private var currentTab: Int
-    
-    init(initialTab: Int = 0) {
-        _currentTab = State(initialValue: initialTab)
-    }
+    @State var currentTab = 0
     
     var body: some View {
         VStack {
             TabView(selection: $currentTab) {
-                // Tab 1: Welcome
                 OnboardingTab(
                     imageName: "keyring",
                     titleFirstLine: "FREEDOM",
@@ -22,20 +17,18 @@ struct OnboardingView: View {
                 .padding(.horizontal, 32)
                 .tag(0)
                 
-                // Tab 2: Features
                 OnboardingTab(
                     imageName: "lightning",
                     titleFirstLine: "INSTANT",
                     titleSecondLine: "PAYMENTS",
                     text: "Spend bitcoin faster than ever. Enjoy instant and cheap payments with friends, family, and merchants*.",
-                    disclaimerText: "*Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes.", //TODO: check geoblock status
+                    disclaimerText: "*Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes.", // TODO: check geoblock status
                     secondLineColor: .purple
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
                 .tag(1)
                 
-                // Tab 3: Security
                 OnboardingTab(
                     imageName: "spark",
                     titleFirstLine: "BITCOINERS,",
@@ -47,7 +40,6 @@ struct OnboardingView: View {
                 .padding(.horizontal, 32)
                 .tag(2)
                 
-                // Tab 4: Privacy
                 OnboardingTab(
                     imageName: "shield",
                     titleFirstLine: "PRIVACY IS",
@@ -59,7 +51,6 @@ struct OnboardingView: View {
                 .padding(.horizontal, 32)
                 .tag(3)
                 
-                // Tab 5: Get Started
                 CreateWalletView()
                     .padding(.horizontal, 32)
                     .tag(4)
@@ -68,7 +59,7 @@ struct OnboardingView: View {
             
             // Page indicator dots
             HStack(spacing: 8) {
-                ForEach(0..<5) { index in
+                ForEach(0 ..< 5) { index in
                     Circle()
                         .fill(currentTab == index ? Color.primary : Color.secondary)
                         .frame(width: 7, height: 7)

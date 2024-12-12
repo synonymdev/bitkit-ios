@@ -37,7 +37,7 @@ struct IntroView: View {
                         .cornerRadius(30)
                 }
                     
-                NavigationLink(destination: OnboardingView(initialTab: 4)) {
+                NavigationLink(destination: OnboardingView(currentTab: 4)) {
                     Text("Skip Intro")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
