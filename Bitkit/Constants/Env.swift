@@ -104,6 +104,7 @@ enum Env {
         }
     }
         
+    // TODO: remove this to load from BT API instead
     static var trustedLnPeers: [LnPeer] {
         switch network {
         case .regtest:
@@ -172,7 +173,7 @@ enum Env {
     static var vssStoreId: String {
         switch network {
         case .regtest:
-            return "bitkit_regtest_3"
+            return "bitkit_regtest"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:

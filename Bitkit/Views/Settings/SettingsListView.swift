@@ -65,7 +65,9 @@ struct SettingsListView: View {
                                 return
                             }
                             do {
-                                try await wallet.wipeLightningWallet()
+                                if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting || wallet.nodeLifecycleState == .stopping {
+                                    try await wallet.wipeLightningWallet()
+                                }
                                 try Keychain.wipeEntireKeychain()
                                 try wallet.setWalletExistsState()
                             } catch {

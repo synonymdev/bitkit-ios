@@ -21,12 +21,23 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             if wallet.walletExists == true {
+                // Mnemonic found in keychain
                 if walletIsInitializing == true {
-                    InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
-                        walletIsInitializing = false
+                    // New wallet is being created or restored
+                    if case .errorStarting(let error) = wallet.nodeLifecycleState {
+                        WalletInitResultView(result: .failed(error))
+                    } else {
+                        InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+                            Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
+
+                            if wallet.nodeLifecycleState == .running {
+                                walletIsInitializing = false
+                            }
+                        }
                     }
                 } else if wallet.isRestoringWallet {
-                    WalletRestoredSuccessfullyView()
+                    // Wallet exists and has been restored from backup. isRestoringWallet is to false inside below component
+                    WalletInitResultView(result: .restored)
                 } else {
                     HomeView()
                 }
@@ -126,6 +137,8 @@ struct ContentView: View {
             if state == .initializing {
                 walletIsInitializing = true
             } else if state == .running {
+                walletInitShouldFinish = true
+            } else if case .errorStarting = state {
                 walletInitShouldFinish = true
             }
         }
