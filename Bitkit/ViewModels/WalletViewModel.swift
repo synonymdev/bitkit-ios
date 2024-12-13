@@ -85,6 +85,12 @@ class WalletViewModel: ObservableObject {
         
         syncState()
         
+        do {
+            try await lightningService.connectToTrustedPeers()
+        } catch {
+            Logger.error("Failed to connect to trusted peers")
+        }
+        
         Task { @MainActor in
             try await refreshBip21()
         }

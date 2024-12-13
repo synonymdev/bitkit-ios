@@ -96,8 +96,6 @@ class LightningService {
         }
         
         Logger.info("Node started")
-        
-        try await connectToTrustedPeers()
     }
     
     func stop() async throws {
@@ -131,7 +129,7 @@ class LightningService {
         Logger.info("Lightning wallet wiped")
     }
     
-    private func connectToTrustedPeers() async throws {
+    func connectToTrustedPeers() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
