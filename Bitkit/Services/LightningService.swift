@@ -5,6 +5,7 @@
 //  Created by Jason van den Berg on 2024/06/28.
 //
 
+import CryptoKit
 import Foundation
 import LDKNode
 
@@ -66,10 +67,20 @@ class LightningService {
         
         Logger.debug("Building node...")
         
+        // MARK: temp fix as we don't have VSS auth yet
+        guard Env.network == .regtest else {
+            fatalError("Do not run this on mainnet until VSS auth is implemented. Below hack is a temporary fix and not safe for mainnet.")
+        }
+        let mnemonicData = Data(mnemonic.utf8)
+        let hashedMnemonic = SHA256.hash(data: mnemonicData)
+        let storeIdHack = Env.vssStoreId + hashedMnemonic.compactMap { String(format: "%02x", $0) }.joined()
+        
+        Logger.info("storeIdHack: \(storeIdHack)")
+        
         try await ServiceQueue.background(.ldk) {
             self.node = try builder.buildWithVssStoreAndFixedHeaders(
                 vssUrl: Env.vssServerUrl,
-                storeId: Env.vssStoreId,
+                storeId: storeIdHack,
                 fixedHeaders: [:]
             )
         }
