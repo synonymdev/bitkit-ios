@@ -79,7 +79,7 @@ struct ContentView: View {
 
             Task {
                 do {
-                    wallet.setOnEvent { lighntingEvent in
+                    wallet.addOnEvent(id: "ContentView") { lighntingEvent in
                         switch lighntingEvent {
                         case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
                             app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
@@ -96,12 +96,11 @@ struct ContentView: View {
                         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
                             app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
                         case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
-                            app.resetSendState() // Likely send sheet is showing still so reset it
                             app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
                         case .paymentClaimable:
                             break
                         case .paymentFailed(paymentId: _, paymentHash: _, reason: let reason):
-                            app.toast(type: .error, title: "Payment failed", description: reason.debugDescription)
+                            break
                         }
                     }
 
