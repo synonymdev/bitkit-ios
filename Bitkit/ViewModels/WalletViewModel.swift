@@ -33,7 +33,7 @@ class WalletViewModel: ObservableObject {
     @Published var balanceDetails: BalanceDetails?
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
-    private var onEvent: ((Event) -> Void)? = nil // Optional event handler for UI updates
+    private var eventHandlers: [String: (Event) -> Void] = [:] // Replace single onEvent with dictionary
     private var syncTimer: Timer?
 
     private let lightningService: LightningService
@@ -54,8 +54,12 @@ class WalletViewModel: ObservableObject {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
     
-    func setOnEvent(_ onEvent: @escaping (Event) -> Void) {
-        self.onEvent = onEvent
+    func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
+        eventHandlers[id] = handler
+    }
+    
+    func removeOnEvent(id: String) {
+        eventHandlers.removeValue(forKey: id)
     }
     
     func start(walletIndex: Int = 0) async throws {
@@ -71,7 +75,10 @@ class WalletViewModel: ObservableObject {
                 // On every lightning event just sync UI
                 Task { @MainActor in
                     self.syncState()
-                    self.onEvent?(event)
+                    // Notify all event handlers
+                    for handler in self.eventHandlers.values {
+                        handler(event)
+                    }
                 }
             })
         } catch {
@@ -166,8 +173,30 @@ class WalletViewModel: ObservableObject {
         return txid
     }
     
-    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, 
+             sats: UInt64? = nil, 
+             onSuccess: @escaping () -> Void,
+             onFail: @escaping (String) -> Void) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        
+        // Add event listener for this specific payment
+        addOnEvent(id: hash.description) { event in
+            switch event {
+            case .paymentSuccessful(paymentId: _, paymentHash: let paymentHash, feePaidMsat: _):
+                if paymentHash == hash {
+                    self.removeOnEvent(id: hash.description)
+                    onSuccess()
+                }
+            case .paymentFailed(paymentId: _, paymentHash: let paymentHash, reason: let reason):
+                if paymentHash == hash {
+                    self.removeOnEvent(id: hash.description)
+                    onFail(reason.debugDescription)
+                }
+            default:
+                break
+            }
+        }
+        
         syncState()
         return hash
     }
