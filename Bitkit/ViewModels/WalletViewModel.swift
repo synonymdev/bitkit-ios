@@ -173,10 +173,7 @@ class WalletViewModel: ObservableObject {
         return txid
     }
     
-    func send(bolt11: String, 
-             sats: UInt64? = nil, 
-             onSuccess: @escaping () -> Void,
-             onFail: @escaping (String) -> Void) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         
         // Add event listener for this specific payment
