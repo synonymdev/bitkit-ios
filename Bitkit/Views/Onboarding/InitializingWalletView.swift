@@ -78,7 +78,7 @@ struct InitializingWalletView: View {
                                 increment = baseIncrement
                             }
                             
-                            percentage = min(percentage + increment, 100)
+                            percentage = max(percentage + increment, 100)
                         }
                     }
                 }
