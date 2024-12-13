@@ -29,6 +29,16 @@ struct InitializingWalletView: View {
             .offset(rocketOffset)
     }
 
+    private func handleCompletion() {
+        timer?.invalidate()
+        hapticTimer?.invalidate()
+        Haptics.stopHaptics()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            Haptics.notify(.success)
+            onComplete()
+        }
+    }
+
     private var spinner: some View {
         ZStack {
             Image("loading-circle")
@@ -50,7 +60,7 @@ struct InitializingWalletView: View {
                     timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                         if percentage < 100 {
                             // Base increment speed
-                            let baseIncrement: Double = shouldFinish ? 1.0 : 0.3
+                            let baseIncrement: Double = shouldFinish ? 1.2 : 0.5
                             
                             // Progressive slowdown if shouldFinish is false
                             let increment: Double
@@ -73,25 +83,19 @@ struct InitializingWalletView: View {
                     }
                 }
                 .onChange(of: shouldFinish) { finish in
-                    // Check if we should complete when shouldFinish becomes true
                     if finish && percentage >= 99.9 {
-                        timer?.invalidate()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            onComplete()
-                        }
+                        handleCompletion()
                     }
                 }
                 .onChange(of: percentage) { newPercentage in
-                    // Check if we should complete when percentage reaches 100
                     if newPercentage >= 99.9 && shouldFinish {
-                        timer?.invalidate()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            onComplete()
-                        }
+                        handleCompletion()
                     }
                 }
                 .onDisappear {
                     timer?.invalidate()
+                    hapticTimer?.invalidate()
+                    Haptics.stopHaptics()
                 }
         }
     }
