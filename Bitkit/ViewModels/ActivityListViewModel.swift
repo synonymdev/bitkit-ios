@@ -28,26 +28,34 @@ class ActivityListViewModel: ObservableObject {
     {
         self.activityService = activityService
         self.lightningService = lightningService
+        
+        Task {
+            await syncState()
+        }
     }
     
     func syncState() async {
         do {
-            if let ldkPayments = lightningService.payments {
-                try await activityService.syncLdkNodePayments(ldkPayments)
-            }
+            // Get latest activities first as that's displayed on the initial views
+            let limitLatest: UInt32 = 3
+            latestActivities = try await activityService.all(limit: limitLatest)
+            latestLightningActivities = try await activityService.lightning(limit: limitLatest)
+            latestOnchainActivities = try await activityService.onchain(limit: limitLatest)
 
             // Fetch all activities
             allActivities = try await activityService.all()
             lightningActivities = try await activityService.lightning()
             onchainActivities = try await activityService.onchain()
             
-            // Get latest activities for each type (limit 3)
-            let limitLatest: UInt32 = 3
-            latestActivities = try await activityService.all(limit: limitLatest)
-            latestLightningActivities = try await activityService.lightning(limit: limitLatest)
-            latestOnchainActivities = try await activityService.onchain(limit: limitLatest)
         } catch {
             Logger.error(error, context: "Failed to sync activities")
+        }
+    }
+    
+    func syncLdkNodePayments() async throws {
+        if let ldkPayments = lightningService.payments {
+            try await activityService.syncLdkNodePayments(ldkPayments)
+            await syncState()
         }
     }
     

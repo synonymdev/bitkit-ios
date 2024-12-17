@@ -12,11 +12,15 @@ class ActivityListService {
     static let shared = ActivityListService()
     private let walletIndex: Int
     
-    private init(walletIndex: Int = 0) { // Default to first wallet like LightningService
+    private init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
-        // Initialize database on first access
+
         Task {
-            try? await initializeDatabase()
+            do {
+                try await initializeDatabase()
+            } catch {
+                Logger.error(error)
+            }
         }
     }
     
@@ -31,7 +35,7 @@ class ActivityListService {
     
     func removeAll() async throws {
         try await ServiceQueue.background(.activity) {
-            // Only allow removing on regtest
+            // Only allow removing on regtest for now
             guard Env.network == .regtest else {
                 throw AppError(message: "Regtest only", debugMessage: nil)
             }
@@ -63,9 +67,12 @@ class ActivityListService {
     
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
         try await ServiceQueue.background(.activity) {
+            var addedCount = 0
+            var updatedCount = 0
+            
             for payment in payments {
                 // Skip pending inbound payments, just means they created an invoice
-                guard payment.status != .pending, payment.direction != .inbound else { continue }
+                guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
                 
                 let state: PaymentState
                 switch payment.status {
@@ -94,12 +101,16 @@ class ActivityListService {
                 
                 if let _ = try getActivityById(activityId: payment.id) {
                     try updateActivity(activityId: payment.id, activity: .lightning(ln))
+                    updatedCount += 1
                 } else {
                     try insertActivity(activity: .lightning(ln))
+                    addedCount += 1
                 }
 
-                //TODO: handle onchain activity when it comes in ldk-node
+                // TODO: handle onchain activity when it comes in ldk-node
             }
+            
+            Logger.info("Synced LDK payments - Added: \(addedCount), Updated: \(updatedCount)", context: "ActivityListService")
         }
     }
     
