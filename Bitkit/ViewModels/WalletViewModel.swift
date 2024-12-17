@@ -33,7 +33,7 @@ class WalletViewModel: ObservableObject {
     @Published var balanceDetails: BalanceDetails?
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
-    private var eventHandlers: [String: (Event) -> Void] = [:] // Replace single onEvent with dictionary
+    private var eventHandlers: [String: (Event) -> Void] = [:]
     private var syncTimer: Timer?
 
     private let lightningService: LightningService
