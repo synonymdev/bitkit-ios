@@ -8,23 +8,6 @@
 import XCTest
 
 final class BlocktankTests: XCTestCase {
-    override func setUp() async throws {
-        try? await LightningService.shared.wipeStorage(walletIndex: 0)
-        try Keychain.wipeEntireKeychain()
-        
-        let mnemonic = "pool curve feature leader elite dilemma exile toast smile couch crane public"
-        try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: mnemonic)
-
-        try await LightningService.shared.setup(walletIndex: 0)
-        try await LightningService.shared.start()
-    }
-
-    override func tearDown() async throws {
-        // Stopping is better but it seems to take so long
-        try await LightningService.shared.stop()
-        try Keychain.delete(key: .bip39Mnemonic(index: 0))
-    }
-
     func testGetInfo() async throws {
         let info = try await BlocktankService.shared.getInfo()
         XCTAssertEqual(info.onchain.network, .regtest)
@@ -35,16 +18,11 @@ final class BlocktankTests: XCTestCase {
         let invoiceSat: UInt64 = 6000
         let expiryWeeks: UInt8 = 2
 
-        guard let nodeId = LightningService.shared.nodeId else {
-            XCTFail("Node id not available")
-            return
-        }
-
         let cjit = try await BlocktankService.shared.createCJitEntry(
             channelSizeSat: channelSizeSat,
             invoiceSat: invoiceSat,
             invoiceDescription: "Pay me",
-            nodeId: nodeId,
+            nodeId: "0296b2db342fcf87ea94d981757fdf4d3e545bd5cef4919f58b5d38dfdd73bf5c9",
             channelExpiryWeeks: expiryWeeks,
             options: .init()
         )

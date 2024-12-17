@@ -4,6 +4,9 @@ class CurrencyService {
     static let shared = CurrencyService()
     private let maxRetries = 3
     
+    private let cache = UserDefaults.standard
+    private let cacheKey = "cached_fx_rates"
+    
     private init() {}
     
     func fetchLatestRates() async throws -> [FxRate] {
@@ -11,7 +14,7 @@ class CurrencyService {
         
         for attempt in 0 ..< maxRetries {
             do {
-                return try await ServiceQueue.background(.forex) {
+                let rates = try await ServiceQueue.background(.forex) {
                     guard let url = URL(string: Env.btcRatesServer) else {
                         throw URLError(.badURL)
                     }
@@ -20,16 +23,30 @@ class CurrencyService {
                     let response = try JSONDecoder().decode(FxRateResponse.self, from: data)
                     return response.tickers
                 }
+                
+                // Cache the successful response
+                if let encoded = try? JSONEncoder().encode(rates) {
+                    cache.set(encoded, forKey: cacheKey)
+                }
+                
+                return rates
             } catch {
                 lastError = error
                 if attempt < maxRetries - 1 {
-                    // Wait a bit before retrying, with exponential backoff
                     try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
                 }
             }
         }
         
         throw lastError ?? URLError(.unknown)
+    }
+    
+    func loadCachedRates() -> [FxRate]? {
+        guard let data = cache.data(forKey: cacheKey),
+              let rates = try? JSONDecoder().decode([FxRate].self, from: data) else {
+            return nil
+        }
+        return rates
     }
 }
 

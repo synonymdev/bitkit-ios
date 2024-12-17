@@ -21,6 +21,12 @@ class CurrencyViewModel: ObservableObject {
     
     init(currencyService: CurrencyService = .shared) {
         self.currencyService = currencyService
+        
+        // Load cached rates immediately
+        if let cachedRates = currencyService.loadCachedRates() {
+            self.rates = cachedRates
+        }
+        
         startPolling()
     }
     
