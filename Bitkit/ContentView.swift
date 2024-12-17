@@ -78,35 +78,21 @@ struct ContentView: View {
 
             guard wallet.walletExists == true else { return }
 
+            wallet.addOnEvent(id: "toasts") { [weak app] lightningEvent in
+                app?.handleLdkNodeEvent(lightningEvent)
+            }
+
+            wallet.addOnEvent(id: "activity-sync") { [weak activity] _ in
+                Task {
+                    // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
+                    try? await activity?.syncLdkNodePayments()
+                }
+            }
+
             Task {
                 do {
-                    wallet.addOnEvent(id: "ContentView") { lighntingEvent in
-                        // TODO: move to app.handleLdkNodeEvent(e)
-                        switch lighntingEvent {
-                        case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
-                            app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
-                        case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-                            // Only relevant for channels to external nodes
-                            break
-                        case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
-                            // TODO: handle cjit as payment received
-                            if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                                app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
-                            } else {
-                                app.toast(type: .error, title: "Channel opened", description: "Ready to send")
-                            }
-                        case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
-                            app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
-                        case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
-                            app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
-                        case .paymentClaimable:
-                            break
-                        case .paymentFailed(paymentId: _, paymentHash: _, reason: let reason):
-                            break
-                        }
-                    }
-
                     try await wallet.start()
+                    try await activity.syncLdkNodePayments()
                 } catch {
                     Logger.error("Failed to start wallet")
                     Haptics.notify(.error)

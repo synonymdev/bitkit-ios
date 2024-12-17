@@ -14,10 +14,10 @@ struct InitializingWalletView: View {
     @State private var percentage: Double = 0
     @State private var timer: Timer?
     @State private var hapticTimer: Timer?
-    
+
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
-    
+
     private static let standardDuration: Double = 2.5
     private static let rocketDuration: Double = standardDuration - 0.01
 
@@ -61,7 +61,7 @@ struct InitializingWalletView: View {
                         if percentage < 100 {
                             // Base increment speed
                             let baseIncrement: Double = shouldFinish ? 1.2 : 0.5
-                            
+
                             // Progressive slowdown if shouldFinish is false
                             let increment: Double
                             if !shouldFinish {
@@ -78,17 +78,20 @@ struct InitializingWalletView: View {
                                 increment = baseIncrement
                             }
                             
-                            percentage = max(percentage + increment, 100)
+
+                            percentage = min(percentage + increment, 100)
                         }
                     }
                 }
                 .onChange(of: shouldFinish) { finish in
                     if finish && percentage >= 99.9 {
+                        percentage = 100
                         handleCompletion()
                     }
                 }
                 .onChange(of: percentage) { newPercentage in
                     if newPercentage >= 99.9 && shouldFinish {
+                        percentage = 100
                         handleCompletion()
                     }
                 }
