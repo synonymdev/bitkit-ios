@@ -10,6 +10,7 @@ import SwiftUI
 struct SettingsListView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var activity: ActivityListViewModel
 
     var body: some View {
         List {
@@ -59,6 +60,25 @@ struct SettingsListView: View {
 
                     Button {
                         Task {
+                            do {
+                                try await ActivityListService.shared.removeAll()
+                                await activity.syncState()
+                                app.toast(type: .success, title: "Success", description: "All activities removed")
+                            } catch {
+                                app.toast(type: .error, title: "Error", description: "Failed to remove activities: \(error.localizedDescription)")
+                            }
+                        }
+                    } label: {
+                        Label {
+                            Text("Reset All Activities")
+                        } icon: {
+                            Image(systemName: "clock.badge.xmark")
+                        }
+                        .foregroundColor(.red)
+                    }
+
+                    Button {
+                        Task {
                             guard Env.network == .regtest else {
                                 Logger.error("Can only nuke on regtest")
                                 app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
@@ -99,4 +119,5 @@ struct SettingsListView: View {
     SettingsListView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(ActivityListViewModel())
 }

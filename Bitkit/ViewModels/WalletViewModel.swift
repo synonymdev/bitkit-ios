@@ -14,10 +14,6 @@ class WalletViewModel: ObservableObject {
     
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
-    @Published var activityItems: [PaymentDetails]? = nil // This will eventually hold other activity types
-    @Published var latestActivityItems: [PaymentDetails]? = nil
-    @Published var latestLightningActivityItems: [PaymentDetails]? = nil
-    @Published var latestOnchainActivityItems: [PaymentDetails]? = nil
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
@@ -214,44 +210,6 @@ class WalletViewModel: ObservableObject {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
             totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
-        }
-        
-        if var payments = lightningService.payments {
-            payments.sort { $0.latestUpdateTimestamp > $1.latestUpdateTimestamp }
-            
-            // TODO: eventually load other activity types from local storage / sqlite
-            var allActivity: [PaymentDetails] = []
-            var latestLightningActivity: [PaymentDetails] = []
-            var latestOnchainActivity: [PaymentDetails] = []
-            
-            payments.forEach { details in
-                switch details.kind {
-                case .onchain:
-                    allActivity.append(details)
-                    latestOnchainActivity.append(details)
-                case .bolt11(hash: let hash, preimage: let preimage, secret: let secret):
-                    if !(details.status == .pending && details.direction == .inbound) {
-                        allActivity.append(details)
-                        latestLightningActivity.append(details)
-                    }
-                case .bolt11Jit(hash: let hash, preimage: let preimage, secret: let secret, lspFeeLimits: let lspFeeLimits):
-                    break
-                case .bolt12Offer(hash: let hash, preimage: let preimage, secret: let secret, offerId: let offerId, payerNote: let payerNote, quantity: let quantity):
-                    break
-                case .bolt12Refund(hash: let hash, preimage: let preimage, secret: let secret, payerNote: let payerNote, quantity: let quantity):
-                    break
-                case .spontaneous(hash: let hash, preimage: let preimage):
-                    break
-                }
-            }
-            
-            // TODO: append activity items from lightning balances
-            
-            let limitLatest = 3
-            activityItems = allActivity
-            latestActivityItems = Array(allActivity.prefix(limitLatest))
-            latestLightningActivityItems = Array(latestLightningActivity.prefix(limitLatest))
-            latestOnchainActivityItems = Array(latestOnchainActivity.prefix(limitLatest))
         }
     }
     

@@ -8,6 +8,7 @@
 import LDKNode
 import SwiftUI
 
+// TODO: replace LDK node types
 struct ActivityItemView: View {
     let item: PaymentDetails
 

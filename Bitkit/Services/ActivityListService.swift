@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import LDKNode
 
 class ActivityListService {
     static let shared = ActivityListService()
@@ -26,6 +27,29 @@ class ActivityListService {
         }
     }
     
+    // MARK: - Database Management
+    
+    func removeAll() async throws {
+        try await ServiceQueue.background(.activity) {
+            // Only allow removing on regtest
+            guard Env.network == .regtest else {
+                throw AppError(message: "Regtest only", debugMessage: nil)
+            }
+            
+            // Get all activities and delete them one by one
+            let activities = try getAllActivities(limit: nil)
+            for activity in activities {
+                let id: String
+                switch activity {
+                case .lightning(let ln): id = ln.id
+                case .onchain(let on): id = on.id
+                }
+                
+                _ = try deleteActivityById(activityId: id)
+            }
+        }
+    }
+    
     // MARK: - Activity Methods
     
     func insert(_ activity: Activity) async throws {
@@ -36,6 +60,48 @@ class ActivityListService {
     
     // TODO: insert based on LDK node event
     // TODO: insert based on LDK node payment type
+    
+    func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
+        try await ServiceQueue.background(.activity) {
+            for payment in payments {
+                // Skip pending inbound payments, just means they created an invoice
+                guard payment.status != .pending, payment.direction != .inbound else { continue }
+                
+                let state: PaymentState
+                switch payment.status {
+                case .failed:
+                    state = .failed
+                case .pending:
+                    state = .pending
+                case .succeeded:
+                    state = .succeeded
+                }
+                
+                let ln = LightningActivity(
+                    id: payment.id,
+                    activityType: .lightning,
+                    txType: payment.direction == .outbound ? .sent : .received,
+                    status: state,
+                    value: Int64(payment.amountSats ?? 0),
+                    fee: nil, // TODO:
+                    invoice: "lnbc123",
+                    message: "",
+                    timestamp: Int64(payment.latestUpdateTimestamp),
+                    preimage: nil,
+                    createdAt: Int64(payment.latestUpdateTimestamp),
+                    updatedAt: Int64(payment.latestUpdateTimestamp)
+                )
+                
+                if let _ = try getActivityById(activityId: payment.id) {
+                    try updateActivity(activityId: payment.id, activity: .lightning(ln))
+                } else {
+                    try insertActivity(activity: .lightning(ln))
+                }
+
+                //TODO: handle onchain activity when it comes in ldk-node
+            }
+        }
+    }
     
     func getActivity(id: String) async throws -> Activity? {
         try await ServiceQueue.background(.activity) {
@@ -49,15 +115,15 @@ class ActivityListService {
         }
     }
     
-    func lightning(limit: UInt32? = nil) async throws -> [LightningActivity] {
+    func lightning(limit: UInt32? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getAllLightningActivities(limit: limit)
+            try getAllLightningActivities(limit: limit).map { Activity.lightning($0) }
         }
     }
     
-    func onchain(limit: UInt32? = nil) async throws -> [OnchainActivity] {
+    func onchain(limit: UInt32? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getAllOnchainActivities(limit: limit)
+            try getAllOnchainActivities(limit: limit).map { Activity.onchain($0) }
         }
     }
     

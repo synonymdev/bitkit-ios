@@ -60,7 +60,7 @@ struct HomeView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                ActivityLatest(type: .all)
+                ActivityLatest(viewType: .all)
             }
             .refreshable {
                 do {

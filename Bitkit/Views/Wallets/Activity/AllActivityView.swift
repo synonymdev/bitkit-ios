@@ -9,135 +9,247 @@ import LDKNode
 import SwiftUI
 
 struct ActivityRow: View {
-    let item: PaymentDetails
+    let item: Activity
     @EnvironmentObject var currency: CurrencyViewModel
 
     private var formattedTime: String {
         let formatter = DateFormatter()
         formatter.timeStyle = .short
-        return formatter.string(from: item.creationTime)
+
+        switch item {
+        case .lightning(let activity):
+            return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp)))
+        case .onchain(let activity):
+            return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp)))
+        }
     }
 
     private var amountPrefix: String {
-        item.direction == .outbound ? "-" : "+"
+        switch item {
+        case .lightning(let activity):
+            return activity.txType == .sent ? "-" : "+"
+        case .onchain(let activity):
+            return activity.txType == .sent ? "-" : "+"
+        }
     }
 
     @ViewBuilder
     private var amountView: some View {
-        if let amountSats = item.amountSats,
-           let converted = currency.convert(sats: amountSats)
-        {
-            VStack(alignment: .trailing, spacing: 2) {
-                if currency.primaryDisplay == .bitcoin {
-                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                    HStack(spacing: 1) {
-                        Text(amountPrefix)
-                            .foregroundColor(.primary.opacity(0.8))
-                        Text(btcComponents.value)
-                    }
-
-                    Text("\(converted.symbol) \(converted.formatted)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } else {
-                    HStack(spacing: 1) {
-                        Text(amountPrefix)
-                            .foregroundColor(.primary.opacity(0.8))
-                        Text("\(converted.symbol) \(converted.formatted)")
-                    }
-
-                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                    Text(btcComponents.value)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
+        switch item {
+        case .lightning(let activity):
+            if let converted = currency.convert(sats: UInt64(activity.value)) {
+                AmountDisplayView(converted: converted, prefix: amountPrefix)
+            }
+        case .onchain(let activity):
+            if let converted = currency.convert(sats: UInt64(activity.value)) {
+                AmountDisplayView(converted: converted, prefix: amountPrefix)
             }
         }
     }
 
     var body: some View {
-        NavigationLink(destination: ActivityItemView(item: item)) {
-            HStack {
-                icon
-                    .padding(.trailing, 4)
+        HStack {
+            icon
+                .padding(.trailing, 4)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    if item.direction == .outbound {
-                        switch item.status {
-                        case .failed:
-                            Text("Sending Failed")
-                        case .pending:
-                            Text("Sending...")
-                        case .succeeded:
-                            Text("Sent")
-                        }
-                    } else {
-                        switch item.status {
-                        case .failed:
-                            Text("Receive Failed")
-                        case .pending:
-                            Text("Receiving...")
-                        case .succeeded:
-                            Text("Received")
-                        }
-                    }
-
-                    Text(formattedTime)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                switch item {
+                case .lightning(let activity):
+                    TransactionStatusText(txType: activity.txType, activity: item)
+                case .onchain(let activity):
+                    TransactionStatusText(txType: activity.txType, activity: item)
                 }
 
-                Spacer()
-                amountView
+                Text(formattedTime)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+
+            Spacer()
+            amountView
         }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder
     var icon: some View {
-        if item.status == .failed {
-            Image(systemName: "xmark")
-                .foregroundColor(.red)
-        } else {
-            let systemName = item.direction == .outbound ? "arrow.up" : "arrow.down"
+        TransactionIcon(activity: item)
+    }
+}
 
-            if item.kind == .onchain {
-                Image(systemName: systemName)
-                    .foregroundColor(.orange)
+// MARK: - Helper Views
+
+private struct AmountDisplayView: View {
+    let converted: ConvertedAmount
+    let prefix: String
+    @EnvironmentObject var currency: CurrencyViewModel
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            if currency.primaryDisplay == .bitcoin {
+                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                HStack(spacing: 1) {
+                    Text(prefix)
+                        .foregroundColor(.primary.opacity(0.8))
+                    Text(btcComponents.value)
+                }
+
+                Text("\(converted.symbol) \(converted.formatted)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             } else {
-                Image(systemName: systemName)
-                    .foregroundColor(.purple)
+                HStack(spacing: 1) {
+                    Text(prefix)
+                        .foregroundColor(.primary.opacity(0.8))
+                    Text("\(converted.symbol) \(converted.formatted)")
+                }
+
+                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                Text(btcComponents.value)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
     }
 }
 
-enum ActivityType_DEPRECATED {
-    case all
-    case lightning
-    case onchain
-}
+private struct TransactionStatusText: View {
+    let txType: PaymentType
+    let isLightning: Bool
+    let status: PaymentState?
+    let confirmed: Bool?
 
-struct ActivityLatest: View {
-    let type: ActivityType_DEPRECATED
-
-    @EnvironmentObject private var wallet: WalletViewModel
+    init(txType: PaymentType, activity: Activity) {
+        self.txType = txType
+        switch activity {
+        case .lightning(let ln):
+            self.isLightning = true
+            self.status = ln.status
+            self.confirmed = nil
+        case .onchain(let onchain):
+            self.isLightning = false
+            self.status = nil
+            self.confirmed = onchain.confirmed
+        }
+    }
 
     var body: some View {
-        switch type {
-        case .all:
-            return list(wallet.latestActivityItems)
-        case .lightning:
-            return list(wallet.latestLightningActivityItems)
-        case .onchain:
-            return list(wallet.latestOnchainActivityItems)
+        if isLightning {
+            lightningStatus
+        } else {
+            onchainStatus
         }
     }
 
     @ViewBuilder
-    func list(_ items: [PaymentDetails]?) -> some View {
+    private var lightningStatus: some View {
+        if txType == .sent {
+            switch status {
+            case .failed:
+                Text("Sending Failed")
+            case .pending:
+                Text("Sending...")
+            case .succeeded:
+                Text("Sent")
+            case .none:
+                EmptyView()
+            }
+        } else {
+            switch status {
+            case .failed:
+                Text("Receive Failed")
+            case .pending:
+                Text("Receiving...")
+            case .succeeded:
+                Text("Received")
+            case .none:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var onchainStatus: some View {
+        if txType == .sent {
+            if confirmed == true {
+                Text("Sent")
+            } else {
+                Text("Sending...")
+            }
+        } else {
+            if confirmed == true {
+                Text("Received")
+            } else {
+                Text("Receiving...")
+            }
+        }
+    }
+}
+
+private struct TransactionIcon: View {
+    let isLightning: Bool
+    let status: PaymentState?
+    let confirmed: Bool?
+    let txType: PaymentType
+
+    init(activity: Activity) {
+        switch activity {
+        case .lightning(let ln):
+            self.isLightning = true
+            self.status = ln.status
+            self.confirmed = nil
+            self.txType = ln.txType
+        case .onchain(let onchain):
+            self.isLightning = false
+            self.status = nil
+            self.confirmed = onchain.confirmed
+            self.txType = onchain.txType
+        }
+    }
+
+    var body: some View {
+        if isLightning {
+            if status == .failed {
+                Image(systemName: "xmark")
+                    .foregroundColor(.red)
+            } else {
+                let systemName = txType == .sent ? "arrow.up" : "arrow.down"
+                Image(systemName: systemName)
+                    .foregroundColor(.purple)
+            }
+        } else {
+            let systemName = txType == .sent ? "arrow.up" : "arrow.down"
+            Image(systemName: systemName)
+                .foregroundColor(confirmed == true ? .orange : .orange.opacity(0.5))
+        }
+    }
+}
+
+struct ActivityLatest: View {
+    let viewType: LatestActivityViewType
+
+    enum LatestActivityViewType {
+        case all
+        case lightning
+        case onchain
+    }
+
+    @EnvironmentObject private var activity: ActivityListViewModel
+
+    var body: some View {
+        switch viewType {
+        case .all:
+            return list(activity.latestActivities)
+        case .lightning:
+            return list(activity.lightningActivities)
+        case .onchain:
+            return list(activity.onchainActivities)
+        }
+    }
+
+    @ViewBuilder
+    func list(_ items: [Activity]?) -> some View {
         if let items {
             LazyVStack {
                 ForEach(items, id: \.self) { item in
@@ -165,11 +277,11 @@ struct ActivityLatest: View {
 }
 
 struct AllActivityView: View {
-    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var activity: ActivityListViewModel
 
     var body: some View {
         ScrollView {
-            if let items = wallet.activityItems {
+            if let items = activity.allActivities {
                 LazyVStack {
                     ForEach(items, id: \.self) { item in
                         ActivityRow(item: item)

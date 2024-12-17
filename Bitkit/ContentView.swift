@@ -12,6 +12,7 @@ struct ContentView: View {
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
+    @StateObject private var activity = ActivityListViewModel()
 
     @State private var hideSplash = false
 
@@ -80,6 +81,7 @@ struct ContentView: View {
             Task {
                 do {
                     wallet.addOnEvent(id: "ContentView") { lighntingEvent in
+                        // TODO: move to app.handleLdkNodeEvent(e)
                         switch lighntingEvent {
                         case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
                             app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
@@ -146,6 +148,7 @@ struct ContentView: View {
         .environmentObject(wallet)
         .environmentObject(currency)
         .environmentObject(blocktank)
+        .environmentObject(activity)
     }
 }
 
