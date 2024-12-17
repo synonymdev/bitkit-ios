@@ -12,22 +12,30 @@ class ActivityListViewModel: ObservableObject {
     static let shared = ActivityListViewModel()
     
     @Published var allActivities: [Activity]? = nil
-    @Published var lightningActivities: [LightningActivity]? = nil
-    @Published var onchainActivities: [OnchainActivity]? = nil
+    @Published var lightningActivities: [Activity]? = nil
+    @Published var onchainActivities: [Activity]? = nil
     
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
-    @Published var latestLightningActivities: [LightningActivity]? = nil
-    @Published var latestOnchainActivities: [OnchainActivity]? = nil
+    @Published var latestLightningActivities: [Activity]? = nil
+    @Published var latestOnchainActivities: [Activity]? = nil
     
     private let activityService: ActivityListService
+    private let lightningService: LightningService
     
-    init(activityService: ActivityListService = .shared) {
+    init(activityService: ActivityListService = .shared,
+         lightningService: LightningService = .shared)
+    {
         self.activityService = activityService
+        self.lightningService = lightningService
     }
     
     func syncState() async {
         do {
+            if let ldkPayments = lightningService.payments {
+                try await activityService.syncLdkNodePayments(ldkPayments)
+            }
+
             // Fetch all activities
             allActivities = try await activityService.all()
             lightningActivities = try await activityService.lightning()
@@ -58,4 +66,4 @@ class ActivityListViewModel: ObservableObject {
     func getActivities(withTag tag: String) async throws -> [Activity] {
         try await activityService.getActivities(withTag: tag)
     }
-} 
+}

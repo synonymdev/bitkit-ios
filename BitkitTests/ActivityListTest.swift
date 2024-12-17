@@ -30,14 +30,17 @@ final class ActivityTests: XCTestCase {
     }
     
     func testInsertAndRetrieveLightningActivity() throws {
+        let testValue: Int64 = 123456789
+        let testFee: Int64 = 421
+        
         // Create a lightning activity
         let lightningActivity = Activity.lightning(LightningActivity(
             id: "test-lightning-1",
             activityType: .lightning,
             txType: .sent,
             status: .succeeded,
-            value: 1000,
-            fee: 1,
+            value: testValue,
+            fee: testFee,
             invoice: "lnbc...",
             message: "Test payment",
             timestamp: Int64(Date().timeIntervalSince1970),
@@ -55,7 +58,8 @@ final class ActivityTests: XCTestCase {
         
         if case let .lightning(activity) = retrieved {
             XCTAssertEqual(activity.id, "test-lightning-1")
-            XCTAssertEqual(activity.value, 1000)
+            XCTAssertEqual(activity.value, testValue, "Retrieved value should match inserted value")
+            XCTAssertEqual(activity.fee, testFee, "Retrieved fee should match inserted fee")
             XCTAssertEqual(activity.status, .succeeded)
         } else {
             XCTFail("Retrieved activity is not of type lightning")
@@ -63,15 +67,19 @@ final class ActivityTests: XCTestCase {
     }
     
     func testInsertAndRetrieveOnchainActivity() throws {
+        let testValue: Int64 = 987654321
+        let testFee: Int64 = 1234
+        let testFeeRate: Int64 = 8
+        
         // Create an onchain activity
         let onchainActivity = Activity.onchain(OnchainActivity(
             id: "test-onchain-1",
             activityType: .onchain,
             txType: .received,
             txId: "abc123",
-            value: 5000,
-            fee: 500,
-            feeRate: 1,
+            value: testValue,
+            fee: testFee,
+            feeRate: testFeeRate,
             address: "bc1...",
             confirmed: true,
             timestamp: Int64(Date().timeIntervalSince1970),
@@ -94,8 +102,9 @@ final class ActivityTests: XCTestCase {
         
         if case let .onchain(activity) = retrieved {
             XCTAssertEqual(activity.id, "test-onchain-1")
-            XCTAssertEqual(activity.value, 5000)
-            XCTAssertEqual(activity.fee, 500)
+            XCTAssertEqual(activity.value, testValue, "Retrieved value should match inserted value")
+            XCTAssertEqual(activity.fee, testFee, "Retrieved fee should match inserted fee")
+            XCTAssertEqual(activity.feeRate, testFeeRate, "Retrieved fee rate should match inserted fee rate")
         } else {
             XCTFail("Retrieved activity is not of type onchain")
         }
@@ -431,41 +440,4 @@ final class ActivityTests: XCTestCase {
         let allOnchain = try getAllOnchainActivities(limit: nil)
         XCTAssertEqual(allOnchain.count, 2)
     }
-    
-//    func testActivityErrors() throws {
-//        // Test invalid activity ID
-//        XCTAssertThrowsError(try getActivityById(activityId: "non-existent-id")) { error in
-//            XCTAssertTrue(error is ActivityError)
-//        }
-//
-//        // Test deleting non-existent activity
-//        XCTAssertThrowsError(try deleteActivityById(activityId: "non-existent-id")) { error in
-//            XCTAssertTrue(error is ActivityError)
-//        }
-//
-//        // Test updating non-existent activity
-//        let activity = Activity.lightning(LightningActivity(
-//            id: "non-existent-id",
-//            activityType: .lightning,
-//            txType: .sent,
-//            status: .succeeded,
-//            value: 1000,
-//            fee: 1,
-//            invoice: "lnbc...",
-//            message: "Test payment",
-//            timestamp: Int64(Date().timeIntervalSince1970),
-//            preimage: nil,
-//            createdAt: nil,
-//            updatedAt: nil
-//        ))
-//
-//        XCTAssertThrowsError(try updateActivity(activityId: "non-existent-id", activity: activity)) { error in
-//            XCTAssertTrue(error is ActivityError)
-//        }
-//
-//        // Test getting tags for non-existent activity
-//        XCTAssertThrowsError(try getTags(activityId: "non-existent-id")) { error in
-//            XCTAssertTrue(error is ActivityError)
-//        }
-//    }
 }
