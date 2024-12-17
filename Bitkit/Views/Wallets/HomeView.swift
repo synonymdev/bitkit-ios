@@ -93,6 +93,7 @@ struct HomeView: View {
         }
         .overlay {
             TabBar()
+                .padding(.bottom, 20)
         }
         .sheet(isPresented: $app.showSendOptionsSheet, content: {
             if #available(iOS 16.0, *) {

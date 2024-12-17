@@ -30,9 +30,31 @@ struct SendConfirmationView: View {
             SwipeButton {
                 do {
                     if let _ = app.scannedLightningInvoice, let bolt11 = app.scannedLightningBolt11Invoice {
-                        let paymentHash = try await wallet.send(bolt11: bolt11, sats: app.sendAmountSats) // If sendAmountSats is nil that implies it's a non zero invoice
-                        Logger.info("Lightning send result payment hash: \(paymentHash)")
-                        // Reset send state happens at success send event
+                        // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
+                        // So we need to handle all these cases here.
+                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                            Task {
+                                do {
+                                    let paymentHash = try await wallet.send(
+                                        bolt11: bolt11, 
+                                        sats: app.sendAmountSats,
+                                        onSuccess: {
+                                            app.resetSendState()
+                                            Logger.info("Lightning payment successful")
+                                            continuation.resume()
+                                        },
+                                        onFail: { reason in
+                                            Logger.error("Lightning payment failed: \(reason)")
+                                            app.toast(type: .error, title: "Payment failed", description: reason)
+                                            continuation.resume(throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                        }
+                                    )
+                                    Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
+                                } catch {
+                                    continuation.resume(throwing: error)
+                                }
+                            }
+                        }
                     } else if let invoice = app.scannedOnchainInvoice {
                         let sats = app.sendAmountSats ?? invoice.amountSatoshis
                         let txid = try await wallet.send(address: invoice.address, sats: sats)
