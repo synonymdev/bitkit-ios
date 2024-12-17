@@ -114,14 +114,14 @@ struct ActivityRow: View {
     }
 }
 
-enum ActivityType {
+enum ActivityType_DEPRECATED {
     case all
     case lightning
     case onchain
 }
 
 struct ActivityLatest: View {
-    let type: ActivityType
+    let type: ActivityType_DEPRECATED
 
     @EnvironmentObject private var wallet: WalletViewModel
 

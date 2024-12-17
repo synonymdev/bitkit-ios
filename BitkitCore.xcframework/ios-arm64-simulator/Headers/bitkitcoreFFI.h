@@ -251,14 +251,74 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ADD_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ADD_TAGS
+void uniffi_bitkitcore_fn_func_add_tags(RustBuffer activity_id, RustBuffer tags, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DECODE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DECODE
 uint64_t uniffi_bitkitcore_fn_func_decode(RustBuffer invoice
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DELETE_ACTIVITY_BY_ID
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DELETE_ACTIVITY_BY_ID
+int8_t uniffi_bitkitcore_fn_func_delete_activity_by_id(RustBuffer activity_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES_BY_TAG
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES_BY_TAG
+RustBuffer uniffi_bitkitcore_fn_func_get_activities_by_tag(RustBuffer tag, RustBuffer limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITY_BY_ID
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITY_BY_ID
+RustBuffer uniffi_bitkitcore_fn_func_get_activity_by_id(RustBuffer activity_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_ACTIVITIES
+RustBuffer uniffi_bitkitcore_fn_func_get_all_activities(RustBuffer limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_LIGHTNING_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_LIGHTNING_ACTIVITIES
+RustBuffer uniffi_bitkitcore_fn_func_get_all_lightning_activities(RustBuffer limit, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_ONCHAIN_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_ONCHAIN_ACTIVITIES
+RustBuffer uniffi_bitkitcore_fn_func_get_all_onchain_activities(RustBuffer limit, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 uint64_t uniffi_bitkitcore_fn_func_get_lnurl_invoice(RustBuffer address, uint64_t amount_satoshis
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_TAGS
+RustBuffer uniffi_bitkitcore_fn_func_get_tags(RustBuffer activity_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_INIT_DB
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_INIT_DB
+RustBuffer uniffi_bitkitcore_fn_func_init_db(RustBuffer base_path, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_INSERT_ACTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_INSERT_ACTIVITY
+void uniffi_bitkitcore_fn_func_insert_activity(RustBuffer activity, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
+void uniffi_bitkitcore_fn_func_remove_tags(RustBuffer activity_id, RustBuffer tags, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_ACTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_ACTIVITY
+void uniffi_bitkitcore_fn_func_update_activity(RustBuffer activity_id, RustBuffer activity, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_VALIDATE_BITCOIN_ADDRESS
@@ -546,15 +606,87 @@ void ffi_bitkitcore_rust_future_free_void(uint64_t handle
 void ffi_bitkitcore_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ADD_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ADD_TAGS
+uint16_t uniffi_bitkitcore_checksum_func_add_tags(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DECODE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DECODE
 uint16_t uniffi_bitkitcore_checksum_func_decode(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DELETE_ACTIVITY_BY_ID
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DELETE_ACTIVITY_BY_ID
+uint16_t uniffi_bitkitcore_checksum_func_delete_activity_by_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITIES_BY_TAG
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITIES_BY_TAG
+uint16_t uniffi_bitkitcore_checksum_func_get_activities_by_tag(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITY_BY_ID
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITY_BY_ID
+uint16_t uniffi_bitkitcore_checksum_func_get_activity_by_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_ACTIVITIES
+uint16_t uniffi_bitkitcore_checksum_func_get_all_activities(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_LIGHTNING_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_LIGHTNING_ACTIVITIES
+uint16_t uniffi_bitkitcore_checksum_func_get_all_lightning_activities(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_ONCHAIN_ACTIVITIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_ONCHAIN_ACTIVITIES
+uint16_t uniffi_bitkitcore_checksum_func_get_all_onchain_activities(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_LNURL_INVOICE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_LNURL_INVOICE
 uint16_t uniffi_bitkitcore_checksum_func_get_lnurl_invoice(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_TAGS
+uint16_t uniffi_bitkitcore_checksum_func_get_tags(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_INIT_DB
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_INIT_DB
+uint16_t uniffi_bitkitcore_checksum_func_init_db(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_INSERT_ACTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_INSERT_ACTIVITY
+uint16_t uniffi_bitkitcore_checksum_func_insert_activity(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
+uint16_t uniffi_bitkitcore_checksum_func_remove_tags(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_ACTIVITY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_ACTIVITY
+uint16_t uniffi_bitkitcore_checksum_func_update_activity(void
     
 );
 #endif
