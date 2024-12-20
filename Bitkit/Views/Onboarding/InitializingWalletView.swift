@@ -77,7 +77,6 @@ struct InitializingWalletView: View {
                             } else {
                                 increment = baseIncrement
                             }
-                            
 
                             percentage = min(percentage + increment, 100)
                         }
