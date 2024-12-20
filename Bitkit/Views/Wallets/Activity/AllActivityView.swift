@@ -253,7 +253,9 @@ struct ActivityLatest: View {
         if let items {
             LazyVStack {
                 ForEach(items, id: \.self) { item in
-                    ActivityRow(item: item)
+                    NavigationLink(destination: ActivityItemView(item: item)) { 
+                        ActivityRow(item: item)
+                    }
 
                     if item != items.last {
                         Divider()
@@ -284,10 +286,12 @@ struct AllActivityView: View {
             if let items = activity.allActivities {
                 LazyVStack {
                     ForEach(items, id: \.self) { item in
-                        ActivityRow(item: item)
+                        NavigationLink(destination: ActivityItemView(item: item)) {
+                            ActivityRow(item: item)
 
-                        if item != items.last {
-                            Divider()
+                            if item != items.last {
+                                Divider()
+                            }
                         }
                     }
 
