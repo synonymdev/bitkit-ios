@@ -49,13 +49,9 @@ struct ActivityItemView: View {
     private var amountView: some View {
         switch item {
         case .lightning(let activity):
-            if let converted = currency.convert(sats: UInt64(activity.value)) {
-                BalanceHeaderView(sats: Int(activity.value), prefix: amountPrefix, showBitcoinSymbol: false)
-            }
+            BalanceHeaderView(sats: Int(activity.value), prefix: amountPrefix, showBitcoinSymbol: false)
         case .onchain(let activity):
-            if let converted = currency.convert(sats: UInt64(activity.value)) {
-                BalanceHeaderView(sats: Int(activity.value), prefix: amountPrefix, showBitcoinSymbol: false)
-            }
+            BalanceHeaderView(sats: Int(activity.value), prefix: amountPrefix, showBitcoinSymbol: false)
         }
     }
 
@@ -158,24 +154,22 @@ struct ActivityItemView_Previews: PreviewProvider {
             // Lightning Activity Preview
             ActivityItemView(item: .lightning(LightningActivity(
                 id: "test-lightning-1",
-                activityType: .lightning,
                 txType: .sent,
                 status: .succeeded,
                 value: 50000,
                 fee: 1,
                 invoice: "lnbc...",
                 message: "Test payment",
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: UInt64(Date().timeIntervalSince1970),
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
             )))
             .previewDisplayName("Lightning Payment")
-            
+
             // Onchain Activity Preview
             ActivityItemView(item: .onchain(OnchainActivity(
                 id: "test-onchain-1",
-                activityType: .onchain,
                 txType: .received,
                 txId: "abc123",
                 value: 100000,
@@ -183,7 +177,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                 feeRate: 8,
                 address: "bc1...",
                 confirmed: true,
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: UInt64(Date().timeIntervalSince1970),
                 isBoosted: false,
                 isTransfer: false,
                 doesExist: true,

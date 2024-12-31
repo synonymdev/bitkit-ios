@@ -72,6 +72,6 @@ class ActivityListViewModel: ObservableObject {
     }
     
     func getActivities(withTag tag: String) async throws -> [Activity] {
-        try await activityService.getActivities(withTag: tag)
+        try await activityService.getActivitiesWithTag(tag)
     }
 }
