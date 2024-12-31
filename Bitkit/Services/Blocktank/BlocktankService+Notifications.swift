@@ -50,7 +50,7 @@ extension BlocktankService {
     
     func selfTest() async throws {
         guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
-            throw BlocktankError.missingDeviceToken
+            throw BlocktankError_deprecated.missingDeviceToken
         }
         
         Logger.debug("Sending test notification to self")

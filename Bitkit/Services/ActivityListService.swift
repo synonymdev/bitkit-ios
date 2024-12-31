@@ -41,7 +41,7 @@ class ActivityListService {
             }
             
             // Get all activities and delete them one by one
-            let activities = try getAllActivities(limit: nil)
+            let activities = try getActivities(filter: .all, limit: nil, sortDirection: nil)
             for activity in activities {
                 let id: String
                 switch activity {
@@ -86,17 +86,16 @@ class ActivityListService {
                 
                 let ln = LightningActivity(
                     id: payment.id,
-                    activityType: .lightning,
                     txType: payment.direction == .outbound ? .sent : .received,
                     status: state,
-                    value: Int64(payment.amountSats ?? 0),
+                    value: UInt64(payment.amountSats ?? 0),
                     fee: nil, // TODO:
                     invoice: "lnbc123",
                     message: "",
-                    timestamp: Int64(payment.latestUpdateTimestamp),
+                    timestamp: UInt64(payment.latestUpdateTimestamp),
                     preimage: nil,
-                    createdAt: Int64(payment.latestUpdateTimestamp),
-                    updatedAt: Int64(payment.latestUpdateTimestamp)
+                    createdAt: UInt64(payment.latestUpdateTimestamp),
+                    updatedAt: UInt64(payment.latestUpdateTimestamp)
                 )
                 
                 if let _ = try getActivityById(activityId: payment.id) {
@@ -120,21 +119,21 @@ class ActivityListService {
         }
     }
     
-    func all(limit: UInt32? = nil) async throws -> [Activity] {
+    func all(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getAllActivities(limit: limit)
+            try getActivities(filter: .all, limit: limit, sortDirection: sortDirection)
         }
     }
     
-    func lightning(limit: UInt32? = nil) async throws -> [Activity] {
+    func lightning(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getAllLightningActivities(limit: limit).map { Activity.lightning($0) }
+            try getActivities(filter: .lightning, limit: limit, sortDirection: sortDirection)
         }
     }
     
-    func onchain(limit: UInt32? = nil) async throws -> [Activity] {
+    func onchain(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getAllOnchainActivities(limit: limit).map { Activity.onchain($0) }
+            try getActivities(filter: .onchain, limit: limit, sortDirection: sortDirection)
         }
     }
     
@@ -170,9 +169,9 @@ class ActivityListService {
         }
     }
     
-    func getActivities(withTag tag: String, limit: UInt32? = nil) async throws -> [Activity] {
+    func getActivitiesWithTag(_ tag: String, limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivitiesByTag(tag: tag, limit: limit)
+            try getActivitiesByTag(tag: tag, limit: limit, sortDirection: sortDirection)
         }
     }
 }

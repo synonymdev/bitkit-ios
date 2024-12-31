@@ -30,20 +30,20 @@ final class ActivityTests: XCTestCase {
     }
     
     func testInsertAndRetrieveLightningActivity() throws {
-        let testValue: Int64 = 123456789
-        let testFee: Int64 = 421
+        let testValue: UInt64 = 123456789
+        let testFee: UInt64 = 421
+        let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create a lightning activity
         let lightningActivity = Activity.lightning(LightningActivity(
             id: "test-lightning-1",
-            activityType: .lightning,
             txType: .sent,
             status: .succeeded,
             value: testValue,
             fee: testFee,
             invoice: "lnbc...",
             message: "Test payment",
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             preimage: nil,
             createdAt: nil,
             updatedAt: nil
@@ -67,14 +67,14 @@ final class ActivityTests: XCTestCase {
     }
     
     func testInsertAndRetrieveOnchainActivity() throws {
-        let testValue: Int64 = 987654321
-        let testFee: Int64 = 1234
-        let testFeeRate: Int64 = 8
+        let testValue: UInt64 = 987654321
+        let testFee: UInt64 = 1234
+        let testFeeRate: UInt64 = 8
+        let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create an onchain activity
         let onchainActivity = Activity.onchain(OnchainActivity(
             id: "test-onchain-1",
-            activityType: .onchain,
             txType: .received,
             txId: "abc123",
             value: testValue,
@@ -82,7 +82,7 @@ final class ActivityTests: XCTestCase {
             feeRate: testFeeRate,
             address: "bc1...",
             confirmed: true,
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             isBoosted: false,
             isTransfer: false,
             doesExist: true,
@@ -111,17 +111,18 @@ final class ActivityTests: XCTestCase {
     }
     
     func testActivityTags() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
         // Create and insert an activity
         let activity = Activity.lightning(LightningActivity(
             id: "test-tags-1",
-            activityType: .lightning,
             txType: .sent,
             status: .succeeded,
             value: 1000,
             fee: 1,
             invoice: "lnbc...",
             message: "Test payment",
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             preimage: nil,
             createdAt: nil,
             updatedAt: nil
@@ -144,32 +145,32 @@ final class ActivityTests: XCTestCase {
     }
     
     func testGetActivitiesByTag() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
         // Create and insert multiple activities with tags
         let activities = [
             Activity.lightning(LightningActivity(
                 id: "test-tag-filter-1",
-                activityType: .lightning,
                 txType: .sent,
                 status: .succeeded,
                 value: 1000,
                 fee: 1,
                 invoice: "lnbc...",
                 message: "Test payment 1",
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
             )),
             Activity.lightning(LightningActivity(
                 id: "test-tag-filter-2",
-                activityType: .lightning,
                 txType: .sent,
                 status: .succeeded,
                 value: 2000,
                 fee: 1,
                 invoice: "lnbc...",
                 message: "Test payment 2",
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
@@ -188,25 +189,26 @@ final class ActivityTests: XCTestCase {
         try addTags(activityId: "test-tag-filter-1", tags: ["special"])
         
         // Test filtering by tag
-        let testTagActivities = try getActivitiesByTag(tag: "test-tag", limit: nil)
+        let testTagActivities = try getActivitiesByTag(tag: "test-tag", limit: nil, sortDirection: .desc)
         XCTAssertEqual(testTagActivities.count, 2)
         
-        let specialTagActivities = try getActivitiesByTag(tag: "special", limit: nil)
+        let specialTagActivities = try getActivitiesByTag(tag: "special", limit: nil, sortDirection: .desc)
         XCTAssertEqual(specialTagActivities.count, 1)
     }
     
     func testUpdateActivity() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
         // Create and insert an activity
         let initialActivity = Activity.lightning(LightningActivity(
             id: "test-update-1",
-            activityType: .lightning,
             txType: .sent,
             status: .pending,
             value: 1000,
             fee: 1,
             invoice: "lnbc...",
             message: "Test payment",
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             preimage: nil,
             createdAt: nil,
             updatedAt: nil
@@ -217,14 +219,13 @@ final class ActivityTests: XCTestCase {
         // Create updated version
         let updatedActivity = Activity.lightning(LightningActivity(
             id: "test-update-1",
-            activityType: .lightning,
             txType: .sent,
             status: .succeeded,
             value: 1000,
             fee: 1,
             invoice: "lnbc...",
             message: "Updated test payment",
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             preimage: "preimage123",
             createdAt: nil,
             updatedAt: nil
@@ -247,17 +248,18 @@ final class ActivityTests: XCTestCase {
     }
     
     func testDeleteActivity() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
         // Create and insert an activity
         let activity = Activity.lightning(LightningActivity(
             id: "test-delete-1",
-            activityType: .lightning,
             txType: .sent,
             status: .succeeded,
             value: 1000,
             fee: 1,
             invoice: "lnbc...",
             message: "Test payment",
-            timestamp: Int64(Date().timeIntervalSince1970),
+            timestamp: timestamp,
             preimage: nil,
             createdAt: nil,
             updatedAt: nil
@@ -277,25 +279,25 @@ final class ActivityTests: XCTestCase {
     }
     
     func testGetAllActivitiesWithLimit() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
         // Create multiple activities
         let activities = [
             Activity.lightning(LightningActivity(
                 id: "test-limit-1",
-                activityType: .lightning,
                 txType: .sent,
                 status: .succeeded,
                 value: 1000,
                 fee: 1,
                 invoice: "lnbc...",
                 message: "Test payment 1",
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
             )),
             Activity.onchain(OnchainActivity(
                 id: "test-limit-2",
-                activityType: .onchain,
                 txType: .received,
                 txId: "abc123",
                 value: 5000,
@@ -303,7 +305,7 @@ final class ActivityTests: XCTestCase {
                 feeRate: 1,
                 address: "bc1...",
                 confirmed: true,
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: timestamp,
                 isBoosted: false,
                 isTransfer: false,
                 doesExist: true,
@@ -315,14 +317,13 @@ final class ActivityTests: XCTestCase {
             )),
             Activity.lightning(LightningActivity(
                 id: "test-limit-3",
-                activityType: .lightning,
                 txType: .received,
                 status: .succeeded,
                 value: 2000,
                 fee: 1,
                 invoice: "lnbc...",
                 message: "Test payment 3",
-                timestamp: Int64(Date().timeIntervalSince1970),
+                timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
@@ -335,109 +336,11 @@ final class ActivityTests: XCTestCase {
         }
         
         // Test with limit
-        let limitedActivities = try getAllActivities(limit: 2)
+        let limitedActivities = try getActivities(filter: .all, limit: 2, sortDirection: nil)
         XCTAssertEqual(limitedActivities.count, 2)
         
         // Test without limit
-        let allActivities = try getAllActivities(limit: nil)
+        let allActivities = try getActivities(filter: .all, limit: nil, sortDirection: nil)
         XCTAssertEqual(allActivities.count, 3)
-    }
-    
-    func testGetAllOnchainAndLightningActivitiesWithLimit() throws {
-        // Create multiple activities of each type
-        let lightningActivities = [
-            Activity.lightning(LightningActivity(
-                id: "test-lightning-limit-1",
-                activityType: .lightning,
-                txType: .sent,
-                status: .succeeded,
-                value: 1000,
-                fee: 1,
-                invoice: "lnbc...",
-                message: "Lightning 1",
-                timestamp: Int64(Date().timeIntervalSince1970),
-                preimage: nil,
-                createdAt: nil,
-                updatedAt: nil
-            )),
-            Activity.lightning(LightningActivity(
-                id: "test-lightning-limit-2",
-                activityType: .lightning,
-                txType: .received,
-                status: .succeeded,
-                value: 2000,
-                fee: 1,
-                invoice: "lnbc...",
-                message: "Lightning 2",
-                timestamp: Int64(Date().timeIntervalSince1970),
-                preimage: nil,
-                createdAt: nil,
-                updatedAt: nil
-            ))
-        ]
-        
-        let onchainActivities = [
-            Activity.onchain(OnchainActivity(
-                id: "test-onchain-limit-1",
-                activityType: .onchain,
-                txType: .sent,
-                txId: "abc123",
-                value: 5000,
-                fee: 500,
-                feeRate: 1,
-                address: "bc1...",
-                confirmed: true,
-                timestamp: Int64(Date().timeIntervalSince1970),
-                isBoosted: false,
-                isTransfer: false,
-                doesExist: true,
-                confirmTimestamp: nil,
-                channelId: nil,
-                transferTxId: nil,
-                createdAt: nil,
-                updatedAt: nil
-            )),
-            Activity.onchain(OnchainActivity(
-                id: "test-onchain-limit-2",
-                activityType: .onchain,
-                txType: .received,
-                txId: "def456",
-                value: 6000,
-                fee: 600,
-                feeRate: 1,
-                address: "bc1...",
-                confirmed: true,
-                timestamp: Int64(Date().timeIntervalSince1970),
-                isBoosted: false,
-                isTransfer: false,
-                doesExist: true,
-                confirmTimestamp: nil,
-                channelId: nil,
-                transferTxId: nil,
-                createdAt: nil,
-                updatedAt: nil
-            ))
-        ]
-        
-        // Insert all activities
-        for activity in lightningActivities + onchainActivities {
-            try insertActivity(activity: activity)
-        }
-        
-        // Test lightning activities with limit
-        let limitedLightning = try getAllLightningActivities(limit: 1)
-        XCTAssertEqual(limitedLightning.count, 1)
-        
-        // Test lightning activities without limit
-        let allLightning = try getAllLightningActivities(limit: nil)
-        XCTAssertEqual(allLightning.count, 2)
-        
-        // Test onchain activities with limit
-        let limitedOnchain = try getAllOnchainActivities(limit: 1)
-        XCTAssertEqual(limitedOnchain.count, 1)
-        
-        // Test onchain activities without limit
-        let allOnchain = try getAllOnchainActivities(limit: nil)
-        XCTAssertEqual(allOnchain.count, 2)
     }
 }

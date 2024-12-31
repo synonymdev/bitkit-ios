@@ -28,7 +28,7 @@ enum KeychainError: Error {
     case keychainWipeNotAllowed
 }
 
-enum BlocktankError: Error {
+enum BlocktankError_deprecated: Error {
     case missingResponse
     case invalidResponse
     case invalidJson
