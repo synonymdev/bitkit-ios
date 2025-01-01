@@ -7,10 +7,41 @@
 
 import SwiftUI
 
+struct ActivityListFilter: View {
+    @Binding var searchText: String
+    
+    var body: some View {
+        HStack {
+            Image(systemName: "magnifyingglass")
+                .foregroundColor(.gray)
+            TextField("Search", text: $searchText)
+            HStack(spacing: 12) {
+                Image(systemName: "tag")
+                Image(systemName: "calendar")
+            }
+            .foregroundColor(.gray)
+        }
+        .padding()
+        .background(Color(.systemGray6))
+        .cornerRadius(10)
+        .padding()
+    }
+}
+
 struct AllActivityView: View {
     @EnvironmentObject private var activity: ActivityListViewModel
+    @State private var searchText = ""
+    @State private var selectedTab = 0
 
     var body: some View {
+        VStack(spacing: 0) {
+            ActivityListFilter(searchText: $searchText)
+            activityList
+        }
+        .navigationTitle("All Activity")
+    }
+
+    private var activityList: some View {
         ScrollView {
             if let items = activity.allActivities {
                 LazyVStack {
@@ -31,11 +62,10 @@ struct AllActivityView: View {
                     .padding()
             }
         }
-        .navigationTitle("All Activity")
     }
 }
 
 #Preview {
     AllActivityView()
-        .environmentObject(WalletViewModel())
+        .environmentObject(ActivityListViewModel())
 }
