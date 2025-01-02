@@ -1,0 +1,125 @@
+{
+  "backupSeedPhrase": {
+    "title": {
+      "string": "Zálohování"
+    },
+    "description": {
+      "string": "Uložte si svůj bitcoin"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Sleva"
+    },
+    "description": {
+      "string": "Dostupný zůstatek"
+    }
+  },
+  "quickpay": {
+    "title": {
+      "string": "QuickPay"
+    },
+    "description": {
+      "string": "Naskenuj a zaplať"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Pozvat"
+    },
+    "description": {
+      "string": "Sdílet Bitkit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Utratit"
+    },
+    "description": {
+      "string": "Okamžité platby"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Převod"
+    },
+    "description": {
+      "string": "Probíhá..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Připojování"
+    },
+    "description": {
+      "string": "Připraveno za ±10 m"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Připraveno"
+    },
+    "description": {
+      "string": "Připojeno!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Převod"
+    },
+    "description": {
+      "string": "Připraveno za ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "title": {
+      "string": "Zahájení"
+    },
+    "description": {
+      "string": "Nechte aplikaci otevřenou"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "Zabezpečit"
+    },
+    "description": {
+      "string": "Nastavte PIN kód"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Profil"
+    },
+    "description": {
+      "string": "Doplňte své údaje"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Podpora"
+    },
+    "description": {
+      "string": "Získejte pomoc"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Koupit"
+    },
+    "description": {
+      "string": "Koupit bitcoin"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Selhání"
+    },
+    "description": {
+      "string": "Prosím, zkuste to znovu."
+    }
+  },
+  "suggestions": {
+    "string": "Návrhy"
+  }
+}

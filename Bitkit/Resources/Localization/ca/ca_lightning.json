@@ -1,0 +1,263 @@
+{
+  "transfer_intro": {
+    "button": {
+      "string": "Començar"
+    }
+  },
+  "funding": {
+    "nav_title": {
+      "string": "Balanç de despesa"
+    },
+    "button2": {
+      "string": "Utilitza un altre moneder"
+    },
+    "button3": {
+      "string": "Avançat"
+    }
+  },
+  "funding_advanced": {
+    "nav_title": {
+      "string": "Balanç de despesa"
+    }
+  },
+  "transfer": {
+    "nav_title": {
+      "string": "Transferir fons"
+    },
+    "confirm": {
+      "string": "Si us plau\n<accent>confirma</accent>"
+    },
+    "swipe": {
+      "string": "Desplaçar per Transferir"
+    }
+  },
+  "spending_intro": {
+    "button": {
+      "string": "Començar"
+    }
+  },
+  "transfer_failed": {
+    "continue": {
+      "string": "Torna a intentar"
+    }
+  },
+  "savings_intro": {
+    "button": {
+      "string": "Començar"
+    }
+  },
+  "savings_advanced": {
+    "total": {
+      "string": "Total seleccionat"
+    }
+  },
+  "transfer_success": {
+    "nav_title": {
+      "string": "Transferència realitzada"
+    }
+  },
+  "external_manual": {
+    "node_id": {
+      "string": "ID de Node"
+    },
+    "host": {
+      "string": "Amfitrió"
+    },
+    "port": {
+      "string": "Port"
+    },
+    "scan": {
+      "string": "Escanegi el codi QR"
+    }
+  },
+  "error_channel_purchase": {
+    "string": "Configuració de pagaments instantanis fallida"
+  },
+  "error_channel_receiving": {
+    "string": "L'import a rebre ha de ser superior a ${usdValue}"
+  },
+  "spending": {
+    "string": "Despesa"
+  },
+  "savings": {
+    "string": "Estalvis"
+  },
+  "spending_label": {
+    "string": "Saldo de despesa"
+  },
+  "receiving_label": {
+    "string": "Capacitat de recepció"
+  },
+  "setting_up_step2": {
+    "string": "Pagament realitzat amb èxit"
+  },
+  "setting_up_step3": {
+    "string": "Esperant per a obrir"
+  },
+  "setting_up_step4": {
+    "string": "Obertura de connexió"
+  },
+  "setting_up_button": {
+    "string": "Continua utilitzant Bitkit"
+  },
+  "node_info": {
+    "string": "Node de Lightning"
+  },
+  "node_id": {
+    "string": "ID de Node LDK"
+  },
+  "node_disconnected": {
+    "string": "desconnectat"
+  },
+  "node_failed": {
+    "string": "Bitkit no ha pogut inicialitzar el node Lightning."
+  },
+  "connections": {
+    "string": "Connexions Lightning"
+  },
+  "conn_pending": {
+    "string": "Connexions pendents"
+  },
+  "conn_open": {
+    "string": "Connexions obertes"
+  },
+  "conn_closed": {
+    "string": "Connexions tancades"
+  },
+  "conn_failed": {
+    "string": "Connexions fallides"
+  },
+  "conn_button_export_logs": {
+    "string": "Exportar Registres"
+  },
+  "conn_button_add": {
+    "string": "Afegir connexió"
+  },
+  "export_logs": {
+    "string": "Exportar registres de Lightning"
+  },
+  "error_logs": {
+    "string": "Exportació del registre ha fallat"
+  },
+  "error_logs_description": {
+    "string": "Bitkit no va poder exportar els registres de LDK."
+  },
+  "error_invoice": {
+    "string": "No s'ha pogut crear la factura."
+  },
+  "invoice_copied": {
+    "string": "Factura copiada al porta-retalls"
+  },
+  "connection": {
+    "string": "Connexió"
+  },
+  "status": {
+    "string": "Estat"
+  },
+  "order_details": {
+    "string": "Detalls de la comanda"
+  },
+  "order": {
+    "string": "Comanda"
+  },
+  "created_on": {
+    "string": "Creat en"
+  },
+  "transaction": {
+    "string": "Transacció"
+  },
+  "order_fee": {
+    "string": "Comissió de comanda"
+  },
+  "balance": {
+    "string": "Saldo"
+  },
+  "reserve_balance": {
+    "string": "Saldo de reserva"
+  },
+  "total_size": {
+    "string": "Capacitat total del canal"
+  },
+  "other": {
+    "string": "Altres"
+  },
+  "is_usable": {
+    "string": "És utilitzable?"
+  },
+  "opened_on": {
+    "string": "Obert el"
+  },
+  "closed_on": {
+    "string": "Tancat el"
+  },
+  "channel_node_id": {
+    "string": "ID de Node"
+  },
+  "support": {
+    "string": "Suport"
+  },
+  "connection_closed": {
+    "title": {
+      "string": "Connexió tancada"
+    }
+  },
+  "close_conn": {
+    "string": "Tanca la connexió"
+  },
+  "close_error": {
+    "string": "Transferència fallida"
+  },
+  "close_error_msg": {
+    "string": "No es possible transferir els teus fons de tornada a estalvi. Si us plau, intenta-ho de nou."
+  },
+  "close_success_title": {
+    "string": "Transferència iniciada"
+  },
+  "close_button": {
+    "string": "Tancar"
+  },
+  "force_init_msg": {
+    "string": "Els vostres fons seran accessibles en ±14 dies."
+  },
+  "force_failed_msg": {
+    "string": "No es possible transferir els teus fons de tornada a estalvi. Si us plau, intenta-ho de nou."
+  },
+  "channel_opened_msg": {
+    "string": "Ara pots pagar a qualsevol persona, en qualsevol lloc, instantàniament."
+  },
+  "order_given_up_title": {
+    "string": "Configuració de pagaments instantanis fallida"
+  },
+  "order_expired_title": {
+    "string": "Configuració de pagaments instantanis fallida"
+  },
+  "order_state": {
+    "payment_canceled": {
+      "string": "Pagament cancelat"
+    },
+    "paid": {
+      "string": "Pagament realitzat amb èxit."
+    },
+    "refunded": {
+      "string": "Pagament retornat"
+    },
+    "opening": {
+      "string": "Obertura de connexió"
+    },
+    "closing": {
+      "string": "Connexió tancada"
+    },
+    "closed": {
+      "string": "Connexió tancada"
+    },
+    "open": {
+      "string": "Connexió oberta"
+    }
+  },
+  "wait_text_top": {
+    "string": "Si us plau, espereu que Bitkit es connecti a la xarxa de pagament (±10 segons)."
+  },
+  "wait_text_bottom": {
+    "string": "Connectant-se i sincronitzant..."
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "backupSeedPhrase": {
+    "description": {
+      "string": "Almacena tu Bitcoin"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Descuento"
+    },
+    "description": {
+      "string": "Saldo de gastos"
+    }
+  },
+  "quickpay": {
+    "description": {
+      "string": "Escanear y pagar"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Invitar"
+    },
+    "description": {
+      "string": "Compatir BitKit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Gastar"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Transferir"
+    },
+    "description": {
+      "string": "En curso"
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Conectandose"
+    },
+    "description": {
+      "string": "Listo en ±10m"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Listo"
+    },
+    "description": {
+      "string": "¡Conectado!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Transferir"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Mantenga la aplicación abierta"
+    }
+  },
+  "pin": {
+    "description": {
+      "string": "Configurar un código PIN"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Perfil"
+    },
+    "description": {
+      "string": "Agrega tus detalles"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Soporte"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Comprar"
+    },
+    "description": {
+      "string": "Comprar Bitcoin"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Fallido"
+    },
+    "description": {
+      "string": "Inténtalo de nuevo"
+    }
+  },
+  "suggestions": {
+    "string": "Sugerencias"
+  }
+}

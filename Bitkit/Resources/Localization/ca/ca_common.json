@@ -1,0 +1,92 @@
+{
+  "advanced": {
+    "string": "Avançat"
+  },
+  "continue": {
+    "string": "Continua"
+  },
+  "cancel": {
+    "string": "Cancel·lar"
+  },
+  "close": {
+    "string": "Tancar"
+  },
+  "are_you_sure": {
+    "string": "Estàs segur?"
+  },
+  "yes_proceed": {
+    "string": "Sí, continua."
+  },
+  "try_again": {
+    "string": "Torna a intentar"
+  },
+  "dialog_cancel": {
+    "string": "No, cancela"
+  },
+  "sat_vbyte": {
+    "string": "₿ / vbyte"
+  },
+  "sat_vbyte_compact": {
+    "string": "₿/vbyte"
+  },
+  "edit": {
+    "string": "Editar"
+  },
+  "copy": {
+    "string": "Còpia"
+  },
+  "share": {
+    "string": "Compartir"
+  },
+  "search": {
+    "string": "Busca"
+  },
+  "discard": {
+    "string": "Descartar"
+  },
+  "save": {
+    "string": "Guardar"
+  },
+  "done": {
+    "string": "Fet"
+  },
+  "delete": {
+    "string": "Suprimir"
+  },
+  "ok": {
+    "string": "OK"
+  },
+  "retry": {
+    "string": "Reintentar"
+  },
+  "later": {
+    "string": "Després"
+  },
+  "skip": {
+    "string": "Salta"
+  },
+  "copied": {
+    "string": "Copiat al porta-retalls"
+  },
+  "yes": {
+    "string": "Sí"
+  },
+  "no": {
+    "string": "No"
+  },
+  "back": {
+    "string": "Enrere"
+  },
+  "learn_more": {
+    "string": "Aprèn més"
+  },
+  "understood": {
+    "string": "Entès."
+  },
+  "connect": {
+    "string": "Conecta"
+  },
+  "default": {
+    "string": "Predeterminat"
+  }
+}

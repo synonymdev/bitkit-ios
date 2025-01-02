@@ -1,0 +1,36 @@
+{
+  "lightningConnecting": {
+    "title": {
+      "string": "Łączenie"
+    },
+    "description": {
+      "string": "Gotowe w ±10 minut"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Gotowe"
+    },
+    "description": {
+      "string": "Połączone!"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Pozostaw aplikację włączoną"
+    }
+  },
+  "pin": {
+    "description": {
+      "string": "Ustaw kod PIN"
+    }
+  },
+  "slashtagsProfile": {
+    "description": {
+      "string": "Dodaj swoje detale"
+    }
+  },
+  "suggestions": {
+    "string": "Sugestie"
+  }
+}

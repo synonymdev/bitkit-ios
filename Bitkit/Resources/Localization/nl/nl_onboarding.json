@@ -1,0 +1,68 @@
+{
+  "tos_checkbox": {
+    "string": "Gebruikersvoorwaarden"
+  },
+  "pp_checkbox": {
+    "string": "Privacyverklaring"
+  },
+  "get_started": {
+    "string": "Starten"
+  },
+  "skip_intro": {
+    "string": "Sla intro over"
+  },
+  "skip": {
+    "string": "Overslaan"
+  },
+  "new_wallet": {
+    "string": "Nieuwe wallet"
+  },
+  "restore": {
+    "string": "Herstel"
+  },
+  "restore_wallet": {
+    "string": "Herstel een wallet"
+  },
+  "advanced_setup": {
+    "string": "Geavanceerde Configuratie"
+  },
+  "advanced": {
+    "string": "Geavanceerd"
+  },
+  "passphrase_text": {
+    "string": "U kunt een geheim paswoord toevoegen aan uw 12 herstelwoorden. Als u dit doet vergeet het paswoord dan niet. "
+  },
+  "passphrase": {
+    "string": "Paswoord"
+  },
+  "create_new_wallet": {
+    "string": "Nieuwe Wallet Aanmaken"
+  },
+  "restore_phrase": {
+    "string": "Vul hier uw herstelwoorden in vanuit een (papieren) backup. "
+  },
+  "restore_inv_checksum": {
+    "string": "De checksum van de herstelwoorden lijkt niet juist te zijn. Loop ze nogmaals na. "
+  },
+  "restore_suggestions": {
+    "string": "SUGGESTIES"
+  },
+  "restore_passphrase_placeholder": {
+    "string": "Paswoord*"
+  },
+  "restore_passphrase_meaning": {
+    "string": "Optioneel, alleen invullen als u er één heeft gebruikt. "
+  },
+  "restore_success_text": {
+    "string": "Uw wallet is succesvol hersteld vanuit de backup. Veel plezier met Bitkit!"
+  },
+  "restore_no_backup_button": {
+    "string": "Doorgaan Zonder Backup"
+  },
+  "restore_no_backup_warn": {
+    "string": "Als u eerder een lightning backup heeft gemaakt zal deze overschreven worden en niet meer toegangkelijk zijn. Hierdoor kunt u geld verliezen. "
+  },
+  "multiple_text": {
+    "string": "Installeer Bitkit niet op meerdere telefoons tegelijk met dezelfde herstelwoorden, dit kan data corruptie veroorzaken. "
+  }
+}

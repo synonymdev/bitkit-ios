@@ -1,0 +1,149 @@
+{
+  "tos_header": {
+    "string": "Bitkit\n<accent>Conditions d'utilisation</accent>"
+  },
+  "tos_checkbox": {
+    "string": "Conditions d'utilisation"
+  },
+  "tos_checkbox_value": {
+    "string": "Je déclare avoir lu et accepté les <accent>conditions d'utilisation</accent>."
+  },
+  "pp_checkbox": {
+    "string": "Politique de confidentialité"
+  },
+  "pp_checkbox_value": {
+    "string": "Je déclare avoir lu et accepté la <accent>politique de confidentialité</accent>."
+  },
+  "welcome_title": {
+    "string": "Soyez\n<accent>le changement</accent>"
+  },
+  "welcome_text": {
+    "string": "Utilisez Bitkit pour payer n'importe qui, n'importe où, n'importe quand, et dépensez vos bitcoins pour les choses qui vous tiennent à cœur."
+  },
+  "get_started": {
+    "string": "Commencer"
+  },
+  "skip_intro": {
+    "string": "Sauter intro"
+  },
+  "skip": {
+    "string": "Ignorer"
+  },
+  "slide0_header": {
+    "string": "La liberté dans\n<accent>votre poche</accent>"
+  },
+  "slide0_text": {
+    "string": "Bitkit vous donne les clés pour gérer votre argent. Dépensez maintenant ou économisez pour plus tard. C'est à vous de choisir."
+  },
+  "slide1_header": {
+    "string": "Paiements\n<accent>Instantanés</accent>"
+  },
+  "slide1_text": {
+    "string": "Dépensez des bitcoins plus rapidement que jamais. Profitez de paiements instantanés et bon marché avec vos amis, votre famille et les commerçants."
+  },
+  "slide2_header": {
+    "string": "Bitcoiners,\n<accent>sans frontières</accent>"
+  },
+  "slide2_text": {
+    "string": "Prenez en charge votre vie numérique avec des profils et des contacts."
+  },
+  "slide3_header": {
+    "string": "La vie privée\n<accent>n'est pas un crime</accent>"
+  },
+  "slide3_text": {
+    "string": "Glissez pour cacher votre solde, profitez de paiements plus confidentiels et protégez votre portefeuille en activant les fonctions de sécurité."
+  },
+  "slide4_header": {
+    "string": "Vos clés,\n<accent>votre argent</accent>"
+  },
+  "slide4_text": {
+    "string": "Créez votre portefeuille. Veuillez noter que Bitkit est un logiciel mobile. <accent>Ne stockez pas tout votre argent dans Bitkit.</accent>"
+  },
+  "new_wallet": {
+    "string": "Créer"
+  },
+  "restore": {
+    "string": "Restaurer"
+  },
+  "restore_wallet": {
+    "string": "Restaurer le portefeuille"
+  },
+  "advanced_setup": {
+    "string": "Configuration avancée"
+  },
+  "advanced": {
+    "string": "Avancé"
+  },
+  "passphrase_header": {
+    "string": "Sécuriser avec une <accent>Passphrase</accent>"
+  },
+  "passphrase_text": {
+    "string": "Vous pouvez ajouter une phrase secrète à la phrase de récupération de 12 mots. Si vous le faites, assurez-vous de ne pas l'oublier."
+  },
+  "passphrase": {
+    "string": "Phrase secrète"
+  },
+  "create_new_wallet": {
+    "string": "Créer un nouveau portefeuille"
+  },
+  "restore_header": {
+    "string": "<accent>Restaurez</accent>\nvotre portefeuille"
+  },
+  "restore_phrase": {
+    "string": "Veuillez saisir votre phrase de récupération à partir de n'importe quelle sauvegarde (papier)."
+  },
+  "restore_red_explain": {
+    "string": "Si un mot apparaît en <accent>rouge</accent>, cela signifie qu'il n'a pas été trouvé dans le dictionnaire des phrases de récupération. Vérifiez les fautes d'orthographe."
+  },
+  "restore_inv_checksum": {
+    "string": "La phrase de récupération semble incorrecte. Veuillez revérifier votre phrase de récupération."
+  },
+  "restore_suggestions": {
+    "string": "SUGGESTIONS"
+  },
+  "restore_passphrase_placeholder": {
+    "string": "Phrase secrète*"
+  },
+  "restore_passphrase_meaning": {
+    "string": "*Facultatif, n'entrez que si vous en avez créé une."
+  },
+  "restore_error_title": {
+    "string": "Échec de la restauration du portefeuille"
+  },
+  "restore_error_description": {
+    "string": "Bitkit n'a pas pu restaurer votre portefeuille à partir d'une phrase de sauvegarde ou de récupération."
+  },
+  "loading_header": {
+    "string": "Restauration de\n<accent>votre portefeuille</accent>"
+  },
+  "restore_success_header": {
+    "string": "Portefeuille <accent>restauré</accent>"
+  },
+  "restore_success_text": {
+    "string": "Vous avez restauré avec succès votre portefeuille à partir d'une sauvegarde. Profitez de Bitkit !"
+  },
+  "restore_failed_header": {
+    "string": "<accent>Erreur dans</accent> le solde des dépenses"
+  },
+  "restore_failed_text": {
+    "string": "Bitkit a restauré vos économies, mais n'a pas réussi à restaurer votre solde de dépenses actuel (état Lightning) et les données de votre portefeuille."
+  },
+  "restore_no_backup_button": {
+    "string": "Procéder sans sauvegarde"
+  },
+  "restore_no_backup_warn": {
+    "string": "Si vous disposiez auparavant d'une sauvegarde Lightning, celle-ci sera écrasée et perdue. Cela pourrait entraîner une perte de fonds."
+  },
+  "empty_wallet": {
+    "string": "Pour\ncommencer\n<accent>envoyez\ndu Bitcoin</accent>\nsur votre\nportefeuille"
+  },
+  "error_create": {
+    "string": "Échec de la création d'un portefeuille"
+  },
+  "multiple_header": {
+    "string": "<accent>Attention :</accent>\nplusieurs appareils"
+  },
+  "multiple_text": {
+    "string": "N'installez pas votre phrase de récupération Bitkit sur plusieurs téléphones simultanément, car cela pourrait corrompre vos données."
+  }
+}

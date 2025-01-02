@@ -1,0 +1,59 @@
+{
+  "tos_checkbox": {
+    "string": "Termes d'ús"
+  },
+  "pp_checkbox": {
+    "string": "Política de privadesa"
+  },
+  "get_started": {
+    "string": "Començar"
+  },
+  "skip_intro": {
+    "string": "Ometre introducció"
+  },
+  "skip": {
+    "string": "Salta"
+  },
+  "new_wallet": {
+    "string": "Nova cartera"
+  },
+  "restore": {
+    "string": "Restaurar"
+  },
+  "restore_wallet": {
+    "string": "Restaurar cartera"
+  },
+  "advanced_setup": {
+    "string": "Configuració avançada"
+  },
+  "advanced": {
+    "string": "Avançat"
+  },
+  "passphrase": {
+    "string": "Frase de pas"
+  },
+  "create_new_wallet": {
+    "string": "Crear una nova cartera"
+  },
+  "restore_phrase": {
+    "string": "Si us plau, introduïu la vostra frase de recuperació de qualsevol còpia de seguretat (en paper)."
+  },
+  "restore_suggestions": {
+    "string": "SUGGERIMENTS"
+  },
+  "restore_error_title": {
+    "string": "La restauració de la cartera ha fallat"
+  },
+  "restore_error_description": {
+    "string": "Bitkit no ha pogut restaurar la teva cartera des de la còpia de seguretat o la frase de recuperació."
+  },
+  "restore_no_backup_button": {
+    "string": "Continuar sense còpia de seguretat"
+  },
+  "error_create": {
+    "string": "Creació de cartera fallida"
+  },
+  "multiple_text": {
+    "string": "No instal·leu la vostra frase de recuperació de Bitkit en múltiples telèfons simultàniament, ja que això pot corrompre les vostres dades."
+  }
+}

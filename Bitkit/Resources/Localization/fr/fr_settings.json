@@ -1,0 +1,678 @@
+{
+  "dev_enabled_title": {
+    "string": "Options de développement activées"
+  },
+  "dev_enabled_message": {
+    "string": "Les options pour les développeurs sont désormais activées dans l'ensemble de l'application."
+  },
+  "dev_disabled_title": {
+    "string": "Options de développement désactivées"
+  },
+  "dev_disabled_message": {
+    "string": "Les options pour les développeurs sont désormais désactivées dans l'ensemble de l'application."
+  },
+  "general_title": {
+    "string": "Général"
+  },
+  "security_title": {
+    "string": "Sécurité et vie privée"
+  },
+  "backup_title": {
+    "string": "Sauvegarde ou restauration"
+  },
+  "advanced_title": {
+    "string": "Avancé"
+  },
+  "about_title": {
+    "string": "A propos"
+  },
+  "support_title": {
+    "string": "Support"
+  },
+  "about": {
+    "title": {
+      "string": "À propos de Bitkit"
+    },
+    "text": {
+      "string": "Merci d'être un bitcoiner responsable.\nChangez votre portefeuille, changez le monde.\n\nBitkit vous donne les clés de votre argent, de votre profil, de vos contacts et de vos comptes web.\n\nBitkit a été conçu par Synonym Software Ltd."
+    },
+    "legal": {
+      "string": "Juridique"
+    },
+    "share": {
+      "string": "Partager"
+    },
+    "version": {
+      "string": "Version"
+    }
+  },
+  "dev_title": {
+    "string": "Paramètres de développement"
+  },
+  "general": {
+    "currency_local": {
+      "string": "Monnaie locale"
+    },
+    "currency_local_title": {
+      "string": "Monnaie locale"
+    },
+    "currency_footer": {
+      "string": "Prix fournis par Bitfinex et CoinGecko."
+    },
+    "currency_most_used": {
+      "string": "Les plus utilisés"
+    },
+    "currency_other": {
+      "string": "Autres devises"
+    },
+    "unit": {
+      "string": "Unité par défaut"
+    },
+    "unit_title": {
+      "string": "Unité par défaut"
+    },
+    "unit_display": {
+      "string": "Afficher les montants en"
+    },
+    "unit_bitcoin": {
+      "string": "Bitcoin"
+    },
+    "unit_note": {
+      "string": "Astuce : Basculez rapidement entre Bitcoin et {currency} en tapant sur le solde de votre portefeuille."
+    },
+    "denomination_label": {
+      "string": "Dénomination du bitcoin"
+    },
+    "denomination_modern": {
+      "string": "Moderne (₿ 10 000)"
+    },
+    "denomination_classic": {
+      "string": "Classique (₿ 0.00010000)"
+    },
+    "speed": {
+      "string": "Vitesse de transaction"
+    },
+    "speed_title": {
+      "string": "Vitesse de transaction"
+    },
+    "speed_default": {
+      "string": "Vitesse de transaction par défaut"
+    },
+    "speed_fee_custom": {
+      "string": "Fixer des frais personnalisés"
+    },
+    "speed_fee_total": {
+      "string": "₿ {feeSats} pour une transaction moyenne"
+    },
+    "speed_fee_total_fiat": {
+      "string": "₿ {feeSats} pour une transaction moyenne ({fiatSymbol}{fiatFormatted} )"
+    },
+    "tags": {
+      "string": "Tags"
+    },
+    "tags_previously": {
+      "string": "Étiquettes précédemment utilisées"
+    }
+  },
+  "widgets": {
+    "nav_title": {
+      "string": "Widgets"
+    },
+    "showWidgets": {
+      "string": "Widgets"
+    },
+    "showWidgetTitles": {
+      "string": "Afficher les titres des widgets"
+    }
+  },
+  "security": {
+    "title": {
+      "string": "Sécurité et vie privée"
+    },
+    "swipe_balance_to_hide": {
+      "string": "Balayer pour masquer la balance"
+    },
+    "hide_balance_on_open": {
+      "string": "Masquer le solde à l'ouverture"
+    },
+    "clipboard": {
+      "string": "Lire le presse-papiers pour faciliter l'utilisation"
+    },
+    "warn_100": {
+      "string": "Avertir en cas d'envoi de plus de 100$"
+    },
+    "pin": {
+      "string": "Code PIN"
+    },
+    "pin_change": {
+      "string": "Modifier le code PIN"
+    },
+    "pin_launch": {
+      "string": "Exiger un code PIN au lancement"
+    },
+    "pin_idle": {
+      "string": "Exiger un code PIN en cas d'inactivité"
+    },
+    "pin_payments": {
+      "string": "Exiger un code PIN pour les paiements"
+    },
+    "pin_enabled": {
+      "string": "Activé"
+    },
+    "pin_disabled": {
+      "string": "Désactivé"
+    },
+    "use_bio": {
+      "string": "Utilisez plutôt {biometryTypeName} "
+    },
+    "footer": {
+      "string": "Lorsque cette option est activée, vous pouvez utiliser {biometryTypeName} au lieu de votre code PIN pour déverrouiller votre portefeuille ou envoyer des paiements."
+    }
+  },
+  "backup": {
+    "title": {
+      "string": "Sauvegarder ou restauration"
+    },
+    "wallet": {
+      "string": "Sauvegardez votre portefeuille"
+    },
+    "export": {
+      "string": "Exporter les données du portefeuille vers le téléphone"
+    },
+    "reset": {
+      "string": "Réinitialiser et restaurer le portefeuille"
+    },
+    "failed_title": {
+      "string": "Échec de la sauvegarde des données"
+    },
+    "failed_message": {
+      "string": "Bitkit n'a pas réussi à sauvegarder les données du portefeuille. Réessayez dans {interval, plural, one {# minute} other {# minutes}}."
+    },
+    "latest": {
+      "string": "les dernières sauvegardes de données"
+    },
+    "status_failed": {
+      "string": "Échec de la sauvegarde : {time}"
+    },
+    "status_success": {
+      "string": "Dernière sauvegarde : {time}"
+    },
+    "category_connections": {
+      "string": "Connexions"
+    },
+    "category_connection_receipts": {
+      "string": "Reçus des connexions"
+    },
+    "category_transaction_log": {
+      "string": "Journal des transactions"
+    },
+    "category_settings": {
+      "string": "Paramètres"
+    },
+    "category_widgets": {
+      "string": "Widgets"
+    },
+    "category_tags": {
+      "string": "Tags"
+    },
+    "category_profile": {
+      "string": "Profil"
+    },
+    "category_contacts": {
+      "string": "Contacts"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Support"
+    },
+    "text": {
+      "string": "Besoin d'aide ? Signalez votre problème depuis Bitkit, visitez le centre d'aide, vérifiez le statut ou contactez-nous sur nos canaux sociaux."
+    },
+    "report": {
+      "string": "Rapporter un problème"
+    },
+    "help": {
+      "string": "Centre d'aide"
+    },
+    "status": {
+      "string": "Statut de l'application"
+    },
+    "report_text": {
+      "string": "Veuillez décrire le problème que vous rencontrez ou poser une question."
+    },
+    "label_address": {
+      "string": "Adresse email"
+    },
+    "label_message": {
+      "string": "Problème ou question"
+    },
+    "placeholder_address": {
+      "string": "satoshi@satoshi.com"
+    },
+    "placeholder_message": {
+      "string": "Décrivez le problème ou posez une question"
+    },
+    "text_button": {
+      "string": "Envoyer"
+    },
+    "title_success": {
+      "string": "Envoyé avec succès"
+    },
+    "text_success": {
+      "string": "Merci de nous avoir contactés ! Nous essaierons de vous répondre dans les plus brefs délais."
+    },
+    "text_success_button": {
+      "string": "OK"
+    },
+    "title_unsuccess": {
+      "string": "Échec de l'envoi"
+    },
+    "text_unsuccess": {
+      "string": "Un problème s'est produit lors de l'envoi de votre problème ou de votre question. Veuillez réessayer."
+    },
+    "text_unsuccess_button": {
+      "string": "Réessayer"
+    }
+  },
+  "status": {
+    "title": {
+      "string": "Statut de l'application"
+    },
+    "internet": {
+      "title": {
+        "string": "Internet"
+      },
+      "ready": {
+        "string": "Connecté"
+      },
+      "pending": {
+        "string": "Se reconnecte..."
+      },
+      "error": {
+        "string": "Déconnecté"
+      }
+    },
+    "bitcoin_node": {
+      "title": {
+        "string": "Nœud Bitcoin"
+      },
+      "ready": {
+        "string": "Connecté"
+      },
+      "pending": {
+        "string": "Connexion..."
+      },
+      "error": {
+        "string": "Impossible de se connecter à Electrum"
+      }
+    },
+    "lightning_node": {
+      "title": {
+        "string": "Nœud Lightning"
+      },
+      "ready": {
+        "string": "Synchronisé"
+      },
+      "pending": {
+        "string": "Synchronisation..."
+      },
+      "error": {
+        "string": "Impossible d'initier"
+      }
+    },
+    "lightning_connection": {
+      "title": {
+        "string": "Connexion Lightning"
+      },
+      "ready": {
+        "string": "Ouvrir"
+      },
+      "pending": {
+        "string": "Ouverture..."
+      },
+      "error": {
+        "string": "Pas de connexions ouvertes"
+      }
+    },
+    "full_backup": {
+      "title": {
+        "string": "Dernière sauvegarde complète"
+      },
+      "ready": {
+        "string": "Sauvegardé"
+      },
+      "pending": {
+        "string": "Sauvegarde..."
+      },
+      "error": {
+        "string": "Échec de la sauvegarde"
+      }
+    }
+  },
+  "adv": {
+    "section_payments": {
+      "string": "Paiements"
+    },
+    "section_networks": {
+      "string": "Réseaux"
+    },
+    "section_other": {
+      "string": "Autre"
+    },
+    "address_type": {
+      "string": "Type d'adresse Bitcoin"
+    },
+    "monitored_address_types": {
+      "string": "Types d'adresses suivies"
+    },
+    "monitored_address_types_update_title": {
+      "string": "Mise à jour des types d'adresses suivies"
+    },
+    "monitored_address_types_update_description": {
+      "string": "Les modifications prendront effet après le redémarrage de l'application."
+    },
+    "gap_limit": {
+      "string": "Limite de l'écart d'adresse"
+    },
+    "coin_selection": {
+      "string": "Sélection des UTXOs"
+    },
+    "cs_method": {
+      "string": "Méthode de sélection des UTXOs"
+    },
+    "cs_manual": {
+      "string": "Manuel"
+    },
+    "cs_auto": {
+      "string": "Pilote automatique"
+    },
+    "cs_auto_mode": {
+      "string": "Mode Autopilote"
+    },
+    "cs_max": {
+      "string": "Plus privé"
+    },
+    "cs_max_description": {
+      "string": "Triez par et utilisez le plus petit UTXO en premier. Frais plus élevés, mais cache vos plus grands UTXO."
+    },
+    "cs_min": {
+      "string": "Frais les plus bas"
+    },
+    "cs_min_description": {
+      "string": "Triez par et utilisez le plus grand UTXO en premier. Les frais sont plus bas, mais ils révèlent vos plus grands UTXO."
+    },
+    "cs_consolidate": {
+      "string": "Consolider"
+    },
+    "cs_consolidate_description": {
+      "string": "Utilisez toutes les UTXO disponibles, quel que soit le montant envoyé. Utilisez cette méthode lorsque les frais sont peu élevés afin de réduire les frais lors de transactions futures."
+    },
+    "payment_preference": {
+      "string": "Préférence de paiement"
+    },
+    "pp_header": {
+      "string": "Choisissez comment vous préférez recevoir de l'argent lorsque les utilisateurs envoient des fonds via votre profil."
+    },
+    "pp_footer": {
+      "string": "* Cela nécessite le partage des données de paiement."
+    },
+    "pp_drag": {
+      "string": "Préférence de paiement (faites glisser pour réorganiser)"
+    },
+    "pp_contacts": {
+      "string": "Paiements vers/depuis les contacts"
+    },
+    "pp_contacts_switch": {
+      "string": "Permettre les paiements par contact*"
+    },
+    "address_viewer": {
+      "string": "Visualisateur d'adresses"
+    },
+    "rescan": {
+      "string": "Rescanner les adresses"
+    },
+    "suggestions_reset": {
+      "string": "Suggestions de réinitialisation"
+    },
+    "reset_title": {
+      "string": "Suggestions de réinitialisation ?"
+    },
+    "reset_desc": {
+      "string": "Êtes-vous sûr de vouloir réinitialiser les suggestions ? Elles réapparaîtront si vous les avez supprimées de l'aperçu de votre portefeuille Bitkit."
+    },
+    "reset_confirm": {
+      "string": "Oui, Réinitialisation"
+    },
+    "lightning_connections": {
+      "string": "Connexions Lightning"
+    },
+    "lightning_node": {
+      "string": "Nœud Lightning"
+    },
+    "electrum_server": {
+      "string": "Serveur Electrum"
+    },
+    "rgs_server": {
+      "string": "Rapid-Gossip-Sync"
+    },
+    "web_relay": {
+      "string": "Slashtags Web Relay"
+    },
+    "bitcoin_network": {
+      "string": "Réseau Bitcoin"
+    }
+  },
+  "fee": {
+    "fast": {
+      "label": {
+        "string": "Rapide (plus cher)"
+      },
+      "value": {
+        "string": "Rapide"
+      },
+      "description": {
+        "string": "± 10-20 minutes"
+      }
+    },
+    "normal": {
+      "label": {
+        "string": "Normal"
+      },
+      "value": {
+        "string": "Normal"
+      },
+      "description": {
+        "string": "± 20-60 minutes"
+      }
+    },
+    "slow": {
+      "label": {
+        "string": "Lent (moins cher)"
+      },
+      "value": {
+        "string": "Lent"
+      },
+      "description": {
+        "string": "± 1-2 heures"
+      }
+    },
+    "custom": {
+      "label": {
+        "string": "Personnalisé"
+      },
+      "value": {
+        "string": "Personnalisé"
+      },
+      "description": {
+        "string": "Dépend du montant des frais"
+      }
+    }
+  },
+  "addr": {
+    "no_addrs": {
+      "string": "Aucune adresse à afficher"
+    },
+    "loading": {
+      "string": "Chargement des adresses..."
+    },
+    "no_funds_receiving": {
+      "string": "Aucun fonds n'a été trouvé sous le type d'adresse {addressType}, recevant des adresses jusqu'à l'index {index}."
+    },
+    "no_funds_change": {
+      "string": "Aucun fonds n'a été trouvé sous le type d'adresse {addressType}, changez d'adresse jusqu'à l'index {index}."
+    },
+    "no_addrs_with_funds": {
+      "string": "Aucune adresse avec fonds n'a été trouvée lors de la recherche de \"{searchTxt}\""
+    },
+    "no_addrs_str": {
+      "string": "Aucune adresse trouvée lors de la recherche de \"{searchTxt}\""
+    },
+    "rescan_error": {
+      "string": "Échec de la réanalyse"
+    },
+    "rescan_error_description": {
+      "string": "Bitkit n'a pas été en mesure de vérifier le solde des adresses."
+    },
+    "spend_number": {
+      "string": "{count, plural, one {Spend ₿ {fundsToSpend} From # address} many {Spend ₿ {fundsToSpend} From # addresses} other {Spend ₿ {fundsToSpend} From # addresses}}"
+    },
+    "spend_all": {
+      "string": "{count, plural, one {Dépenser tous les fonds de l'adresse #.} many {Dépenser tous les fonds des adresses #.} other {Dépenser tous les fonds des adresses #.}}"
+    },
+    "index": {
+      "string": "Index : {index}"
+    },
+    "path": {
+      "string": "Chemin: {path}"
+    },
+    "private_hide": {
+      "string": "Cacher la clé privée"
+    },
+    "private_view": {
+      "string": "Voir la clé privée"
+    },
+    "private_key": {
+      "string": "Clé privée : {privateKey}"
+    },
+    "addr_change": {
+      "string": "Changement d'adresse"
+    },
+    "addr_receiving": {
+      "string": "Adresses de réception"
+    },
+    "sats_found": {
+      "string": "₿ {totalBalance} trouvé"
+    },
+    "gen_20": {
+      "string": "Générez 20 autres"
+    },
+    "check_balances": {
+      "string": "Soldes de chèques"
+    },
+    "copied": {
+      "string": "Copié dans le presse-papiers"
+    }
+  },
+  "es": {
+    "error_host_port": {
+      "string": "Veuillez indiquer un hôte et un port pour vous connecter."
+    },
+    "error_host": {
+      "string": "Veuillez indiquer un hôte auquel vous connecter."
+    },
+    "error_port": {
+      "string": "Veuillez indiquer un port auquel vous connecter."
+    },
+    "error_port_invalid": {
+      "string": "Veuillez indiquer un port valide."
+    },
+    "error_invalid_http": {
+      "string": "Veuillez indiquer une adresse URL valide."
+    },
+    "error_peer": {
+      "string": "Erreur d'électrum"
+    },
+    "server_updated_title": {
+      "string": "Mise à jour du serveur Electrum"
+    },
+    "server_updated_message": {
+      "string": "Connexion réussie à {host}:{port}"
+    },
+    "server_error": {
+      "string": "Échec de la connexion d'Electrum"
+    },
+    "server_error_description": {
+      "string": "Bitkit n'a pas pu établir de connexion avec Electrum."
+    },
+    "connected_to": {
+      "string": "Actuellement connecté à"
+    },
+    "disconnected": {
+      "string": "déconnecté"
+    },
+    "host": {
+      "string": "Hôte"
+    },
+    "port": {
+      "string": "Port"
+    },
+    "protocol": {
+      "string": "Protocole"
+    },
+    "button_reset": {
+      "string": "Réinitialisation des valeurs par défaut"
+    },
+    "button_connect": {
+      "string": "Connexion à un hôte"
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Enregistrer"
+    },
+    "reset": {
+      "string": "Réinitialiser"
+    },
+    "gap_limit_update_title": {
+      "string": "Limite de l'écart d'adressage Mise à jour"
+    },
+    "gap_limit_update_description": {
+      "string": "Les modifications prendront effet après le redémarrage de l'application."
+    }
+  },
+  "rgs": {
+    "server_url": {
+      "string": "URL du serveur Rapid-Gossip-Sync"
+    },
+    "button_connect": {
+      "string": "Connecter"
+    },
+    "update_success_title": {
+      "string": "Mise à jour du serveur Rapid-Gossip-Sync"
+    },
+    "update_success_description": {
+      "string": "Il se peut que vous deviez redémarrer l'application une ou deux fois pour que cette modification prenne effet."
+    }
+  },
+  "wr": {
+    "error_wr": {
+      "string": "Erreur Web Relay"
+    },
+    "error_url": {
+      "string": "Veuillez indiquer une URL à laquelle vous connecter."
+    },
+    "error_https": {
+      "string": "L'url HTTPS n'est pas valide."
+    },
+    "error_healthcheck": {
+      "string": "Échec du contrôle"
+    },
+    "url_updated_title": {
+      "string": "Mise à jour du Web Relay"
+    },
+    "url_updated_message": {
+      "string": "Connexion réussie à {url}"
+    }
+  }
+}

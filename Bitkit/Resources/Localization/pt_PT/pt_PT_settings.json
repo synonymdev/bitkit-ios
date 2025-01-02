@@ -1,0 +1,10 @@
+{
+  "addr": {
+    "no_addrs_with_funds": {
+      "string": "Não foi encontrado nenhum endereço contendo \"{searchTxt}\" com fundos "
+    },
+    "no_addrs_str": {
+      "string": "Nenhum endereço foi encontrado ao pesquisar por \"{searchTxt}\""
+    }
+  }
+}

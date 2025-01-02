@@ -1,0 +1,98 @@
+{
+  "advanced": {
+    "string": "Дополнительно"
+  },
+  "continue": {
+    "string": "Продолжить"
+  },
+  "cancel": {
+    "string": "Отмена"
+  },
+  "close": {
+    "string": "Закрыть"
+  },
+  "are_you_sure": {
+    "string": "Вы уверены?"
+  },
+  "yes_proceed": {
+    "string": "Да,\nПродолжить"
+  },
+  "try_again": {
+    "string": "Попробовать снова"
+  },
+  "dialog_cancel": {
+    "string": "Нет,\nОтменить"
+  },
+  "sat_vbyte": {
+    "string": "₿ / vbyte"
+  },
+  "sat_vbyte_compact": {
+    "string": "₿/vbyte"
+  },
+  "edit": {
+    "string": "Редактировать"
+  },
+  "copy": {
+    "string": "Копировать"
+  },
+  "share": {
+    "string": "Поделиться"
+  },
+  "search": {
+    "string": "Поиск"
+  },
+  "discard": {
+    "string": "Отменить"
+  },
+  "save": {
+    "string": "Сохранить"
+  },
+  "done": {
+    "string": "Готово"
+  },
+  "delete": {
+    "string": "Удалить"
+  },
+  "ok": {
+    "string": "ОК"
+  },
+  "retry": {
+    "string": "Повторить"
+  },
+  "later": {
+    "string": "Позже"
+  },
+  "skip": {
+    "string": "Пропустить"
+  },
+  "copied": {
+    "string": "Скопировано в буфер обмена"
+  },
+  "yes": {
+    "string": "Да"
+  },
+  "no": {
+    "string": "Нет"
+  },
+  "back": {
+    "string": "Назад"
+  },
+  "learn_more": {
+    "string": "Узнать больше"
+  },
+  "understood": {
+    "string": "Понятно"
+  },
+  "connect": {
+    "string": "Подключиться"
+  },
+  "min": {
+    "string": "Мин"
+  },
+  "max": {
+    "string": "Макс"
+  },
+  "default": {
+    "string": "По умолчанию"
+  }
+}

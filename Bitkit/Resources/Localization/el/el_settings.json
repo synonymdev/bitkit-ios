@@ -1,0 +1,43 @@
+{
+  "about": {
+    "share": {
+      "string": "Διαμοιρασμός"
+    }
+  },
+  "support": {
+    "text_success_button": {
+      "string": "ΟΚ"
+    },
+    "text_unsuccess_button": {
+      "string": "Προσπαθείστε Ξανά"
+    }
+  },
+  "fee": {
+    "fast": {
+      "value": {
+        "string": "Γρήγορα"
+      }
+    },
+    "normal": {
+      "label": {
+        "string": "Κανονικά"
+      },
+      "value": {
+        "string": "Κανονικά"
+      }
+    },
+    "custom": {
+      "label": {
+        "string": "Προσαρμοσμένο"
+      },
+      "value": {
+        "string": "Προσαρμοσμένο"
+      }
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Καταχώρηση"
+    }
+  }
+}

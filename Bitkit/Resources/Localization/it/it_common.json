@@ -1,0 +1,92 @@
+{
+  "advanced": {
+    "string": "Avanzate"
+  },
+  "continue": {
+    "string": "Continua"
+  },
+  "cancel": {
+    "string": "Annulla"
+  },
+  "close": {
+    "string": "Chiudi"
+  },
+  "are_you_sure": {
+    "string": "Sei Sicuro?"
+  },
+  "yes_proceed": {
+    "string": "Sì, Procedi"
+  },
+  "try_again": {
+    "string": "Riprova"
+  },
+  "dialog_cancel": {
+    "string": "No, Annulla"
+  },
+  "sat_vbyte": {
+    "string": "₿ / vbyte"
+  },
+  "sat_vbyte_compact": {
+    "string": "₿/vbyte"
+  },
+  "edit": {
+    "string": "Modifica"
+  },
+  "copy": {
+    "string": "Copia"
+  },
+  "share": {
+    "string": "Condividi"
+  },
+  "search": {
+    "string": "Cerca"
+  },
+  "discard": {
+    "string": "Scarta"
+  },
+  "save": {
+    "string": "Salva"
+  },
+  "done": {
+    "string": "Fatto"
+  },
+  "delete": {
+    "string": "Elimina"
+  },
+  "ok": {
+    "string": "OK"
+  },
+  "retry": {
+    "string": "Riprova"
+  },
+  "later": {
+    "string": "Più tardi"
+  },
+  "skip": {
+    "string": "Salta"
+  },
+  "copied": {
+    "string": "Copiato negli appunti"
+  },
+  "yes": {
+    "string": "Sì"
+  },
+  "no": {
+    "string": "No"
+  },
+  "back": {
+    "string": "Indietro"
+  },
+  "learn_more": {
+    "string": "Scopri di Più"
+  },
+  "understood": {
+    "string": "Ho Capito"
+  },
+  "connect": {
+    "string": "Connetti"
+  },
+  "default": {
+    "string": "Predefinito"
+  }
+}

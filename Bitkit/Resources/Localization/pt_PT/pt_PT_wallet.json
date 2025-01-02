@@ -1,0 +1,5 @@
+{
+  "error_broadcast_tx_connection": {
+    "string": "Por favor, verifique sua conexão e tente novamente.\n{message}"
+  }
+}

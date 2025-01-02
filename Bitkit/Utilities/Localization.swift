@@ -21,9 +21,12 @@ class LocalizationManager {
         let sections = ["onboarding", "wallet", "common", "settings", "lightning", "cards", "fee"]
         
         for section in sections {
-            guard let url = Bundle.main.url(forResource: section, withExtension: "json"),
+            // Use the full language path to avoid filename conflicts
+            let filename = "\(currentLanguage)_\(section)"
+            guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
                   let data = try? Data(contentsOf: url),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else {
                 continue
             }
             translations.merge(json) { current, _ in current }
@@ -37,7 +40,8 @@ class LocalizationManager {
         // Navigate through nested dictionary
         for component in keyPath {
             guard let dict = current as? [String: Any],
-                  let value = dict[String(component)] else {
+                  let value = dict[String(component)]
+            else {
                 return key
             }
             current = value
@@ -45,7 +49,8 @@ class LocalizationManager {
         
         // Handle the nested "string" property in the JSON
         guard let stringDict = current as? [String: Any],
-              let finalString = stringDict["string"] as? String else {
+              let finalString = stringDict["string"] as? String
+        else {
             return key
         }
         
@@ -55,7 +60,7 @@ class LocalizationManager {
             result = result.replacingOccurrences(of: "{{" + key + "}}", with: value)
         }
         return result.replacingOccurrences(of: "<accent>", with: "")
-                    .replacingOccurrences(of: "</accent>", with: "")
+            .replacingOccurrences(of: "</accent>", with: "")
     }
     
     func setLanguage(_ lang: String) {

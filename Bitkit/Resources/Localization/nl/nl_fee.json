@@ -1,0 +1,86 @@
+{
+  "instant": {
+    "title": {
+      "string": "Direct"
+    },
+    "description": {
+      "string": "±2-10 seconden"
+    },
+    "shortRange": {
+      "string": "2-10s"
+    },
+    "shortDescription": {
+      "string": "±2s"
+    }
+  },
+  "fast": {
+    "title": {
+      "string": "Snel"
+    },
+    "description": {
+      "string": "±10-20 minuten"
+    },
+    "shortRange": {
+      "string": "10-20m"
+    },
+    "shortDescription": {
+      "string": "±10m"
+    }
+  },
+  "normal": {
+    "title": {
+      "string": "Normaal"
+    },
+    "description": {
+      "string": "±20-60 minuten"
+    },
+    "shortRange": {
+      "string": "20-60m"
+    },
+    "shortDescription": {
+      "string": "±20m"
+    }
+  },
+  "slow": {
+    "title": {
+      "string": "Langzaam"
+    },
+    "description": {
+      "string": "±1-2 uur"
+    },
+    "shortRange": {
+      "string": "1-2h"
+    },
+    "shortDescription": {
+      "string": "±1h"
+    }
+  },
+  "minimum": {
+    "title": {
+      "string": "Minimum"
+    },
+    "description": {
+      "string": "+2 uur"
+    },
+    "shortRange": {
+      "string": "+2h"
+    },
+    "shortDescription": {
+      "string": "+2h"
+    }
+  },
+  "custom": {
+    "title": {
+      "string": "Op maat"
+    },
+    "description": {
+      "string": "Afhankelijk van het tarief"
+    },
+    "shortRange": {
+      "string": "Afhankelijk van het tarief"
+    },
+    "shortDescription": {
+      "string": "Afhankelijk van het tarief"
+    }
+  }
+}

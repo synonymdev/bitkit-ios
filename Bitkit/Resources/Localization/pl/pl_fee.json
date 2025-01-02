@@ -1,0 +1,13 @@
+{
+  "custom": {
+    "description": {
+      "string": "Zależy od opłaty"
+    },
+    "shortRange": {
+      "string": "Zależy od opłaty"
+    },
+    "shortDescription": {
+      "string": "Zależy od opłaty"
+    }
+  }
+}

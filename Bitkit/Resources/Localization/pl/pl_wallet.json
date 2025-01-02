@@ -1,0 +1,59 @@
+{
+  "send": {
+    "string": "Wyślij"
+  },
+  "receive": {
+    "string": "Otrzymaj"
+  },
+  "send_bitcoin": {
+    "string": "Wyślij Bitcoin"
+  },
+  "send_to": {
+    "string": "Do"
+  },
+  "send_invoice": {
+    "string": "Faktura"
+  },
+  "send_amount": {
+    "string": "Kwota bitcoinów"
+  },
+  "send_max": {
+    "string": "MAX"
+  },
+  "send_done": {
+    "string": "GOTOWE"
+  },
+  "send_available_spending": {
+    "string": "Dostępne (na wydawanie)"
+  },
+  "send_available_savings": {
+    "string": "Dostępne (oszczędności)"
+  },
+  "send_review": {
+    "string": "Przejrzyj i wyślij"
+  },
+  "send_confirming_in": {
+    "string": "Potwierdzone w ciągu"
+  },
+  "send_invoice_expiration": {
+    "string": "Termin faktury"
+  },
+  "send_swipe": {
+    "string": "Przesuń palcem by zapłacić"
+  },
+  "send_yes": {
+    "string": "Tak, wyślij"
+  },
+  "send_dialog1": {
+    "string": "Wygląda na to, że wysyłasz ponad $100. Czy kontynuować?"
+  },
+  "send_dialog2": {
+    "string": "Wygląda na to, że wysyłasz ponad 50% swojego salda. Czy kontynuować?"
+  },
+  "activity_successful": {
+    "string": "Sukces"
+  },
+  "activity_invoice": {
+    "string": "Faktura"
+  }
+}

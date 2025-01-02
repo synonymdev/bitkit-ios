@@ -1,0 +1,24 @@
+{
+  "transfer_failed": {
+    "continue": {
+      "string": "Spróbuj ponownie"
+    }
+  },
+  "external_manual": {
+    "node_id": {
+      "string": "ID węzła"
+    },
+    "host": {
+      "string": "Host"
+    },
+    "port": {
+      "string": "Port"
+    }
+  },
+  "channel_node_id": {
+    "string": "ID węzła"
+  },
+  "close_button": {
+    "string": "Zamknij"
+  }
+}

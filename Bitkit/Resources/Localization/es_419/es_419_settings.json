@@ -1,0 +1,411 @@
+{
+  "dev_enabled_title": {
+    "string": "Opciones de desarrollo activadas"
+  },
+  "dev_disabled_title": {
+    "string": "Opciones de desarrollo desactivadas"
+  },
+  "general_title": {
+    "string": "Geral"
+  },
+  "security_title": {
+    "string": "Seguridad y Privacidad"
+  },
+  "backup_title": {
+    "string": "Copia de seguridad o restauración"
+  },
+  "advanced_title": {
+    "string": "Avanzado"
+  },
+  "support_title": {
+    "string": "Soporte"
+  },
+  "about": {
+    "title": {
+      "string": "Acerca de Bitkit"
+    },
+    "legal": {
+      "string": "Legal"
+    },
+    "share": {
+      "string": "Compartir"
+    },
+    "version": {
+      "string": "Versión"
+    }
+  },
+  "dev_title": {
+    "string": "Ajustes de desarrollo"
+  },
+  "general": {
+    "currency_local": {
+      "string": "Moneda local"
+    },
+    "currency_local_title": {
+      "string": "Moneda local"
+    },
+    "currency_footer": {
+      "string": "Precios proporcionados por Bitfinex y CoinGecko."
+    },
+    "currency_most_used": {
+      "string": "Más utilizados"
+    },
+    "currency_other": {
+      "string": "Otras monedas"
+    },
+    "unit_bitcoin": {
+      "string": "Bitcoin"
+    },
+    "denomination_label": {
+      "string": "Bitcoin denominación"
+    },
+    "denomination_modern": {
+      "string": "Moderno (₿ 10 000)"
+    },
+    "denomination_classic": {
+      "string": "Clásico (₿ 0.00010000)"
+    },
+    "speed": {
+      "string": "Velocidad de transacción"
+    },
+    "speed_title": {
+      "string": "Velocidad de la transacción"
+    },
+    "speed_default": {
+      "string": "Velocidad de transacción predeterminada"
+    },
+    "speed_fee_custom": {
+      "string": "Fijar tarifa personalizada"
+    },
+    "tags": {
+      "string": "Etiquetas"
+    },
+    "tags_previously": {
+      "string": "Etiquetas utilizadas anteriormente"
+    }
+  },
+  "widgets": {
+    "nav_title": {
+      "string": "Widgets"
+    },
+    "showWidgets": {
+      "string": "Widgets"
+    }
+  },
+  "security": {
+    "pin": {
+      "string": "Código PIN"
+    },
+    "pin_change": {
+      "string": "Cambiar código PIN"
+    },
+    "pin_launch": {
+      "string": "Exigir PIN en arranque"
+    },
+    "pin_payments": {
+      "string": "Exigir PIN para pagamientos"
+    },
+    "pin_enabled": {
+      "string": "Activado"
+    },
+    "pin_disabled": {
+      "string": "Disabilitado"
+    },
+    "use_bio": {
+      "string": "Utilice {biometryTypeName} en su lugar"
+    },
+    "footer": {
+      "string": "Cuando activado, puede utilizar {biometryTypeName} en lugar de su código PIN para desbloquear su monedero o enviar pagos."
+    }
+  },
+  "backup": {
+    "title": {
+      "string": "Copia de seguridad o restauración"
+    },
+    "wallet": {
+      "string": "Haga una copia de seguridad de su cartera"
+    },
+    "export": {
+      "string": "Exportar los datos del monedero al teléfono"
+    },
+    "failed_title": {
+      "string": "Falla en la copia de seguridad de los datos"
+    },
+    "status_failed": {
+      "string": "Copia de seguridad falló: {time}"
+    },
+    "status_success": {
+      "string": "Última Copia de Seguridad: {time}"
+    },
+    "category_connections": {
+      "string": "Conexiones"
+    },
+    "category_transaction_log": {
+      "string": "Registro de transacciones"
+    },
+    "category_settings": {
+      "string": "Ajustes"
+    },
+    "category_widgets": {
+      "string": "Widgets"
+    },
+    "category_tags": {
+      "string": "Etiquetas"
+    },
+    "category_profile": {
+      "string": "Perfil"
+    },
+    "category_contacts": {
+      "string": "Contactos"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Soporte"
+    },
+    "text_button": {
+      "string": "Enviar"
+    },
+    "text_success_button": {
+      "string": "OK"
+    },
+    "text_unsuccess_button": {
+      "string": "Inténtelo de nuevo"
+    }
+  },
+  "status": {
+    "internet": {
+      "ready": {
+        "string": "Conectado"
+      }
+    },
+    "bitcoin_node": {
+      "ready": {
+        "string": "Conectado"
+      }
+    },
+    "lightning_node": {
+      "title": {
+        "string": "Nodo Lightning"
+      }
+    },
+    "lightning_connection": {
+      "ready": {
+        "string": "Abierta"
+      },
+      "pending": {
+        "string": "Abriendo..."
+      }
+    }
+  },
+  "adv": {
+    "section_payments": {
+      "string": "Pagos"
+    },
+    "section_networks": {
+      "string": "Redes"
+    },
+    "section_other": {
+      "string": "Otros"
+    },
+    "address_type": {
+      "string": "Tipo de dirección Bitcoin"
+    },
+    "coin_selection": {
+      "string": "Selección de monedas"
+    },
+    "cs_method": {
+      "string": "Método de selección de monedas"
+    },
+    "cs_manual": {
+      "string": "Manual"
+    },
+    "cs_auto": {
+      "string": "Piloto automático"
+    },
+    "cs_auto_mode": {
+      "string": "Modo de piloto automático"
+    },
+    "cs_consolidate": {
+      "string": "Consolidar"
+    },
+    "payment_preference": {
+      "string": "Preferencia de pago"
+    },
+    "pp_header": {
+      "string": "Elija cómo prefiere recibir dinero cuando los usuarios envíen fondos a su clave de perfil."
+    },
+    "pp_footer": {
+      "string": "* Esto requiere compartir los datos de pago."
+    },
+    "pp_drag": {
+      "string": "Preferencia de pago (arrastre para reordenar)"
+    },
+    "pp_contacts": {
+      "string": "Pagar a/desde contactos"
+    },
+    "pp_contacts_switch": {
+      "string": "Habilitar pagos con contactos*"
+    },
+    "address_viewer": {
+      "string": "Visor de direcciones"
+    },
+    "rescan": {
+      "string": "Volver a escanear direcciones"
+    },
+    "reset_title": {
+      "string": "¿Restablecer sugerencias?"
+    },
+    "reset_desc": {
+      "string": "¿Está seguro de que desea restablecer las sugerencias? Volverán a aparecer en caso de que las haya eliminado de la vista general de su monedero Bitkit."
+    },
+    "reset_confirm": {
+      "string": "Sí, Restaurar"
+    },
+    "lightning_connections": {
+      "string": "Conexiones Lightning"
+    },
+    "lightning_node": {
+      "string": "Nodo Lightning"
+    },
+    "electrum_server": {
+      "string": "Servidor Electrum"
+    },
+    "bitcoin_network": {
+      "string": "Red Bitcoin"
+    }
+  },
+  "fee": {
+    "fast": {
+      "label": {
+        "string": "Rápido (más caro)"
+      },
+      "value": {
+        "string": "Rápido"
+      },
+      "description": {
+        "string": "± 10-20 minutos"
+      }
+    },
+    "normal": {
+      "label": {
+        "string": "Normal"
+      },
+      "value": {
+        "string": "Normal"
+      },
+      "description": {
+        "string": "± 20-60 minutos"
+      }
+    },
+    "slow": {
+      "label": {
+        "string": "Lento (más barato)"
+      },
+      "value": {
+        "string": "Lento "
+      },
+      "description": {
+        "string": "± 1-2 horas"
+      }
+    },
+    "custom": {
+      "label": {
+        "string": "personalizado"
+      },
+      "value": {
+        "string": "personalizado"
+      },
+      "description": {
+        "string": "Depende de la tasa"
+      }
+    }
+  },
+  "addr": {
+    "no_addrs": {
+      "string": "No hay direcciones que mostrar"
+    },
+    "loading": {
+      "string": "Cargando direcciones..."
+    },
+    "no_funds_receiving": {
+      "string": "No se han encontrado fondos bajo el tipo de dirección {addressType}, recibiendo direcciones hasta el índice {index}."
+    },
+    "no_addrs_with_funds": {
+      "string": "No se han encontrado direcciones con fondos al buscar \"{searchTxt}\""
+    },
+    "no_addrs_str": {
+      "string": "No se han encontrado direcciones al buscar \"{searchTxt}\""
+    },
+    "index": {
+      "string": "Índice: {index}"
+    },
+    "path": {
+      "string": "Ruta: {path}"
+    },
+    "private_hide": {
+      "string": "Ocultar clave privada"
+    },
+    "private_view": {
+      "string": "Ver clave privada"
+    },
+    "private_key": {
+      "string": "Clave privada: {privateKey}"
+    },
+    "addr_change": {
+      "string": "Cambiar direcciones"
+    },
+    "addr_receiving": {
+      "string": "Direcciones de recibimiento"
+    },
+    "gen_20": {
+      "string": "Generar 20 más"
+    },
+    "check_balances": {
+      "string": "Consultar Saldos"
+    }
+  },
+  "es": {
+    "error_host_port": {
+      "string": "Especifique un host y una puerta al que conectarse."
+    },
+    "error_host": {
+      "string": "Por favor, especifique un host para conectarse."
+    },
+    "error_port": {
+      "string": "Especifique una puerta para conectarse."
+    },
+    "server_updated_title": {
+      "string": "Servidor Electrum actualizado"
+    },
+    "server_updated_message": {
+      "string": "Conectado con éxito a {host}:{port}"
+    },
+    "connected_to": {
+      "string": "Actualmente conectado a"
+    },
+    "disconnected": {
+      "string": "desconectado"
+    },
+    "host": {
+      "string": "Anfitrión"
+    },
+    "port": {
+      "string": "Puerta"
+    },
+    "protocol": {
+      "string": "Protocolo"
+    },
+    "button_reset": {
+      "string": "Restablecer padrones iniciales"
+    },
+    "button_connect": {
+      "string": "Conectar con el anfitrión"
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Guardar"
+    }
+  }
+}

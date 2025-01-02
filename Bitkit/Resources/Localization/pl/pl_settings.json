@@ -1,0 +1,36 @@
+{
+  "about": {
+    "share": {
+      "string": "Udostępnij"
+    }
+  },
+  "backup": {
+    "category_settings": {
+      "string": "Ustawienia"
+    }
+  },
+  "support": {
+    "text_button": {
+      "string": "Wyślij"
+    },
+    "text_success_button": {
+      "string": "OK"
+    },
+    "text_unsuccess_button": {
+      "string": "Spróbuj ponownie"
+    }
+  },
+  "es": {
+    "host": {
+      "string": "Host"
+    },
+    "port": {
+      "string": "Port"
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Zapisz"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "lightningConnecting": {
+    "title": {
+      "string": "Σύνδεση"
+    },
+    "description": {
+      "string": "Έτοιμο σε ±10 λεπτά"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Έτοιμο"
+    },
+    "description": {
+      "string": "Συνδέθηκε!"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Κρατήστε την εφαρμογή ανοιχτή"
+    }
+  },
+  "pin": {
+    "description": {
+      "string": "Καταχωρήστε κωδικό PIN"
+    }
+  },
+  "slashtagsProfile": {
+    "description": {
+      "string": "Προσθέστε τα στοιχεία σας"
+    }
+  },
+  "suggestions": {
+    "string": "Προτάσεις"
+  }
+}
