@@ -19,17 +19,30 @@ class LocalizationManager {
     
     func loadTranslations() {
         let sections = ["onboarding", "wallet", "common", "settings", "lightning", "cards", "fee"]
+        translations = [:] // Clear existing translations
         
+        // First load English as base translations
         for section in sections {
-            // Use the full language path to avoid filename conflicts
-            let filename = "\(currentLanguage)_\(section)"
-            guard let url = Bundle.main.url(forResource: filename, withExtension: "json"),
-                  let data = try? Data(contentsOf: url),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else {
-                continue
+            let filename = "en_\(section)"
+            if let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+               let data = try? Data(contentsOf: url),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            {
+                translations.merge(json) { current, _ in current }
             }
-            translations.merge(json) { current, _ in current }
+        }
+        
+        // Then overlay requested language if it's not English
+        if currentLanguage != "en" {
+            for section in sections {
+                let filename = "\(currentLanguage)_\(section)"
+                if let url = Bundle.main.url(forResource: filename, withExtension: "json"),
+                   let data = try? Data(contentsOf: url),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                {
+                    translations.merge(json) { _, new in new } // Use new values to override English
+                }
+            }
         }
     }
     
