@@ -1,0 +1,352 @@
+{
+  "backup_wallet": {
+    "string": "Wallet Backup"
+  },
+  "backup_title": {
+    "string": "<accent>Deine Bitcoin</accent> sicher lagern"
+  },
+  "backup_funds": {
+    "string": "Da du jetzt einige Gelder in deinem Wallet hast, ist es Zeit, dein Geld zu sichern!"
+  },
+  "backup_funds_no": {
+    "string": "Es befinden sich noch keine Gelder in deinem Wallet, aber du kannst trotzdem ein Backup erstellen, wenn du möchtest."
+  },
+  "backup_button": {
+    "string": "Sichern"
+  },
+  "pass": {
+    "string": "Passwort"
+  },
+  "pass_your": {
+    "string": "Dein Passwort"
+  },
+  "pass_text": {
+    "string": "Du hast bei der Einrichtung deines Wallets eine Passphrase zu deiner Wiederherstellungsphrase hinzugefügt."
+  },
+  "pass_never_share": {
+    "string": "<accent>Teile</accent> deine Passphrase niemals mit jemandem, da dies zum Verlust von Geldern führen kann."
+  },
+  "pass_confirm": {
+    "string": "Passphrase bestätigen"
+  },
+  "pass_confirm_text": {
+    "string": "Gib die Passphrase ein, die du während der Einrichtung und Erstellung deines Wallets hinzugefügt hast."
+  },
+  "pass_recovery": {
+    "string": "<accent>Passphrase:</accent> {passphrase}"
+  },
+  "mnemonic_phrase": {
+    "string": "Mnemonische Phrase"
+  },
+  "mnemonic_your": {
+    "string": "Deine Wiederherstellungsphrase"
+  },
+  "mnemonic_error": {
+    "string": "Wallet-Fehler"
+  },
+  "mnemonic_error_description": {
+    "string": "Bitkit konnte deine Wiederherstellungsphrase nicht lesen."
+  },
+  "mnemonic_write": {
+    "string": "Schreibe diese {length} Wörter in der richtigen Reihenfolge auf und bewahre sie an einem sicheren Ort auf."
+  },
+  "mnemonic_use": {
+    "string": "Verwende die folgenden 12 Wörter, um dein Geld zu einem späteren Zeitpunkt wiederherzustellen."
+  },
+  "mnemonic_reveal": {
+    "string": "Tippen zum Anzeigen"
+  },
+  "mnemonic_never_share": {
+    "string": "<accent>Teile</accent> deine Wiederherstellungsphrase <accent>niemals</accent> mit jemandem, da dies zum Verlust von Geldern führen kann."
+  },
+  "mnemonic_confirm": {
+    "string": "Wiederherstellungsphrase bestätigen"
+  },
+  "mnemonic_confirm_tap": {
+    "string": "Tippe die 12 Wörter in der richtigen Reihenfolge an."
+  },
+  "mnemonic_result_header": {
+    "string": "Erfolgreich"
+  },
+  "mnemonic_result_text": {
+    "string": "Stelle sicher, dass du deine Wiederherstellungsphrase an einem <accent>sicheren Ort</accent> aufbewahrst, da dies die <accent>einzige Möglichkeit</accent> ist, dein Geld wiederherzustellen!"
+  },
+  "mnemonic_keep_header": {
+    "string": "Sicher aufbewahren"
+  },
+  "mnemonic_keep_text": {
+    "string": "Denke daran, <accent>teile deine Wiederherstellungsphrase niemals</accent> mit jemandem! Wenn du dies tust, können sie dein Geld, Profil und andere Daten stehlen."
+  },
+  "mnemonic_data_header": {
+    "string": "Wallet-Daten"
+  },
+  "mnemonic_data_text": {
+    "string": "Dein Profil, deine Kontakte, Konten, Tags und Aktivitäten werden automatisch auf unserem kostenlosen Cloud-Dienst gesichert."
+  },
+  "mnemonic_multiple_header": {
+    "string": "Mehrere Geräte"
+  },
+  "mnemonic_multiple_text": {
+    "string": "Verwende deine Bitkit-Wiederherstellungsphrase nicht gleichzeitig auf mehreren Telefonen, da dies deine Daten beschädigen kann."
+  },
+  "mnemonic_latest_backup": {
+    "string": "<bold>Letztes Daten-Backup:</bold> {time}"
+  },
+  "pin_security_header": {
+    "string": "Sicherheit erhöhen"
+  },
+  "pin_security_title": {
+    "string": "<accent>Schütze</accent>\ndeine Bitcoin"
+  },
+  "pin_security_text": {
+    "string": "Um die Sicherheit deines Wallets zu erhöhen, kannst du einen PIN-Code und Face ID einrichten."
+  },
+  "pin_security_button": {
+    "string": "Wallet sichern"
+  },
+  "pin_choose_header": {
+    "string": "4-stelligen PIN wählen"
+  },
+  "pin_choose_text": {
+    "string": "Bitte verwende einen PIN, den du dir merken wirst. Wenn du deinen PIN vergisst, kannst du ihn zurücksetzen, aber das erfordert die Wiederherstellung deines Wallets."
+  },
+  "pin_retype_header": {
+    "string": "4-stelligen PIN erneut eingeben"
+  },
+  "pin_retype_text": {
+    "string": "Bitte gib deinen 4-stelligen PIN erneut ein, um den Einrichtungsprozess abzuschließen."
+  },
+  "pin_not_match": {
+    "string": "Versuche es erneut, dieser PIN stimmt nicht überein."
+  },
+  "pin_disable_title": {
+    "string": "PIN deaktivieren"
+  },
+  "pin_disable_text": {
+    "string": "Der PIN-Code ist derzeit aktiviert. Wenn du deinen PIN deaktivieren möchtest, musst du zuerst deinen aktuellen PIN-Code eingeben."
+  },
+  "pin_disable_button": {
+    "string": "PIN deaktivieren"
+  },
+  "pin_enter": {
+    "string": "Bitte gib deinen PIN-Code ein"
+  },
+  "pin_last_attempt": {
+    "string": "Letzter Versuch. Wenn du den falschen PIN erneut eingibst, wird dein Wallet zurückgesetzt."
+  },
+  "pin_attempts": {
+    "string": "{attemptsRemaining} Versuche verbleiben. Hast du deinen PIN vergessen?"
+  },
+  "pin_forgot_title": {
+    "string": "PIN vergessen?"
+  },
+  "pin_forgot_text": {
+    "string": "PIN vergessen? Setze hier dein Bitkit-Wallet zurück und stelle es mit deiner Wiederherstellungsphrase wieder her. Vergebe eine neue PIN nach deiner Wiederherstellung."
+  },
+  "pin_forgot_reset": {
+    "string": "Zurücksetzen (erfordert Wiederherstellungsphrase)"
+  },
+  "pin_send": {
+    "string": "Bitte gib deinen PIN-Code ein, um diese Zahlung zu bestätigen und zu senden."
+  },
+  "pin_send_title": {
+    "string": "PIN-Code eingeben"
+  },
+  "pin_use_biometrics": {
+    "string": "Verwende {biometricsName}"
+  },
+  "bio": {
+    "string": "Biometrie"
+  },
+  "bio_auth_with": {
+    "string": "Authentifizieren mit {biometricsName}"
+  },
+  "bio_no": {
+    "string": "Es scheint, dass dein Gerät keine biometrische Sicherheit unterstützt."
+  },
+  "bio_face_id": {
+    "string": "Face ID"
+  },
+  "bio_touch_id": {
+    "string": "Touch ID"
+  },
+  "bio_confirm": {
+    "string": "Bestätige {biometricsName}"
+  },
+  "bio_error_title": {
+    "string": "Einrichten der Biometrie fehlgeschlagen"
+  },
+  "bio_error_message": {
+    "string": "Bitkit konnte {type} für dein Gerät nicht einrichten."
+  },
+  "bio_loading": {
+    "string": "Lädt..."
+  },
+  "bio_not_available": {
+    "string": "Es scheint, dass du die biometrische Sicherheit noch nicht eingerichtet hast (oder sie wird nicht unterstützt). Versuche, sie in den Einstellungen deines Telefons zu aktivieren."
+  },
+  "bio_ask": {
+    "string": "PIN-Code gesetzt. Möchtest du {biometricsName} anstelle deines PIN-Codes verwenden?"
+  },
+  "bio_use": {
+    "string": "Verwende {biometricsName}"
+  },
+  "bio_phone_settings": {
+    "string": "Telefoneinstellungen"
+  },
+  "success_title": {
+    "string": "Wallet gesichert"
+  },
+  "success_bio": {
+    "string": "Du hast erfolgreich einen PIN-Code und {biometricsName} eingerichtet, um die Sicherheit deines Wallets zu verbessern."
+  },
+  "success_no_bio": {
+    "string": "Du hast erfolgreich einen PIN-Code eingerichtet, um die Sicherheit deines Wallets zu verbessern."
+  },
+  "success_payments": {
+    "string": "Auch für Zahlungen erforderlich"
+  },
+  "reset_title": {
+    "string": "Zurücksetzen und Wiederherstellen"
+  },
+  "reset_text": {
+    "string": "Sichere dein Wallet zuerst, um den Verlust deines Geldes und deiner Wallet-Daten vorzubeugen. Ein Reset wird dein aktuelles Bitkit-Setup überschreiben."
+  },
+  "reset_button_backup": {
+    "string": "Zuerst sichern"
+  },
+  "reset_button_reset": {
+    "string": "Wallet zurücksetzen"
+  },
+  "reset_dialog_title": {
+    "string": "Bitkit zurücksetzen?"
+  },
+  "reset_dialog_desc": {
+    "string": "Bist du dir sicher, dass du dein Bitkit-Wallet zurücksetzen willst? Hast du ein Backup deiner Wiederherstellungsphrase und deiner Wallet-Daten?"
+  },
+  "reset_confirm": {
+    "string": "Ja, zurücksetzen"
+  },
+  "recovery": {
+    "string": "Wiederherstellung"
+  },
+  "recovery_text": {
+    "string": "Du hast den Wiederherstellungsmodus von Bitkit betreten. Hier sind einige Aktionen, die du ausführen kannst, wenn du auf Probleme stößt, die die vollständige Funktion der App verhindern. Starte die App neu für einen normalen Start."
+  },
+  "display_seed": {
+    "string": "Seed-Phrase anzeigen"
+  },
+  "contact_support": {
+    "string": "Support kontaktieren"
+  },
+  "wipe_app": {
+    "string": "App löschen"
+  },
+  "close_app": {
+    "string": "Bitkit schließen"
+  },
+  "export_title": {
+    "string": "Auf Telefon exportieren"
+  },
+  "export_text": {
+    "string": "Du kannst eine Kopie deiner Wallet-Daten als .ZIP-Datei exportieren. Diese Datei ist mit dem unten festgelegten Passwort verschlüsselt."
+  },
+  "export_password": {
+    "string": "Passwort"
+  },
+  "export_button": {
+    "string": "Exportieren"
+  },
+  "export_share": {
+    "string": "Backup-Datei teilen"
+  },
+  "export_success_title": {
+    "string": "Backup exportiert"
+  },
+  "export_success_msg": {
+    "string": "Bitkit hat die Backup-Datei erfolgreich auf dein Telefon exportiert."
+  },
+  "export_error_title": {
+    "string": "Backup fehlgeschlagen"
+  },
+  "export_error_msg": {
+    "string": "Bitkit konnte die Backup-Datei nicht auf dein Telefon exportieren."
+  },
+  "export_error_file": {
+    "string": "Bitkit konnte die Backup-Datei nicht erstellen."
+  },
+  "cp_title": {
+    "string": "PIN ändern"
+  },
+  "cp_text": {
+    "string": "Du kannst deinen PIN-Code in eine neue\n4-Ziffern-Kombination ändern. Bitte gib zuerst deinen aktuellen PIN-Code ein."
+  },
+  "cp_retype_title": {
+    "string": "Neuen PIN erneut eingeben"
+  },
+  "cp_retype_text": {
+    "string": "Bitte gib deinen 4-stelligen PIN erneut ein, um den Einrichtungsprozess abzuschließen."
+  },
+  "cp_setnew_title": {
+    "string": "Neuen PIN festlegen"
+  },
+  "cp_setnew_text": {
+    "string": "Bitte verwende einen PIN, den du dir merken wirst. Wenn du deinen PIN vergisst, kannst du ihn zurücksetzen, aber das erfordert die Wiederherstellung deines Wallets."
+  },
+  "cp_try_again": {
+    "string": "Versuche es erneut, dieser PIN stimmt nicht überein."
+  },
+  "cp_changed_title": {
+    "string": "PIN geändert"
+  },
+  "cp_changed_text": {
+    "string": "Du hast deinen PIN erfolgreich zu einer neuen 4-Ziffern-Kombination geändert."
+  },
+  "use_pin": {
+    "string": "PIN-Code verwenden"
+  },
+  "wiped_title": {
+    "string": "Wallet"
+  },
+  "wiped_message": {
+    "string": "Bitkit wurde zurückgesetzt und alle Wallet-Daten wurden gelöscht."
+  },
+  "authorization": {
+    "title": {
+      "string": "Autorisierung"
+    },
+    "description": {
+      "string": "Vergewissern Sie sich, dass Sie diesem Dienst vertrauen, bevor Sie die Erlaubnis zur Verwaltung Ihrer Daten erteilen."
+    },
+    "authorize": {
+      "string": "Autorisieren Sie"
+    },
+    "deny": {
+      "string": "Deny"
+    },
+    "authorizing": {
+      "string": "Ermächtigung..."
+    },
+    "success": {
+      "string": "Erfolgreich"
+    },
+    "claims": {
+      "string": "Dieser Dienst behauptet, er sei"
+    },
+    "requested_permissions": {
+      "string": "Erforderliche Genehmigungen"
+    },
+    "pubky_secret_error_title": {
+      "string": "Pubky Error"
+    },
+    "pubky_secret_error_description": {
+      "string": "Pubky-Schlüssel kann nicht abgerufen werden"
+    },
+    "pubky_auth_error_title": {
+      "string": "Pubky Auth Fehler"
+    },
+    "pubky_auth_error_description": {
+      "string": "Authentifizierung mit Pubky-Dienst nicht möglich"
+    }
+  }
+}

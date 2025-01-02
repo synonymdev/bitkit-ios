@@ -1,0 +1,71 @@
+{
+  "continue": {
+    "string": "Dalej"
+  },
+  "cancel": {
+    "string": "Anuluj"
+  },
+  "close": {
+    "string": "Zamknij"
+  },
+  "are_you_sure": {
+    "string": "Na pewno?"
+  },
+  "yes_proceed": {
+    "string": "Tak, kontynuuj"
+  },
+  "try_again": {
+    "string": "Spróbuj ponownie"
+  },
+  "dialog_cancel": {
+    "string": "Nie, anuluj"
+  },
+  "copy": {
+    "string": "Kopiuj"
+  },
+  "share": {
+    "string": "Udostępnij"
+  },
+  "search": {
+    "string": "Szukaj"
+  },
+  "discard": {
+    "string": "Odrzuć"
+  },
+  "save": {
+    "string": "Zapisz"
+  },
+  "done": {
+    "string": "Ukończono"
+  },
+  "delete": {
+    "string": "Usuń"
+  },
+  "ok": {
+    "string": "OK"
+  },
+  "retry": {
+    "string": "Spróbuj ponownie"
+  },
+  "later": {
+    "string": "Później"
+  },
+  "skip": {
+    "string": "Pomiń"
+  },
+  "yes": {
+    "string": "Tak"
+  },
+  "no": {
+    "string": "Nie"
+  },
+  "back": {
+    "string": "Wstecz"
+  },
+  "learn_more": {
+    "string": "Dowiedz się więcej"
+  },
+  "understood": {
+    "string": "Rozumiem"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "backupSeedPhrase": {
+    "description": {
+      "string": "Храните ваш биткоин"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Скидка"
+    },
+    "description": {
+      "string": "Баланс Расходов"
+    }
+  },
+  "quickpay": {
+    "description": {
+      "string": "Сканируйте и платите"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Пригласить"
+    },
+    "description": {
+      "string": "Поделитесь Bitkit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Тратить"
+    },
+    "description": {
+      "string": "Мгновенные платежи"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Перенос"
+    },
+    "description": {
+      "string": "Идёт процесс..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Подключение"
+    },
+    "description": {
+      "string": "Готово за ±10м"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Готово"
+    },
+    "description": {
+      "string": "Подключено!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Перенос"
+    },
+    "description": {
+      "string": "Готово за ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Держите приложение открытым"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "Безопасность"
+    },
+    "description": {
+      "string": "Установите PIN-код"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Профиль"
+    },
+    "description": {
+      "string": "Добавьте детали"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Поддержка"
+    },
+    "description": {
+      "string": "Получите помощь"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Купить"
+    },
+    "description": {
+      "string": "Купите биткоин"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Не удалось"
+    },
+    "description": {
+      "string": "Попробуйте снова"
+    }
+  },
+  "suggestions": {
+    "string": "Рекомендации"
+  }
+}

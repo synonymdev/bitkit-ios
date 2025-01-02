@@ -1,0 +1,68 @@
+{
+  "continue": {
+    "string": "Συνέχεια"
+  },
+  "cancel": {
+    "string": "Ακύρωση"
+  },
+  "close": {
+    "string": "Κλείσιμο"
+  },
+  "are_you_sure": {
+    "string": "Είσαι σίγουρος;"
+  },
+  "yes_proceed": {
+    "string": "Ναι, Προχώρα"
+  },
+  "try_again": {
+    "string": "Προσπαθείστε Ξανά"
+  },
+  "dialog_cancel": {
+    "string": "Όχι, Ακύρωσε"
+  },
+  "copy": {
+    "string": "Αντιγραφή"
+  },
+  "share": {
+    "string": "Διαμοιρασμός"
+  },
+  "search": {
+    "string": "Αναζήτηση"
+  },
+  "discard": {
+    "string": "Απόρριψη"
+  },
+  "save": {
+    "string": "Καταχώρηση"
+  },
+  "done": {
+    "string": "Ολοκληρώθηκε"
+  },
+  "delete": {
+    "string": "Διαγραφή"
+  },
+  "ok": {
+    "string": "ΟΚ"
+  },
+  "retry": {
+    "string": "Δοκιμάστε Ξανά"
+  },
+  "later": {
+    "string": "Αργότερα"
+  },
+  "skip": {
+    "string": "Παράλειψη"
+  },
+  "yes": {
+    "string": "Ναι"
+  },
+  "no": {
+    "string": "Όχι"
+  },
+  "back": {
+    "string": "Επιστροφή"
+  },
+  "understood": {
+    "string": "Κατανοητό"
+  }
+}

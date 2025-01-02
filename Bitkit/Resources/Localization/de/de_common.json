@@ -1,0 +1,101 @@
+{
+  "advanced": {
+    "string": "Fortgeschritten"
+  },
+  "continue": {
+    "string": "Weiter"
+  },
+  "cancel": {
+    "string": "Abbrechen"
+  },
+  "close": {
+    "string": "Schließen"
+  },
+  "are_you_sure": {
+    "string": "Bist du dir sicher?"
+  },
+  "yes_proceed": {
+    "string": "Ja, Weiter"
+  },
+  "try_again": {
+    "string": "Erneut versuchen"
+  },
+  "dialog_cancel": {
+    "string": "Abbrechen"
+  },
+  "sat_vbyte": {
+    "string": "₿ / vbyte"
+  },
+  "sat_vbyte_compact": {
+    "string": "₿/vbyte"
+  },
+  "edit": {
+    "string": "Bearbeiten"
+  },
+  "copy": {
+    "string": "Kopieren"
+  },
+  "share": {
+    "string": "Teilen"
+  },
+  "search": {
+    "string": "Suchen"
+  },
+  "discard": {
+    "string": "Verwerfen"
+  },
+  "save": {
+    "string": "Speichern"
+  },
+  "done": {
+    "string": "Fertig"
+  },
+  "delete": {
+    "string": "Löschen"
+  },
+  "ok": {
+    "string": "OK"
+  },
+  "ok_random": {
+    "string": "Fantastisch!\nSchön!\nCool!\nGroßartig!\nFantastisch!\nSüß!\nAusgezeichnet!\nGroßartig!\nWunderbar!"
+  },
+  "retry": {
+    "string": "Wiederholen"
+  },
+  "later": {
+    "string": "Später"
+  },
+  "skip": {
+    "string": "Überspringen"
+  },
+  "copied": {
+    "string": "In die Zwischenablage kopiert"
+  },
+  "yes": {
+    "string": "Ja"
+  },
+  "no": {
+    "string": "Nein"
+  },
+  "back": {
+    "string": "Zurück"
+  },
+  "learn_more": {
+    "string": "Mehr erfahren"
+  },
+  "understood": {
+    "string": "Verstanden"
+  },
+  "connect": {
+    "string": "Verbinden"
+  },
+  "min": {
+    "string": "Min"
+  },
+  "max": {
+    "string": "Max"
+  },
+  "default": {
+    "string": "Standard"
+  }
+}

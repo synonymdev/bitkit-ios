@@ -1,0 +1,116 @@
+{
+  "backupSeedPhrase": {
+    "description": {
+      "string": "Emmagatzema els teus bitcoin"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Descompte"
+    },
+    "description": {
+      "string": "Balanç de despesa"
+    }
+  },
+  "quickpay": {
+    "description": {
+      "string": "Escaneja i paga"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Convidar"
+    },
+    "description": {
+      "string": "Comparteix Bitkit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Gastar"
+    },
+    "description": {
+      "string": "Pagaments instantanis"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Transferir"
+    },
+    "description": {
+      "string": "En progrés..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Conectant"
+    },
+    "description": {
+      "string": "Llest en ±10m"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Llest"
+    },
+    "description": {
+      "string": "Conectat!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Transferir"
+    },
+    "description": {
+      "string": "Llest en ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Mantenir l'aplicació oberta"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "Segur"
+    },
+    "description": {
+      "string": "Configurar un codi PIN"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Perfil"
+    },
+    "description": {
+      "string": "Afegeix els teus detalls"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Suport"
+    },
+    "description": {
+      "string": "Obteniu ajuda"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Comprar"
+    },
+    "description": {
+      "string": "Comprar bitcoin"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Ha fallat"
+    },
+    "description": {
+      "string": "Si us plau torna-ho a provar"
+    }
+  },
+  "suggestions": {
+    "string": "Sugeriments"
+  }
+}

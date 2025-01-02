@@ -1,0 +1,672 @@
+{
+  "dev_enabled_title": {
+    "string": "Режим Разработчика Включён"
+  },
+  "dev_enabled_message": {
+    "string": "Опции разработчика теперь включены по всему приложению."
+  },
+  "dev_disabled_title": {
+    "string": "Режим Разработчика Выключен"
+  },
+  "dev_disabled_message": {
+    "string": "Опции разработчика теперь отключены по всему приложению."
+  },
+  "general_title": {
+    "string": "Основные"
+  },
+  "security_title": {
+    "string": "Безопасность и Конфиденциальность"
+  },
+  "backup_title": {
+    "string": "Резервное копирование"
+  },
+  "advanced_title": {
+    "string": "Дополнительно"
+  },
+  "about_title": {
+    "string": "О программе"
+  },
+  "support_title": {
+    "string": "Поддержка"
+  },
+  "about": {
+    "title": {
+      "string": "О Bitkit"
+    },
+    "text": {
+      "string": "Спасибо за то, что вы ответственный биткойнер.\nИзмените свой кошелёк, измените мир.\n\nBitkit предоставляет вам ключи к вашим деньгам, профилю, контактам и веб-аккаунтам.\n\nBitkit был создан компанией Synonym Software Ltd."
+    },
+    "legal": {
+      "string": "Документы"
+    },
+    "share": {
+      "string": "Поделиться"
+    },
+    "version": {
+      "string": "Версия"
+    },
+    "shareText": {
+      "string": "Измените свой кошелёк, измените мир. Скачайте Bitkit для iPhone {appStoreUrl} или Android {playStoreUrl}"
+    }
+  },
+  "dev_title": {
+    "string": "Настройки Разработчика"
+  },
+  "general": {
+    "currency_local": {
+      "string": "Валюта"
+    },
+    "currency_local_title": {
+      "string": "Валюта"
+    },
+    "currency_footer": {
+      "string": "Курсы валют предоставлены Bitfinex & CoinGecko."
+    },
+    "currency_most_used": {
+      "string": "Наиболее Используемые"
+    },
+    "currency_other": {
+      "string": "Другие Валюты"
+    },
+    "unit": {
+      "string": "Единица измерения"
+    },
+    "unit_title": {
+      "string": "Единица Измерения по Умолчанию"
+    },
+    "unit_display": {
+      "string": "Отображать суммы в"
+    },
+    "unit_bitcoin": {
+      "string": "Биткойн"
+    },
+    "unit_note": {
+      "string": "Совет: Быстро переключайтесь между биткойнами и {currency}, нажимая на баланс вашего кошелька."
+    },
+    "denomination_label": {
+      "string": "Деноминация Биткойна"
+    },
+    "denomination_modern": {
+      "string": "Современный (₿ 10 000)"
+    },
+    "denomination_classic": {
+      "string": "Классический (₿ 0.00010000)"
+    },
+    "speed": {
+      "string": "Скорость транзакций"
+    },
+    "speed_title": {
+      "string": "Скорость Транзакций"
+    },
+    "speed_default": {
+      "string": "Скорость транзакций по умолчанию"
+    },
+    "speed_fee_custom": {
+      "string": "Установить Пользовательскую Комиссию"
+    },
+    "speed_fee_total": {
+      "string": "₿ {feeSats} за среднюю транзакцию"
+    },
+    "speed_fee_total_fiat": {
+      "string": "₿ {feeSats} за среднюю транзакцию ({fiatSymbol}{fiatFormatted})"
+    },
+    "tags": {
+      "string": "Теги"
+    },
+    "tags_previously": {
+      "string": "Ранее Использованные Теги"
+    }
+  },
+  "widgets": {
+    "nav_title": {
+      "string": "Виджеты"
+    },
+    "showWidgets": {
+      "string": "Виджеты"
+    },
+    "showWidgetTitles": {
+      "string": "Показывать Заголовки Виджетов"
+    }
+  },
+  "security": {
+    "title": {
+      "string": "Безопасность и Конфиденциальность"
+    },
+    "swipe_balance_to_hide": {
+      "string": "Смахнуть Баланс, чтобы Скрыть"
+    },
+    "hide_balance_on_open": {
+      "string": "Скрывать Баланс при Открытии"
+    },
+    "clipboard": {
+      "string": "Читать Буфер Обмена для Удобства Использования"
+    },
+    "warn_100": {
+      "string": "Предупреждать при Отправке более $100"
+    },
+    "pin": {
+      "string": "PIN-код"
+    },
+    "pin_change": {
+      "string": "Сменить PIN-код"
+    },
+    "pin_launch": {
+      "string": "Требовать PIN-код при Запуске"
+    },
+    "pin_idle": {
+      "string": "Требовать PIN-код при Бездействии"
+    },
+    "pin_payments": {
+      "string": "Требовать PIN-код для Платежей"
+    },
+    "pin_enabled": {
+      "string": "Включён"
+    },
+    "pin_disabled": {
+      "string": "Выключен"
+    },
+    "use_bio": {
+      "string": "Использовать {biometryTypeName} вместо этого"
+    },
+    "footer": {
+      "string": "Когда включено, вы можете использовать {biometryTypeName} вместо PIN-кода для разблокировки кошелька или отправки платежей."
+    }
+  },
+  "backup": {
+    "title": {
+      "string": "Резервное копирование"
+    },
+    "wallet": {
+      "string": "Создать Резервную Копию Кошелька"
+    },
+    "export": {
+      "string": "Экспортировать Данные Кошелька на Телефон"
+    },
+    "reset": {
+      "string": "Сбросить и Восстановить Кошелёк"
+    },
+    "failed_title": {
+      "string": "Ошибка Резервного Копирования"
+    },
+    "failed_message": {
+      "string": "Bitkit не удалось создать резервную копию данных кошелька. Повторная попытка через {interval, plural, one {# минуту} few {# минуты} many {# минут} other {# минут}}."
+    },
+    "latest": {
+      "string": "Последние Резервные Копии Данных"
+    },
+    "status_failed": {
+      "string": "Ошибка резервного копирования: {time}"
+    },
+    "status_success": {
+      "string": "Последнее Резервное Копирование: {time}"
+    },
+    "category_connections": {
+      "string": "Соединения"
+    },
+    "category_transaction_log": {
+      "string": "Журнал Транзакций"
+    },
+    "category_settings": {
+      "string": "Настройки"
+    },
+    "category_widgets": {
+      "string": "Виджеты"
+    },
+    "category_tags": {
+      "string": "Теги"
+    },
+    "category_profile": {
+      "string": "Профиль"
+    },
+    "category_contacts": {
+      "string": "Контакты"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Поддержка"
+    },
+    "text": {
+      "string": "Нужна помощь? Сообщите о своей проблеме через Bitkit, посетите центр поддержки, проверьте статус или свяжитесь с нами в социальных сетях."
+    },
+    "report": {
+      "string": "Сообщить о Проблеме"
+    },
+    "help": {
+      "string": "Центр Помощи"
+    },
+    "status": {
+      "string": "Статус Приложения"
+    },
+    "report_text": {
+      "string": "Пожалуйста, опишите проблему, с которой вы столкнулись, или задайте общий вопрос."
+    },
+    "label_address": {
+      "string": "Электронная Почта"
+    },
+    "label_message": {
+      "string": "Проблема или Вопрос"
+    },
+    "placeholder_address": {
+      "string": "satoshi@satoshi.com"
+    },
+    "placeholder_message": {
+      "string": "Опишите проблему или задайте вопрос"
+    },
+    "text_button": {
+      "string": "Отправить"
+    },
+    "title_success": {
+      "string": "Успешно Отправлено"
+    },
+    "text_success": {
+      "string": "Спасибо, что связались с нами! Мы постараемся ответить вам как можно скорее."
+    },
+    "text_success_button": {
+      "string": "Ок"
+    },
+    "title_unsuccess": {
+      "string": "Не Удалось Отправить"
+    },
+    "text_unsuccess": {
+      "string": "Что-то пошло не так при попытке отправить ваше сообщение или вопрос. Пожалуйста, попробуйте снова."
+    },
+    "text_unsuccess_button": {
+      "string": "Попробовать Снова"
+    }
+  },
+  "status": {
+    "title": {
+      "string": "Статус Приложения"
+    },
+    "internet": {
+      "title": {
+        "string": "Интернет"
+      },
+      "ready": {
+        "string": "Подключено"
+      },
+      "pending": {
+        "string": "Переподключение..."
+      },
+      "error": {
+        "string": "Отключено"
+      }
+    },
+    "bitcoin_node": {
+      "title": {
+        "string": "Биткойн-нода"
+      },
+      "ready": {
+        "string": "Подключено"
+      },
+      "pending": {
+        "string": "Подключение..."
+      },
+      "error": {
+        "string": "Не удалось подключиться к Electrum"
+      }
+    },
+    "lightning_node": {
+      "title": {
+        "string": "Лайтнинг-нода"
+      },
+      "ready": {
+        "string": "Синхронизировано"
+      },
+      "pending": {
+        "string": "Синхронизация..."
+      },
+      "error": {
+        "string": "Не удалось инициировать"
+      }
+    },
+    "lightning_connection": {
+      "title": {
+        "string": "Лайтнинг-соединение"
+      },
+      "ready": {
+        "string": "Открыто"
+      },
+      "pending": {
+        "string": "Открытие..."
+      },
+      "error": {
+        "string": "Нет открытых соединений"
+      }
+    },
+    "full_backup": {
+      "title": {
+        "string": "Последнее Полное Резервное Копирование Данных"
+      },
+      "ready": {
+        "string": "Скопировано"
+      },
+      "pending": {
+        "string": "Резервное копирование..."
+      },
+      "error": {
+        "string": "Не удалось выполнить полное резервное копирование"
+      }
+    }
+  },
+  "adv": {
+    "section_payments": {
+      "string": "Платежи"
+    },
+    "section_networks": {
+      "string": "Сеть"
+    },
+    "section_other": {
+      "string": "Другое"
+    },
+    "address_type": {
+      "string": "Тип Биткойн-Адреса"
+    },
+    "monitored_address_types": {
+      "string": "Отслеживаемые Типы Адресов"
+    },
+    "monitored_address_types_update_title": {
+      "string": "Отслеживаемые Типы Адресов Обновлены"
+    },
+    "monitored_address_types_update_description": {
+      "string": "Изменения вступят в силу после перезапуска приложения."
+    },
+    "gap_limit": {
+      "string": "Gap Limit Адресов"
+    },
+    "coin_selection": {
+      "string": "Выбор Монет"
+    },
+    "cs_method": {
+      "string": "Метод Выбора Монет"
+    },
+    "cs_manual": {
+      "string": "Вручную"
+    },
+    "cs_auto": {
+      "string": "Автопилот"
+    },
+    "cs_auto_mode": {
+      "string": "Режим Автопилота"
+    },
+    "cs_max": {
+      "string": "Более Приватно"
+    },
+    "cs_max_description": {
+      "string": "Сортировать и использовать сначала наименьшие UTXO. Более высокая комиссия, но скрывает ваши крупнейшие UTXO."
+    },
+    "cs_min": {
+      "string": "Низкая Комиссия"
+    },
+    "cs_min_description": {
+      "string": "Сортировать и использовать сначала крупнейшие UTXO. Низкая комиссия, но раскрывает ваши крупнейшие UTXO."
+    },
+    "cs_consolidate": {
+      "string": "Консолидировать"
+    },
+    "cs_consolidate_description": {
+      "string": "Использовать все доступные UTXO независимо от суммы, которую вы отправляете. Используйте этот метод, когда комиссии низкие, чтобы снизить комиссии в будущих транзакциях."
+    },
+    "payment_preference": {
+      "string": "Предпочтительный Способ Оплаты"
+    },
+    "pp_header": {
+      "string": "Выберите, как вы предпочитаете получать деньги, когда пользователи отправляют средства на идентификатор вашего профиля."
+    },
+    "pp_footer": {
+      "string": "* Это требует обмена платёжными данными."
+    },
+    "pp_drag": {
+      "string": "Предпочтение Оплаты (перетащите для изменения порядка)"
+    },
+    "pp_contacts": {
+      "string": "Платить Контактам"
+    },
+    "pp_contacts_switch": {
+      "string": "Включить Платежи с Контактами*"
+    },
+    "address_viewer": {
+      "string": "Просмотр Адресов"
+    },
+    "rescan": {
+      "string": "Повторное Сканирование Адресов"
+    },
+    "suggestions_reset": {
+      "string": "Сбросить Рекомендации"
+    },
+    "reset_title": {
+      "string": "Сбросить Рекомендации?"
+    },
+    "reset_desc": {
+      "string": "Вы уверены, что хотите сбросить рекомендации? Они появятся снова, если вы их удалили."
+    },
+    "reset_confirm": {
+      "string": "Да,\nСбросить"
+    },
+    "lightning_connections": {
+      "string": "Лайтнинг-Соединения"
+    },
+    "lightning_node": {
+      "string": "Лайтнинг-Нода"
+    },
+    "electrum_server": {
+      "string": "Сервер Electrum"
+    },
+    "bitcoin_network": {
+      "string": "Биткойн-Сеть"
+    }
+  },
+  "fee": {
+    "fast": {
+      "label": {
+        "string": "Быстро (дороже)"
+      },
+      "value": {
+        "string": "Быстро"
+      },
+      "description": {
+        "string": "± 10-20 минут"
+      }
+    },
+    "normal": {
+      "label": {
+        "string": "Нормально"
+      },
+      "value": {
+        "string": "Нормально"
+      },
+      "description": {
+        "string": "± 20-60 минут"
+      }
+    },
+    "slow": {
+      "label": {
+        "string": "Медленно (дешевле)"
+      },
+      "value": {
+        "string": "Медленно"
+      },
+      "description": {
+        "string": "± 1-2 часа"
+      }
+    },
+    "custom": {
+      "label": {
+        "string": "Другое"
+      },
+      "value": {
+        "string": "Другое"
+      },
+      "description": {
+        "string": "Зависит от комиссии"
+      }
+    }
+  },
+  "addr": {
+    "no_addrs": {
+      "string": "Нет Адресов для Отображения"
+    },
+    "loading": {
+      "string": "Загрузка Адресов..."
+    },
+    "no_funds_receiving": {
+      "string": "Средства на {addressType} адресах не найдены, адреса Получения до индекса {index}."
+    },
+    "no_funds_change": {
+      "string": "Средства на {addressType} адресах не найдены, адреса Сдачи до индекса {index}."
+    },
+    "no_addrs_with_funds": {
+      "string": "Не найдено адресов со средствами при поиске \"{searchTxt}\""
+    },
+    "no_addrs_str": {
+      "string": "Не найдено адресов при поиске \"{searchTxt}\""
+    },
+    "rescan_error": {
+      "string": "Ошибка Повторного Сканирования"
+    },
+    "rescan_error_description": {
+      "string": "Bitkit не удалось проверить балансы адресов."
+    },
+    "spend_number": {
+      "string": "{count, plural, one {Потратить ₿ {fundsToSpend} с # адреса} few {Потратить ₿ {fundsToSpend} с # адресов} many {Потратить ₿ {fundsToSpend} с # адресов} other {Потратить ₿ {fundsToSpend} с # адресов}}"
+    },
+    "spend_all": {
+      "string": "{count, plural, one {Потратить все средства с # адреса} few {Потратить все средства с # адресов} many {Потратить все средства с # адресов} other {Потратить все средства с # адресов}}"
+    },
+    "index": {
+      "string": "Индекс: {index}"
+    },
+    "path": {
+      "string": "Путь: {path}"
+    },
+    "private_hide": {
+      "string": "Скрыть Закрытый Ключ"
+    },
+    "private_view": {
+      "string": "Просмотреть Закрытый Ключ"
+    },
+    "private_key": {
+      "string": "Закрытый Ключ: {privateKey}"
+    },
+    "addr_change": {
+      "string": "Адреса Сдачи"
+    },
+    "addr_receiving": {
+      "string": "Адреса Получения"
+    },
+    "sats_found": {
+      "string": "Найдено ₿ {totalBalance}"
+    },
+    "gen_20": {
+      "string": "Ещё 20"
+    },
+    "check_balances": {
+      "string": "Проверить Балансы"
+    },
+    "copied": {
+      "string": "Скопировано в Буфер Обмена"
+    }
+  },
+  "es": {
+    "error_host_port": {
+      "string": "Укажите хост и порт для подключения."
+    },
+    "error_host": {
+      "string": "Укажите хост для подключения."
+    },
+    "error_port": {
+      "string": "Укажите порт для подключения."
+    },
+    "error_port_invalid": {
+      "string": "Укажите действительный порт."
+    },
+    "error_invalid_http": {
+      "string": "Укажите действительный URL."
+    },
+    "error_peer": {
+      "string": "Ошибка Electrum"
+    },
+    "server_updated_title": {
+      "string": "Сервер Electrum Обновлён"
+    },
+    "server_updated_message": {
+      "string": "Успешно подключено к {host}:{port}"
+    },
+    "server_error": {
+      "string": "Не удалось подключиться к Electrum"
+    },
+    "server_error_description": {
+      "string": "Bitkit не удалось установить соединение с Electrum."
+    },
+    "connected_to": {
+      "string": "Текущее Подключение к"
+    },
+    "disconnected": {
+      "string": "Отключено"
+    },
+    "host": {
+      "string": "Хост"
+    },
+    "port": {
+      "string": "Порт"
+    },
+    "protocol": {
+      "string": "Протокол"
+    },
+    "button_reset": {
+      "string": "Сбросить настройки"
+    },
+    "button_connect": {
+      "string": "Подключиться"
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Сохранить"
+    },
+    "reset": {
+      "string": "Сбросить"
+    },
+    "gap_limit_update_title": {
+      "string": "Gap Limit Обновлен"
+    },
+    "gap_limit_update_description": {
+      "string": "Изменения вступят в силу после перезапуска приложения."
+    }
+  },
+  "rgs": {
+    "server_url": {
+      "string": "URL Сервера Rapid-Gossip-Sync"
+    },
+    "button_connect": {
+      "string": "Подключиться"
+    },
+    "update_success_title": {
+      "string": "Сервер Rapid-Gossip-Sync Обновлён"
+    },
+    "update_success_description": {
+      "string": "Возможно, вам потребуется перезапустить приложение один или два раза, чтобы изменения вступили в силу."
+    }
+  },
+  "wr": {
+    "error_wr": {
+      "string": "Ошибка Web Relay"
+    },
+    "error_url": {
+      "string": "Пожалуйста, укажите URL для подключения."
+    },
+    "error_https": {
+      "string": "Недействительный HTTPS URL."
+    },
+    "error_healthcheck": {
+      "string": "Проверка Состояния Не Удалась"
+    },
+    "url_updated_title": {
+      "string": "Web Relay Обновлён"
+    },
+    "url_updated_message": {
+      "string": "Успешно подключено к {url}"
+    }
+  }
+}

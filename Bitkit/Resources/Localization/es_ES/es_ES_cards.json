@@ -1,0 +1,91 @@
+{
+  "discount": {
+    "description": {
+      "string": "Saldo de gastos"
+    }
+  },
+  "invite": {
+    "description": {
+      "string": "Comparta Bitkit"
+    }
+  },
+  "lightning": {
+    "description": {
+      "string": "Pagos instantáneos"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Transferir"
+    },
+    "description": {
+      "string": "En progreso..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Conectando"
+    },
+    "description": {
+      "string": "Listo en unos 10 minutos"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Preparado"
+    },
+    "description": {
+      "string": "¡Conectado!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Transferir"
+    },
+    "description": {
+      "string": "Listo en ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "description": {
+      "string": "Mantenga abierta la app"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "PROTEGER"
+    },
+    "description": {
+      "string": "Establezca un código PIN"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Perfil"
+    },
+    "description": {
+      "string": "Introduzca sus datos"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Soporte"
+    },
+    "description": {
+      "string": "Consiga asistencia"
+    }
+  },
+  "buyBitcoin": {
+    "description": {
+      "string": "Compra algo de bitcoin"
+    }
+  },
+  "btFailed": {
+    "description": {
+      "string": "Inténtalo de nuevo"
+    }
+  },
+  "suggestions": {
+    "string": "Sugerencias"
+  }
+}

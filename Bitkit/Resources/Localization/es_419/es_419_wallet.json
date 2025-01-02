@@ -1,0 +1,339 @@
+{
+  "send": {
+    "string": "Enviar"
+  },
+  "receive": {
+    "string": "Recibir"
+  },
+  "send_bitcoin": {
+    "string": "Enviar Bitcoin"
+  },
+  "send_to": {
+    "string": "Para"
+  },
+  "recipient_contact": {
+    "string": "Contactar"
+  },
+  "send_invoice": {
+    "string": "Factura"
+  },
+  "send_amount": {
+    "string": "Cantidad de Bitcoin"
+  },
+  "send_max": {
+    "string": "MAX"
+  },
+  "send_done": {
+    "string": "HECHO"
+  },
+  "send_available_spending": {
+    "string": "Disponible (para gasto)"
+  },
+  "send_available_savings": {
+    "string": "Disponible (ahorro)"
+  },
+  "send_review": {
+    "string": "Revisar y enviar"
+  },
+  "send_confirming_in": {
+    "string": "Confirmando en"
+  },
+  "send_invoice_expiration": {
+    "string": "Expiración de la factura"
+  },
+  "send_swipe": {
+    "string": "Deslizar para pagar"
+  },
+  "send_yes": {
+    "string": "Sí, enviar"
+  },
+  "send_dialog1": {
+    "string": "Parece que está enviando más de 100 dólares. ¿Desea continuar?"
+  },
+  "send_dialog2": {
+    "string": "Parece que está enviando más del 50% de su saldo total. ¿Desea continuar?"
+  },
+  "send_dialog3": {
+    "string": "La comisión de transacción parece ser superior al 50% del importe que está enviando. ¿Desea continuar?"
+  },
+  "send_dialog4": {
+    "string": "La tasa de transacción parece ser superior a 10 dólares. ¿Desea continuar?"
+  },
+  "send_dialog5_title": {
+    "string": "La tasa es potencialmente demasiado baja"
+  },
+  "send_sent": {
+    "string": "Bitcoin Enviado"
+  },
+  "send_instant_failed": {
+    "string": "Pagamiento instantáneo ha fallado."
+  },
+  "send_regular": {
+    "string": "Pagamiento regular"
+  },
+  "send_error_slash_ln": {
+    "string": "Lamentablemente, el contacto no se puede pagar al instante. Puede intentar un pago regular (más caro, más lento)."
+  },
+  "send_error_tx_failed": {
+    "string": "Transacción ha fallado"
+  },
+  "error_no_invoice": {
+    "string": "No se ha encontrado ninguna factura Lightning"
+  },
+  "error_no_tx_title": {
+    "string": "No hay ninguna transacción disponible para emitir."
+  },
+  "error_no_tx_msg": {
+    "string": "Por favor, verifique la información de su transacción e inténtelo de nuevo."
+  },
+  "error_min_fee_msg": {
+    "string": "Por favor, aumente su cuota e inténtelo de nuevo."
+  },
+  "send_details": {
+    "string": "Detalles"
+  },
+  "send_fee_and_speed": {
+    "string": "Velocidad y tarifa"
+  },
+  "send_fee_speed": {
+    "string": "Velocidad"
+  },
+  "send_fee_custom": {
+    "string": "Fijar tarifa personalizada"
+  },
+  "tags": {
+    "string": "Etiquetas"
+  },
+  "tags_add": {
+    "string": "Añadir etiqueta"
+  },
+  "tags_add_button": {
+    "string": "Añadir"
+  },
+  "tags_new": {
+    "string": "Nueva etiqueta"
+  },
+  "tags_new_enter": {
+    "string": "Introduzca una nueva etiqueta"
+  },
+  "tags_previously": {
+    "string": "Etiquetas utilizadas anteriormente"
+  },
+  "tags_filter": {
+    "string": "Filtrar la actividad mediante etiquetas"
+  },
+  "tags_filter_title": {
+    "string": "Seleccionar etiqueta"
+  },
+  "tags_no": {
+    "string": "Aún no hay etiquetas disponibles"
+  },
+  "selection_title": {
+    "string": "Selección de monedas"
+  },
+  "selection_auto": {
+    "string": "Automático"
+  },
+  "selection_total_required": {
+    "string": "Total necesario"
+  },
+  "selection_total_selected": {
+    "string": "Total seleccionado"
+  },
+  "receive_bitcoin": {
+    "string": "Recibir Bitcoin"
+  },
+  "receive_share_address": {
+    "string": "Compartir dirección de recepción"
+  },
+  "receive_lightning_invoice": {
+    "string": "Factura Lightning"
+  },
+  "receive_note_placeholder": {
+    "string": "Nota opcional para el pagador"
+  },
+  "receive_show_qr": {
+    "string": "Mostrar código QR"
+  },
+  "receive_text_lnfunds": {
+    "string": "Quiero recibir"
+  },
+  "receive_spending": {
+    "string": "Recibir en Saldo de Gastos"
+  },
+  "receive_cjit_error": {
+    "string": "Transacción ha fallado"
+  },
+  "receive_will": {
+    "string": "Recibirás"
+  },
+  "activity": {
+    "string": "Actividad"
+  },
+  "activity_show_all": {
+    "string": "Mostrar toda la actividad"
+  },
+  "activity_no": {
+    "string": "Aún no hay actividad"
+  },
+  "activity_no_explain": {
+    "string": "Reciba algunos fondos para empezar"
+  },
+  "activity_sent": {
+    "string": "Enviado"
+  },
+  "activity_received": {
+    "string": "Recibido"
+  },
+  "activity_failed": {
+    "string": "Fallido"
+  },
+  "activity_transfer": {
+    "string": "Transferir"
+  },
+  "activity_confirms_in": {
+    "string": "Confirma en {feeRateDescription}"
+  },
+  "activity_confirms_in_boosted": {
+    "string": "Refuerzo. Confirma en {feeRateDescription}"
+  },
+  "activity_low_fee": {
+    "string": "Tarifa potencialmente demasiado baja"
+  },
+  "activity_bitcoin_sent": {
+    "string": "Bitcoin enviado"
+  },
+  "activity_bitcoin_received": {
+    "string": "Bitcoin recibido"
+  },
+  "activity_confirming": {
+    "string": "Confirmando"
+  },
+  "activity_confirmed": {
+    "string": "Confirmado"
+  },
+  "activity_removed": {
+    "string": "Eliminado de Mempool"
+  },
+  "activity_boosting": {
+    "string": "Impulsando"
+  },
+  "activity_fee": {
+    "string": "Tarifa"
+  },
+  "activity_status": {
+    "string": "Estatus"
+  },
+  "activity_date": {
+    "string": "Fecha"
+  },
+  "activity_time": {
+    "string": "Tiempo"
+  },
+  "activity_contact": {
+    "string": "Contactar"
+  },
+  "activity_assign": {
+    "string": "Asignar"
+  },
+  "activity_detach": {
+    "string": "Separar"
+  },
+  "activity_tag": {
+    "string": "Etiquetar"
+  },
+  "activity_boost": {
+    "string": "Impulsar"
+  },
+  "activity_boosted": {
+    "string": "Ya impulsado"
+  },
+  "activity_explore": {
+    "string": "Explorar"
+  },
+  "activity_tx_id": {
+    "string": "ID de la transacción"
+  },
+  "activity_payment_hash": {
+    "string": "Hash de pagamiento"
+  },
+  "activity_address": {
+    "string": "Dirección"
+  },
+  "activity_boosted_cpfp": {
+    "string": "TRANSACCIÓN IMPULSADA {num} (CPFP)"
+  },
+  "activity_boosted_rbf": {
+    "string": "TRANSACCIÓN IMPULSADA {num} (RBF)"
+  },
+  "activity_explorer": {
+    "string": "Abrir el Explorador de bloques"
+  },
+  "activity_successful": {
+    "string": "Éxito"
+  },
+  "activity_invoice": {
+    "string": "Factura"
+  },
+  "activity_all": {
+    "string": "Toda la actividad"
+  },
+  "activity_tabs": {
+    "all": {
+      "string": "Todas"
+    },
+    "sent": {
+      "string": "Enviado"
+    },
+    "received": {
+      "string": "Recibido"
+    },
+    "other": {
+      "string": "Otros"
+    }
+  },
+  "details_savings_title": {
+    "string": "Ahorro"
+  },
+  "savings": {
+    "title": {
+      "string": "Ahorro"
+    }
+  },
+  "tx_invalid": {
+    "string": "Transacción no válida"
+  },
+  "boost": {
+    "string": "Impulsar"
+  },
+  "boost_fee_custom": {
+    "string": "Su transacción puede liquidarse más rápidamente si incluye una tasa de red adicional. Establezca su tarifa personalizada a continuación."
+  },
+  "boost_fee_recomended": {
+    "string": "Su transacción puede liquidarse más rápidamente si incluye una comisión de red adicional. He aquí una recomendación:"
+  },
+  "boost_swipe": {
+    "string": "Deslizar para impulsar"
+  },
+  "payment_received": {
+    "string": "Bitcoin recibido"
+  },
+  "error_broadcast_tx_connection": {
+    "string": "Por favor, verifique su conexión e inténtelo de nuevo.\n{message}"
+  },
+  "filter_title": {
+    "string": "Seleccionar gama"
+  },
+  "filter_clear": {
+    "string": "Limpiar"
+  },
+  "filter_apply": {
+    "string": "Aplicarse"
+  },
+  "reorg_msg_end": {
+    "string": "Por favor, compruebe su lista de actividades para ver las transacciones afectadas."
+  },
+  "receive_insufficient_text": {
+    "string": "Capacidad de recepción insuficiente para recibir esta cantidad a través de Lightning."
+  }
+}

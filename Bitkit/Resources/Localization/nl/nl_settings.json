@@ -1,0 +1,681 @@
+{
+  "dev_enabled_title": {
+    "string": "Dev Instellingen ingeschakeld"
+  },
+  "dev_enabled_message": {
+    "string": "Opties voor ontwikkelaars zijn nu in de hele app ingeschakeld."
+  },
+  "dev_disabled_title": {
+    "string": "Dev Instellingen Uitgeschakeld"
+  },
+  "dev_disabled_message": {
+    "string": "Opties voor ontwikkelaars zijn nu in de hele app uitgeschakeld."
+  },
+  "general_title": {
+    "string": "Algemeen"
+  },
+  "security_title": {
+    "string": "Beveiliging en Privacy"
+  },
+  "backup_title": {
+    "string": "Backup of Herstellen"
+  },
+  "advanced_title": {
+    "string": "Geavanceerd"
+  },
+  "about_title": {
+    "string": "Over"
+  },
+  "support_title": {
+    "string": "Ondersteuning"
+  },
+  "about": {
+    "title": {
+      "string": "Over Bitkit"
+    },
+    "text": {
+      "string": "Bedankt dat u als Bitcoiner verantwoordelijkheid neemt.\nVerander van wallet, verander de wereld.\n\nBitkit geeft u de sleutels tot uw geld, profiel, contacten en webaccounts.\n\nBitkit is gemaakt door Synonym Software Ltd."
+    },
+    "legal": {
+      "string": "Juridisch"
+    },
+    "share": {
+      "string": "Delen"
+    },
+    "version": {
+      "string": "Versie"
+    },
+    "shareText": {
+      "string": "Verander van wallet, verander de wereld. Download Bitkit voor iPhone {appStoreUrl} of Android {playStoreUrl}"
+    }
+  },
+  "dev_title": {
+    "string": "Dev Instellingen"
+  },
+  "general": {
+    "currency_local": {
+      "string": "Lokale valuta"
+    },
+    "currency_local_title": {
+      "string": "Lokale Valuta"
+    },
+    "currency_footer": {
+      "string": "Prijzen verzorgd door Bitfinex & CoinGecko."
+    },
+    "currency_most_used": {
+      "string": "Meest Gebruikt"
+    },
+    "currency_other": {
+      "string": "Andere Valuta"
+    },
+    "unit": {
+      "string": "Standaard eenheid"
+    },
+    "unit_title": {
+      "string": "Standaard eenheid"
+    },
+    "unit_display": {
+      "string": "Bedragen weergeven in"
+    },
+    "unit_bitcoin": {
+      "string": "Bitcoin"
+    },
+    "unit_note": {
+      "string": "Tip: Schakel snel tussen Bitcoin en {currency} door op uw wallet saldo te tikken."
+    },
+    "denomination_label": {
+      "string": "Bitcoin-denominatie"
+    },
+    "denomination_modern": {
+      "string": "Modern (₿ 10 000)"
+    },
+    "denomination_classic": {
+      "string": "Klassiek (₿ 0.00010000)"
+    },
+    "speed": {
+      "string": "Transactiesnelheid"
+    },
+    "speed_title": {
+      "string": "Transactiesnelheid"
+    },
+    "speed_default": {
+      "string": "Standaard Transactiesnelheid"
+    },
+    "speed_fee_custom": {
+      "string": "Vergoeding Instellen"
+    },
+    "speed_fee_total": {
+      "string": "₿ {feeSats} voor de gemiddelde transactie"
+    },
+    "speed_fee_total_fiat": {
+      "string": "₿ {feeSats} voor de gemiddelde transactie ({fiatSymbol}{fiatFormatted} )"
+    },
+    "tags": {
+      "string": "Labels"
+    },
+    "tags_previously": {
+      "string": "Eerder gebruikte labels"
+    }
+  },
+  "widgets": {
+    "nav_title": {
+      "string": "Widgets"
+    },
+    "showWidgets": {
+      "string": "Widgets"
+    },
+    "showWidgetTitles": {
+      "string": "Widget titels tonen"
+    }
+  },
+  "security": {
+    "title": {
+      "string": "Veiligheid en privacy"
+    },
+    "swipe_balance_to_hide": {
+      "string": "Veeg de balans om te verbergen"
+    },
+    "hide_balance_on_open": {
+      "string": "Saldo verbergen bij open"
+    },
+    "clipboard": {
+      "string": "Klembord lezen voor gemak in gebruik"
+    },
+    "warn_100": {
+      "string": "Waarschuur mij met betalingen over $100"
+    },
+    "pin": {
+      "string": "Pincode"
+    },
+    "pin_change": {
+      "string": "Pincode veranderen"
+    },
+    "pin_launch": {
+      "string": "Vereis pincode met opstarten"
+    },
+    "pin_idle": {
+      "string": "Vereis pincode bij inactiviteit"
+    },
+    "pin_payments": {
+      "string": "Vereis pincode voor betalingen"
+    },
+    "pin_enabled": {
+      "string": "Geactiveerd"
+    },
+    "pin_disabled": {
+      "string": "Uitgeschakeld"
+    },
+    "use_bio": {
+      "string": "Gebruik in plaats daarvan {biometryTypeName}"
+    },
+    "footer": {
+      "string": "Wanneer deze optie is geactiveerd kunt u {biometryTypeName}gebruiken in plaats van uw pincode om de wallet ontgrendelen en betalingen te maken. "
+    }
+  },
+  "backup": {
+    "title": {
+      "string": "Backup Of Herstellen"
+    },
+    "wallet": {
+      "string": "Backup uw wallet"
+    },
+    "export": {
+      "string": "Exporteer wallet data naar de telefoon"
+    },
+    "reset": {
+      "string": "Reset en herstel wallet"
+    },
+    "failed_title": {
+      "string": "Data Backup Mislukt"
+    },
+    "failed_message": {
+      "string": "Bitkit heeft geen back-up gemaakt van uw wallet gegevens. Opnieuw proberen in {interval, plural, one {# minute} andere {# minutes}}."
+    },
+    "latest": {
+      "string": "laatste back-ups van gegevens"
+    },
+    "status_failed": {
+      "string": "Mislukte Backups: {time}"
+    },
+    "status_success": {
+      "string": "Meest Recente Backup: {time}"
+    },
+    "category_connections": {
+      "string": "Verbindingen"
+    },
+    "category_connection_receipts": {
+      "string": "Overzichten Van Verbindingen"
+    },
+    "category_transaction_log": {
+      "string": "Transactie Log"
+    },
+    "category_settings": {
+      "string": "Instellingen"
+    },
+    "category_widgets": {
+      "string": "Widgets"
+    },
+    "category_tags": {
+      "string": "Labels"
+    },
+    "category_profile": {
+      "string": "Profiel"
+    },
+    "category_contacts": {
+      "string": "Contacten"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Ondersteuning"
+    },
+    "text": {
+      "string": "Hulp nodig? Meld uw probleem vanuit Bitkit, bezoek het helpcentrum, controleer de status of neem contact met ons op via onze sociale kanalen."
+    },
+    "report": {
+      "string": "Probleem rapporteren"
+    },
+    "help": {
+      "string": "Helpcentrum"
+    },
+    "status": {
+      "string": "App-status"
+    },
+    "report_text": {
+      "string": "Beschrijf het probleem dat u ondervindt of stel maar een vraag."
+    },
+    "label_address": {
+      "string": "E-mailadres"
+    },
+    "label_message": {
+      "string": "Probleem of vraag"
+    },
+    "placeholder_address": {
+      "string": "satoshi@satoshi.com"
+    },
+    "placeholder_message": {
+      "string": "Beschrijf het probleem of stel een vraag"
+    },
+    "text_button": {
+      "string": "Verstuur"
+    },
+    "title_success": {
+      "string": "Succesvol verzonden"
+    },
+    "text_success": {
+      "string": "Bedankt dat u contact met ons heeft opgenomen! Wij proberen zo snel mogelijk contact met u op te nemen."
+    },
+    "text_success_button": {
+      "string": "OK"
+    },
+    "title_unsuccess": {
+      "string": "Niet verzonden"
+    },
+    "text_unsuccess": {
+      "string": "Er is iets misgegaan tijdens het verzenden van uw vraag of probleem. Probeer het opnieuw."
+    },
+    "text_unsuccess_button": {
+      "string": "Opnieuw proberen"
+    }
+  },
+  "status": {
+    "title": {
+      "string": "App-status"
+    },
+    "internet": {
+      "title": {
+        "string": "Internet"
+      },
+      "ready": {
+        "string": "Aangesloten"
+      },
+      "pending": {
+        "string": "Opnieuw verbinden..."
+      },
+      "error": {
+        "string": "Ontkoppeld"
+      }
+    },
+    "bitcoin_node": {
+      "title": {
+        "string": "Bitcoin-node"
+      },
+      "ready": {
+        "string": "Aangesloten"
+      },
+      "pending": {
+        "string": "Aansluiten..."
+      },
+      "error": {
+        "string": "Kan geen verbinding maken met Electrum"
+      }
+    },
+    "lightning_node": {
+      "title": {
+        "string": "Lightning Node"
+      },
+      "ready": {
+        "string": "Gesynchroniseerd"
+      },
+      "pending": {
+        "string": "Synchroniseren..."
+      },
+      "error": {
+        "string": "Kon niet starten"
+      }
+    },
+    "lightning_connection": {
+      "title": {
+        "string": "Lightning-verbinding"
+      },
+      "ready": {
+        "string": "Open"
+      },
+      "pending": {
+        "string": "Openen..."
+      },
+      "error": {
+        "string": "Geen open verbindingen"
+      }
+    },
+    "full_backup": {
+      "title": {
+        "string": "Laatste volledige gegevensback-up"
+      },
+      "ready": {
+        "string": "Back-up klaar"
+      },
+      "pending": {
+        "string": "Een back-up maken..."
+      },
+      "error": {
+        "string": "Volledige back-up niet voltooid"
+      }
+    }
+  },
+  "adv": {
+    "section_payments": {
+      "string": "Betalingen"
+    },
+    "section_networks": {
+      "string": "Netwerken"
+    },
+    "section_other": {
+      "string": "Overige"
+    },
+    "address_type": {
+      "string": "Bitcoin adres type"
+    },
+    "monitored_address_types": {
+      "string": "Bewaakte adrestypes"
+    },
+    "monitored_address_types_update_title": {
+      "string": "Bewaakte adrestypes bijgewerkt"
+    },
+    "monitored_address_types_update_description": {
+      "string": "Wijzigingen worden volledig van kracht nadat de app opnieuw is opgestart."
+    },
+    "gap_limit": {
+      "string": "Adres Gap Limit"
+    },
+    "coin_selection": {
+      "string": "Coin selectie"
+    },
+    "cs_method": {
+      "string": "Coin Selectie Methode"
+    },
+    "cs_manual": {
+      "string": "Manueel"
+    },
+    "cs_auto": {
+      "string": "Autopilot"
+    },
+    "cs_auto_mode": {
+      "string": "Autopilot Mode"
+    },
+    "cs_max": {
+      "string": "Meer privé"
+    },
+    "cs_max_description": {
+      "string": "Sorteer op en gebruik eerst de kleinste UTXO. Hogere kosten, maar verbergt uw grootste UTXO's."
+    },
+    "cs_min": {
+      "string": "Laagste kosten"
+    },
+    "cs_min_description": {
+      "string": "Sorteer op en gebruik de grootste UTXO eerst. Laagste kosten, maar onthult uw grootste UTXO's."
+    },
+    "cs_consolidate": {
+      "string": "Consolideren"
+    },
+    "cs_consolidate_description": {
+      "string": "Gebruik alle beschikbare UTXO's, ongeacht het bedrag dat verzonden wordt. Gebruik deze methode wanneer de kosten laag zijn om de kosten bij toekomstige transacties te verlagen."
+    },
+    "payment_preference": {
+      "string": "Betaalvoorkeuren"
+    },
+    "pp_header": {
+      "string": "Selecteer op welke manier u het liefst geld ontvangt wanneer andere geld sturen naar uw profielsleutel."
+    },
+    "pp_footer": {
+      "string": "*Dit vereist het delen van data om betalingen te kunnen maken"
+    },
+    "pp_drag": {
+      "string": "Uw voorkeuren voor betalingsmethodes (u kunt de volgorde aanpassen door te slepen)"
+    },
+    "pp_contacts": {
+      "string": "Betalingen naar/van contacten"
+    },
+    "pp_contacts_switch": {
+      "string": "Activeer betalingen met contacten*"
+    },
+    "address_viewer": {
+      "string": "Bekijk Adressen"
+    },
+    "rescan": {
+      "string": "Scan Adressen Opnieuw"
+    },
+    "suggestions_reset": {
+      "string": "Herstel Suggesties"
+    },
+    "reset_title": {
+      "string": "De Suggesties Resetten?"
+    },
+    "reset_desc": {
+      "string": "Weet u zeker dat u de suggesties wilt resetten? Ze zullen opnieuw verschijnen als u ze heeft verwijderd van het overzichtsscherm van uw Bitkit wallet."
+    },
+    "reset_confirm": {
+      "string": "Ja, Resetten"
+    },
+    "lightning_connections": {
+      "string": "Lightning Verbindingen"
+    },
+    "lightning_node": {
+      "string": "Lightning Node"
+    },
+    "electrum_server": {
+      "string": "Electrum Server"
+    },
+    "rgs_server": {
+      "string": "Rapid-Gossip-Sync"
+    },
+    "web_relay": {
+      "string": "Slashtags Web Relais"
+    },
+    "bitcoin_network": {
+      "string": "Bitcoin Netwerk"
+    }
+  },
+  "fee": {
+    "fast": {
+      "label": {
+        "string": "Snel (duurdere optie)"
+      },
+      "value": {
+        "string": "Snel"
+      },
+      "description": {
+        "string": "± 10-20 minuten"
+      }
+    },
+    "normal": {
+      "label": {
+        "string": "Normaal"
+      },
+      "value": {
+        "string": "Normaal"
+      },
+      "description": {
+        "string": "± 20-60 minuten"
+      }
+    },
+    "slow": {
+      "label": {
+        "string": "Langzaam (goedkopere optie)"
+      },
+      "value": {
+        "string": "Langzaam"
+      },
+      "description": {
+        "string": "± 1-2 uur"
+      }
+    },
+    "custom": {
+      "label": {
+        "string": "Op maat"
+      },
+      "value": {
+        "string": "Op maat"
+      },
+      "description": {
+        "string": "Afhankelijk van de kosten"
+      }
+    }
+  },
+  "addr": {
+    "no_addrs": {
+      "string": "Geen Addressen Om Te Tonen"
+    },
+    "loading": {
+      "string": "Adressen Aan Het Laden..."
+    },
+    "no_funds_receiving": {
+      "string": "Geen geld gevonden voor het {addressType}adres type, ontvangstadressen tot index {index}."
+    },
+    "no_funds_change": {
+      "string": "Geen geld gevonden voor het {addressType}adres type, wisselgeld adressen tot index {index}. "
+    },
+    "no_addrs_with_funds": {
+      "string": "Geen adressen met geld gevonden voor de zoekterm \"{searchTxt}\""
+    },
+    "no_addrs_str": {
+      "string": "Geen adressen gevonden voor de zoekterm \"{searchTxt}\""
+    },
+    "rescan_error": {
+      "string": "Rescan mislukt"
+    },
+    "rescan_error_description": {
+      "string": "Bitkit kon de saldi van de adressen niet controleren."
+    },
+    "spend_number": {
+      "string": "{count, plural, one {Geef ₿ {fundsToSpend} uit vanuit # adres} other {Geef ₿ {fundsToSpend} uit vanuit # adressen}}"
+    },
+    "spend_all": {
+      "string": "{count, plural, one {Geef Al Het Geld Uit Voor # adres} other {Geef Al Het Geld Uit Voor # adressen}}"
+    },
+    "index": {
+      "string": "Index: {index}"
+    },
+    "path": {
+      "string": "Pad: {path}"
+    },
+    "private_hide": {
+      "string": "Verberg De Privésleutel"
+    },
+    "private_view": {
+      "string": "Toon De Privésleutel"
+    },
+    "private_key": {
+      "string": "Privésleutel: {privateKey}"
+    },
+    "addr_change": {
+      "string": "Wisselgeld Adressen"
+    },
+    "addr_receiving": {
+      "string": "Ontvangstadressen"
+    },
+    "sats_found": {
+      "string": "₿ {totalBalance} gevonden"
+    },
+    "gen_20": {
+      "string": "Genereer Er 20 Bij"
+    },
+    "check_balances": {
+      "string": "Inspecteer Uw Saldo's"
+    },
+    "copied": {
+      "string": "Gekopieerd naar het klembord"
+    }
+  },
+  "es": {
+    "error_host_port": {
+      "string": "Geef de gegevens van de hostcomputer en poort voor de verbinding."
+    },
+    "error_host": {
+      "string": "Geef de gegevens van de hostcomputer en poort voor de verbinding. "
+    },
+    "error_port": {
+      "string": "Geef de poort voor de verbinding."
+    },
+    "error_port_invalid": {
+      "string": "Geef een geldige poort op."
+    },
+    "error_invalid_http": {
+      "string": "Geef een geldige url op."
+    },
+    "error_peer": {
+      "string": "Electrum Fout"
+    },
+    "server_updated_title": {
+      "string": "Electrum Server Aangepast"
+    },
+    "server_updated_message": {
+      "string": "Succesvolle verbinding met {host}:{port}"
+    },
+    "server_error": {
+      "string": "Electrum Verbinding Mislukt"
+    },
+    "server_error_description": {
+      "string": "Bitkit kon geen verbinding maken met Electrum."
+    },
+    "connected_to": {
+      "string": "Momenteel verbonden met"
+    },
+    "disconnected": {
+      "string": "verbinding verbroken"
+    },
+    "host": {
+      "string": "Hostcomputer"
+    },
+    "port": {
+      "string": "Poort"
+    },
+    "protocol": {
+      "string": "Protocol"
+    },
+    "button_reset": {
+      "string": "Resetten Naar Standaardwaarden"
+    },
+    "button_connect": {
+      "string": "Verbind Met Hostcomputer"
+    }
+  },
+  "gap": {
+    "save": {
+      "string": "Opslaan"
+    },
+    "reset": {
+      "string": "Resetten"
+    },
+    "gap_limit_update_title": {
+      "string": "Adres Gat Limiet Bijgewerkt"
+    },
+    "gap_limit_update_description": {
+      "string": "Wijzigingen worden volledig van kracht nadat de app opnieuw is opgestart."
+    }
+  },
+  "rgs": {
+    "server_url": {
+      "string": "Rapid-Gossip-Sync Server URL"
+    },
+    "button_connect": {
+      "string": "Verbind"
+    },
+    "update_success_title": {
+      "string": "Rapid-Gossip-Sync Server Bijgewerkt"
+    },
+    "update_success_description": {
+      "string": "Misschien moet u de app een of twee keer opnieuw starten voor deze wijziging."
+    }
+  },
+  "wr": {
+    "error_wr": {
+      "string": "Web Relay Fout"
+    },
+    "error_url": {
+      "string": "Geef een URL op om mee te verbinden."
+    },
+    "error_https": {
+      "string": "Geen geldige HTTPS url."
+    },
+    "error_healthcheck": {
+      "string": "Healthcheck Mislukt"
+    },
+    "url_updated_title": {
+      "string": "Web Relay Bijgewerkt"
+    },
+    "url_updated_message": {
+      "string": "Succesvol verbonden met {url}"
+    }
+  }
+}
