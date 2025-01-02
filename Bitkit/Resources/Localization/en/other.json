@@ -1,0 +1,280 @@
+{
+	"qr_scan": {
+		"string": "Scan QR Code"
+	},
+	"qr_error_header": {
+		"string": "Unable To Read QR"
+	},
+	"qr_error_text": {
+		"string": "Bitkit is not able to read this QR code."
+	},
+	"qr_error_no_data_header": {
+		"string": "Unable to Read Data"
+	},
+	"qr_error_no_data_text": {
+		"string": "Bitkit could not read the provided data."
+	},
+	"qr_error_network_header": {
+		"string": "Incorrect Network"
+	},
+	"qr_error_network_text": {
+		"string": "Bitkit is currently set to {selectedNetwork} but data is for {dataNetwork}."
+	},
+	"qr_paste": {
+		"string": "Paste QR Code"
+	},
+	"buy_header": {
+		"string": "Buy some\n<accent>Bitcoin</accent>"
+	},
+	"buy_text": {
+		"string": "Don’t have any Bitcoin or need more?"
+	},
+	"buy_button": {
+		"string": "Choose Exchange"
+	},
+	"error_keychain": {
+		"string": "Data Connection Issue"
+	},
+	"error_keychain_msg": {
+		"string": "Could not load primary key from keychain."
+	},
+	"connection_restored_title": {
+		"string": "Electrum Connection Restored"
+	},
+	"connection_restored_message": {
+		"string": "Bitkit successfully reconnected to Electrum."
+	},
+	"connection_issue": {
+		"string": "Internet Connectivity Issues"
+	},
+	"connection_issue_explain": {
+		"string": "It appears you’re disconnected, trying to reconnect..."
+	},
+	"connection_reconnect_title": {
+		"string": "Reconnecting To Electrum"
+	},
+	"connection_reconnect_msg": {
+		"string": "Lost connection to Electrum, trying to reconnect..."
+	},
+	"connection_back_title": {
+		"string": "Internet Connection Restored"
+	},
+	"connection_back_msg": {
+		"string": "Bitkit successfully reconnected to the Internet."
+	},
+	"high_balance": {
+		"nav_title": {
+			"string": "High Balance"
+		},
+		"title": {
+			"string": "High\n<accent>Balance</accent>"
+		},
+		"text": {
+			"string": "<accent>Your wallet balance exceeds $500.</accent>\nFor your security, consider moving some of your savings to an offline wallet."
+		},
+		"continue": {
+			"string": "Understood"
+		},
+		"cancel": {
+			"string": "Learn More"
+		}
+	},
+	"update_critical_nav_title": {
+		"string": "Critical Update"
+	},
+	"update_critical_title": {
+		"string": "Update\n<accent>Bitkit now</accent>"
+	},
+	"update_critical_text": {
+		"string": "There is a critical update for Bitkit. You must update to continue using Bitkit."
+	},
+	"update_critical_button": {
+		"string": "Update Bitkit"
+	},
+	"camera_ask_title": {
+		"string": "Permission to use camera"
+	},
+	"camera_ask_msg": {
+		"string": "Bitkit needs permission to use your camera"
+	},
+	"camera_no_text": {
+		"string": "<bold>It appears Bitkit does not have permission to access your camera.</bold>\n\nTo utilize this feature in the future you will need to enable camera permissions for this app from your phone's settings."
+	},
+	"clipboard_redirect_title": {
+		"string": "Clipboard Data Detected"
+	},
+	"clipboard_redirect_msg": {
+		"string": "Do you want to be redirected to the relevant screen?"
+	},
+	"pay_insufficient_savings": {
+		"string": "Insufficient Savings"
+	},
+	"pay_insufficient_spending": {
+		"string": "Insufficient Spending Balance"
+	},
+	"pay_insufficient_savings_description": {
+		"string": "More ₿ needed to pay this Bitcoin invoice."
+	},
+	"pay_insufficient_savings_amount_description": {
+		"string": "₿ {amount} more needed to pay this Bitcoin invoice."
+	},
+	"pay_insufficient_spending_amount_description": {
+		"string": "₿ {amount} more needed to pay this Lightning invoice."
+	},
+	"swipe": {
+		"string": "Swipe To Confirm"
+	},
+	"scan_err_decoding": {
+		"string": "Decoding Error"
+	},
+	"scan_err_interpret_title": {
+		"string": "Unable To Interpret Provided Data"
+	},
+	"scan_err_not_payable_msg": {
+		"string": "This QR code does not appear to contain payment data."
+	},
+	"rate_error_title": {
+		"string": "Bitcoin Price Update Failed"
+	},
+	"rate_error_msg_date": {
+		"string": "Bitkit could not update the current Bitcoin exchange rate. Using price from {date}"
+	},
+	"rate_error_msg_nodate": {
+		"string": "Bitkit could not update the current Bitcoin exchange rate. Please try again later."
+	},
+	"lnurl_pay_error": {
+		"string": "Unable To Pay (LNURL)"
+	},
+	"lnurl_ln_error_msg": {
+		"string": "Could not start local Lightning node. Please try again or restart Bitkit."
+	},
+	"lnurl_pay_error_no_capacity": {
+		"string": "Not enough outbound/sending capacity to complete lnurl-pay request."
+	},
+	"lnurl_channel_error": {
+		"string": "Unable To Open Channel (LNURL)"
+	},
+	"lnurl_channel_error_raw": {
+		"string": "An error occured when you tried paying: {raw}"
+	},
+	"lnurl_channel_header": {
+		"string": "Lightning Connection"
+	},
+	"lnurl_channel_title": {
+		"string": "New\nlightning\n<accent>connection</accent>"
+	},
+	"lnurl_channel_message": {
+		"string": "Do you want open a Lightning connection with this Lightning Service Provider?"
+	},
+	"lnurl_channel_lsp": {
+		"string": "Lightning service provider"
+	},
+	"lnurl_channel_node": {
+		"string": "Node ID"
+	},
+	"lnurl_channel_host": {
+		"string": "Host"
+	},
+	"lnurl_channel_port": {
+		"string": "Port"
+	},
+	"lnurl_blocktank_error": {
+		"string": "Bitkit could not connect to Blocktank."
+	},
+	"lnurl_channel_success_title": {
+		"string": "Channel Requested"
+	},
+	"lnurl_channel_success_msg_peer": {
+		"string": "Successfully requested channel from: {peer}"
+	},
+	"lnurl_channel_success_msg_no_peer": {
+		"string": "Successfully requested channel."
+	},
+	"lnurl_auth_error": {
+		"string": "Sign In Failed (LNURL)"
+	},
+	"lnurl_auth_error_msg": {
+		"string": "An error occurred when you attempted to sign in. {raw}"
+	},
+	"lnurl_auth_success_title": {
+		"string": "Signed In"
+	},
+	"lnurl_auth_success_msg_domain": {
+		"string": "You successfully signed in to {domain}."
+	},
+	"lnurl_auth_success_msg_no_domain": {
+		"string": "You successfully signed in."
+	},
+	"lnurl_withdr_error": {
+		"string": "Withdraw Failed (LNURL)"
+	},
+	"lnurl_withdr_error_generic": {
+		"string": "Sorry, an error occurred."
+	},
+	"lnurl_withdr_error_no_capacity": {
+		"string": "Not enough receiving capacity to complete withdraw request."
+	},
+	"lnurl_withdr_error_create_invoice": {
+		"string": "Could not create invoice for withdraw."
+	},
+	"lnurl_withdr_error_minmax": {
+		"string": "Incorrect LNURL withdraw params, min/max not set correctly."
+	},
+	"lnurl_withdr_success_title": {
+		"string": "Withdraw Requested"
+	},
+	"lnurl_withdr_success_msg": {
+		"string": "Your withdraw was successfully requested. Waiting for payment."
+	},
+	"phone_settings": {
+		"string": "Open Phone Settings"
+	},
+	"bt_error_retrieve": {
+		"string": "Transfer Failed"
+	},
+	"bt_error_connect": {
+		"string": "Unable to add LSP node as a peer at this time."
+	},
+	"bt_error_retrieve_msg": {
+		"string": "An error occurred when moving funds. {raw}"
+	},
+	"bt_channel_purchase_cost_error": {
+		"string": "You need {delta} more to complete this transaction."
+	},
+	"earlier": {
+		"string": "EARLIER"
+	},
+	"update_nav_title": {
+		"string": "Update Available"
+	},
+	"update_title": {
+		"string": "Update\n<accent>Bitkit</accent>"
+	},
+	"update_text": {
+		"string": "Please update Bitkit to the latest version for new features and bug fixes!"
+	},
+	"update_button": {
+		"string": "Update"
+	},
+	"try_again": {
+		"string": "Please try again."
+	},
+	"transfer_notification": {
+		"title": {
+			"string": "Important: Bitkit Transfer"
+		},
+		"body": {
+			"string": "Open Bitkit to complete your transfer"
+		}
+	},
+	"scan": {
+		"error": {
+			"generic": {
+				"string": "Bitkit is unable to read the provided data."
+			},
+			"expired": {
+				"string": "This Lightning invoice has expired."
+			}
+		}
+	}
+}
