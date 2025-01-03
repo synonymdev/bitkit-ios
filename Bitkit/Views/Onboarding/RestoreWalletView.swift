@@ -10,6 +10,7 @@ struct RestoreWalletView: View {
     
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    private let t = useTranslation(.onboarding)
     
     private var wordsPerColumn: Int {
         is24Words ? 12 : 6
@@ -37,17 +38,17 @@ struct RestoreWalletView: View {
             ScrollView {
                 VStack {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("RESTORE")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
-                            .foregroundColor(.blue)
-                        Text("YOUR WALLET")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
+                        let parts = t.parts("restore_header")
+                        parts.reduce(Text("")) { current, part in
+                            current + Text(part.text.uppercased())
+                                .font(.largeTitle)
+                                .fontWeight(.black)
+                                .foregroundColor(part.isAccent ? .blue : .primary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
-                    Text("Please type in your recovery phrase from any (paper) backup.")
+                    Text(t("restore_phrase"))
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     
@@ -112,13 +113,13 @@ struct RestoreWalletView: View {
             VStack {
                 HStack(spacing: 16) {
                     Button(action: { showingPassphraseAlert = true }) {
-                        Text("Advanced")
+                        Text(t("advanced"))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                     }
                     
                     Button(action: restoreWallet) {
-                        Text("Restore")
+                        Text(t("restore"))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                     }
@@ -133,8 +134,8 @@ struct RestoreWalletView: View {
         }
         
         .navigationBarTitleDisplayMode(.inline)
-        .alert("BIP39 Passphrase", isPresented: $showingPassphraseAlert) {
-            TextField("Enter passphrase", text: $tempPassphrase)
+        .alert(t("passphrase"), isPresented: $showingPassphraseAlert) {
+            TextField(t("restore_passphrase_placeholder"), text: $tempPassphrase)
                 .autocapitalization(.none)
                 .autocorrectionDisabled()
             Button("OK") {
@@ -145,12 +146,17 @@ struct RestoreWalletView: View {
                 tempPassphrase = ""
             }
         } message: {
-            Text("Enter an optional passphrase for additional security.")
+            Text(t("restore_passphrase_meaning"))
         }
     }
     
     private func restoreWallet() {
-        // TODO: validate mnemonic
+        // Validate mnemonic word count
+        let wordCount = bip39Mnemonic.split(separator: " ").count
+        guard wordCount == 12 || wordCount == 24 else {
+            app.toast("Please enter either 12 or 24 words")
+            return
+        }
 
         do {
             wallet.nodeLifecycleState = .initializing
