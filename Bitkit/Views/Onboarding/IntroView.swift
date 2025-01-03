@@ -16,11 +16,11 @@ struct IntroView: View {
                 
             VStack(alignment: .leading, spacing: 0) {
                 let parts = t.parts("welcome_title")
-                Text(parts[0].text.uppercased())
-                    .font(.system(size: 44, weight: .black)) +
-                Text(parts[1].text.uppercased())
-                    .font(.system(size: 44, weight: .black))
-                    .foregroundColor(Color.brand)
+                parts.reduce(Text("")) { current, part in
+                    current + Text(part.text.uppercased())
+                        .font(.system(size: 44, weight: .black))
+                        .foregroundColor(part.isAccent ? Color.brand : .primary)
+                }
                     
                 Text(t("welcome_text"))
                     .font(.title3)

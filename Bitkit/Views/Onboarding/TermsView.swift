@@ -12,9 +12,13 @@ struct TermsDeclarationText: View {
     
     var body: some View {
         let parts = t.parts("tos_checkbox_value")
-        Text(parts[0].text)
-            .foregroundColor(.secondary) +
-            Text("[\(parts[1].text)](https://bitkit.to/terms-of-use)")
+        parts.reduce(Text("")) { current, part in
+            current + Text(part.text)
+                .foregroundColor(part.isAccent ? .brand : .secondary)
+                .underline(part.isAccent)
+        }
+        .font(.subheadline)
+        .tint(.brand)
     }
 }
 
@@ -23,9 +27,13 @@ struct PrivacyDeclarationText: View {
     
     var body: some View {
         let parts = t.parts("pp_checkbox_value")
-        Text(parts[0].text)
-            .foregroundColor(.secondary) +
-            Text("[\(parts[1].text)](https://bitkit.to/privacy-policy)")
+        parts.reduce(Text("")) { current, part in
+            current + Text(part.text)
+                .foregroundColor(part.isAccent ? .brand : .secondary)
+                .underline(part.isAccent)
+        }
+        .font(.subheadline)
+        .tint(.brand)
     }
 }
 

@@ -10,9 +10,8 @@ struct OnboardingView: View {
                 // Slide 0
                 OnboardingTab(
                     imageName: "keyring",
-                    titleFirstLine: t.parts("slide0_header")[0].text,
-                    titleSecondLine: t.parts("slide0_header")[1].text,
-                    text: t("slide0_text"),
+                    title: t.parts("slide0_header"),
+                    text: t.parts("slide0_text"),
                     secondLineColor: .blue
                 )
                 .padding(.bottom, 30)
@@ -22,9 +21,8 @@ struct OnboardingView: View {
                 // Slide 1
                 OnboardingTab(
                     imageName: "lightning",
-                    titleFirstLine: t.parts("slide1_header")[0].text,
-                    titleSecondLine: t.parts("slide1_header")[1].text,
-                    text: t("slide1_text"),
+                    title: t.parts("slide1_header"),
+                    text: t.parts("slide1_text"),
                     disclaimerText: t("slide1_note"),
                     secondLineColor: .purple
                 )
@@ -35,9 +33,8 @@ struct OnboardingView: View {
                 // Slide 2
                 OnboardingTab(
                     imageName: "spark",
-                    titleFirstLine: t.parts("slide2_header")[0].text,
-                    titleSecondLine: t.parts("slide2_header")[1].text,
-                    text: t("slide2_text"),
+                    title: t.parts("slide2_header"),
+                    text: t.parts("slide2_text"),
                     secondLineColor: .yellow
                 )
                 .padding(.bottom, 30)
@@ -47,9 +44,8 @@ struct OnboardingView: View {
                 // Slide 3
                 OnboardingTab(
                     imageName: "shield",
-                    titleFirstLine: t.parts("slide3_header")[0].text,
-                    titleSecondLine: t.parts("slide3_header")[1].text,
-                    text: t("slide3_text"),
+                    title: t.parts("slide3_header"),
+                    text: t.parts("slide3_text"),
                     secondLineColor: .green
                 )
                 .padding(.bottom, 30)

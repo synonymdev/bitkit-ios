@@ -3,14 +3,14 @@ import SwiftUI
 struct CreateWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    private let t = useTranslation(.onboarding)
     
     var body: some View {
         VStack {
             OnboardingTab(
                 imageName: "wallet",
-                titleFirstLine: "YOUR KEYS,",
-                titleSecondLine: "YOUR COINS",
-                text: "Let's create your wallet. Please be aware that Bitkit is mobile software. Don't store all your money in Bitkit.",
+                title: t.parts("slide4_header"),
+                text: t.parts("slide4_text"),
                 secondLineColor: .brand
             )
             
@@ -25,7 +25,7 @@ struct CreateWalletView: View {
                         app.toast(error)
                     }
                 }) {
-                    Text("New Wallet")
+                    Text(t("new_wallet"))
                         .frame(maxWidth: .infinity)
                         .padding()
                         .background(Color.gray)
@@ -36,7 +36,7 @@ struct CreateWalletView: View {
                 NavigationLink {
                     RestoreWalletView()
                 } label: {
-                    Text("Restore")
+                    Text(t("restore"))
                         .frame(maxWidth: .infinity)
                         .padding()
                         .foregroundColor(.white)
