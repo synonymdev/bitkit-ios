@@ -6,6 +6,15 @@ enum TranslationSection: String, CaseIterable {
     case onboarding, wallet, common, settings, lightning, cards, fee
 }
 
+// MARK: - Translation Part Type
+struct TranslationPart {
+    let text: String
+    let isAccent: Bool
+    
+    // Allow using the part directly as a String
+    var description: String { text }
+}
+
 // MARK: - Translation Function Type
 struct Translation {
     let section: TranslationSection
@@ -13,11 +22,15 @@ struct Translation {
     func callAsFunction(_ key: String, _ args: [String: String] = [:]) -> String {
         LocalizationManager.shared.t(section: section, key: key, args: args)
     }
+    
+    func parts(_ key: String, _ args: [String: String] = [:]) -> [TranslationPart] {
+        let fullString = LocalizationManager.shared.t(section: section, key: key, args: args, preserveAccent: true)
+        return LocalizationManager.shared.splitIntoParts(fullString)
+    }
 }
 
 // MARK: - Global Translation Functions
 func t(_ key: String, _ args: [String: String] = [:]) -> String {
-    // Default to common section if no section specified
     LocalizationManager.shared.t(section: .common, key: key, args: args)
 }
 
@@ -70,15 +83,15 @@ class LocalizationManager {
         }
     }
     
-    func t(section: TranslationSection, key: String, args: [String: String] = [:]) -> String {
+    func t(section: TranslationSection, key: String, args: [String: String] = [:], preserveAccent: Bool = false) -> String {
         // Try to get translation from specified section
-        if let translation = getTranslation(from: section, key: key, args: args) {
+        if let translation = getTranslation(from: section, key: key, args: args, preserveAccent: preserveAccent) {
             return translation
         }
         
         // If not found and section isn't already common, try common section
         if section != .common {
-            if let commonTranslation = getTranslation(from: .common, key: key, args: args) {
+            if let commonTranslation = getTranslation(from: .common, key: key, args: args, preserveAccent: preserveAccent) {
                 return commonTranslation
             }
         }
@@ -89,7 +102,7 @@ class LocalizationManager {
     }
     
     // Helper function to get translation from a specific section
-    private func getTranslation(from section: TranslationSection, key: String, args: [String: String]) -> String? {
+    private func getTranslation(from section: TranslationSection, key: String, args: [String: String], preserveAccent: Bool) -> String? {
         guard let sectionTranslations = translations[section] else {
             return nil
         }
@@ -117,8 +130,53 @@ class LocalizationManager {
         for (key, value) in args {
             result = result.replacingOccurrences(of: "{{" + key + "}}", with: value)
         }
-        return result.replacingOccurrences(of: "<accent>", with: "")
-                    .replacingOccurrences(of: "</accent>", with: "")
+        
+        // Convert accent tags to markdown links if not preserving accents
+        if !preserveAccent {
+            switch key {
+            case "tos_checkbox_value":
+                result = result.replacingOccurrences(of: "<accent>terms of use</accent>", with: "[terms of use](https://bitkit.to/terms-of-use)")
+            case "pp_checkbox_value":
+                result = result.replacingOccurrences(of: "<accent>privacy policy</accent>", with: "[privacy policy](https://bitkit.to/privacy-policy)")
+            default:
+                result = result.replacingOccurrences(of: "<accent>", with: "")
+                         .replacingOccurrences(of: "</accent>", with: "")
+            }
+        }
+        return result
+    }
+    
+    // Split a string into parts based on accent tags
+    func splitIntoParts(_ string: String) -> [TranslationPart] {
+        var parts: [TranslationPart] = []
+        var currentIndex = string.startIndex
+        
+        while currentIndex < string.endIndex {
+            if let startRange = string[currentIndex...].range(of: "<accent>") {
+                // Add non-accented text before the tag if any
+                if currentIndex < startRange.lowerBound {
+                    let text = String(string[currentIndex..<startRange.lowerBound])
+                    parts.append(TranslationPart(text: text, isAccent: false))
+                }
+                
+                // Find the end of the accented text
+                if let endRange = string[startRange.upperBound...].range(of: "</accent>") {
+                    let text = String(string[startRange.upperBound..<endRange.lowerBound])
+                    parts.append(TranslationPart(text: text, isAccent: true))
+                    currentIndex = endRange.upperBound
+                } else {
+                    // Malformed string, no closing tag
+                    break
+                }
+            } else {
+                // No more accent tags, add remaining text
+                let text = String(string[currentIndex...])
+                parts.append(TranslationPart(text: text, isAccent: false))
+                break
+            }
+        }
+        
+        return parts
     }
     
     func setLanguage(_ lang: String) {
