@@ -9,7 +9,7 @@ struct CreateWalletView: View {
         VStack {
             OnboardingTab(
                 imageName: "wallet",
-                title: t.parts("slide4_header"),
+                title: t.parts("slide4_header_check)"),
                 text: t.parts("slide4_text"),
                 secondLineColor: .brand
             )
