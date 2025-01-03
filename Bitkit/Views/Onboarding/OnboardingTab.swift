@@ -21,10 +21,11 @@ struct OnboardingTab: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(titleFirstLine)
+                Text(titleFirstLine.uppercased())
                     .font(.largeTitle)
                     .fontWeight(.black)
-                Text(titleSecondLine)
+                    .foregroundColor(.primary) +
+                Text(titleSecondLine.uppercased())
                     .font(.largeTitle)
                     .fontWeight(.black)
                     .foregroundColor(secondLineColor)
