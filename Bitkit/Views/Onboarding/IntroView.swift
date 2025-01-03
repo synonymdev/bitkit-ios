@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct IntroView: View {
+    private let t = useTranslation(.onboarding)
+    
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -13,13 +15,14 @@ struct IntroView: View {
             Spacer()
                 
             VStack(alignment: .leading, spacing: 0) {
-                Text("YOU CAN ₿")
-                    .font(.system(size: 44, weight: .black))
-                Text("THE CHANGE")
+                let parts = t.parts("welcome_title")
+                Text(parts[0].text.uppercased())
+                    .font(.system(size: 44, weight: .black)) +
+                Text(parts[1].text.uppercased())
                     .font(.system(size: 44, weight: .black))
                     .foregroundColor(Color.brand)
                     
-                Text("Use Bitkit to pay anyone, anywhere, any time, and spend your bitcoin on the things you value in life.")
+                Text(t("welcome_text"))
                     .font(.title3)
                     .foregroundColor(.secondary)
                     .padding(.top, 8)
@@ -28,7 +31,7 @@ struct IntroView: View {
                 
             HStack(spacing: 16) {
                 NavigationLink(destination: OnboardingView()) {
-                    Text("Get Started")
+                    Text(t("get_started"))
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()
@@ -38,7 +41,7 @@ struct IntroView: View {
                 }
                     
                 NavigationLink(destination: OnboardingView(currentTab: 4)) {
-                    Text("Skip Intro")
+                    Text(t("skip_intro"))
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()

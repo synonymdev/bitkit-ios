@@ -2,49 +2,54 @@ import SwiftUI
 
 struct OnboardingView: View {
     @State var currentTab = 0
+    private let t = useTranslation(.onboarding)
     
     var body: some View {
         VStack {
             TabView(selection: $currentTab) {
+                // Slide 0
                 OnboardingTab(
                     imageName: "keyring",
-                    titleFirstLine: "FREEDOM",
-                    titleSecondLine: "IN YOUR POCKET",
-                    text: "Bitkit hands you the keys to manage your money. Spend now or save for later. The choice is yours.",
+                    titleFirstLine: t.parts("slide0_header")[0].text,
+                    titleSecondLine: t.parts("slide0_header")[1].text,
+                    text: t("slide0_text"),
                     secondLineColor: .blue
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
                 .tag(0)
                 
+                // Slide 1
                 OnboardingTab(
                     imageName: "lightning",
-                    titleFirstLine: "INSTANT",
-                    titleSecondLine: "PAYMENTS",
-                    text: "Spend bitcoin faster than ever. Enjoy instant and cheap payments with friends, family, and merchants*.",
-                    disclaimerText: "*Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes.", // TODO: check geoblock status
+                    titleFirstLine: t.parts("slide1_header")[0].text,
+                    titleSecondLine: t.parts("slide1_header")[1].text,
+                    text: t("slide1_text"),
+                    disclaimerText: t("slide1_note"),
                     secondLineColor: .purple
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
                 .tag(1)
                 
+                // Slide 2
                 OnboardingTab(
                     imageName: "spark",
-                    titleFirstLine: "BITCOINERS,",
-                    titleSecondLine: "BORDERLESS",
-                    text: "Take charge of your digital life with portable profiles and payable contacts.",
+                    titleFirstLine: t.parts("slide2_header")[0].text,
+                    titleSecondLine: t.parts("slide2_header")[1].text,
+                    text: t("slide2_text"),
                     secondLineColor: .yellow
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
                 .tag(2)
                 
+                // Slide 3
                 OnboardingTab(
                     imageName: "shield",
-                    titleFirstLine: "PRIVACY IS",
-                    titleSecondLine: "NOT A CRIME",
-                    text: "Swipe to hide your balance, enjoy more private payments, and protect your wallet by enabling security features.",
+                    titleFirstLine: t.parts("slide3_header")[0].text,
+                    titleSecondLine: t.parts("slide3_header")[1].text,
+                    text: t("slide3_text"),
                     secondLineColor: .green
                 )
                 .padding(.bottom, 30)
@@ -75,11 +80,11 @@ struct OnboardingView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 if currentTab == 4 {
-                    NavigationLink("Advanced Setup") {
+                    NavigationLink(t("advanced_setup")) {
                         CreateWalletWithPassphraseView()
                     }
                 } else {
-                    Button("Skip") {
+                    Button(t("skip")) {
                         withAnimation {
                             currentTab = 4
                         }

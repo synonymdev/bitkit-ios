@@ -131,17 +131,10 @@ class LocalizationManager {
             result = result.replacingOccurrences(of: "{{" + key + "}}", with: value)
         }
         
-        // Convert accent tags to markdown links if not preserving accents
+        // Only remove accent tags if not preserving them
         if !preserveAccent {
-            switch key {
-            case "tos_checkbox_value":
-                result = result.replacingOccurrences(of: "<accent>terms of use</accent>", with: "[terms of use](https://bitkit.to/terms-of-use)")
-            case "pp_checkbox_value":
-                result = result.replacingOccurrences(of: "<accent>privacy policy</accent>", with: "[privacy policy](https://bitkit.to/privacy-policy)")
-            default:
-                result = result.replacingOccurrences(of: "<accent>", with: "")
+            result = result.replacingOccurrences(of: "<accent>", with: "")
                          .replacingOccurrences(of: "</accent>", with: "")
-            }
         }
         return result
     }
