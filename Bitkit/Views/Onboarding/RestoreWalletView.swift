@@ -154,7 +154,7 @@ struct RestoreWalletView: View {
         // Validate mnemonic word count
         let wordCount = bip39Mnemonic.split(separator: " ").count
         guard wordCount == 12 || wordCount == 24 else {
-            app.toast("Please enter either 12 or 24 words")
+            app.toast(type: .error, title: "Please enter either 12 or 24 words")
             return
         }
 

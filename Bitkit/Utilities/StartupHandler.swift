@@ -33,7 +33,10 @@ class StartupHandler {
     ///   - bip39Passphrase: optional bip39 passphrase
     ///   - walletIndex: wallet index, defaults to zero for first
     static func restoreWallet(mnemonic: String, bip39Passphrase: String?, walletIndex: Int = 0) throws {
-        // TODO: validate word count also?
+        let words = mnemonic.split(separator: " ")
+        guard words.count == 12 || words.count == 24 else {
+            throw AppError(message: "Mnemonic must be either 12 or 24 words", debugMessage: nil)
+        }
                 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
         if let bip39Passphrase {

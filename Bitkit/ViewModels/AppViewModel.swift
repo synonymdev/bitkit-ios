@@ -41,7 +41,7 @@ class AppViewModel: ObservableObject {
 
 // MARK: Toast notifications
 extension AppViewModel {
-    func toast(type: Toast.ToastType, title: String, description: String, autoHide: Bool = true, visibilityTime: Double = 3.0) {
+    func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 3.0) {
         switch type {
         case .error:
             Haptics.notify(.error)
