@@ -5,8 +5,8 @@
 //  Created by Jason van den Berg on 2024/12/17.
 //
 
-import SwiftUI
 import Combine
+import SwiftUI
 
 @MainActor
 class ActivityListViewModel: ObservableObject {
@@ -18,6 +18,7 @@ class ActivityListViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published var startDate: Date?
     @Published var endDate: Date?
+    @Published var selectedTags: Set<String> = []
     
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
@@ -28,6 +29,36 @@ class ActivityListViewModel: ObservableObject {
     private let lightningService: LightningService
     private var searchCancellable: AnyCancellable?
     private var dateRangeCancellable: AnyCancellable?
+    private var tagsCancellable: AnyCancellable?
+    
+    // Get all unique tags from all activities
+    func getAvailableTags() async -> [String] {
+        var tags = Set<String>()
+        do {
+            // Get all activities without any filters
+            let allActivities = try await activityService.get(filter: .all)
+            for activity in allActivities {
+                let id: String
+                switch activity {
+                case .lightning(let ln): id = ln.id
+                case .onchain(let on): id = on.id
+                }
+                
+                if let activityTags = try? await activityService.getTags(forActivity: id) {
+                    tags.formUnion(activityTags)
+                }
+            }
+        } catch {
+            Logger.error(error, context: "Failed to get available tags")
+        }
+        return Array(tags).sorted()
+    }
+    
+    @Published private(set) var availableTags: [String] = []
+    
+    private func updateAvailableTags() async {
+        availableTags = await getAvailableTags()
+    }
     
     init(activityService: ActivityListService = .shared,
          lightningService: LightningService = .shared)
@@ -46,7 +77,15 @@ class ActivityListViewModel: ObservableObject {
         
         // Setup date range subscription
         dateRangeCancellable = Publishers.CombineLatest($startDate, $endDate)
-            .sink { [weak self] start, end in
+            .sink { [weak self] _, _ in
+                Task { [weak self] in
+                    await self?.updateFilteredActivities()
+                }
+            }
+        
+        // Setup tags subscription
+        tagsCancellable = $selectedTags
+            .sink { [weak self] _ in
                 Task { [weak self] in
                     await self?.updateFilteredActivities()
                 }
@@ -70,6 +109,8 @@ class ActivityListViewModel: ObservableObject {
             lightningActivities = try await activityService.get(filter: .lightning)
             onchainActivities = try await activityService.get(filter: .onchain)
             
+            // Update available tags
+            await updateAvailableTags()
         } catch {
             Logger.error(error, context: "Failed to sync activities")
         }
@@ -78,6 +119,10 @@ class ActivityListViewModel: ObservableObject {
     func clearDateRange() {
         startDate = nil
         endDate = nil
+    }
+    
+    func clearTags() {
+        selectedTags.removeAll()
     }
     
     private func updateFilteredActivities() async {
@@ -95,6 +140,7 @@ class ActivityListViewModel: ObservableObject {
             
             filteredActivities = try await activityService.get(
                 filter: .all,
+                tags: selectedTags.isEmpty ? nil : Array(selectedTags),
                 search: searchText.isEmpty ? nil : searchText,
                 minDate: minDate,
                 maxDate: maxDate

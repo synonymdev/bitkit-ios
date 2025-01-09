@@ -81,7 +81,7 @@ struct DateRangeSelector: View {
                 }
 
                 Spacer()
-                // Bottom buttons
+
                 HStack {
                     Spacer()
                     Button("Clear") {
@@ -111,9 +111,73 @@ struct DateRangeSelector: View {
     }
 }
 
+struct TagSelector: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var viewModel: ActivityListViewModel
+    
+    var body: some View {
+        NavigationView {
+            VStack {
+                if viewModel.availableTags.isEmpty {
+                    Text("No tags found")
+                        .foregroundColor(.gray)
+                        .padding()
+                } else {
+                    List {
+                        ForEach(viewModel.availableTags, id: \.self) { tag in
+                            Button(action: {
+                                if viewModel.selectedTags.contains(tag) {
+                                    viewModel.selectedTags.remove(tag)
+                                } else {
+                                    viewModel.selectedTags.insert(tag)
+                                }
+                            }) {
+                                HStack {
+                                    Text(tag)
+                                    Spacer()
+                                    if viewModel.selectedTags.contains(tag) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.orange)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Spacer()
+                // Bottom buttons
+                HStack {
+                    Spacer()
+                    Button("Clear") {
+                        viewModel.clearTags()
+                        dismiss()
+                    }
+                    Spacer()
+                    Button("Apply") {
+                        dismiss()
+                    }
+                    Spacer()
+                }
+                .padding()
+            }
+            .navigationTitle("Select Tags")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct ActivityListFilter: View {
     @ObservedObject var viewModel: ActivityListViewModel
     @State private var showingDateRange = false
+    @State private var showingTagSelector = false
 
     var body: some View {
         HStack {
@@ -122,6 +186,10 @@ struct ActivityListFilter: View {
             TextField("Search", text: $viewModel.searchText)
             HStack(spacing: 12) {
                 Image(systemName: "tag")
+                    .foregroundColor(!viewModel.selectedTags.isEmpty ? .orange : .gray)
+                    .onTapGesture {
+                        showingTagSelector = true
+                    }
                 Image(systemName: "calendar")
                     .foregroundColor(viewModel.startDate != nil ? .orange : .gray)
                     .onTapGesture {
@@ -136,6 +204,9 @@ struct ActivityListFilter: View {
         .padding()
         .sheet(isPresented: $showingDateRange) {
             DateRangeSelector(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showingTagSelector) {
+            TagSelector(viewModel: viewModel)
         }
     }
 }
