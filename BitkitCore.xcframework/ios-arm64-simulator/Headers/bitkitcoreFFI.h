@@ -268,7 +268,7 @@ int8_t uniffi_bitkitcore_fn_func_delete_activity_by_id(RustBuffer activity_id, R
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES
-RustBuffer uniffi_bitkitcore_fn_func_get_activities(RustBuffer filter, RustBuffer limit, RustBuffer sort_direction, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_bitkitcore_fn_func_get_activities(RustBuffer filter, RustBuffer tx_type, RustBuffer tags, RustBuffer search, RustBuffer min_date, RustBuffer max_date, RustBuffer limit, RustBuffer sort_direction, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES_BY_TAG

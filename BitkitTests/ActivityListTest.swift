@@ -192,7 +192,7 @@ final class ActivityTests: XCTestCase {
         let testTagActivities = try getActivitiesByTag(tag: "test-tag", limit: nil, sortDirection: .desc)
         XCTAssertEqual(testTagActivities.count, 2)
         
-        let specialTagActivities = try getActivitiesByTag(tag: "special", limit: nil, sortDirection: .desc)
+        let specialTagActivities = try getActivities(filter: nil, txType: nil, tags: ["special"], search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
         XCTAssertEqual(specialTagActivities.count, 1)
     }
     
@@ -336,11 +336,11 @@ final class ActivityTests: XCTestCase {
         }
         
         // Test with limit
-        let limitedActivities = try getActivities(filter: .all, limit: 2, sortDirection: nil)
+        let limitedActivities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: 2, sortDirection: nil)
         XCTAssertEqual(limitedActivities.count, 2)
         
         // Test without limit
-        let allActivities = try getActivities(filter: .all, limit: nil, sortDirection: nil)
+        let allActivities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
         XCTAssertEqual(allActivities.count, 3)
     }
 }
