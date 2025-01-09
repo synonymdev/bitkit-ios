@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var activity = ActivityListViewModel()
 
     @State private var hideSplash = false
+    @State private var removeSplash = false
 
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
@@ -55,8 +56,10 @@ struct ContentView: View {
                 }
             }
 
-            SplashView()
-                .opacity(hideSplash ? 0 : 1)
+            if !removeSplash {
+                SplashView()
+                    .opacity(hideSplash ? 0 : 1)
+            }
         }
         .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
         .sheet(isPresented: $app.showNewTransaction) {
@@ -73,6 +76,11 @@ struct ContentView: View {
             if wallet.walletExists != nil {
                 withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
                     hideSplash = true
+                }
+                
+                // Remove splash view after animation completes
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    removeSplash = true
                 }
             }
 
