@@ -41,7 +41,7 @@ class ActivityListService {
             }
             
             // Get all activities and delete them one by one
-            let activities = try getActivities(filter: .all, limit: nil, sortDirection: nil)
+            let activities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
             for activity in activities {
                 let id: String
                 switch activity {
@@ -121,19 +121,19 @@ class ActivityListService {
     
     func all(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .all, limit: limit, sortDirection: sortDirection)
+            try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
         }
     }
     
     func lightning(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .lightning, limit: limit, sortDirection: sortDirection)
+            try getActivities(filter: .lightning, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
         }
     }
     
     func onchain(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .onchain, limit: limit, sortDirection: sortDirection)
+            try getActivities(filter: .onchain, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
         }
     }
     
@@ -171,7 +171,7 @@ class ActivityListService {
     
     func getActivitiesWithTag(_ tag: String, limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivitiesByTag(tag: tag, limit: limit, sortDirection: sortDirection)
+            try getActivities(filter: nil, txType: nil, tags: [tag], search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
         }
     }
 }
