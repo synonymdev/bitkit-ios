@@ -16,6 +16,8 @@ class ActivityListViewModel: ObservableObject {
     @Published var lightningActivities: [Activity]? = nil
     @Published var onchainActivities: [Activity]? = nil
     @Published var searchText: String = ""
+    @Published var startDate: Date?
+    @Published var endDate: Date?
     
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
@@ -25,6 +27,7 @@ class ActivityListViewModel: ObservableObject {
     private let activityService: ActivityListService
     private let lightningService: LightningService
     private var searchCancellable: AnyCancellable?
+    private var dateRangeCancellable: AnyCancellable?
     
     init(activityService: ActivityListService = .shared,
          lightningService: LightningService = .shared)
@@ -36,6 +39,14 @@ class ActivityListViewModel: ObservableObject {
         searchCancellable = $searchText
             .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.updateFilteredActivities()
+                }
+            }
+        
+        // Setup date range subscription
+        dateRangeCancellable = Publishers.CombineLatest($startDate, $endDate)
+            .sink { [weak self] start, end in
                 Task { [weak self] in
                     await self?.updateFilteredActivities()
                 }
@@ -64,12 +75,29 @@ class ActivityListViewModel: ObservableObject {
         }
     }
     
-    // Any change to searchText, tags or dates will trigger this
+    func clearDateRange() {
+        startDate = nil
+        endDate = nil
+    }
+    
     private func updateFilteredActivities() async {
         do {
+            // Convert dates to timestamps if they exist, ensuring start date is start of day and end date is end of day
+            let minDate = startDate.map {
+                let startOfDay = Calendar.current.startOfDay(for: $0)
+                return UInt64(startOfDay.timeIntervalSince1970)
+            }
+            
+            let maxDate = endDate.map {
+                let nextDay = Calendar.current.startOfDay(for: Calendar.current.date(byAdding: .day, value: 1, to: $0) ?? $0)
+                return UInt64(nextDay.timeIntervalSince1970 - 1)
+            }
+            
             filteredActivities = try await activityService.get(
                 filter: .all,
-                search: searchText.isEmpty ? nil : searchText
+                search: searchText.isEmpty ? nil : searchText,
+                minDate: minDate,
+                maxDate: maxDate
             )
         } catch {
             Logger.error(error, context: "Failed to filter activities")

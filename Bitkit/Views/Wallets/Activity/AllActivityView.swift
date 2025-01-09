@@ -7,9 +7,114 @@
 
 import SwiftUI
 
+struct DateRangeSelector: View {
+    @Environment(\.dismiss) var dismiss
+    @ObservedObject var viewModel: ActivityListViewModel
+    @State private var startDate: Date
+    @State private var endDate: Date
+    
+    init(viewModel: ActivityListViewModel) {
+        self.viewModel = viewModel
+        // Initialize with current dates or default to today
+        _startDate = State(initialValue: viewModel.startDate ?? Calendar.current.startOfDay(for: Date()))
+        _endDate = State(initialValue: viewModel.endDate ?? Date())
+    }
+    
+    private func setDateRange(daysBack: Int) {
+        let today = Date()
+        let calendar = Calendar.current
+        
+        // Set end date to today
+        endDate = today
+        
+        // Set start date to X days back at start of day
+        if let daysBackDate = calendar.date(byAdding: .day, value: -daysBack, to: today) {
+            startDate = calendar.startOfDay(for: daysBackDate)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            VStack {
+                Form {
+                    Section {
+                        DatePicker("Start Date", selection: $startDate, displayedComponents: [.date])
+                        DatePicker("End Date", selection: $endDate, displayedComponents: [.date])
+                    }
+
+                    Section {
+                        Button("Today") {
+                            setDateRange(daysBack: 0)
+                            viewModel.startDate = startDate
+                            viewModel.endDate = endDate
+                            dismiss()
+                        }
+                        Button("Last 7 days") {
+                            setDateRange(daysBack: 7)
+                            viewModel.startDate = startDate
+                            viewModel.endDate = endDate
+                            dismiss()
+                        }
+                        Button("Last 30 days") {
+                            setDateRange(daysBack: 30)
+                            viewModel.startDate = startDate
+                            viewModel.endDate = endDate
+                            dismiss()
+                        }
+                        Button("Last 90 days") {
+                            setDateRange(daysBack: 90)
+                            viewModel.startDate = startDate
+                            viewModel.endDate = endDate
+                            dismiss()
+                        }
+                        Button("This year") {
+                            let calendar = Calendar.current
+                            startDate = calendar.date(from: calendar.dateComponents([.year], from: Date())) ?? Date()
+                            endDate = Date()
+                            viewModel.startDate = startDate
+                            viewModel.endDate = endDate
+                            dismiss()
+                        }
+                    } header: {
+                        Text("Quick Select")
+                    }
+                }
+
+                Spacer()
+                // Bottom buttons
+                HStack {
+                    Spacer()
+                    Button("Clear") {
+                        viewModel.clearDateRange()
+                        dismiss()
+                    }
+                    Spacer()
+                    Button("Apply") {
+                        viewModel.startDate = startDate
+                        viewModel.endDate = endDate
+                        dismiss()
+                    }
+                    Spacer()
+                }
+                .padding()
+            }
+            .navigationTitle("Date Range")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct ActivityListFilter: View {
     @ObservedObject var viewModel: ActivityListViewModel
-    
+    @State private var showingDateRange = false
+
     var body: some View {
         HStack {
             Image(systemName: "magnifyingglass")
@@ -18,6 +123,10 @@ struct ActivityListFilter: View {
             HStack(spacing: 12) {
                 Image(systemName: "tag")
                 Image(systemName: "calendar")
+                    .foregroundColor(viewModel.startDate != nil ? .orange : .gray)
+                    .onTapGesture {
+                        showingDateRange = true
+                    }
             }
             .foregroundColor(.gray)
         }
@@ -25,6 +134,9 @@ struct ActivityListFilter: View {
         .background(Color(.systemGray6))
         .cornerRadius(10)
         .padding()
+        .sheet(isPresented: $showingDateRange) {
+            DateRangeSelector(viewModel: viewModel)
+        }
     }
 }
 

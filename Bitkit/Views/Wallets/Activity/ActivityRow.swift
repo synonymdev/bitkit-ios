@@ -158,14 +158,27 @@ struct ActivityRow: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     private var formattedTime: String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-
+        let timestamp: TimeInterval
         switch item {
         case .lightning(let activity):
-            return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp)))
+            timestamp = TimeInterval(activity.timestamp)
         case .onchain(let activity):
-            return formatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp)))
+            timestamp = TimeInterval(activity.timestamp)
+        }
+        
+        let date = Date(timeIntervalSince1970: timestamp)
+        let calendar = Calendar.current
+        
+        // Check if the activity is from today
+        if calendar.isDateInToday(date) {
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            return timeFormatter.string(from: date)
+        } else {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .medium
+            dateFormatter.timeStyle = .short
+            return dateFormatter.string(from: date)
         }
     }
 
