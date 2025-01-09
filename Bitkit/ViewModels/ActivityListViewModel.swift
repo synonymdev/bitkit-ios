@@ -38,14 +38,14 @@ class ActivityListViewModel: ObservableObject {
         do {
             // Get latest activities first as that's displayed on the initial views
             let limitLatest: UInt32 = 3
-            latestActivities = try await activityService.all(limit: limitLatest)
-            latestLightningActivities = try await activityService.lightning(limit: limitLatest)
-            latestOnchainActivities = try await activityService.onchain(limit: limitLatest)
+            latestActivities = try await activityService.get(filter: .all, limit: limitLatest)
+            latestLightningActivities = try await activityService.get(filter: .lightning, limit: limitLatest)
+            latestOnchainActivities = try await activityService.get(filter: .onchain, limit: limitLatest)
 
             // Fetch all activities
-            allActivities = try await activityService.all()
-            lightningActivities = try await activityService.lightning()
-            onchainActivities = try await activityService.onchain()
+            allActivities = try await activityService.get(filter: .all)
+            lightningActivities = try await activityService.get(filter: .lightning)
+            onchainActivities = try await activityService.get(filter: .onchain)
             
         } catch {
             Logger.error(error, context: "Failed to sync activities")
@@ -72,6 +72,6 @@ class ActivityListViewModel: ObservableObject {
     }
     
     func getActivities(withTag tag: String) async throws -> [Activity] {
-        try await activityService.getActivitiesWithTag(tag)
+        try await activityService.get(tags: [tag])
     }
 }

@@ -119,21 +119,27 @@ class ActivityListService {
         }
     }
     
-    func all(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
+    func get(
+        filter: ActivityFilter? = nil,
+        txType: PaymentType? = nil,
+        tags: [String]? = nil,
+        search: String? = nil,
+        minDate: UInt64? = nil,
+        maxDate: UInt64? = nil,
+        limit: UInt32? = nil,
+        sortDirection: SortDirection? = nil
+    ) async throws -> [Activity] {
         try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
-        }
-    }
-    
-    func lightning(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
-        try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .lightning, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
-        }
-    }
-    
-    func onchain(limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
-        try await ServiceQueue.background(.activity) {
-            try getActivities(filter: .onchain, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
+            try getActivities(
+                filter: filter,
+                txType: txType,
+                tags: tags,
+                search: search,
+                minDate: minDate,
+                maxDate: maxDate,
+                limit: limit,
+                sortDirection: sortDirection
+            )
         }
     }
     
@@ -166,12 +172,6 @@ class ActivityListService {
     func getTags(forActivity id: String) async throws -> [String] {
         try await ServiceQueue.background(.activity) {
             try Bitkit.getTags(activityId: id)
-        }
-    }
-    
-    func getActivitiesWithTag(_ tag: String, limit: UInt32? = nil, sortDirection: SortDirection? = nil) async throws -> [Activity] {
-        try await ServiceQueue.background(.activity) {
-            try getActivities(filter: nil, txType: nil, tags: [tag], search: nil, minDate: nil, maxDate: nil, limit: limit, sortDirection: sortDirection)
         }
     }
 }
