@@ -9,37 +9,57 @@ import SwiftUI
 
 struct AllActivityView: View {
     @EnvironmentObject private var activity: ActivityListViewModel
-    @State private var selectedTab = 0
+    @State private var selectedTab = ActivityTab.all
+
+    enum ActivityTab {
+        case all, sent, received, other
+
+        var title: String {
+            switch self {
+            case .all: return "All"
+            case .sent: return "Sent"
+            case .received: return "Received"
+            case .other: return "Other"
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ActivityListFilter(viewModel: activity)
-            activityList
-        }
-        .navigationTitle("All Activity")
-    }
 
-    private var activityList: some View {
-        ScrollView {
-            if let items = activity.filteredActivities {
-                LazyVStack {
-                    ForEach(items, id: \.self) { item in
-                        NavigationLink(destination: ActivityItemView(item: item)) {
-                            ActivityRow(item: item)
+            Picker("Activity Type", selection: $selectedTab) {
+                ForEach([ActivityTab.all, .sent, .received, .other], id: \.self) { tab in
+                    Text(tab.title)
+                        .tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding()
 
-                            if item != items.last {
-                                Divider()
+            ScrollView {
+                if let items = activity.filteredActivities {
+                    LazyVStack {
+                        ForEach(items, id: \.self) { item in
+                            NavigationLink(destination: ActivityItemView(item: item)) {
+                                ActivityRow(item: item)
+
+                                if item != items.last {
+                                    Divider()
+                                }
                             }
                         }
-                    }
 
-                    VStack {}.frame(height: 120)
+                        VStack {}.frame(height: 120)
+                    }
+                } else {
+                    Text("No activity")
+                        .padding()
                 }
-            } else {
-                Text("No activity")
-                    .padding()
             }
+            .dismissKeyboardOnScroll()
         }
+        .navigationTitle("All Activity")
     }
 }
 
