@@ -205,9 +205,23 @@ struct ActivityRow: View {
                     TransactionStatusText(txType: activity.txType, activity: item)
                 }
 
-                Text(formattedTime)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                // Show message if available, otherwise show time
+                switch item {
+                case .lightning(let activity):
+                    if !activity.message.isEmpty {
+                        Text(activity.message)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text(formattedTime)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                case .onchain(let activity):
+                    Text(formattedTime)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Spacer()
