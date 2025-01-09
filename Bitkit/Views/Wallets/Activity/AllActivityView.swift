@@ -8,13 +8,13 @@
 import SwiftUI
 
 struct ActivityListFilter: View {
-    @Binding var searchText: String
+    @ObservedObject var viewModel: ActivityListViewModel
     
     var body: some View {
         HStack {
             Image(systemName: "magnifyingglass")
                 .foregroundColor(.gray)
-            TextField("Search", text: $searchText)
+            TextField("Search", text: $viewModel.searchText)
             HStack(spacing: 12) {
                 Image(systemName: "tag")
                 Image(systemName: "calendar")
@@ -30,12 +30,11 @@ struct ActivityListFilter: View {
 
 struct AllActivityView: View {
     @EnvironmentObject private var activity: ActivityListViewModel
-    @State private var searchText = ""
     @State private var selectedTab = 0
 
     var body: some View {
         VStack(spacing: 0) {
-            ActivityListFilter(searchText: $searchText)
+            ActivityListFilter(viewModel: activity)
             activityList
         }
         .navigationTitle("All Activity")
@@ -43,7 +42,7 @@ struct AllActivityView: View {
 
     private var activityList: some View {
         ScrollView {
-            if let items = activity.allActivities {
+            if let items = activity.filteredActivities {
                 LazyVStack {
                     ForEach(items, id: \.self) { item in
                         NavigationLink(destination: ActivityItemView(item: item)) {

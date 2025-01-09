@@ -76,6 +76,25 @@ struct SettingsListView: View {
                         }
                         .foregroundColor(.red)
                     }
+                    
+                    Button {
+                        Task {
+                            do {
+                                try await ActivityListService.shared.generateRandomTestData()
+                                await activity.syncState()
+                                app.toast(type: .success, title: "Success", description: "Generated 100 random activities")
+                            } catch {
+                                app.toast(type: .error, title: "Error", description: "Failed to generate activities: \(error.localizedDescription)")
+                            }
+                        }
+                    } label: {
+                        Label {
+                            Text("Generate Test Activities")
+                        } icon: {
+                            Image(systemName: "ladybug.fill")
+                        }
+                        .foregroundColor(.orange)
+                    }
 
                     Button {
                         Task {
