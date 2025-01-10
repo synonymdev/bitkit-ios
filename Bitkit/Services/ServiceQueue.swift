@@ -13,6 +13,7 @@ class ServiceQueue {
     private static let blocktankQueue = DispatchQueue(label: "bt-queue", qos: .utility)
     private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
     private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .utility)
+    private static let activityQueue = DispatchQueue(label: "activity-queue", qos: .utility)
 
     private init() {}
     
@@ -21,6 +22,7 @@ class ServiceQueue {
         case blocktank
         case migration
         case forex
+        case activity
         
         var queue: DispatchQueue {
             switch self {
@@ -32,6 +34,8 @@ class ServiceQueue {
                 return ServiceQueue.migrationQueue
             case .forex:
                 return ServiceQueue.forexQueue
+            case .activity:
+                return ServiceQueue.activityQueue
             }
         }
     }

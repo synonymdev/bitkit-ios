@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
@@ -23,6 +23,15 @@ jobs:
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
+
+      - name: List available simulators
+        run: |
+          echo "=== Full Simulator List ==="
+          xcrun simctl list
+          echo "\n=== Available Runtimes ==="
+          xcrun simctl list runtimes
+          echo "\n=== Device Pairs ==="
+          xcrun simctl list devicetypes
 
       - name: Install dependencies
         run: |

@@ -60,9 +60,12 @@ struct HomeView: View {
                     .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                ActivityLatest(type: .all)
+                ActivityLatest(viewType: .all)
             }
             .refreshable {
+                guard wallet.nodeLifecycleState == .running else {
+                    return
+                }
                 do {
                     try await wallet.sync()
                 } catch {
