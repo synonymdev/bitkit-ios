@@ -196,6 +196,77 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(specialTagActivities.count, 1)
     }
     
+    func testGetAllUniqueTags() throws {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+        
+        // Create test activities with different tags
+        let activities = [
+            Activity.lightning(LightningActivity(
+                id: "test-unique-tags-1",
+                txType: .sent,
+                status: .succeeded,
+                value: 1000,
+                fee: 1,
+                invoice: "lnbc...",
+                message: "Test payment 1",
+                timestamp: timestamp,
+                preimage: nil,
+                createdAt: nil,
+                updatedAt: nil
+            )),
+            Activity.onchain(OnchainActivity(
+                id: "test-unique-tags-2",
+                txType: .received,
+                txId: "abc123",
+                value: 5000,
+                fee: 500,
+                feeRate: 1,
+                address: "bc1...",
+                confirmed: true,
+                timestamp: timestamp,
+                isBoosted: false,
+                isTransfer: false,
+                doesExist: true,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                createdAt: nil,
+                updatedAt: nil
+            ))
+        ]
+        
+        // Insert activities and add different combinations of tags
+        for activity in activities {
+            try insertActivity(activity: activity)
+        }
+        
+        // Add tags to first activity
+        try addTags(activityId: "test-unique-tags-1", tags: ["payment", "important", "personal"])
+        
+        // Add tags to second activity
+        try addTags(activityId: "test-unique-tags-2", tags: ["payment", "business", "onchain"])
+        
+        // Get all unique tags
+        let uniqueTags = try getAllUniqueTags()
+        
+        // Verify the results
+        XCTAssertEqual(Set(uniqueTags), Set(["payment", "important", "personal", "business", "onchain"]))
+        XCTAssertEqual(uniqueTags.count, 5)
+        
+        // Add duplicate tags to verify they don't create duplicates in unique tags
+        try addTags(activityId: "test-unique-tags-1", tags: ["payment", "business"])
+        let uniqueTagsAfterDuplicates = try getAllUniqueTags()
+        XCTAssertEqual(Set(uniqueTagsAfterDuplicates), Set(["payment", "important", "personal", "business", "onchain"]))
+        XCTAssertEqual(uniqueTagsAfterDuplicates.count, 5)
+        
+        // Remove some tags and verify the list updates
+        try removeTags(activityId: "test-unique-tags-1", tags: ["important", "personal"])
+        try removeTags(activityId: "test-unique-tags-2", tags: ["onchain"])
+        let uniqueTagsAfterRemoval = try getAllUniqueTags()
+        XCTAssertEqual(Set(uniqueTagsAfterRemoval), Set(["payment", "business"]))
+        XCTAssertEqual(uniqueTagsAfterRemoval.count, 2)
+    }
+    
     func testUpdateActivity() throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         

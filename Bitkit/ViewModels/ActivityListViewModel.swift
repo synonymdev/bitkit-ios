@@ -31,33 +31,15 @@ class ActivityListViewModel: ObservableObject {
     private var dateRangeCancellable: AnyCancellable?
     private var tagsCancellable: AnyCancellable?
     
-    // Get all unique tags from all activities
-    func getAvailableTags() async -> [String] {
-        var tags = Set<String>()
-        do {
-            // Get all activities without any filters
-            let allActivities = try await activityService.get(filter: .all)
-            for activity in allActivities {
-                let id: String
-                switch activity {
-                case .lightning(let ln): id = ln.id
-                case .onchain(let on): id = on.id
-                }
-                
-                if let activityTags = try? await activityService.getTags(forActivity: id) {
-                    tags.formUnion(activityTags)
-                }
-            }
-        } catch {
-            Logger.error(error, context: "Failed to get available tags")
-        }
-        return Array(tags).sorted()
-    }
-    
     @Published private(set) var availableTags: [String] = []
     
     private func updateAvailableTags() async {
-        availableTags = await getAvailableTags()
+        do {
+            availableTags = try await activityService.getAllUniqueTags()
+        } catch {
+            Logger.error(error, context: "Failed to get available tags")
+            availableTags = []
+        }
     }
     
     init(activityService: ActivityListService = .shared,
