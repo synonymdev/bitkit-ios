@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout repository
@@ -24,6 +24,15 @@ jobs:
         run: |
           brew install xcbeautify
 
+      - name: List available simulators
+        run: |
+          echo "=== Full Simulator List ==="
+          xcrun simctl list
+          echo "\n=== Available Runtimes ==="
+          xcrun simctl list runtimes
+          echo "\n=== Device Pairs ==="
+          xcrun simctl list devicetypes
+
       - name: Install dependencies
         run: |
           xcodebuild -resolvePackageDependencies | xcbeautify
@@ -32,7 +41,7 @@ jobs:
         run: |
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
-            -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max,OS=17.2' \
+            -destination 'platform=iOS Simulator,name=iPhone 15 Pro Max,OS=17.5' \
             -enableCodeCoverage YES \
             -parallel-testing-enabled NO \
             | xcbeautify --report junit
