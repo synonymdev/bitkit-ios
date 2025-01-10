@@ -34,7 +34,7 @@ struct SavingsWalletView: View {
             }
 
             ScrollView {
-                ActivityLatest(type: .onchain)
+                ActivityLatest(viewType: .onchain)
             }
             .refreshable {
                 do {

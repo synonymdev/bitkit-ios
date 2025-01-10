@@ -5,7 +5,7 @@ extension BlocktankService {
     /// - Parameter count: Number of blocks to mine. Default is 1.
     func regtestMine(count: Int = 1) async throws {
         let params = ["count": count] as [String: Any]
-        let _ = try await postRequest(Env.blocktankClientServer + "/regtest/chain/mine", params)
+        _ = try await postRequest(Env.blocktankClientServer + "/regtest/chain/mine", params)
     }
     
     /// Deposits a number of satoshis to an address on the regtest network.
@@ -21,7 +21,7 @@ extension BlocktankService {
         
         let data = try await postRequest(Env.blocktankClientServer + "/regtest/chain/deposit", params)
         guard let txId = String(data: data, encoding: .utf8) else {
-            throw BlocktankError.invalidResponse
+            throw BlocktankError_deprecated.invalidResponse
         }
         return txId
     }
@@ -39,7 +39,7 @@ extension BlocktankService {
         
         let data = try await postRequest(Env.blocktankClientServer + "/regtest/channel/pay", params)
         guard let paymentId = String(data: data, encoding: .utf8) else {
-            throw BlocktankError.invalidResponse
+            throw BlocktankError_deprecated.invalidResponse
         }
         return paymentId
     }
@@ -59,7 +59,7 @@ extension BlocktankService {
         
         let data = try await postRequest(Env.blocktankClientServer + "/regtest/channel/close", params)
         guard let closingTxId = String(data: data, encoding: .utf8) else {
-            throw BlocktankError.invalidResponse
+            throw BlocktankError_deprecated.invalidResponse
         }
         return closingTxId
     }
