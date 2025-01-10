@@ -175,6 +175,12 @@ class ActivityListService {
         }
     }
     
+    func getAllUniqueTags() async throws -> [String] {
+        try await ServiceQueue.background(.activity) {
+            try Bitkit.getAllUniqueTags()
+        }
+    }
+    
     #if DEBUG
     func generateRandomTestData(count: Int = 100) async throws {
         try await ServiceQueue.background(.activity) {

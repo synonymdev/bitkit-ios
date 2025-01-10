@@ -281,6 +281,12 @@ RustBuffer uniffi_bitkitcore_fn_func_get_activities_by_tag(RustBuffer tag, RustB
 RustBuffer uniffi_bitkitcore_fn_func_get_activity_by_id(RustBuffer activity_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_UNIQUE_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ALL_UNIQUE_TAGS
+RustBuffer uniffi_bitkitcore_fn_func_get_all_unique_tags(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 uint64_t uniffi_bitkitcore_fn_func_get_lnurl_invoice(RustBuffer address, uint64_t amount_satoshis
@@ -634,6 +640,12 @@ uint16_t uniffi_bitkitcore_checksum_func_get_activities_by_tag(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITY_BY_ID
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ACTIVITY_BY_ID
 uint16_t uniffi_bitkitcore_checksum_func_get_activity_by_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_UNIQUE_TAGS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ALL_UNIQUE_TAGS
+uint16_t uniffi_bitkitcore_checksum_func_get_all_unique_tags(void
     
 );
 #endif

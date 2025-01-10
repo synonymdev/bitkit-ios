@@ -2936,6 +2936,12 @@ public func getActivityById(activityId: String)throws  -> Activity? {
     )
 })
 }
+public func getAllUniqueTags()throws  -> [String] {
+    return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeActivityError.lift) {
+    uniffi_bitkitcore_fn_func_get_all_unique_tags($0
+    )
+})
+}
 public func getLnurlInvoice(address: String, amountSatoshis: UInt64)async throws  -> String {
     return
         try  await uniffiRustCallAsync(
@@ -3029,6 +3035,9 @@ private var initializationResult: InitializationResult {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_bitkitcore_checksum_func_get_activity_by_id() != 44227) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_bitkitcore_checksum_func_get_all_unique_tags() != 25431) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_bitkitcore_checksum_func_get_lnurl_invoice() != 5475) {
