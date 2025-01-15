@@ -15,7 +15,7 @@ struct InitializingWalletView: View {
     @State private var timer: Timer?
     @State private var hapticTimer: Timer?
     private let t = useTranslation(.onboarding)
-    
+
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
     
