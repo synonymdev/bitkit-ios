@@ -12,8 +12,10 @@ struct ContentView: View {
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
+    @StateObject private var activity = ActivityListViewModel()
 
     @State private var hideSplash = false
+    @State private var removeSplash = false
 
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
@@ -54,8 +56,10 @@ struct ContentView: View {
                 }
             }
 
-            SplashView()
-                .opacity(hideSplash ? 0 : 1)
+            if !removeSplash {
+                SplashView()
+                    .opacity(hideSplash ? 0 : 1)
+            }
         }
         .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
         .sheet(isPresented: $app.showNewTransaction) {
@@ -73,38 +77,30 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
                     hideSplash = true
                 }
+                
+                // Remove splash view after animation completes
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    removeSplash = true
+                }
             }
 
             guard wallet.walletExists == true else { return }
 
+            wallet.addOnEvent(id: "toasts") { [weak app] lightningEvent in
+                app?.handleLdkNodeEvent(lightningEvent)
+            }
+
+            wallet.addOnEvent(id: "activity-sync") { [weak activity] _ in
+                Task {
+                    // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
+                    try? await activity?.syncLdkNodePayments()
+                }
+            }
+
             Task {
                 do {
-                    wallet.addOnEvent(id: "ContentView") { lighntingEvent in
-                        switch lighntingEvent {
-                        case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
-                            app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
-                        case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-                            // Only relevant for channels to external nodes
-                            break
-                        case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
-                            // TODO: handle cjit as payment received
-                            if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
-                                app.showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
-                            } else {
-                                app.toast(type: .error, title: "Channel opened", description: "Ready to send")
-                            }
-                        case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
-                            app.toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
-                        case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
-                            app.showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
-                        case .paymentClaimable:
-                            break
-                        case .paymentFailed(paymentId: _, paymentHash: _, reason: let reason):
-                            break
-                        }
-                    }
-
                     try await wallet.start()
+                    try await activity.syncLdkNodePayments()
                 } catch {
                     Logger.error("Failed to start wallet")
                     Haptics.notify(.error)
@@ -146,6 +142,7 @@ struct ContentView: View {
         .environmentObject(wallet)
         .environmentObject(currency)
         .environmentObject(blocktank)
+        .environmentObject(activity)
     }
 }
 

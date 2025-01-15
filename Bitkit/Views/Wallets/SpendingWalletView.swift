@@ -19,7 +19,7 @@ struct SpendingWalletView: View {
             Divider()
 
             ScrollView {
-                ActivityLatest(type: .lightning)
+                ActivityLatest(viewType: .lightning)
             }
             .refreshable {
                 do {
