@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "اسمك"
+  },
+  "your_name_capital": {
+    "string": "اسمك"
+  },
+  "contact_name": {
+    "string": "اسم جهة الاتصال"
+  },
+  "contact": {
+    "string": "جهة الاتصال"
+  },
+  "contacts": {
+    "string": "جهات الاتصال"
+  },
+  "contact_add": {
+    "string": "أضف جهة اتصال"
+  },
+  "contact_add_capital": {
+    "string": "أضف جهة اتصال"
+  },
+  "contact_add_explain": {
+    "string": "أضف جهة اتصال بمسح رمز استجابتها السريع أو بلصق مفتاحها أدناه"
+  },
+  "contact_add_button": {
+    "string": ""
+  },
+  "contact_key_paste": {
+    "string": "الصق مفتاحًا"
+  },
+  "contact_error_yourself": {
+    "string": "ليس لك أن تضيف نفسك في جهات اتصالك."
+  },
+  "contact_error_key": {
+    "string": "هذا ليس مفتاحًا صالحًا."
+  },
+  "contact_edit_capital": {
+    "string": "تعديل جهة الاتصال"
+  },
+  "contacts_name": {
+    "string": "اسم جهة الاتصال"
+  },
+  "contact_your_name": {
+    "string": "اسم ملفك الشخصي العام"
+  },
+  "contact_retrieving": {
+    "string": "جلب معلومات جهة الاتصال..."
+  },
+  "contact_no_links": {
+    "string": "لم تُضَف أي روابط بعد..."
+  },
+  "contact_pay_error": {
+    "string": ""
+  },
+  "contact_share": {
+    "string": "مشاركة مفتاح الملف الشخصي"
+  },
+  "contact_this": {
+    "string": "جهة الاتصال هذه"
+  },
+  "contact_copied": {
+    "string": "نُسخ مفتاح الملف الشخصي إلى الحافظة"
+  },
+  "contact_delete_title": {
+    "string": "حذف {name}؟"
+  },
+  "contact_delete_text": {
+    "string": "هل أنت متأكد من إرادتك حذف {name} من جهات اتصالك؟"
+  },
+  "contact_delete_yes": {
+    "string": "نعم، احذف"
+  },
+  "contact_select": {
+    "string": "اختر جهة اتصال"
+  },
+  "contact_assign": {
+    "string": ""
+  },
+  "contacts_no_found": {
+    "string": ""
+  },
+  "disabled": {
+    "string": ""
+  },
+  "onboarding_header": {
+    "string": ""
+  },
+  "onboarding_text": {
+    "string": ""
+  },
+  "onboarding_button": {
+    "string": ""
+  },
+  "onboarding_profile1_header": {
+    "string": ""
+  },
+  "onboarding_profile1_text": {
+    "string": ""
+  },
+  "onboarding_profile2_header": {
+    "string": ""
+  },
+  "onboarding_profile2_text": {
+    "string": ""
+  },
+  "onboarding_widgets_header": {
+    "string": ""
+  },
+  "onboarding_widgets_text": {
+    "string": ""
+  },
+  "my_profile": {
+    "string": ""
+  },
+  "profile": {
+    "string": ""
+  },
+  "profile_save": {
+    "string": ""
+  },
+  "profile_pay_contacts": {
+    "string": ""
+  },
+  "profile_create": {
+    "string": ""
+  },
+  "profile_public_warn": {
+    "string": ""
+  },
+  "profile_bio": {
+    "string": ""
+  },
+  "profile_add_link": {
+    "string": ""
+  },
+  "profile_link_label": {
+    "string": ""
+  },
+  "profile_link_label_placeholder": {
+    "string": ""
+  },
+  "profile_link_value": {
+    "string": ""
+  },
+  "profile_link_public": {
+    "string": ""
+  },
+  "profile_link_suggestions": {
+    "string": ""
+  },
+  "profile_link_suggestions_to_add": {
+    "string": ""
+  },
+  "profile_scan_to_add": {
+    "string": ""
+  },
+  "profile_edit": {
+    "string": ""
+  },
+  "offline_enable": {
+    "string": ""
+  },
+  "offline_enable_explain": {
+    "string": ""
+  },
+  "widgets": {
+    "string": ""
+  },
+  "widget_add": {
+    "string": ""
+  },
+  "widget_loading_description": {
+    "string": ""
+  },
+  "widget_failed_description": {
+    "string": ""
+  },
+  "widget_source": {
+    "string": ""
+  },
+  "widget_price": {
+    "string": ""
+  },
+  "widget_headlines": {
+    "string": ""
+  },
+  "widget_blocks": {
+    "string": ""
+  },
+  "widget_facts": {
+    "string": ""
+  },
+  "widget_qr": {
+    "string": ""
+  },
+  "widget_error_drive": {
+    "string": ""
+  },
+  "widget_feed": {
+    "string": ""
+  },
+  "widget_edit": {
+    "string": ""
+  },
+  "widget_edit_default": {
+    "string": ""
+  },
+  "widget_edit_custom": {
+    "string": ""
+  },
+  "widget_edit_description": {
+    "string": ""
+  },
+  "widget_loading_options": {
+    "string": ""
+  },
+  "widget_reset": {
+    "string": ""
+  },
+  "widget_preview": {
+    "string": ""
+  },
+  "widget_delete_yes": {
+    "string": "نعم، احذف"
+  },
+  "widget_delete_title": {
+    "string": ""
+  },
+  "widget_delete_desc": {
+    "string": ""
+  },
+  "error_saving_contact": {
+    "string": ""
+  },
+  "error_saving_profile": {
+    "string": ""
+  },
+  "error_pay_title": {
+    "string": ""
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": ""
+  },
+  "auth_depricated_msg": {
+    "string": ""
+  }
+}

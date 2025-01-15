@@ -57,8 +57,10 @@
     "string": "OK"
   },
   "ok_random": {
-    "string": "Úžasné!\nPěkné!\nFajn!\nSkvělé!\nFantastické!\nMilé!\nMimořádné!\nOhromující!"
-  },
+		"string": "Úžasné!\nPěkné!\nFajn!\nSkvělé!\nFantastické!\nMilé!\nMimořádné!\nOhromující!",
+		"context": "A list of positive words to show the user after they have completed an action",
+		"developer_comment": "Use a number of words separated by a newline character"
+	},
   "retry": {
     "string": "Opakovat"
   },

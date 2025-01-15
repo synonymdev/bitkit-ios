@@ -1,294 +1,586 @@
 {
-  "transfer_intro": {
-    "title": {
-      "string": "Bestedings\n<accent>Saldo</accent>"
-    },
-    "text": {
-      "string": "Activeer uw bestedingsaldo en profiteer van directe en goedkope transacties met vrienden, familie en winkeliers."
-    },
-    "button": {
-      "string": "Starten"
-    }
-  },
-  "funding": {
-    "nav_title": {
-      "string": "Bestedingssaldo"
-    },
-    "title": {
-      "string": "Vul uw <accent>bestedingssaldo</accent> "
-    },
-    "text": {
-      "string": "U kunt uw Bitkit spaargeld gebruiken of bitcoin versturen vanaf een andere wallet."
-    },
-    "text_blocked": {
-      "string": "Bitkit kan momenteel geen automatische Lightning-verbindingen leveren aan inwoners van de VS en Canada."
-    },
-    "button1": {
-      "string": "Overboeking van Spaargeld"
-    },
-    "button2": {
-      "string": "Gebruik Andere Wallet"
-    },
-    "button3": {
-      "string": "Geavanceerd"
-    }
-  },
-  "funding_advanced": {
-    "nav_title": {
-      "string": "Bestedingssaldo"
-    }
-  },
-  "no_funds": {
-    "title": {
-      "string": "Geen Geld Beschikbaar"
-    },
-    "description": {
-      "string": "Voordat u geld van uw spaarsaldo kunt overboeken, moet u bitcoin naar uw Bitkit wallet sturen."
-    }
-  },
-  "transfer": {
-    "nav_title": {
-      "string": "Geld Overboeken"
-    },
-    "swipe": {
-      "string": "Veeg om over te boeken"
-    }
-  },
-  "spending_intro": {
-    "button": {
-      "string": "Starten"
-    }
-  },
-  "transfer_failed": {
-    "nav_title": {
-      "string": "Overboeking Mislukt"
-    },
-    "title": {
-      "string": "Overboeking\n<accent>Mislukt</accent>"
-    },
-    "text": {
-      "string": "Sorry, Bitkit kon uw bestedingssaldo niet opzetten of uw overboeking niet voltooien. Probeer het alstublieft opnieuw."
-    },
-    "continue": {
-      "string": "Opnieuw proberen"
-    }
-  },
-  "savings_intro": {
-    "button": {
-      "string": "Starten"
-    }
-  },
-  "availability": {
-    "text": {
-      "string": "Geld overmaken naar uw spaarsaldo is meestal direct, maar de overboeking kan tot <accent>14 dagen</accent> duren onder bepaalde netwerkvoorwaarden."
-    }
-  },
-  "savings_advanced": {
-    "total": {
-      "string": "Totaal geselecteerd"
-    }
-  },
-  "savings_interrupted": {
-    "text": {
-      "string": "Het geld is nog niet overgeboekt. Bitkit zal proberen de overboeking gedurende<accent>30 minuten</accent> te initiëren. Houd uw app open."
-    }
-  },
-  "transfer_success": {
-    "nav_title": {
-      "string": "Overboeking Voltooid"
-    },
-    "text_spending": {
-      "string": "Uw geld is overgeboekt en uw bestedingssaldo is klaar voor gebruik."
-    }
-  },
-  "external": {
-    "nav_title": {
-      "string": "Lightning-verbinding"
-    }
-  },
-  "external_manual": {
-    "host": {
-      "string": "Hostcomputer"
-    },
-    "port": {
-      "string": "Poort"
-    },
-    "scan": {
-      "string": "Scan QR"
-    }
-  },
-  "error_channel_purchase": {
-    "string": "Directe Betalingen Instellen Mislukt"
-  },
-  "error_channel_receiving": {
-    "string": "De hoeveelheid te ontvangen moet hoger zijn dan ${usdValue}"
-  },
-  "spending": {
-    "string": "Bestedingssaldo"
-  },
-  "savings": {
-    "string": "Spaargeld"
-  },
-  "spending_label": {
-    "string": "Bestedingssaldo"
-  },
-  "receiving_label": {
-    "string": "Ontvangstcapaciteit"
-  },
-  "setting_up_header": {
-    "string": "Onderweg"
-  },
-  "setting_up_text": {
-    "string": "Even geduld, uw overboeking is onderweg. Dit zou <accent>±10 minuten</accent> moeten duren."
-  },
-  "setting_up_step2": {
-    "string": "Betaling Voltooid"
-  },
-  "setting_up_step3": {
-    "string": "In de Wacht om te Worden Geopend"
-  },
-  "setting_up_step4": {
-    "string": "Verbinding Wordt Gereed Gemaakt"
-  },
-  "node_info": {
-    "string": "Lightning Node"
-  },
-  "node_id": {
-    "string": "LDK Node ID"
-  },
-  "node_disconnected": {
-    "string": "verbinding verbroken"
-  },
-  "node_failed": {
-    "string": "Het is Bitkit niet gelukt om uw Lightning node op te starten."
-  },
-  "connections": {
-    "string": "Lightning Verbindingen"
-  },
-  "conn_pending": {
-    "string": "Verbindingen in afwachting"
-  },
-  "conn_open": {
-    "string": "Open verbindingen"
-  },
-  "conn_closed": {
-    "string": "Gesloten verbindingen"
-  },
-  "conn_failed": {
-    "string": "Mislukte verbindingen"
-  },
-  "conn_closed_show": {
-    "string": "Toon Gesloten en Mislukte Verbindingen"
-  },
-  "conn_closed_hide": {
-    "string": "Verberg Gesloten en Mislukte Verbindingen"
-  },
-  "conn_button_export_logs": {
-    "string": "Geëxporteerde logboeken"
-  },
-  "conn_button_add": {
-    "string": "Verbinding Toevoegen"
-  },
-  "export_logs": {
-    "string": "Exportereer Lightning Logboeken"
-  },
-  "error_invoice": {
-    "string": "Mislukt om Factuur aan te Maken"
-  },
-  "error_save": {
-    "string": "Lightning peer kan niet worden opgeslagen"
-  },
-  "error_decode": {
-    "string": "Factuur Kan Niet Worden Gedecodeerd"
-  },
-  "invoice_copied": {
-    "string": "Factuur  Gekopieerd naar Klembord"
-  },
-  "status": {
-    "string": "Status"
-  },
-  "order_details": {
-    "string": "Ordergegevens"
-  },
-  "created_on": {
-    "string": "Aangemaakt op"
-  },
-  "transaction": {
-    "string": "Transactie"
-  },
-  "order_fee": {
-    "string": "Order kosten"
-  },
-  "balance": {
-    "string": "Saldo"
-  },
-  "total_size": {
-    "string": "Grootte van kanaal"
-  },
-  "other": {
-    "string": "Overige"
-  },
-  "opened_on": {
-    "string": "Geopened op"
-  },
-  "closed_on": {
-    "string": "Gesloten op"
-  },
-  "support": {
-    "string": "Ondersteuning"
-  },
-  "close_conn": {
-    "string": "Verbinding Sluiten"
-  },
-  "close_error": {
-    "string": "Overboeking Mislukt"
-  },
-  "close_error_msg": {
-    "string": "Het geld kon niet worden teruggeboekt naar uw spaarsaldo. Probeer het opnieuw."
-  },
-  "close_success_title": {
-    "string": "Overboeking Geïnitieerd"
-  },
-  "close_success_msg": {
-    "string": "Uw geld wordt teruggeboekt naar uw spaarsaldo."
-  },
-  "close_text": {
-    "string": "De kosten om deze Lightning verbinding te sluiten en uw geld terug te boeken naar uw spaarsaldo zijn afhankelijk van de netwerkdrukte.\n\nDe overboeking vindt meestal direct plaats, maar onder bepaalde netwerkomstandigheden kan het tot <accent>14 dagen</accent> duren."
-  },
-  "close_button": {
-    "string": "Sluiten"
-  },
-  "force_nav_title": {
-    "string": "Forceer Overboeking"
-  },
-  "force_title": {
-    "string": "Forceer\n<accent>Overboeking</accent>"
-  },
-  "force_text": {
-    "string": "Kon de overboeking niet opstarten. Wilt u deze overboeking forceren? Zo ja kunt u dit geld voor ±14 dagen niet gebruiken (!)"
-  },
-  "force_button": {
-    "string": "Forceer Overboeking"
-  },
-  "force_init_title": {
-    "string": "Geforceerde Overboeking Gestart"
-  },
-  "force_init_msg": {
-    "string": "Uw geld zal in ±14 dagen beschikbaar zijn. "
-  },
-  "force_failed_title": {
-    "string": "Geforceerde Overboeking Mislukt"
-  },
-  "force_failed_msg": {
-    "string": "Het geld kon niet worden teruggeboekt naar uw spaarsaldo. Probeer het opnieuw."
-  },
-  "channel_opened_msg": {
-    "string": "U kunt nu directe betalingen maken aan wie u wilt, wanneer u wilt. "
-  },
-  "order_given_up_title": {
-    "string": "Directe Betalingen Instellen Mislukt"
-  },
-  "order_expired_title": {
-    "string": "Directe Betalingen Instellen Mislukt"
-  }
+	"transfer_intro": {
+		"title": {
+			"string": "Bestedings\n<accent>Saldo</accent>"
+		},
+		"text": {
+			"string": "Activeer uw bestedingsaldo en profiteer van directe en goedkope transacties met vrienden, familie en winkeliers."
+		},
+		"button": {
+			"string": "Starten"
+		}
+	},
+	"funding": {
+		"nav_title": {
+			"string": "Bestedingssaldo"
+		},
+		"title": {
+			"string": "Vul uw <accent>bestedingssaldo</accent> "
+		},
+		"text": {
+			"string": "U kunt uw Bitkit spaargeld gebruiken of bitcoin versturen vanaf een andere wallet."
+		},
+		"text_blocked": {
+			"string": ""
+		},
+		"text_blocked_cjit": {
+			"string": ""
+		},
+		"button1": {
+			"string": "Overboeking van Spaargeld"
+		},
+		"button2": {
+			"string": "Gebruik Andere Wallet"
+		},
+		"button3": {
+			"string": "Geavanceerd"
+		}
+	},
+	"funding_advanced": {
+		"nav_title": {
+			"string": "Bestedingssaldo"
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		}
+	},
+	"no_funds": {
+		"title": {
+			"string": "Geen Geld Beschikbaar"
+		},
+		"description": {
+			"string": "Voordat u geld van uw spaarsaldo kunt overboeken, moet u bitcoin naar uw Bitkit wallet sturen."
+		},
+		"fund": {
+			"string": ""
+		}
+	},
+	"transfer": {
+		"nav_title": {
+			"string": "Geld Overboeken"
+		},
+		"confirm": {
+			"string": ""
+		},
+		"custom_fee": {
+			"string": ""
+		},
+		"swipe": {
+			"string": "Veeg om over te boeken"
+		}
+	},
+	"spending_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Starten"
+		}
+	},
+	"transfer_failed": {
+		"nav_title": {
+			"string": "Overboeking Mislukt"
+		},
+		"title": {
+			"string": "Overboeking\n<accent>Mislukt</accent>"
+		},
+		"text": {
+			"string": "Sorry, Bitkit kon uw bestedingssaldo niet opzetten of uw overboeking niet voltooien. Probeer het alstublieft opnieuw."
+		},
+		"cancel": {
+			"string": ""
+		},
+		"continue": {
+			"string": "Opnieuw proberen"
+		}
+	},
+	"spending_amount": {
+		"title": {
+			"string": ""
+		},
+		"quarter": {
+			"string": ""
+		},
+		"error_max": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			},
+			"description_zero": {
+				"string": ""
+			}
+		}
+	},
+	"spending_confirm": {
+		"network_fee": {
+			"string": ""
+		},
+		"lsp_fee": {
+			"string": ""
+		},
+		"amount": {
+			"string": ""
+		},
+		"total": {
+			"string": ""
+		},
+		"default": {
+			"string": ""
+		}
+	},
+	"spending_advanced": {
+		"title": {
+			"string": ""
+		},
+		"fee": {
+			"string": ""
+		}
+	},
+	"liquidity": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		}
+	},
+	"savings_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Starten"
+		}
+	},
+	"availability": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": "Geld overmaken naar uw spaarsaldo is meestal direct, maar de overboeking kan tot <accent>14 dagen</accent> duren onder bepaalde netwerkvoorwaarden."
+		}
+	},
+	"savings_confirm": {
+		"label": {
+			"string": ""
+		},
+		"transfer_all": {
+			"string": ""
+		}
+	},
+	"savings_advanced": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"total": {
+			"string": "Totaal geselecteerd"
+		}
+	},
+	"savings_progress": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_interrupted": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": "Het geld is nog niet overgeboekt. Bitkit zal proberen de overboeking gedurende<accent>30 minuten</accent> te initiëren. Houd uw app open."
+		}
+	},
+	"transfer_success": {
+		"nav_title": {
+			"string": "Overboeking Voltooid"
+		},
+		"title_spending": {
+			"string": ""
+		},
+		"text_spending": {
+			"string": "Uw geld is overgeboekt en uw bestedingssaldo is klaar voor gebruik."
+		},
+		"title_savings": {
+			"string": ""
+		},
+		"text_savings": {
+			"string": ""
+		}
+	},
+	"external": {
+		"nav_title": {
+			"string": "Lightning-verbinding"
+		}
+	},
+	"external_manual": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"node_id": {
+			"string": ""
+		},
+		"host": {
+			"string": "Hostcomputer"
+		},
+		"port": {
+			"string": "Poort"
+		},
+		"paste": {
+			"string": ""
+		},
+		"scan": {
+			"string": "Scan QR"
+		}
+	},
+	"external_amount": {
+		"title": {
+			"string": ""
+		}
+	},
+	"external_success": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"error_channel_purchase": {
+		"string": "Directe Betalingen Instellen Mislukt"
+	},
+	"error_channel_setup_msg": {
+		"string": ""
+	},
+	"error_channel_receiving": {
+		"string": "De hoeveelheid te ontvangen moet hoger zijn dan ${usdValue}"
+	},
+	"spending": {
+		"string": "Bestedingssaldo"
+	},
+	"savings": {
+		"string": "Spaargeld"
+	},
+	"spending_label": {
+		"string": "Bestedingssaldo"
+	},
+	"receiving_label": {
+		"string": "Ontvangstcapaciteit"
+	},
+	"setting_up_header": {
+		"string": "Onderweg"
+	},
+	"setting_up_text": {
+		"string": "Even geduld, uw overboeking is onderweg. Dit zou <accent>±10 minuten</accent> moeten duren."
+	},
+	"setting_up_step1": {
+		"string": ""
+	},
+	"setting_up_step2": {
+		"string": "Betaling Voltooid"
+	},
+	"setting_up_step3": {
+		"string": "In de Wacht om te Worden Geopend"
+	},
+	"setting_up_step4": {
+		"string": "Verbinding Wordt Gereed Gemaakt"
+	},
+	"setting_up_button": {
+		"string": ""
+	},
+	"node_info": {
+		"string": "Lightning Node"
+	},
+	"node_id": {
+		"string": "LDK Node ID"
+	},
+	"node_disconnected": {
+		"string": "verbinding verbroken"
+	},
+	"node_failed": {
+		"string": "Het is Bitkit niet gelukt om uw Lightning node op te starten."
+	},
+	"connections": {
+		"string": "Lightning Verbindingen"
+	},
+	"conn_pending": {
+		"string": "Verbindingen in afwachting"
+	},
+	"conn_open": {
+		"string": "Open verbindingen"
+	},
+	"conn_closed": {
+		"string": "Gesloten verbindingen"
+	},
+	"conn_failed": {
+		"string": "Mislukte verbindingen"
+	},
+	"conn_closed_show": {
+		"string": "Toon Gesloten en Mislukte Verbindingen"
+	},
+	"conn_closed_hide": {
+		"string": "Verberg Gesloten en Mislukte Verbindingen"
+	},
+	"conn_button_export_logs": {
+		"string": "Geëxporteerde logboeken"
+	},
+	"conn_button_add": {
+		"string": "Verbinding Toevoegen"
+	},
+	"export_logs": {
+		"string": "Exportereer Lightning Logboeken"
+	},
+	"error_logs": {
+		"string": ""
+	},
+	"error_logs_description": {
+		"string": ""
+	},
+	"error_invoice": {
+		"string": "Mislukt om Factuur aan te Maken"
+	},
+	"error_add_title": {
+		"string": ""
+	},
+	"error_add": {
+		"string": ""
+	},
+	"error_add_uri": {
+		"string": ""
+	},
+	"error_add_tor": {
+		"string": ""
+	},
+	"error_save_title": {
+		"string": ""
+	},
+	"error_save": {
+		"string": "Lightning peer kan niet worden opgeslagen"
+	},
+	"error_decode": {
+		"string": "Factuur Kan Niet Worden Gedecodeerd"
+	},
+	"peer_saved": {
+		"string": ""
+	},
+	"invoice_copied": {
+		"string": "Factuur  Gekopieerd naar Klembord"
+	},
+	"connection": {
+		"string": ""
+	},
+	"status": {
+		"string": "Status"
+	},
+	"order_details": {
+		"string": "Ordergegevens"
+	},
+	"order": {
+		"string": ""
+	},
+	"created_on": {
+		"string": "Aangemaakt op"
+	},
+	"order_expiry": {
+		"string": ""
+	},
+	"transaction": {
+		"string": "Transactie"
+	},
+	"order_fee": {
+		"string": "Order kosten"
+	},
+	"balance": {
+		"string": "Saldo"
+	},
+	"reserve_balance": {
+		"string": ""
+	},
+	"total_size": {
+		"string": "Grootte van kanaal"
+	},
+	"fees": {
+		"string": ""
+	},
+	"base_fee": {
+		"string": ""
+	},
+	"fee_rate": {
+		"string": ""
+	},
+	"other": {
+		"string": "Overige"
+	},
+	"is_usable": {
+		"string": ""
+	},
+	"opened_on": {
+		"string": "Geopened op"
+	},
+	"closed_on": {
+		"string": "Gesloten op"
+	},
+	"channel_node_id": {
+		"string": ""
+	},
+	"channel_id": {
+		"string": ""
+	},
+	"channel_point": {
+		"string": ""
+	},
+	"closure_reason": {
+		"string": ""
+	},
+	"support": {
+		"string": "Ondersteuning"
+	},
+	"connection_closed": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"close_conn": {
+		"string": "Verbinding Sluiten"
+	},
+	"close_error": {
+		"string": "Overboeking Mislukt"
+	},
+	"close_error_msg": {
+		"string": "Het geld kon niet worden teruggeboekt naar uw spaarsaldo. Probeer het opnieuw."
+	},
+	"close_success_title": {
+		"string": "Overboeking Geïnitieerd"
+	},
+	"close_success_msg": {
+		"string": "Uw geld wordt teruggeboekt naar uw spaarsaldo."
+	},
+	"close_text": {
+		"string": "De kosten om deze Lightning verbinding te sluiten en uw geld terug te boeken naar uw spaarsaldo zijn afhankelijk van de netwerkdrukte.\n\nDe overboeking vindt meestal direct plaats, maar onder bepaalde netwerkomstandigheden kan het tot <accent>14 dagen</accent> duren."
+	},
+	"close_button": {
+		"string": "Sluiten"
+	},
+	"force_nav_title": {
+		"string": "Forceer Overboeking"
+	},
+	"force_title": {
+		"string": "Forceer\n<accent>Overboeking</accent>"
+	},
+	"force_text": {
+		"string": "Kon de overboeking niet opstarten. Wilt u deze overboeking forceren? Zo ja kunt u dit geld voor ±14 dagen niet gebruiken (!)"
+	},
+	"force_button": {
+		"string": "Forceer Overboeking"
+	},
+	"force_init_title": {
+		"string": "Geforceerde Overboeking Gestart"
+	},
+	"force_init_msg": {
+		"string": "Uw geld zal in ±14 dagen beschikbaar zijn. "
+	},
+	"force_failed_title": {
+		"string": "Geforceerde Overboeking Mislukt"
+	},
+	"force_failed_msg": {
+		"string": "Het geld kon niet worden teruggeboekt naar uw spaarsaldo. Probeer het opnieuw."
+	},
+	"channel_opened_title": {
+		"string": ""
+	},
+	"channel_opened_msg": {
+		"string": "U kunt nu directe betalingen maken aan wie u wilt, wanneer u wilt. "
+	},
+	"order_given_up_title": {
+		"string": "Directe Betalingen Instellen Mislukt"
+	},
+	"order_given_up_msg": {
+		"string": ""
+	},
+	"order_expired_title": {
+		"string": "Directe Betalingen Instellen Mislukt"
+	},
+	"order_expired_msg": {
+		"string": ""
+	},
+	"order_state": {
+		"awaiting_payment": {
+			"string": ""
+		},
+		"payment_canceled": {
+			"string": ""
+		},
+		"paid": {
+			"string": ""
+		},
+		"refund_available": {
+			"string": ""
+		},
+		"refunded": {
+			"string": ""
+		},
+		"queued": {
+			"string": ""
+		},
+		"opening": {
+			"string": ""
+		},
+		"closing": {
+			"string": ""
+		},
+		"given_up": {
+			"string": ""
+		},
+		"expired": {
+			"string": ""
+		},
+		"closed": {
+			"string": ""
+		},
+		"open": {
+			"string": ""
+		},
+		"inactive": {
+			"string": ""
+		}
+	},
+	"wait_text_top": {
+		"string": ""
+	},
+	"wait_text_bottom": {
+		"string": ""
+	}
 }

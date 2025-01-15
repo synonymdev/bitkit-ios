@@ -41,6 +41,9 @@
   "slide1_text": {
     "string": "Dépensez des bitcoins plus rapidement que jamais. Profitez de paiements instantanés et bon marché avec vos amis, votre famille et les commerçants."
   },
+  "slide1_note": {
+    "string": ""
+  },
   "slide2_header": {
     "string": "Bitcoiners,\n<accent>sans frontières</accent>"
   },

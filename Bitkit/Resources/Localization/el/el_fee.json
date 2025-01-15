@@ -72,6 +72,29 @@
   "custom": {
     "title": {
       "string": "Προσαρμοσμένο"
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "none": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
     }
   }
 }

@@ -1,5 +1,11 @@
 {
   "backupSeedPhrase": {
+    "title": {
+      "string": "",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
     "description": {
       "string": "Храните ваш биткоин"
     }
@@ -13,6 +19,9 @@
     }
   },
   "quickpay": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Сканируйте и платите"
     }
@@ -66,6 +75,9 @@
     }
   },
   "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Держите приложение открытым"
     }

@@ -23,6 +23,15 @@
   "dialog_cancel": {
     "string": "No, Cancelar"
   },
+  "sat_vbyte": {
+    "string": ""
+  },
+  "sat_vbyte_compact": {
+    "string": ""
+  },
+  "edit": {
+    "string": ""
+  },
   "copy": {
     "string": "Copiar"
   },
@@ -47,6 +56,11 @@
   "ok": {
     "string": "OK"
   },
+  "ok_random": {
+		"string": "",
+		"context": "A list of positive words to show the user after they have completed an action",
+		"developer_comment": "Use a number of words separated by a newline character"
+	},
   "retry": {
     "string": "Vuelva a intentarlo"
   },
@@ -55,6 +69,9 @@
   },
   "skip": {
     "string": "Saltar"
+  },
+  "copied": {
+    "string": ""
   },
   "yes": {
     "string": "Sí"
@@ -70,5 +87,17 @@
   },
   "understood": {
     "string": "Comprendido"
+  },
+  "connect": {
+    "string": ""
+  },
+  "min": {
+    "string": ""
+  },
+  "max": {
+    "string": ""
+  },
+  "default": {
+    "string": ""
   }
 }

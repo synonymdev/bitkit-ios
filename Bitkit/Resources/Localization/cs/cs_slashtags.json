@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "Vaše jméno"
+  },
+  "your_name_capital": {
+    "string": "Vaše jméno"
+  },
+  "contact_name": {
+    "string": "Kontaktní jméno"
+  },
+  "contact": {
+    "string": "Kontakt"
+  },
+  "contacts": {
+    "string": "Kontakty"
+  },
+  "contact_add": {
+    "string": "Přidat kontakt"
+  },
+  "contact_add_capital": {
+    "string": "Přidat kontakt"
+  },
+  "contact_add_explain": {
+    "string": "Přidejte nový kontakt naskenováním jeho QR kódu nebo vložením jeho klíče níže."
+  },
+  "contact_add_button": {
+    "string": "Vložit"
+  },
+  "contact_key_paste": {
+    "string": "Vložte klíč"
+  },
+  "contact_error_yourself": {
+    "string": "Nemůžete přidat sebe jako kontakt."
+  },
+  "contact_error_key": {
+    "string": "Toto není platný klíč."
+  },
+  "contact_edit_capital": {
+    "string": "Upravit kontakt"
+  },
+  "contacts_name": {
+    "string": "Jméno kontaktu"
+  },
+  "contact_your_name": {
+    "string": "Vaše veřejné\nprofilové jméno"
+  },
+  "contact_retrieving": {
+    "string": "Načítání\nkontaktní informace..."
+  },
+  "contact_no_links": {
+    "string": "Zatím nebyly přidány žádné odkazy..."
+  },
+  "contact_pay_error": {
+    "string": "Není možné zaplatit kontaktu"
+  },
+  "contact_share": {
+    "string": "Sdílet profilový klíč"
+  },
+  "contact_this": {
+    "string": "tento kontakt"
+  },
+  "contact_copied": {
+    "string": "Klíč profilu zkopírován do schránky"
+  },
+  "contact_delete_title": {
+    "string": "Smazat {name}?"
+  },
+  "contact_delete_text": {
+    "string": "Opravdu chcete smazat {name} ze svých kontaktů?"
+  },
+  "contact_delete_yes": {
+    "string": "Ano, smazat"
+  },
+  "contact_select": {
+    "string": "Vybrat kontakt"
+  },
+  "contact_assign": {
+    "string": "Přiřadit kontakt"
+  },
+  "contacts_no_found": {
+    "string": "Nebyly nalezeny žádné kontakty"
+  },
+  "disabled": {
+    "string": "Slashtagy zakázány"
+  },
+  "onboarding_header": {
+    "string": "Dynamické\n<accent>kontakty</accent>"
+  },
+  "onboarding_text": {
+    "string": "Získávejte automatické aktualizace od svých kontaktů ze služby Bitkit, plaťte jim a sledujte jejich veřejné profily."
+  },
+  "onboarding_button": {
+    "string": "Přidejte první kontakt"
+  },
+  "onboarding_profile1_header": {
+    "string": "Vlastněte svůj\n<accent>profil</accent>"
+  },
+  "onboarding_profile1_text": {
+    "string": "Nastavte si veřejný profil a odkazy, aby vás kontakty ze služby Bitkit mohly kdykoli a kdekoli kontaktovat nebo vám zaplatit."
+  },
+  "onboarding_profile2_header": {
+    "string": "Zaplatit <accent>Bitkit\nkontaktům</accent>"
+  },
+  "onboarding_profile2_text": {
+    "string": "Vy a vaše kontakty můžete pomocí Bitkitu posílat platby přímo, bez bank, kdykoli a kdekoli."
+  },
+  "onboarding_widgets_header": {
+    "string": "Dobrý den,\n<accent>Widgety</accent>"
+  },
+  "onboarding_widgets_text": {
+    "string": "Užívejte si decentralizované kanály ze svých oblíbených webových služeb přidáním zábavných a užitečných widgetů do peněženky Bitkit."
+  },
+  "my_profile": {
+    "string": "Můj profil"
+  },
+  "profile": {
+    "string": "Profil"
+  },
+  "profile_save": {
+    "string": "Uložit profil"
+  },
+  "profile_pay_contacts": {
+    "string": "Zaplaťte svým kontaktům"
+  },
+  "profile_create": {
+    "string": "Vytvořit profil"
+  },
+  "profile_public_warn": {
+    "string": "Vezměte prosím na vědomí, že všechny informace o vašem profilu budou veřejně dostupné a viditelné."
+  },
+  "profile_bio": {
+    "string": "Krátký životopis. Řekni něco o sobě."
+  },
+  "profile_add_link": {
+    "string": "Vložit odkaz"
+  },
+  "profile_link_label": {
+    "string": "Štítek"
+  },
+  "profile_link_label_placeholder": {
+    "string": "Například „webová stránka“"
+  },
+  "profile_link_value": {
+    "string": "Odkaz nebo text"
+  },
+  "profile_link_public": {
+    "string": "Poznámka: Jakýkoli odkaz, který přidáte, bude veřejně viditelný."
+  },
+  "profile_link_suggestions": {
+    "string": "Návrhy"
+  },
+  "profile_link_suggestions_to_add": {
+    "string": "Návrhy k přidání"
+  },
+  "profile_scan_to_add": {
+    "string": "Naskenujte k přidání {name}"
+  },
+  "profile_edit": {
+    "string": "Upravit profil"
+  },
+  "offline_enable": {
+    "string": "Povolit platby s kontakty*"
+  },
+  "offline_enable_explain": {
+    "string": "* Toto vyžaduje sdílení dat o platbě"
+  },
+  "widgets": {
+    "string": "Widgety"
+  },
+  "widget_add": {
+    "string": "Přidat widget"
+  },
+  "widget_loading_description": {
+    "string": "Načítání popisu widgetu..."
+  },
+  "widget_failed_description": {
+    "string": "Nepodařilo se načíst widget"
+  },
+  "widget_source": {
+    "string": "Zdroj"
+  },
+  "widget_price": {
+    "string": "cena bitcoinu"
+  },
+  "widget_headlines": {
+    "string": "bitcoinové titulky"
+  },
+  "widget_blocks": {
+    "string": "bitcoinové bloky"
+  },
+  "widget_facts": {
+    "string": "bitcoinová fakta"
+  },
+  "widget_qr": {
+    "string": "nebo naskenujte QR"
+  },
+  "widget_error_drive": {
+    "string": "Nelze získat data"
+  },
+  "widget_feed": {
+    "string": "Widget"
+  },
+  "widget_edit": {
+    "string": "Widget Feed"
+  },
+  "widget_edit_default": {
+    "string": "Výchozí"
+  },
+  "widget_edit_custom": {
+    "string": "Vlastní"
+  },
+  "widget_edit_description": {
+    "string": "Vyberte, která pole chcete zobrazit ve widgetu {name}."
+  },
+  "widget_loading_options": {
+    "string": "Načítání nabídky widgetů..."
+  },
+  "widget_reset": {
+    "string": "Obnovit"
+  },
+  "widget_preview": {
+    "string": "Náhled"
+  },
+  "widget_delete_yes": {
+    "string": "Ano, smazat"
+  },
+  "widget_delete_title": {
+    "string": "Smazat Widget?"
+  },
+  "widget_delete_desc": {
+    "string": "Jste si jisti, že chcete smazat ‘{name}‘ ze svých widgetů?"
+  },
+  "error_saving_contact": {
+    "string": "Nelze uložit kontakt"
+  },
+  "error_saving_profile": {
+    "string": "Nelze uložit profil"
+  },
+  "error_pay_title": {
+    "string": "Není možné zaplatit kontaktu"
+  },
+  "error_pay_empty_msg": {
+    "string": "Kontakt, kterému se snažíte odeslat platbu, nemá platby povolené."
+  },
+  "auth_depricated_title": {
+    "string": "Nedoporučený"
+  },
+  "auth_depricated_msg": {
+    "string": "Slashauth je zastaralý. Používejte prosím Bitkit Beta."
+  }
+}

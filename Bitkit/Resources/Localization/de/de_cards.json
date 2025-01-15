@@ -1,7 +1,10 @@
 {
   "backupSeedPhrase": {
     "title": {
-      "string": "Sichern"
+      "string": "Sichern",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
     },
     "description": {
       "string": "Sichere deine bitcoin"

@@ -1,24 +1,586 @@
 {
-  "transfer_failed": {
-    "continue": {
-      "string": "Spróbuj ponownie"
-    }
-  },
-  "external_manual": {
-    "node_id": {
-      "string": "ID węzła"
-    },
-    "host": {
-      "string": "Host"
-    },
-    "port": {
-      "string": "Port"
-    }
-  },
-  "channel_node_id": {
-    "string": "ID węzła"
-  },
-  "close_button": {
-    "string": "Zamknij"
-  }
+	"transfer_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": ""
+		}
+	},
+	"funding": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"text_blocked": {
+			"string": ""
+		},
+		"text_blocked_cjit": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		},
+		"button3": {
+			"string": ""
+		}
+	},
+	"funding_advanced": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		}
+	},
+	"no_funds": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		},
+		"fund": {
+			"string": ""
+		}
+	},
+	"transfer": {
+		"nav_title": {
+			"string": ""
+		},
+		"confirm": {
+			"string": ""
+		},
+		"custom_fee": {
+			"string": ""
+		},
+		"swipe": {
+			"string": ""
+		}
+	},
+	"spending_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": ""
+		}
+	},
+	"transfer_failed": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"cancel": {
+			"string": ""
+		},
+		"continue": {
+			"string": "Spróbuj ponownie"
+		}
+	},
+	"spending_amount": {
+		"title": {
+			"string": ""
+		},
+		"quarter": {
+			"string": ""
+		},
+		"error_max": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			},
+			"description_zero": {
+				"string": ""
+			}
+		}
+	},
+	"spending_confirm": {
+		"network_fee": {
+			"string": ""
+		},
+		"lsp_fee": {
+			"string": ""
+		},
+		"amount": {
+			"string": ""
+		},
+		"total": {
+			"string": ""
+		},
+		"default": {
+			"string": ""
+		}
+	},
+	"spending_advanced": {
+		"title": {
+			"string": ""
+		},
+		"fee": {
+			"string": ""
+		}
+	},
+	"liquidity": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		}
+	},
+	"savings_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": ""
+		}
+	},
+	"availability": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_confirm": {
+		"label": {
+			"string": ""
+		},
+		"transfer_all": {
+			"string": ""
+		}
+	},
+	"savings_advanced": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"total": {
+			"string": ""
+		}
+	},
+	"savings_progress": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_interrupted": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"transfer_success": {
+		"nav_title": {
+			"string": ""
+		},
+		"title_spending": {
+			"string": ""
+		},
+		"text_spending": {
+			"string": ""
+		},
+		"title_savings": {
+			"string": ""
+		},
+		"text_savings": {
+			"string": ""
+		}
+	},
+	"external": {
+		"nav_title": {
+			"string": ""
+		}
+	},
+	"external_manual": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"node_id": {
+			"string": "ID węzła"
+		},
+		"host": {
+			"string": "Host"
+		},
+		"port": {
+			"string": "Port"
+		},
+		"paste": {
+			"string": ""
+		},
+		"scan": {
+			"string": ""
+		}
+	},
+	"external_amount": {
+		"title": {
+			"string": ""
+		}
+	},
+	"external_success": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"error_channel_purchase": {
+		"string": ""
+	},
+	"error_channel_setup_msg": {
+		"string": ""
+	},
+	"error_channel_receiving": {
+		"string": ""
+	},
+	"spending": {
+		"string": ""
+	},
+	"savings": {
+		"string": ""
+	},
+	"spending_label": {
+		"string": ""
+	},
+	"receiving_label": {
+		"string": ""
+	},
+	"setting_up_header": {
+		"string": ""
+	},
+	"setting_up_text": {
+		"string": ""
+	},
+	"setting_up_step1": {
+		"string": ""
+	},
+	"setting_up_step2": {
+		"string": ""
+	},
+	"setting_up_step3": {
+		"string": ""
+	},
+	"setting_up_step4": {
+		"string": ""
+	},
+	"setting_up_button": {
+		"string": ""
+	},
+	"node_info": {
+		"string": ""
+	},
+	"node_id": {
+		"string": ""
+	},
+	"node_disconnected": {
+		"string": ""
+	},
+	"node_failed": {
+		"string": ""
+	},
+	"connections": {
+		"string": ""
+	},
+	"conn_pending": {
+		"string": ""
+	},
+	"conn_open": {
+		"string": ""
+	},
+	"conn_closed": {
+		"string": ""
+	},
+	"conn_failed": {
+		"string": ""
+	},
+	"conn_closed_show": {
+		"string": ""
+	},
+	"conn_closed_hide": {
+		"string": ""
+	},
+	"conn_button_export_logs": {
+		"string": ""
+	},
+	"conn_button_add": {
+		"string": ""
+	},
+	"export_logs": {
+		"string": ""
+	},
+	"error_logs": {
+		"string": ""
+	},
+	"error_logs_description": {
+		"string": ""
+	},
+	"error_invoice": {
+		"string": ""
+	},
+	"error_add_title": {
+		"string": ""
+	},
+	"error_add": {
+		"string": ""
+	},
+	"error_add_uri": {
+		"string": ""
+	},
+	"error_add_tor": {
+		"string": ""
+	},
+	"error_save_title": {
+		"string": ""
+	},
+	"error_save": {
+		"string": ""
+	},
+	"error_decode": {
+		"string": ""
+	},
+	"peer_saved": {
+		"string": ""
+	},
+	"invoice_copied": {
+		"string": ""
+	},
+	"connection": {
+		"string": ""
+	},
+	"status": {
+		"string": ""
+	},
+	"order_details": {
+		"string": ""
+	},
+	"order": {
+		"string": ""
+	},
+	"created_on": {
+		"string": ""
+	},
+	"order_expiry": {
+		"string": ""
+	},
+	"transaction": {
+		"string": ""
+	},
+	"order_fee": {
+		"string": ""
+	},
+	"balance": {
+		"string": ""
+	},
+	"reserve_balance": {
+		"string": ""
+	},
+	"total_size": {
+		"string": ""
+	},
+	"fees": {
+		"string": ""
+	},
+	"base_fee": {
+		"string": ""
+	},
+	"fee_rate": {
+		"string": ""
+	},
+	"other": {
+		"string": ""
+	},
+	"is_usable": {
+		"string": ""
+	},
+	"opened_on": {
+		"string": ""
+	},
+	"closed_on": {
+		"string": ""
+	},
+	"channel_node_id": {
+		"string": "ID węzła"
+	},
+	"channel_id": {
+		"string": ""
+	},
+	"channel_point": {
+		"string": ""
+	},
+	"closure_reason": {
+		"string": ""
+	},
+	"support": {
+		"string": ""
+	},
+	"connection_closed": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"close_conn": {
+		"string": ""
+	},
+	"close_error": {
+		"string": ""
+	},
+	"close_error_msg": {
+		"string": ""
+	},
+	"close_success_title": {
+		"string": ""
+	},
+	"close_success_msg": {
+		"string": ""
+	},
+	"close_text": {
+		"string": ""
+	},
+	"close_button": {
+		"string": "Zamknij"
+	},
+	"force_nav_title": {
+		"string": ""
+	},
+	"force_title": {
+		"string": ""
+	},
+	"force_text": {
+		"string": ""
+	},
+	"force_button": {
+		"string": ""
+	},
+	"force_init_title": {
+		"string": ""
+	},
+	"force_init_msg": {
+		"string": ""
+	},
+	"force_failed_title": {
+		"string": ""
+	},
+	"force_failed_msg": {
+		"string": ""
+	},
+	"channel_opened_title": {
+		"string": ""
+	},
+	"channel_opened_msg": {
+		"string": ""
+	},
+	"order_given_up_title": {
+		"string": ""
+	},
+	"order_given_up_msg": {
+		"string": ""
+	},
+	"order_expired_title": {
+		"string": ""
+	},
+	"order_expired_msg": {
+		"string": ""
+	},
+	"order_state": {
+		"awaiting_payment": {
+			"string": ""
+		},
+		"payment_canceled": {
+			"string": ""
+		},
+		"paid": {
+			"string": ""
+		},
+		"refund_available": {
+			"string": ""
+		},
+		"refunded": {
+			"string": ""
+		},
+		"queued": {
+			"string": ""
+		},
+		"opening": {
+			"string": ""
+		},
+		"closing": {
+			"string": ""
+		},
+		"given_up": {
+			"string": ""
+		},
+		"expired": {
+			"string": ""
+		},
+		"closed": {
+			"string": ""
+		},
+		"open": {
+			"string": ""
+		},
+		"inactive": {
+			"string": ""
+		}
+	},
+	"wait_text_top": {
+		"string": ""
+	},
+	"wait_text_bottom": {
+		"string": ""
+	}
 }

@@ -41,6 +41,9 @@
   "slide1_text": {
     "string": "Gib bitcoin aus, schneller denn je zuvor. Genieße sofortige und günstige Zahlungen mit Freunden, Familie und Händlern."
   },
+  "slide1_note": {
+    "string": ""
+  },
   "slide2_header": {
     "string": "Bitcoiners,\n<accent>borderless</accent>"
   },

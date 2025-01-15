@@ -56,6 +56,11 @@
   "ok": {
     "string": "OK"
   },
+  "ok_random": {
+		"string": "",
+		"context": "A list of positive words to show the user after they have completed an action",
+		"developer_comment": "Use a number of words separated by a newline character"
+	},
   "retry": {
     "string": "Réessayer"
   },
@@ -85,6 +90,12 @@
   },
   "connect": {
     "string": "Connecter"
+  },
+  "min": {
+    "string": ""
+  },
+  "max": {
+    "string": ""
   },
   "default": {
     "string": "Défaut"

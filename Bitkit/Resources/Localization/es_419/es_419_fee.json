@@ -1,5 +1,8 @@
 {
   "instant": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "±2-10 segundos"
     },
@@ -78,6 +81,20 @@
     },
     "shortDescription": {
       "string": "Depende de la tarifa"
+    }
+  },
+  "none": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
     }
   }
 }

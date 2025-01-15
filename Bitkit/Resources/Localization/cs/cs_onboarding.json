@@ -41,6 +41,9 @@
   "slide1_text": {
     "string": "Utrácejte bitcoiny rychleji než kdykoli předtím. Užívejte si okamžité a levné platby s přáteli, rodinou a obchodníky."
   },
+  "slide1_note": {
+    "string": "*Bitkit v současné době neposkytuje služby lightning ve vaší zemi, ale stále se můžete připojit k jiným uzlům."
+  },
   "slide2_header": {
     "string": "Bitcoineři,\n<accent>bez hranic</accent>"
   },

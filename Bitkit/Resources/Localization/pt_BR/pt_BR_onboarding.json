@@ -41,6 +41,9 @@
   "slide1_text": {
     "string": "Envie bitcoin mais rápido do que nunca. Aproveite os pagamentos instantâneos e baratos com amigos, familiares e comerciantes."
   },
+  "slide1_note": {
+    "string": ""
+  },
   "slide2_header": {
     "string": "Bitcoiners,\n<accent>sem fronteiras</accent>"
   },
