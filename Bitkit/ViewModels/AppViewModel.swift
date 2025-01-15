@@ -5,12 +5,13 @@
 //  Created by Jason van den Berg on 2024/10/10.
 //
 
+import LDKNode
 import SwiftUI
 
 @MainActor
 class AppViewModel: ObservableObject {
     static let shared = AppViewModel()
-    
+
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedLightningBolt11Invoice: String? // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
@@ -33,7 +34,7 @@ class AppViewModel: ObservableObject {
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
-    
+
     init(lightningService: LightningService = .shared) {
         self.lightningService = lightningService
     }
@@ -182,6 +183,40 @@ extension AppViewModel {
             self.scannedLightningInvoice = nil
             self.scannedOnchainInvoice = nil
             self.sendAmountSats = nil
+        }
+    }
+}
+
+// MARK: LDK Node Events
+extension AppViewModel {
+    func handleLdkNodeEvent(_ event: Event) {
+        switch event {
+        case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
+            showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
+
+        case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
+            // Only relevant for channels to external nodes
+            break
+
+        case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
+            // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
+            if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
+                showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
+            } else {
+                toast(type: .error, title: "Channel opened", description: "Ready to send")
+            }
+
+        case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
+            toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
+
+        case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
+            showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
+
+        case .paymentClaimable:
+            break
+
+        case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
+            break
         }
     }
 }

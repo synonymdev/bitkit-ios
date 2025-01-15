@@ -76,12 +76,12 @@ enum Env {
         }
     }
     
-    static func bdkStorage(walletIndex: Int) -> URL {
+    static func bitkitCoreStorage(walletIndex: Int) -> URL {
         switch network {
         case .regtest:
             return appStorageUrl
                 .appendingPathComponent("regtest")
-                .appendingPathComponent("wallet\(walletIndex)/bdk")
+                .appendingPathComponent("wallet\(walletIndex)/core")
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:

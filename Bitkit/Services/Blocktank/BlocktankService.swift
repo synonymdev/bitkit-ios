@@ -30,7 +30,7 @@ class BlocktankService {
             let (data, response) = try await URLSession.shared.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw BlocktankError.missingResponse
+                throw BlocktankError_deprecated.missingResponse
             }
             
             if Env.isDebug {
@@ -47,7 +47,7 @@ class BlocktankService {
                     Logger.error(responseBody)
                 }
                 
-                throw BlocktankError.invalidResponse // TODO: add error status code
+                throw BlocktankError_deprecated.invalidResponse // TODO: add error status code
             }
             
             return data
@@ -77,7 +77,7 @@ class BlocktankService {
         let (data, response) = try await URLSession.shared.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw BlocktankError.missingResponse
+            throw BlocktankError_deprecated.missingResponse
         }
         
         if Env.isDebug {
@@ -89,7 +89,7 @@ class BlocktankService {
         
         guard (200...299).contains(httpResponse.statusCode) else {
             Logger.error("Invalid BT server response (\(httpResponse.statusCode)) from GET \(url.absoluteString)")
-            throw BlocktankError.invalidResponse
+            throw BlocktankError_deprecated.invalidResponse
         }
         
         return data
