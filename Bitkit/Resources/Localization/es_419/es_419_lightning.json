@@ -1,187 +1,586 @@
 {
-  "transfer_intro": {
-    "button": {
-      "string": "Empezar"
-    }
-  },
-  "funding": {
-    "nav_title": {
-      "string": "Saldo de gastos"
-    },
-    "button3": {
-      "string": "Avanzado"
-    }
-  },
-  "funding_advanced": {
-    "nav_title": {
-      "string": "Saldo de gastos"
-    }
-  },
-  "transfer": {
-    "nav_title": {
-      "string": "Transferir fondos"
-    },
-    "swipe": {
-      "string": "Deslizar para transferir"
-    }
-  },
-  "spending_intro": {
-    "button": {
-      "string": "Empezar"
-    }
-  },
-  "transfer_failed": {
-    "continue": {
-      "string": "Inténtelo de nuevo"
-    }
-  },
-  "savings_intro": {
-    "button": {
-      "string": "Empezar"
-    }
-  },
-  "savings_advanced": {
-    "total": {
-      "string": "Total seleccionado"
-    }
-  },
-  "transfer_success": {
-    "nav_title": {
-      "string": "Transferencia exitosa"
-    }
-  },
-  "external_manual": {
-    "host": {
-      "string": "Anfitrión"
-    },
-    "port": {
-      "string": "Puerta"
-    }
-  },
-  "error_channel_purchase": {
-    "string": "Falló la Configuración de Pagos Instantáneos"
-  },
-  "error_channel_receiving": {
-    "string": "El importe a recibir hay de ser superior a ${usdValue}"
-  },
-  "savings": {
-    "string": "Ahorro"
-  },
-  "spending_label": {
-    "string": "Saldo para gastos"
-  },
-  "receiving_label": {
-    "string": "Capacidad de recepción"
-  },
-  "setting_up_step2": {
-    "string": "Pago Efectuado"
-  },
-  "setting_up_step3": {
-    "string": "En Cola Para la Apertura"
-  },
-  "node_info": {
-    "string": "Nodo Lightning"
-  },
-  "node_id": {
-    "string": "ID del nodo LDK"
-  },
-  "node_disconnected": {
-    "string": "desconectado"
-  },
-  "node_failed": {
-    "string": "Bitkit ha fallado al inicializar el nodo Lightning."
-  },
-  "connections": {
-    "string": "Conexiones Lightning"
-  },
-  "conn_pending": {
-    "string": "Conexiones pendientes"
-  },
-  "conn_open": {
-    "string": "Conexiones abiertas"
-  },
-  "conn_closed": {
-    "string": "Conexiones cerradas"
-  },
-  "conn_failed": {
-    "string": "Conexiones falladas"
-  },
-  "conn_button_export_logs": {
-    "string": "Exportar registros"
-  },
-  "conn_button_add": {
-    "string": "Añadir conexión"
-  },
-  "error_invoice": {
-    "string": "Falla al crear la factura"
-  },
-  "error_save": {
-    "string": "No se puede guardar el par Lightning"
-  },
-  "error_decode": {
-    "string": "No se puede descodificar la factura"
-  },
-  "status": {
-    "string": "Estatus"
-  },
-  "order_details": {
-    "string": "Detalles del pedido"
-  },
-  "created_on": {
-    "string": "Creado en"
-  },
-  "transaction": {
-    "string": "Transacción"
-  },
-  "order_fee": {
-    "string": "Tarifa de pedido"
-  },
-  "balance": {
-    "string": "Saldo"
-  },
-  "total_size": {
-    "string": "Tamaño total del canal"
-  },
-  "other": {
-    "string": "Otros"
-  },
-  "opened_on": {
-    "string": "Abierto en"
-  },
-  "closed_on": {
-    "string": "Cerrado el"
-  },
-  "support": {
-    "string": "Soporte"
-  },
-  "close_conn": {
-    "string": "Terminar conexión"
-  },
-  "close_button": {
-    "string": "Cerrar"
-  },
-  "force_nav_title": {
-    "string": "Fuerzar transferencia"
-  },
-  "force_text": {
-    "string": "No se ha podido iniciar la transferencia. ¿Desea forzar esta transferencia? No podrá utilizar estos fondos durante ±14 días (!)"
-  },
-  "force_button": {
-    "string": "Fuerzar transferencia"
-  },
-  "force_init_msg": {
-    "string": "Sus fondos estarán accesibles en ±14 días."
-  },
-  "force_failed_title": {
-    "string": "Transferencia forzada falló"
-  },
-  "channel_opened_msg": {
-    "string": "Ahora puede pagar a cualquier persona, en cualquier lugar y al instante."
-  },
-  "order_given_up_title": {
-    "string": "Falló la Configuración de Pagos Instantáneos"
-  },
-  "order_expired_title": {
-    "string": "Falló la Configuración de Pagos Instantáneos"
-  }
+	"transfer_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"funding": {
+		"nav_title": {
+			"string": "Saldo de gastos"
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"text_blocked": {
+			"string": ""
+		},
+		"text_blocked_cjit": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		},
+		"button3": {
+			"string": "Avanzado"
+		}
+	},
+	"funding_advanced": {
+		"nav_title": {
+			"string": "Saldo de gastos"
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		}
+	},
+	"no_funds": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		},
+		"fund": {
+			"string": ""
+		}
+	},
+	"transfer": {
+		"nav_title": {
+			"string": "Transferir fondos"
+		},
+		"confirm": {
+			"string": ""
+		},
+		"custom_fee": {
+			"string": ""
+		},
+		"swipe": {
+			"string": "Deslizar para transferir"
+		}
+	},
+	"spending_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"transfer_failed": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"cancel": {
+			"string": ""
+		},
+		"continue": {
+			"string": "Inténtelo de nuevo"
+		}
+	},
+	"spending_amount": {
+		"title": {
+			"string": ""
+		},
+		"quarter": {
+			"string": ""
+		},
+		"error_max": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			},
+			"description_zero": {
+				"string": ""
+			}
+		}
+	},
+	"spending_confirm": {
+		"network_fee": {
+			"string": ""
+		},
+		"lsp_fee": {
+			"string": ""
+		},
+		"amount": {
+			"string": ""
+		},
+		"total": {
+			"string": ""
+		},
+		"default": {
+			"string": ""
+		}
+	},
+	"spending_advanced": {
+		"title": {
+			"string": ""
+		},
+		"fee": {
+			"string": ""
+		}
+	},
+	"liquidity": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		}
+	},
+	"savings_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"availability": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_confirm": {
+		"label": {
+			"string": ""
+		},
+		"transfer_all": {
+			"string": ""
+		}
+	},
+	"savings_advanced": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"total": {
+			"string": "Total seleccionado"
+		}
+	},
+	"savings_progress": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_interrupted": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"transfer_success": {
+		"nav_title": {
+			"string": "Transferencia exitosa"
+		},
+		"title_spending": {
+			"string": ""
+		},
+		"text_spending": {
+			"string": ""
+		},
+		"title_savings": {
+			"string": ""
+		},
+		"text_savings": {
+			"string": ""
+		}
+	},
+	"external": {
+		"nav_title": {
+			"string": ""
+		}
+	},
+	"external_manual": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"node_id": {
+			"string": ""
+		},
+		"host": {
+			"string": "Anfitrión"
+		},
+		"port": {
+			"string": "Puerta"
+		},
+		"paste": {
+			"string": ""
+		},
+		"scan": {
+			"string": ""
+		}
+	},
+	"external_amount": {
+		"title": {
+			"string": ""
+		}
+	},
+	"external_success": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"error_channel_purchase": {
+		"string": "Falló la Configuración de Pagos Instantáneos"
+	},
+	"error_channel_setup_msg": {
+		"string": ""
+	},
+	"error_channel_receiving": {
+		"string": "El importe a recibir hay de ser superior a ${usdValue}"
+	},
+	"spending": {
+		"string": ""
+	},
+	"savings": {
+		"string": "Ahorro"
+	},
+	"spending_label": {
+		"string": "Saldo para gastos"
+	},
+	"receiving_label": {
+		"string": "Capacidad de recepción"
+	},
+	"setting_up_header": {
+		"string": ""
+	},
+	"setting_up_text": {
+		"string": ""
+	},
+	"setting_up_step1": {
+		"string": ""
+	},
+	"setting_up_step2": {
+		"string": "Pago Efectuado"
+	},
+	"setting_up_step3": {
+		"string": "En Cola Para la Apertura"
+	},
+	"setting_up_step4": {
+		"string": ""
+	},
+	"setting_up_button": {
+		"string": ""
+	},
+	"node_info": {
+		"string": "Nodo Lightning"
+	},
+	"node_id": {
+		"string": "ID del nodo LDK"
+	},
+	"node_disconnected": {
+		"string": "desconectado"
+	},
+	"node_failed": {
+		"string": "Bitkit ha fallado al inicializar el nodo Lightning."
+	},
+	"connections": {
+		"string": "Conexiones Lightning"
+	},
+	"conn_pending": {
+		"string": "Conexiones pendientes"
+	},
+	"conn_open": {
+		"string": "Conexiones abiertas"
+	},
+	"conn_closed": {
+		"string": "Conexiones cerradas"
+	},
+	"conn_failed": {
+		"string": "Conexiones falladas"
+	},
+	"conn_closed_show": {
+		"string": ""
+	},
+	"conn_closed_hide": {
+		"string": ""
+	},
+	"conn_button_export_logs": {
+		"string": "Exportar registros"
+	},
+	"conn_button_add": {
+		"string": "Añadir conexión"
+	},
+	"export_logs": {
+		"string": ""
+	},
+	"error_logs": {
+		"string": ""
+	},
+	"error_logs_description": {
+		"string": ""
+	},
+	"error_invoice": {
+		"string": "Falla al crear la factura"
+	},
+	"error_add_title": {
+		"string": ""
+	},
+	"error_add": {
+		"string": ""
+	},
+	"error_add_uri": {
+		"string": ""
+	},
+	"error_add_tor": {
+		"string": ""
+	},
+	"error_save_title": {
+		"string": ""
+	},
+	"error_save": {
+		"string": "No se puede guardar el par Lightning"
+	},
+	"error_decode": {
+		"string": "No se puede descodificar la factura"
+	},
+	"peer_saved": {
+		"string": ""
+	},
+	"invoice_copied": {
+		"string": ""
+	},
+	"connection": {
+		"string": ""
+	},
+	"status": {
+		"string": "Estatus"
+	},
+	"order_details": {
+		"string": "Detalles del pedido"
+	},
+	"order": {
+		"string": ""
+	},
+	"created_on": {
+		"string": "Creado en"
+	},
+	"order_expiry": {
+		"string": ""
+	},
+	"transaction": {
+		"string": "Transacción"
+	},
+	"order_fee": {
+		"string": "Tarifa de pedido"
+	},
+	"balance": {
+		"string": "Saldo"
+	},
+	"reserve_balance": {
+		"string": ""
+	},
+	"total_size": {
+		"string": "Tamaño total del canal"
+	},
+	"fees": {
+		"string": ""
+	},
+	"base_fee": {
+		"string": ""
+	},
+	"fee_rate": {
+		"string": ""
+	},
+	"other": {
+		"string": "Otros"
+	},
+	"is_usable": {
+		"string": ""
+	},
+	"opened_on": {
+		"string": "Abierto en"
+	},
+	"closed_on": {
+		"string": "Cerrado el"
+	},
+	"channel_node_id": {
+		"string": ""
+	},
+	"channel_id": {
+		"string": ""
+	},
+	"channel_point": {
+		"string": ""
+	},
+	"closure_reason": {
+		"string": ""
+	},
+	"support": {
+		"string": "Soporte"
+	},
+	"connection_closed": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"close_conn": {
+		"string": "Terminar conexión"
+	},
+	"close_error": {
+		"string": ""
+	},
+	"close_error_msg": {
+		"string": ""
+	},
+	"close_success_title": {
+		"string": ""
+	},
+	"close_success_msg": {
+		"string": ""
+	},
+	"close_text": {
+		"string": ""
+	},
+	"close_button": {
+		"string": "Cerrar"
+	},
+	"force_nav_title": {
+		"string": "Fuerzar transferencia"
+	},
+	"force_title": {
+		"string": ""
+	},
+	"force_text": {
+		"string": "No se ha podido iniciar la transferencia. ¿Desea forzar esta transferencia? No podrá utilizar estos fondos durante ±14 días (!)"
+	},
+	"force_button": {
+		"string": "Fuerzar transferencia"
+	},
+	"force_init_title": {
+		"string": ""
+	},
+	"force_init_msg": {
+		"string": "Sus fondos estarán accesibles en ±14 días."
+	},
+	"force_failed_title": {
+		"string": "Transferencia forzada falló"
+	},
+	"force_failed_msg": {
+		"string": ""
+	},
+	"channel_opened_title": {
+		"string": ""
+	},
+	"channel_opened_msg": {
+		"string": "Ahora puede pagar a cualquier persona, en cualquier lugar y al instante."
+	},
+	"order_given_up_title": {
+		"string": "Falló la Configuración de Pagos Instantáneos"
+	},
+	"order_given_up_msg": {
+		"string": ""
+	},
+	"order_expired_title": {
+		"string": "Falló la Configuración de Pagos Instantáneos"
+	},
+	"order_expired_msg": {
+		"string": ""
+	},
+	"order_state": {
+		"awaiting_payment": {
+			"string": ""
+		},
+		"payment_canceled": {
+			"string": ""
+		},
+		"paid": {
+			"string": ""
+		},
+		"refund_available": {
+			"string": ""
+		},
+		"refunded": {
+			"string": ""
+		},
+		"queued": {
+			"string": ""
+		},
+		"opening": {
+			"string": ""
+		},
+		"closing": {
+			"string": ""
+		},
+		"given_up": {
+			"string": ""
+		},
+		"expired": {
+			"string": ""
+		},
+		"closed": {
+			"string": ""
+		},
+		"open": {
+			"string": ""
+		},
+		"inactive": {
+			"string": ""
+		}
+	},
+	"wait_text_top": {
+		"string": ""
+	},
+	"wait_text_bottom": {
+		"string": ""
+	}
 }

@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "Ваше имя"
+  },
+  "your_name_capital": {
+    "string": "Ваше Имя"
+  },
+  "contact_name": {
+    "string": "Имя Контакта"
+  },
+  "contact": {
+    "string": "Контакт"
+  },
+  "contacts": {
+    "string": "Контакты"
+  },
+  "contact_add": {
+    "string": "Добавить контакт"
+  },
+  "contact_add_capital": {
+    "string": "Добавить Контакт"
+  },
+  "contact_add_explain": {
+    "string": "Добавьте новый контакт, отсканировав QR-код или вставив ключ ниже."
+  },
+  "contact_add_button": {
+    "string": "Добавить"
+  },
+  "contact_key_paste": {
+    "string": "Вставить ключ"
+  },
+  "contact_error_yourself": {
+    "string": "Вы не можете добавить себя."
+  },
+  "contact_error_key": {
+    "string": "Недействительный ключ."
+  },
+  "contact_edit_capital": {
+    "string": "Изменить Контакт"
+  },
+  "contacts_name": {
+    "string": "Имя контакта"
+  },
+  "contact_your_name": {
+    "string": "Ваше публичное\nимя"
+  },
+  "contact_retrieving": {
+    "string": "Получаем\nданные о контакте..."
+  },
+  "contact_no_links": {
+    "string": "Ссылок пока нет..."
+  },
+  "contact_pay_error": {
+    "string": "Невозможно Заплатить Контакту"
+  },
+  "contact_share": {
+    "string": "Поделиться Профилем"
+  },
+  "contact_this": {
+    "string": "этот контакт"
+  },
+  "contact_copied": {
+    "string": "Ключ профиля скопирован в буфер обмена"
+  },
+  "contact_delete_title": {
+    "string": "Удалить {name}?"
+  },
+  "contact_delete_text": {
+    "string": "Вы уверены, что хотите удалить {name} из списка контактов?"
+  },
+  "contact_delete_yes": {
+    "string": "Да,\nУдалить"
+  },
+  "contact_select": {
+    "string": "Выбрать Контакт"
+  },
+  "contact_assign": {
+    "string": "Привязать Контакт"
+  },
+  "contacts_no_found": {
+    "string": "Контакты не найдены"
+  },
+  "disabled": {
+    "string": "Slashtags выключен"
+  },
+  "onboarding_header": {
+    "string": "Динамические\n<accent>контакты</accent>"
+  },
+  "onboarding_text": {
+    "string": "Получайте автоматические обновления от ваших контактов Bitkit, платите им и следите за их публичными профилями."
+  },
+  "onboarding_button": {
+    "string": "Добавить Первый Контакт"
+  },
+  "onboarding_profile1_header": {
+    "string": "Владейте своим\n<accent>профилем</accent>"
+  },
+  "onboarding_profile1_text": {
+    "string": "Настройте свой публичный профиль и ссылки, чтобы ваши контакты Bitkit могли связаться с вами или заплатить вам в любое время и в любом месте."
+  },
+  "onboarding_profile2_header": {
+    "string": "Платите <accent>контактам\nBitkit</accent>"
+  },
+  "onboarding_profile2_text": {
+    "string": "Вы и ваши контакты можете использовать Bitkit для отправки платежей напрямую, без банков, в любое время и в любом месте."
+  },
+  "onboarding_widgets_header": {
+    "string": "Привет,\n<accent>Виджеты</accent>"
+  },
+  "onboarding_widgets_text": {
+    "string": "Наслаждайтесь децентрализованными лентами ваших любимых веб-сервисов, добавляя интересные и полезные виджеты в ваш кошелёк Bitkit."
+  },
+  "my_profile": {
+    "string": "Мой профиль"
+  },
+  "profile": {
+    "string": "Профиль"
+  },
+  "profile_save": {
+    "string": "Сохранить Профиль"
+  },
+  "profile_pay_contacts": {
+    "string": "Платите Контактам"
+  },
+  "profile_create": {
+    "string": "Создать Профиль"
+  },
+  "profile_public_warn": {
+    "string": "Обратите внимание, что вся информация вашего профиля будет общедоступной."
+  },
+  "profile_bio": {
+    "string": "Расскажите о себе кратко."
+  },
+  "profile_add_link": {
+    "string": "Добавить Ссылку"
+  },
+  "profile_link_label": {
+    "string": "Название"
+  },
+  "profile_link_label_placeholder": {
+    "string": "Например, 'Сайт'"
+  },
+  "profile_link_value": {
+    "string": "Ссылка или текст"
+  },
+  "profile_link_public": {
+    "string": "Примечание: Любая ссылка, которую вы добавите, будет видна всем."
+  },
+  "profile_link_suggestions": {
+    "string": "Рекомендации"
+  },
+  "profile_link_suggestions_to_add": {
+    "string": "Рекомендации для добавления"
+  },
+  "profile_scan_to_add": {
+    "string": "Сканируйте, чтобы добавить {name}"
+  },
+  "profile_edit": {
+    "string": "Редактировать Профиль"
+  },
+  "offline_enable": {
+    "string": "Включить платежи с контактами*"
+  },
+  "offline_enable_explain": {
+    "string": "* Это требует обмена платежными данными."
+  },
+  "widgets": {
+    "string": "Виджеты"
+  },
+  "widget_add": {
+    "string": "Добавить Виджет"
+  },
+  "widget_loading_description": {
+    "string": "Загрузка описания виджета..."
+  },
+  "widget_failed_description": {
+    "string": "Не удалось загрузить виджет"
+  },
+  "widget_source": {
+    "string": "Источник"
+  },
+  "widget_price": {
+    "string": "Биткоин Цена"
+  },
+  "widget_headlines": {
+    "string": "Биткоин Заголовки"
+  },
+  "widget_blocks": {
+    "string": "Биткоин Блоки"
+  },
+  "widget_facts": {
+    "string": "Биткоин Факты"
+  },
+  "widget_qr": {
+    "string": "Или Сканируйте QR-код"
+  },
+  "widget_error_drive": {
+    "string": "Не удалось получить данные"
+  },
+  "widget_feed": {
+    "string": "Виджет"
+  },
+  "widget_edit": {
+    "string": "Фид Виджета"
+  },
+  "widget_edit_default": {
+    "string": "По умолчанию"
+  },
+  "widget_edit_custom": {
+    "string": "Другое"
+  },
+  "widget_edit_description": {
+    "string": "Пожалуйста, выберите, какие поля вы хотите отображать в виджете {name}."
+  },
+  "widget_loading_options": {
+    "string": "Загрузка параметров виджета..."
+  },
+  "widget_reset": {
+    "string": "Сбросить"
+  },
+  "widget_preview": {
+    "string": "Предпросмотр"
+  },
+  "widget_delete_yes": {
+    "string": "Да, Удалить"
+  },
+  "widget_delete_title": {
+    "string": "Удалить виджет?"
+  },
+  "widget_delete_desc": {
+    "string": "Вы уверены, что хотите удалить «{name}» из ваших виджетов?"
+  },
+  "error_saving_contact": {
+    "string": "Не удалось сохранить контакт"
+  },
+  "error_saving_profile": {
+    "string": "Не удалось сохранить профиль"
+  },
+  "error_pay_title": {
+    "string": "Невозможно Заплатить Контакту"
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": "Устарело"
+  },
+  "auth_depricated_msg": {
+    "string": "Slashauth устарел. Пожалуйста, используйте Bitkit Beta."
+  }
+}

@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "Apellido"
+  },
+  "your_name_capital": {
+    "string": "Su Apellido"
+  },
+  "contact_name": {
+    "string": "Nombre de contacto"
+  },
+  "contact": {
+    "string": "Contactar"
+  },
+  "contacts": {
+    "string": "Contactos"
+  },
+  "contact_add": {
+    "string": "Añadir contacto"
+  },
+  "contact_add_capital": {
+    "string": "Añadir contacto"
+  },
+  "contact_add_explain": {
+    "string": "Añada un nuevo contacto escaneando su QR o pegando su clave a continuación."
+  },
+  "contact_add_button": {
+    "string": "Añadir"
+  },
+  "contact_key_paste": {
+    "string": "Pegar una llave"
+  },
+  "contact_error_yourself": {
+    "string": "No puede añadirse a sí mismo como contacto."
+  },
+  "contact_error_key": {
+    "string": "No es una llave válida."
+  },
+  "contact_edit_capital": {
+    "string": "Editar contacto"
+  },
+  "contacts_name": {
+    "string": "Apellido del contacto"
+  },
+  "contact_your_name": {
+    "string": ""
+  },
+  "contact_retrieving": {
+    "string": "Confirmando\ninformación de contacto..."
+  },
+  "contact_no_links": {
+    "string": "Aún no se han añadido enlaces..."
+  },
+  "contact_pay_error": {
+    "string": ""
+  },
+  "contact_share": {
+    "string": "Compartir clave de perfil"
+  },
+  "contact_this": {
+    "string": "este contacto"
+  },
+  "contact_copied": {
+    "string": ""
+  },
+  "contact_delete_title": {
+    "string": "¿Borrar {name}?"
+  },
+  "contact_delete_text": {
+    "string": "¿Está seguro de que desea eliminar {name} de sus contactos?"
+  },
+  "contact_delete_yes": {
+    "string": "Sí, Borrar"
+  },
+  "contact_select": {
+    "string": "Seleccionar contacto"
+  },
+  "contact_assign": {
+    "string": "Asignar contacto"
+  },
+  "contacts_no_found": {
+    "string": "No se han encontrado contactos"
+  },
+  "disabled": {
+    "string": "Slashtags desactivadas"
+  },
+  "onboarding_header": {
+    "string": ""
+  },
+  "onboarding_text": {
+    "string": ""
+  },
+  "onboarding_button": {
+    "string": ""
+  },
+  "onboarding_profile1_header": {
+    "string": ""
+  },
+  "onboarding_profile1_text": {
+    "string": ""
+  },
+  "onboarding_profile2_header": {
+    "string": ""
+  },
+  "onboarding_profile2_text": {
+    "string": "Usted y sus contactos pueden utilizar Bitkit para enviar pagos directamente, sin bancos, en cualquier momento y en cualquier lugar."
+  },
+  "onboarding_widgets_header": {
+    "string": ""
+  },
+  "onboarding_widgets_text": {
+    "string": ""
+  },
+  "my_profile": {
+    "string": "Mi perfil"
+  },
+  "profile": {
+    "string": "Perfil"
+  },
+  "profile_save": {
+    "string": "Guardar perfil"
+  },
+  "profile_pay_contacts": {
+    "string": "Pague a sus contactos"
+  },
+  "profile_create": {
+    "string": "Crear perfil"
+  },
+  "profile_public_warn": {
+    "string": "Tenga en cuenta que toda la información de su perfil estará disponible y visible públicamente."
+  },
+  "profile_bio": {
+    "string": "Breve biografía. Cuente algo sobre usted."
+  },
+  "profile_add_link": {
+    "string": "Añadir enlace"
+  },
+  "profile_link_label": {
+    "string": ""
+  },
+  "profile_link_label_placeholder": {
+    "string": "Por ejemplo \"Sitio web\""
+  },
+  "profile_link_value": {
+    "string": "Enlace o texto"
+  },
+  "profile_link_public": {
+    "string": "Nota: Cualquier enlace que añada será públicamente visible."
+  },
+  "profile_link_suggestions": {
+    "string": "Sugerencias"
+  },
+  "profile_link_suggestions_to_add": {
+    "string": "Sugerencias para añadir"
+  },
+  "profile_scan_to_add": {
+    "string": "Escanear para añadir {name}"
+  },
+  "profile_edit": {
+    "string": "Editar Perfil"
+  },
+  "offline_enable": {
+    "string": "Habilitar pagos con contactos*"
+  },
+  "offline_enable_explain": {
+    "string": "* Esto requiere compartir los datos de pago."
+  },
+  "widgets": {
+    "string": "Widgets"
+  },
+  "widget_add": {
+    "string": "Añadir Widget"
+  },
+  "widget_loading_description": {
+    "string": ""
+  },
+  "widget_failed_description": {
+    "string": ""
+  },
+  "widget_source": {
+    "string": ""
+  },
+  "widget_price": {
+    "string": "Precio del Bitcoin"
+  },
+  "widget_headlines": {
+    "string": ""
+  },
+  "widget_blocks": {
+    "string": "Bitcoin Bloques"
+  },
+  "widget_facts": {
+    "string": ""
+  },
+  "widget_qr": {
+    "string": "O escanear QR"
+  },
+  "widget_error_drive": {
+    "string": ""
+  },
+  "widget_feed": {
+    "string": ""
+  },
+  "widget_edit": {
+    "string": "Widget Feed"
+  },
+  "widget_edit_default": {
+    "string": ""
+  },
+  "widget_edit_custom": {
+    "string": "personalizado"
+  },
+  "widget_edit_description": {
+    "string": ""
+  },
+  "widget_loading_options": {
+    "string": "Cargando opciones del widget..."
+  },
+  "widget_reset": {
+    "string": ""
+  },
+  "widget_preview": {
+    "string": ""
+  },
+  "widget_delete_yes": {
+    "string": "Sí, Borrar"
+  },
+  "widget_delete_title": {
+    "string": "¿Borrar Widget?"
+  },
+  "widget_delete_desc": {
+    "string": "¿Está seguro de que desea eliminar '{name}' de sus widgets?"
+  },
+  "error_saving_contact": {
+    "string": ""
+  },
+  "error_saving_profile": {
+    "string": ""
+  },
+  "error_pay_title": {
+    "string": ""
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": ""
+  },
+  "auth_depricated_msg": {
+    "string": ""
+  }
+}

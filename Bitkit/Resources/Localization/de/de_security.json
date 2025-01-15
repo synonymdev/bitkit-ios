@@ -343,10 +343,10 @@
       "string": "Pubky-Schlüssel kann nicht abgerufen werden"
     },
     "pubky_auth_error_title": {
-      "string": "Pubky Auth Fehler"
-    },
+        "string": "Pubky Auth Fehler"
+        },
     "pubky_auth_error_description": {
-      "string": "Authentifizierung mit Pubky-Dienst nicht möglich"
+        "string": "Authentifizierung mit Pubky-Dienst nicht möglich"
     }
   }
 }

@@ -53,9 +53,6 @@
   "contact_pay_error": {
     "string": "Unable To Pay Contact"
   },
-  "contact_ldk_not_ready": {
-    "string": "Lightning is not ready yet"
-  },
   "contact_share": {
     "string": "Share Profile Key"
   },
@@ -120,7 +117,7 @@
     "string": "Profile"
   },
   "profile_save": {
-    "string": "Save"
+    "string": "Save Profile"
   },
   "profile_pay_contacts": {
     "string": "Pay Your Contacts"
@@ -160,24 +157,6 @@
   },
   "profile_edit": {
     "string": "Edit Profile"
-  },
-  "profile_delete": {
-    "string": "Delete"
-  },
-  "profile_delete_dialogue_title": {
-    "string": "Delete Profile Information?"
-  },
-  "profile_delete_dialogue_msg": {
-    "string": "Are you sure you want to delete all of your Bitkit profile information?"
-  },
-  "profile_delete_dialogue_yes": {
-    "string": "Yes, Delete"
-  },
-  "profile_delete_success_title": {
-    "string": "Profile Deleted"
-  },
-  "profile_delete_success_msg": {
-    "string": "Your Bitkit profile information has been deleted."
   },
   "offline_enable": {
     "string": "Enable payments with contacts*"
@@ -256,12 +235,6 @@
   },
   "error_saving_profile": {
     "string": "Unable To Save Profile"
-  },
-  "error_saving_profile": {
-    "string": "Unable To Save Profile"
-  },
-  "error_deleting_profile": {
-    "string": "Unable To Delete Profile"
   },
   "error_pay_title": {
     "string": "Unable To Pay Contact"

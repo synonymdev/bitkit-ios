@@ -82,5 +82,19 @@
     "shortDescription": {
       "string": "Depende da taxa"
     }
+  },
+  "none": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
   }
 }

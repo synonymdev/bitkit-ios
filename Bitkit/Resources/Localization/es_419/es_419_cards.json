@@ -1,5 +1,11 @@
 {
   "backupSeedPhrase": {
+    "title": {
+      "string": "",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
     "description": {
       "string": "Almacena tu Bitcoin"
     }
@@ -13,6 +19,9 @@
     }
   },
   "quickpay": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Escanear y pagar"
     }
@@ -28,6 +37,9 @@
   "lightning": {
     "title": {
       "string": "Gastar"
+    },
+    "description": {
+      "string": ""
     }
   },
   "lightningSettingUp": {
@@ -57,14 +69,23 @@
   "transferPending": {
     "title": {
       "string": "Transferir"
+    },
+    "description": {
+      "string": ""
     }
   },
   "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Mantenga la aplicación abierta"
     }
   },
   "pin": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Configurar un código PIN"
     }
@@ -80,6 +101,9 @@
   "support": {
     "title": {
       "string": "Soporte"
+    },
+    "description": {
+      "string": ""
     }
   },
   "buyBitcoin": {

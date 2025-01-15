@@ -1,7 +1,10 @@
 {
   "backupSeedPhrase": {
     "title": {
-      "string": "Zálohování"
+      "string": "Zálohování",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
     },
     "description": {
       "string": "Uložte si svůj bitcoin"

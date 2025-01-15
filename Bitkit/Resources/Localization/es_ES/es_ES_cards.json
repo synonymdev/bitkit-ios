@@ -1,15 +1,43 @@
 {
+  "backupSeedPhrase": {
+    "title": {
+      "string": "",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
+    "description": {
+      "string": ""
+    }
+  },
   "discount": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Saldo de gastos"
     }
   },
+  "quickpay": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
   "invite": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Comparta Bitkit"
     }
   },
   "lightning": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Pagos instantáneos"
     }
@@ -47,6 +75,9 @@
     }
   },
   "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Mantenga abierta la app"
     }
@@ -76,11 +107,17 @@
     }
   },
   "buyBitcoin": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Compra algo de bitcoin"
     }
   },
   "btFailed": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Inténtalo de nuevo"
     }

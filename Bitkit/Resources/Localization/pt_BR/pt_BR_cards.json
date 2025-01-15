@@ -1,7 +1,10 @@
 {
   "backupSeedPhrase": {
     "title": {
-      "string": "Back up"
+      "string": "Back up",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
     },
     "description": {
       "string": "Guarde seu bitcoin"
@@ -16,6 +19,9 @@
     }
   },
   "quickpay": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Escanear e pagar"
     }
@@ -69,6 +75,9 @@
     }
   },
   "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
     "description": {
       "string": "Mantenha o app aberto"
     }

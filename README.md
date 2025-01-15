@@ -5,12 +5,10 @@
 
 ## Localization
 
-Localization files are synced from the React Native project. The sync script (`scripts/sync-translations.js`) pulls JSON files from the main repository for multiple languages and sections (onboarding, wallet, common, settings, etc.).
-
-To update translations:
+Localization files are synced from Transifex. Run below command to pull the latest translations:
 
 ```bash
-node scripts/sync-translations.js
+tx pull --mode translator -f -a
 ```
 
 Files are stored in `Bitkit/Resources/Localization/<lang_code>/<lang_code>_<section>.json`

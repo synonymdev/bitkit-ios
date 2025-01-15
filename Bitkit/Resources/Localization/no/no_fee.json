@@ -1,1 +1,100 @@
-{}
+{
+  "instant": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "fast": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "normal": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "slow": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "minimum": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "custom": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  },
+  "none": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "shortRange": {
+      "string": ""
+    },
+    "shortDescription": {
+      "string": ""
+    }
+  }
+}
