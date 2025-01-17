@@ -14,11 +14,19 @@ struct CJitEntry: Codable {
      */
     var feeSat: UInt32
     /**
+     * Network fee in satoshi for opening the channel
+     */
+    var networkFeeSat: UInt32
+    /**
+     * Service fee in satoshi charged by Blocktank
+     */
+    var serviceFeeSat: UInt32
+    /**
      * Requested channel size in satoshi
      */
     var channelSizeSat: UInt64
     /**
-     * Number of weeks before Blocktank might close then channel.
+     * Number of weeks before Blocktank might close the channel.
      */
     var channelExpiryWeeks: UInt8
     /**
@@ -28,7 +36,7 @@ struct CJitEntry: Codable {
     /**
      * Node id of the node to open the channel to.
      */
-    var nodeId: String
+    var nodeId: String?
     /**
      * Invoice to be paid for the channel open.
      */
