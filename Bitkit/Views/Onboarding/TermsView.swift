@@ -7,18 +7,45 @@
 
 import SwiftUI
 
+struct TappableTextModifier: ViewModifier {
+    let url: String
+    
+    func body(content: Content) -> some View {
+        Button(action: {
+            if let url = URL(string: url) {
+                UIApplication.shared.open(url)
+            }
+        }) {
+            content
+        }
+    }
+}
+
 struct TermsDeclarationText: View {
     private let t = useTranslation(.onboarding)
     
     var body: some View {
         let parts = t.parts("tos_checkbox_value")
-        parts.reduce(Text("")) { current, part in
-            current + Text(part.text)
-                .foregroundColor(part.isAccent ? .brand : .secondary)
-                .underline(part.isAccent)
+        let text = parts.reduce(AttributedString("")) { result, part in
+            var current = result
+            var partText = AttributedString(part.text)
+            if part.isAccent {
+                partText.foregroundColor = .brand
+                partText.underlineStyle = .single
+                
+                if let url = URL(string: Env.termsOfServiceUrl) {
+                    partText.link = url
+                }
+            } else {
+                partText.foregroundColor = .secondary
+            }
+            current.append(partText)
+            return current
         }
-        .font(.subheadline)
-        .tint(.brand)
+        
+        Text(text)
+            .font(.subheadline)
+            .tint(.brand)
     }
 }
 
@@ -27,13 +54,26 @@ struct PrivacyDeclarationText: View {
     
     var body: some View {
         let parts = t.parts("pp_checkbox_value")
-        parts.reduce(Text("")) { current, part in
-            current + Text(part.text)
-                .foregroundColor(part.isAccent ? .brand : .secondary)
-                .underline(part.isAccent)
+        let text = parts.reduce(AttributedString("")) { result, part in
+            var current = result
+            var partText = AttributedString(part.text)
+            if part.isAccent {
+                partText.foregroundColor = .brand
+                partText.underlineStyle = .single
+                
+                if let url = URL(string: Env.privacyPolicyUrl) {
+                    partText.link = url
+                }
+            } else {
+                partText.foregroundColor = .secondary
+            }
+            current.append(partText)
+            return current
         }
-        .font(.subheadline)
-        .tint(.brand)
+        
+        Text(text)
+            .font(.subheadline)
+            .tint(.brand)
     }
 }
 
