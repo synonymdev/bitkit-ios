@@ -1,0 +1,709 @@
+{
+	"send": {
+		"string": "Enviar"
+	},
+	"receive": {
+		"string": "Recibir"
+	},
+	"balance_total_pending": {
+		"string": ""
+	},
+	"create_wallet_error": {
+		"string": "Por favor, reabra la aplicación e intente de nuevo."
+	},
+	"create_wallet_existing_error": {
+		"string": "El monedero \"{walletName}\" ya existe."
+	},
+	"create_wallet_mnemonic_error": {
+		"string": "Frase de recuperación inválida."
+	},
+	"create_wallet_mnemonic_restore_error": {
+		"string": ""
+	},
+	"send_bitcoin": {
+		"string": "Enviar Bitcoin"
+	},
+	"send_to": {
+		"string": "Para"
+	},
+	"recipient_contact": {
+		"string": "Contactar"
+	},
+	"recipient_invoice": {
+		"string": "Pegar factura"
+	},
+	"recipient_manual": {
+		"string": "Introducir manualmente"
+	},
+	"recipient_scan": {
+		"string": "Escanear QR"
+	},
+	"send_invoice": {
+		"string": "Factura"
+	},
+	"send_address_placeholder": {
+		"string": "Introduce una dirección de Bitcoin o una factura o dirección de Lightning"
+	},
+	"send_clipboard_empty_title": {
+		"string": "Portapapeles vacío"
+	},
+	"send_clipboard_empty_text": {
+		"string": "Por favor, copia una dirección o factura"
+	},
+	"send_amount": {
+		"string": "Cantidad de Bitcoin"
+	},
+	"send_max": {
+		"string": "MAX"
+	},
+	"send_done": {
+		"string": "HECHO"
+	},
+	"send_available": {
+		"string": ""
+	},
+	"send_available_spending": {
+		"string": "Disponible (para gasto)"
+	},
+	"send_available_savings": {
+		"string": "Disponible (ahorro)"
+	},
+	"send_max_spending": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"send_review": {
+		"string": "Revisar y enviar"
+	},
+	"send_confirming_in": {
+		"string": "Confirmando en"
+	},
+	"send_invoice_expiration": {
+		"string": "Expiración de la factura"
+	},
+	"send_swipe": {
+		"string": "Deslizar para pagar"
+	},
+	"send_yes": {
+		"string": "Sí, enviar"
+	},
+	"send_dialog1": {
+		"string": "Parece que está enviando más de 100 dólares. ¿Desea continuar?"
+	},
+	"send_dialog2": {
+		"string": "Parece que está enviando más del 50% de su saldo total. ¿Desea continuar?"
+	},
+	"send_dialog3": {
+		"string": "La comisión de transacción parece ser superior al 50% del importe que está enviando. ¿Desea continuar?"
+	},
+	"send_dialog4": {
+		"string": "La comisión de transacción parece ser superior a 10 dólares. ¿Desea continuar?"
+	},
+	"send_dialog5_title": {
+		"string": "La comisión es potencialmente muy baja"
+	},
+	"send_dialog5_description": {
+		"string": ""
+	},
+	"send_sent": {
+		"string": "Bitcoin Enviado"
+	},
+	"send_pending": {
+		"string": ""
+	},
+	"send_quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		}
+	},
+	"send_pending_note": {
+		"string": ""
+	},
+	"send_instant_failed": {
+		"string": "Pagamiento instantáneo he fallado."
+	},
+	"send_regular": {
+		"string": "Pagamiento regular"
+	},
+	"send_error_slash_ln": {
+		"string": "Lamentablemente, el contacto no se puede pagar al instante. Puede intentar un pago regular (más caro, más lento)."
+	},
+	"send_error_tx_failed": {
+		"string": "Transacción ha fallado"
+	},
+	"send_error_create_tx": {
+		"string": ""
+	},
+	"tag_remove_error_title": {
+		"string": ""
+	},
+	"tag_remove_error_description": {
+		"string": "Bitkit no pudo encontrar los datos de la transacción."
+	},
+	"error_no_invoice": {
+		"string": "No se ha encontrado ninguna factura Lightning"
+	},
+	"error_no_tx_title": {
+		"string": "No hay ninguna transacción disponible para emitir."
+	},
+	"error_no_tx_msg": {
+		"string": "Por favor, verifique la información de su transacción e inténtelo de nuevo."
+	},
+	"error_min_fee_title": {
+		"string": ""
+	},
+	"error_min_fee_msg": {
+		"string": "Por favor, aumente su cuota e inténtelo de nuevo."
+	},
+	"send_amount_error_title": {
+		"string": "Cantidad inválida"
+	},
+	"send_amount_error_balance": {
+		"string": "La cantidad es mayor que el saldo disponible."
+	},
+	"send_amount_error_fee": {
+		"string": "La cantidad especificada no permite que la comisión sea incluida."
+	},
+	"send_details": {
+		"string": "Detalles"
+	},
+	"send_fee_and_speed": {
+		"string": "Velocidad y tarifa"
+	},
+	"send_fee_speed": {
+		"string": "Velocidad"
+	},
+	"send_fee_error": {
+		"string": "Comisión inválida"
+	},
+	"max_possible_fee_rate": {
+		"string": ""
+	},
+	"max_possible_fee_rate_msg": {
+		"string": ""
+	},
+	"min_possible_fee_rate": {
+		"string": "Comisión Por Debajo del Límite Mínimo"
+	},
+	"min_possible_fee_rate_msg": {
+		"string": ""
+	},
+	"sats_per_vbyte": {
+		"string": "sats/vbyte"
+	},
+	"send_output_to_small_title": {
+		"string": ""
+	},
+	"send_output_to_small_description": {
+		"string": ""
+	},
+	"send_coin_selection_output_to_small_description": {
+		"string": ""
+	},
+	"send_fee_error_min": {
+		"string": ""
+	},
+	"send_fee_custom": {
+		"string": "Fijar tarifa personalizada"
+	},
+	"send_fee_total": {
+		"string": "₿ {feeSats} para esta transacción"
+	},
+	"send_fee_total_fiat": {
+		"string": "₿ {feeSats} para esta transacción ({fiatSymbol}{fiatFormatted})"
+	},
+	"note": {
+		"string": "Nota"
+	},
+	"lnurl_pay_confirm": {
+		"comment": {
+			"string": ""
+		},
+		"comment_placeholder": {
+			"string": ""
+		}
+	},
+	"tags": {
+		"string": "Etiquetas"
+	},
+	"tags_add": {
+		"string": "Añadir etiqueta"
+	},
+	"tags_add_button": {
+		"string": "Añadir"
+	},
+	"tags_add_error_header": {
+		"string": ""
+	},
+	"tags_add_error_description": {
+		"string": "Bitkit no pudo encontrar los datos de la transacción."
+	},
+	"tags_new": {
+		"string": "Nueva etiqueta"
+	},
+	"tags_new_enter": {
+		"string": "Introduzca una nueva etiqueta"
+	},
+	"tags_previously": {
+		"string": "Etiquetas utilizadas anteriormente"
+	},
+	"tags_filter": {
+		"string": "Filtrar la actividad mediante etiquetas"
+	},
+	"tags_filter_title": {
+		"string": ""
+	},
+	"tags_no": {
+		"string": ""
+	},
+	"toast_payment_success_title": {
+		"string": "Pago Enviado"
+	},
+	"toast_payment_success_description": {
+		"string": ""
+	},
+	"toast_payment_failed_title": {
+		"string": ""
+	},
+	"toast_payment_failed_description": {
+		"string": ""
+	},
+	"selection_title": {
+		"string": "Selección de monedas"
+	},
+	"selection_auto": {
+		"string": "Automático"
+	},
+	"selection_total_required": {
+		"string": "Total necesario"
+	},
+	"selection_total_selected": {
+		"string": "Total seleccionado"
+	},
+	"receive_bitcoin": {
+		"string": "Recibir Bitcoin"
+	},
+	"receive_specify": {
+		"string": "Editar Factura"
+	},
+	"receive_copied": {
+		"string": "Factura copiada al portapapeles"
+	},
+	"receive_share_address": {
+		"string": "Compartir dirección de recepción"
+	},
+	"receive_bitcoin_invoice": {
+		"string": "Factura bitcoin"
+	},
+	"receive_lightning_invoice": {
+		"string": "Factura Lightning"
+	},
+	"receive_note_placeholder": {
+		"string": "Nota opcional para el pagador"
+	},
+	"receive_show_qr": {
+		"string": "Mostrar código QR"
+	},
+	"receive_text_lnfunds": {
+		"string": ""
+	},
+	"receive_spending": {
+		"string": ""
+	},
+	"receive_connect_initial": {
+		"string": ""
+	},
+	"receive_connect_additional": {
+		"string": ""
+	},
+	"receive_liquidity": {
+		"nav_title": {
+			"string": ""
+		},
+		"nav_title_additional": {
+			"string": "Incrementar Capacidad de Recepción"
+		},
+		"text": {
+			"string": ""
+		},
+		"text_additional": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		},
+		"label_additional": {
+			"string": ""
+		}
+	},
+	"receive_cjit_error": {
+		"string": "Transacción ha fallado"
+	},
+	"receive_cjit_error_msg": {
+		"string": "Fallo al enviar fondos a la cuenta de gastos."
+	},
+	"receive_will": {
+		"string": "Recibirás"
+	},
+	"receive_ldk_init": {
+		"string": ""
+	},
+	"minimum": {
+		"string": "MÍNIMO"
+	},
+	"activity": {
+		"string": "Actividad"
+	},
+	"activity_show_all": {
+		"string": "Mostrar toda la actividad"
+	},
+	"activity_no": {
+		"string": "Aún no hay actividad"
+	},
+	"activity_no_explain": {
+		"string": "Reciba algunos fondos para empezar"
+	},
+	"activity_sent": {
+		"string": "Enviado"
+	},
+	"activity_received": {
+		"string": "Recibido"
+	},
+	"activity_pending": {
+		"string": ""
+	},
+	"activity_failed": {
+		"string": ""
+	},
+	"activity_transfer": {
+		"string": "Transferir"
+	},
+	"activity_transfer_savings_pending": {
+		"string": ""
+	},
+	"activity_transfer_savings_done": {
+		"string": ""
+	},
+	"activity_transfer_spending_pending": {
+		"string": ""
+	},
+	"activity_transfer_spending_done": {
+		"string": ""
+	},
+	"activity_transfer_to_spending": {
+		"string": ""
+	},
+	"activity_transfer_pending": {
+		"string": ""
+	},
+	"activity_confirms_in": {
+		"string": "Confirma en {feeRateDescription}"
+	},
+	"activity_confirms_in_boosted": {
+		"string": "Potenciando. Confirma en {feeRateDescription}"
+	},
+	"activity_low_fee": {
+		"string": ""
+	},
+	"activity_bitcoin_sent": {
+		"string": "Bitcoin enviado"
+	},
+	"activity_bitcoin_received": {
+		"string": "Bitcoin recibido"
+	},
+	"activity_error_get": {
+		"string": ""
+	},
+	"activity_error_get_description": {
+		"string": "Bitkit no fue capaz de obtener los datos de la transacción."
+	},
+	"activity_error_tx_not_found": {
+		"string": "Transacción no encontrada."
+	},
+	"activity_confirming": {
+		"string": "Confirmando"
+	},
+	"activity_confirmed": {
+		"string": "Confirmado"
+	},
+	"activity_removed": {
+		"string": "Eliminado De Mempool"
+	},
+	"activity_removed_title": {
+		"string": "Transacción Eliminada De Mempool"
+	},
+	"activity_removed_msg": {
+		"string": ""
+	},
+	"activity_boosting": {
+		"string": "Impulsando"
+	},
+	"activity_fee": {
+		"string": "Tarifa"
+	},
+	"activity_payment": {
+		"string": "Pago"
+	},
+	"activity_status": {
+		"string": "Estatus"
+	},
+	"activity_date": {
+		"string": "Fecha"
+	},
+	"activity_time": {
+		"string": "Tiempo"
+	},
+	"activity_contact": {
+		"string": "Contacto"
+	},
+	"activity_assign": {
+		"string": "Asignar"
+	},
+	"activity_detach": {
+		"string": "Separar"
+	},
+	"activity_tag": {
+		"string": "Etiquetar"
+	},
+	"activity_boost": {
+		"string": "Impulso"
+	},
+	"activity_boosted": {
+		"string": "Ya impulsado"
+	},
+	"activity_explore": {
+		"string": "Explorar"
+	},
+	"activity_tx_id": {
+		"string": "ID de la transacción"
+	},
+	"activity_preimage": {
+		"string": ""
+	},
+	"activity_payment_hash": {
+		"string": "Identificador de pago"
+	},
+	"activity_address": {
+		"string": "Dirección"
+	},
+	"activity_input": {
+		"string": "{count, plural, one {ENTRADA} many {ENTRADAS (#)} other {ENTRADAS (#)}}"
+	},
+	"activity_output": {
+		"string": "{count, plural, one {SALIDA} many {SALIDAS (#)} other {SALIDAS (#)}}"
+	},
+	"activity_boosted_cpfp": {
+		"string": "TRANSACCIÓN POTENCIADA {num} (CPFP)"
+	},
+	"activity_boosted_rbf": {
+		"string": "TRANSACCIÓN POTENCIADA {num} (RBF)"
+	},
+	"activity_explorer": {
+		"string": "Abrir el Explorador de bloques"
+	},
+	"activity_successful": {
+		"string": "Éxito"
+	},
+	"activity_invoice_note": {
+		"string": "Nota de la factura"
+	},
+	"activity_invoice_comment": {
+		"string": ""
+	},
+	"activity_invoice": {
+		"string": "Factura"
+	},
+	"activity_all": {
+		"string": "Toda la actividad"
+	},
+	"activity_tabs": {
+		"all": {
+			"string": "Todas"
+		},
+		"sent": {
+			"string": "Enviado"
+		},
+		"received": {
+			"string": "Recibido"
+		},
+		"other": {
+			"string": "Otros"
+		}
+	},
+	"details_savings_title": {
+		"string": "Ahorro"
+	},
+	"details_spending_title": {
+		"string": "Gasto"
+	},
+	"savings": {
+		"title": {
+			"string": "Ahorro"
+		},
+		"onboarding": {
+			"string": "<accent>Envía\nbitcoin</accent>\na tu\nsaldo de ahorros"
+		}
+	},
+	"spending": {
+		"title": {
+			"string": "Gasto"
+		},
+		"onboarding": {
+			"string": "<accent>Envía\nbitcoin</accent>\na tu\nsaldo de gastos"
+		}
+	},
+	"details_transfer_subtitle": {
+		"string": ""
+	},
+	"tx_invalid": {
+		"string": "Transacción no válida"
+	},
+	"boost": {
+		"string": "Impulso"
+	},
+	"boost_title": {
+		"string": "Potenciar Transacción"
+	},
+	"boost_success_title": {
+		"string": "Impulsada!"
+	},
+	"boost_success_msg": {
+		"string": "La transacción se ha impulsado satisfactoriamente."
+	},
+	"boost_error_title": {
+		"string": "Impulso fallido"
+	},
+	"boost_error_msg": {
+		"string": "Bitkit no pudo potenciar la transacción."
+	},
+	"boost_fee_custom": {
+		"string": "Su transacción puede liquidarse más rápidamente si incluye una tasa de red adicional. Establezca su tarifa personalizada a continuación."
+	},
+	"boost_fee_recomended": {
+		"string": "Su transacción puede liquidarse más rápidamente si incluye una comisión de red adicional. He aquí una recomendación:"
+	},
+	"boost_recomended_button": {
+		"string": "Usar Comisión Sugerida"
+	},
+	"boost_swipe": {
+		"string": "Deslizar para impulsar"
+	},
+	"payment_received": {
+		"string": "Bitcoin recibido"
+	},
+	"instant_payment_received": {
+		"string": ""
+	},
+	"error_create_tx": {
+		"string": ""
+	},
+	"error_create_tx_msg": {
+		"string": "Ocurrió un error. Por favor, intente de nuevo {raw}"
+	},
+	"error_broadcast_tx": {
+		"string": ""
+	},
+	"error_broadcast_tx_msg": {
+		"string": ""
+	},
+	"error_broadcast_tx_connection": {
+		"string": ""
+	},
+	"filter_title": {
+		"string": "Seleccione Rango"
+	},
+	"filter_clear": {
+		"string": ""
+	},
+	"filter_apply": {
+		"string": "Aplicar"
+	},
+	"reorg_detected": {
+		"string": "Reorganización de Blockchain Detectada"
+	},
+	"reorg_msg_begin": {
+		"string": "{count, plural, one {} many {} other {}} Please wait."
+	},
+	"reorg_msg_end": {
+		"string": ""
+	},
+	"lnurl_w_title": {
+		"string": ""
+	},
+	"lnurl_w_max": {
+		"string": ""
+	},
+	"lnurl_w_text": {
+		"string": ""
+	},
+	"lnurl_w_button": {
+		"string": ""
+	},
+	"lnurl_p_title": {
+		"string": ""
+	},
+	"lnurl_pay": {
+		"error_min": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		}
+	},
+	"lnurl_p_max": {
+		"string": ""
+	},
+	"balance_hidden_title": {
+		"string": "Saldo del Monedero Oculto"
+	},
+	"balance_hidden_message": {
+		"string": "Deslice el balance del monedero para mostrarlo de nuevo."
+	},
+	"balance_unit_switched_title": {
+		"string": "Cambió a {unit}"
+	},
+	"balance_unit_switched_message": {
+		"string": ""
+	},
+	"refresh_error_title": {
+		"string": ""
+	},
+	"refresh_error_msg": {
+		"string": ""
+	},
+	"refresh_error_throttle_title": {
+		"string": ""
+	},
+	"refresh_error_throttle_description": {
+		"string": ""
+	},
+	"ldk_sync_error_title": {
+		"string": "Error de Sincronización de Lightning"
+	},
+	"ldk_start_error_title": {
+		"string": ""
+	},
+	"receive_insufficient_title": {
+		"string": ""
+	},
+	"receive_insufficient_text": {
+		"string": ""
+	},
+	"receive_foreground_title": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	},
+	"receive_foreground_msg": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	}
+}

@@ -1,0 +1,152 @@
+{
+  "tos_header": {
+    "string": "Bitkit\n<accent>podmínky používání</accent>"
+  },
+  "tos_checkbox": {
+    "string": "Podmínky použití"
+  },
+  "tos_checkbox_value": {
+    "string": "Prohlašuji, že jsem si přečetl/a <accent>podmínky používání</accent> a souhlasím s nimi."
+  },
+  "pp_checkbox": {
+    "string": "Zásady ochrany osobních údajů"
+  },
+  "pp_checkbox_value": {
+    "string": "Prohlašuji, že jsem si přečetl/a <accent>zásady ochrany osobních údajů</accent> a souhlasím s nimi."
+  },
+  "welcome_title": {
+    "string": "Můžete ₿ \n<accent>změna</accent>"
+  },
+  "welcome_text": {
+    "string": "Pomocí služby Bitkit můžete platit komukoli, kdekoli a kdykoli a utrácet bitcoiny za věci, kterých si v životě vážíte."
+  },
+  "get_started": {
+    "string": "Začít"
+  },
+  "skip_intro": {
+    "string": "Přeskočit intro"
+  },
+  "skip": {
+    "string": "Přeskočit"
+  },
+  "slide0_header": {
+    "string": "Svoboda ve\n<accent>vaší kapse</accent>"
+  },
+  "slide0_text": {
+    "string": "Bitkit vám předá klíče ke správě vašich peněz. Utrácejte teď nebo si spořte na později. Volba je na vás."
+  },
+  "slide1_header": {
+    "string": "Okamžité\n<accent>platby</accent>"
+  },
+  "slide1_text": {
+    "string": "Utrácejte bitcoiny rychleji než kdykoli předtím. Užívejte si okamžité a levné platby s přáteli, rodinou a obchodníky."
+  },
+  "slide1_note": {
+    "string": "*Bitkit v současné době neposkytuje služby lightning ve vaší zemi, ale stále se můžete připojit k jiným uzlům."
+  },
+  "slide2_header": {
+    "string": "Bitcoineři,\n<accent>bez hranic</accent>"
+  },
+  "slide2_text": {
+    "string": "Převezměte kontrolu nad svým digitálním životem pomocí přenosných profilů a kontaktů k placení."
+  },
+  "slide3_header": {
+    "string": "Soukromí\n<accent>není zločin</accent>"
+  },
+  "slide3_text": {
+    "string": "Přejetím prstem můžete skrýt zůstatek, využívat soukromější platby a chránit peněženku zapnutím bezpečnostních funkcí."
+  },
+  "slide4_header": {
+    "string": "Vaše klíče,\n<accent>vaše mince</accent>"
+  },
+  "slide4_text": {
+    "string": "Vytvořte si peněženku. Upozorňujeme, že Bitkit je mobilní software. <accent>Neukládejte všechny své peníze do Bitkitu.</accent>"
+  },
+  "new_wallet": {
+    "string": "Nová peněženka"
+  },
+  "restore": {
+    "string": "Obnovit"
+  },
+  "restore_wallet": {
+    "string": "Obnovit peněženku"
+  },
+  "advanced_setup": {
+    "string": "Pokročilé nastavení"
+  },
+  "advanced": {
+    "string": "Pokročilé"
+  },
+  "passphrase_header": {
+    "string": "Zabezpečení pomocí <accent>přístupové fráze</accent>"
+  },
+  "passphrase_text": {
+    "string": "K 12slovné frázi pro obnovení můžete přidat tajnou přístupovou frázi. Pokud ji přidáte, nezapomeňte ji."
+  },
+  "passphrase": {
+    "string": "Passphrase - přístupová fráze"
+  },
+  "create_new_wallet": {
+    "string": "Vytvořit novou peněženku"
+  },
+  "restore_header": {
+    "string": "<accent>Obnovte</accent>svou peněženku"
+  },
+  "restore_phrase": {
+    "string": "Zadejte prosím frázi pro obnovení z jakékoli (papírové) zálohy."
+  },
+  "restore_red_explain": {
+    "string": "Pokud je slovo zobrazeno <accent>červeně</accent>, znamená to, že nebylo nalezeno ve slovníku frází pro obnovení. Zkontrolujte, zda v něm nejsou pravopisné chyby."
+  },
+  "restore_inv_checksum": {
+    "string": "Kontrolní součet pro frázi pro obnovení se zdá být nesprávný. Zkontrolujte prosím svou frázi pro obnovení."
+  },
+  "restore_suggestions": {
+    "string": "NÁVRHY"
+  },
+  "restore_passphrase_placeholder": {
+    "string": "Passphrase* - přístupová fráze"
+  },
+  "restore_passphrase_meaning": {
+    "string": "*Volitelné, zadejte pouze v případě, že jste jej nastavili."
+  },
+  "restore_error_title": {
+    "string": "Obnovení peněženky se nezdařilo"
+  },
+  "restore_error_description": {
+    "string": "Bitkit se nepodařilo obnovit peněženku ze zálohy nebo z fráze pro obnovení."
+  },
+  "loading_header": {
+    "string": "Nastavování\n<accent>vaší peněženky</accent>"
+  },
+  "restore_success_header": {
+    "string": "Peněženka <accent>obnovena</accent> "
+  },
+  "restore_success_text": {
+    "string": "Úspěšně jste obnovili svou peněženku ze zálohy. Užijte si Bitkit!"
+  },
+  "restore_failed_header": {
+    "string": "<accent>Chyba</accent> disponibilního zůstatku"
+  },
+  "restore_failed_text": {
+    "string": "Bitkit obnovil vaše úspory, ale neobnovil váš aktuální disponibilní zůstatek (stav lightning) a data peněženky."
+  },
+  "restore_no_backup_button": {
+    "string": "Pokračovat bez zálohy"
+  },
+  "restore_no_backup_warn": {
+    "string": "Pokud jste dříve měli lightning zálohu, bude přepsána a ztracena. To by mohlo vést ke ztrátě finančních prostředků."
+  },
+  "empty_wallet": {
+    "string": "Chcete-li\nzačít\n<accent>pošlete\nbitcoin</accent>\ndo vaší\npeněženky"
+  },
+  "error_create": {
+    "string": "Vytvoření peněženky se nezdařilo"
+  },
+  "multiple_header": {
+    "string": "<accent>Upozornění:</accent>\nvíce zařízení"
+  },
+  "multiple_text": {
+    "string": "Neinstalujte frázi pro obnovení Bitkit do více telefonů současně, protože by to mohlo poškodit vaše data."
+  }
+}

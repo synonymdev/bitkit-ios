@@ -4,6 +4,7 @@ struct CreateWalletWithPassphraseView: View {
     @State private var bip39Passphrase: String = ""
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    private let t = useTranslation(.onboarding)
     
     var isValidPassphrase: Bool {
         !bip39Passphrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -11,16 +12,15 @@ struct CreateWalletWithPassphraseView: View {
     
     var content: some View {
         VStack {
-            OnboardingTab(
-                imageName: "padlock2",
-                titleFirstLine: "SECURE WITH",
-                titleSecondLine: "PASSPHRASE",
-                text: "You can add a secret passphrase to the 12-word recovery phrase. If you do, make sure you don't forget.",
-                secondLineColor: .brand
-            )
-            .frame(maxHeight: .infinity)
+           OnboardingTab(
+               imageName: "padlock2",
+               title: t.parts("passphrase_header"),
+               text: t.parts("passphrase_text"),
+               secondLineColor: .brand
+           )
+           .frame(maxHeight: .infinity)
     
-            TextField("Passphrase", text: $bip39Passphrase)
+            TextField(t("passphrase"), text: $bip39Passphrase)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding()
@@ -43,7 +43,7 @@ struct CreateWalletWithPassphraseView: View {
                     app.toast(error)
                 }
             } label: {
-                Text("Create New Wallet")
+                Text(t("create_new_wallet"))
                     .frame(maxWidth: .infinity)
                     .padding()
                     .background(Color.gray)
@@ -55,10 +55,10 @@ struct CreateWalletWithPassphraseView: View {
         .gesture(
             DragGesture()
                 .onChanged { _ in
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), 
-                                                 to: nil, 
-                                                 from: nil, 
-                                                 for: nil)
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                    to: nil,
+                                                    from: nil,
+                                                    for: nil)
                 }
         )
     }
@@ -74,4 +74,4 @@ struct CreateWalletWithPassphraseView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
     }
-} 
+}

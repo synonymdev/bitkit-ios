@@ -1,0 +1,352 @@
+{
+  "backup_wallet": {
+    "string": "Sauvegarde du portefeuille"
+  },
+  "backup_title": {
+    "string": "<accent>Conservez</accent> vos bitcoins en <accent>toute sécurité</accent> "
+  },
+  "backup_funds": {
+    "string": "Maintenant que vous avez des fonds dans votre portefeuille, il est temps de sécuriser votre argent !"
+  },
+  "backup_funds_no": {
+    "string": "Il n'y a pas encore de fonds dans votre portefeuille, mais vous pouvez créer une sauvegarde si vous le souhaitez."
+  },
+  "backup_button": {
+    "string": "Sauvegarder"
+  },
+  "pass": {
+    "string": "phrase secrète"
+  },
+  "pass_your": {
+    "string": "Votre phrase secrète"
+  },
+  "pass_text": {
+    "string": "Vous avez ajouté une phrase secrète à votre phrase de récupération lors de la configuration du portefeuille."
+  },
+  "pass_never_share": {
+    "string": "<accent>Ne communiquez jamais</accent> votre phrase d'authentification à qui que ce soit, car cela pourrait entraîner la perte de fonds."
+  },
+  "pass_confirm": {
+    "string": "Confirmer la phrase secrète"
+  },
+  "pass_confirm_text": {
+    "string": "Saisissez la phrase de récupération que vous avez ajoutée lors de la configuration et de la création de votre portefeuille."
+  },
+  "pass_recovery": {
+    "string": "<accent>Phrase d'authentification :</accent> {passphrase}"
+  },
+  "mnemonic_phrase": {
+    "string": "Phrase mnémotechnique"
+  },
+  "mnemonic_your": {
+    "string": "Votre phrase de récupération"
+  },
+  "mnemonic_error": {
+    "string": "Défaillance du portefeuille"
+  },
+  "mnemonic_error_description": {
+    "string": "Bitkit n'a pas pu lire votre phrase de récupération."
+  },
+  "mnemonic_write": {
+    "string": "Notez ces mots {length} dans le bon ordre et conservez-les dans un endroit sûr."
+  },
+  "mnemonic_use": {
+    "string": "Utilisez les 12 mots ci-dessous pour récupérer votre argent ultérieurement."
+  },
+  "mnemonic_reveal": {
+    "string": "Tapez pour révéler"
+  },
+  "mnemonic_never_share": {
+    "string": "<accent>Ne communiquez jamais</accent> votre phrase de recouvrement à qui que ce soit, car cela pourrait entraîner la perte des fonds."
+  },
+  "mnemonic_confirm": {
+    "string": "Confirmer la phrase de récupération"
+  },
+  "mnemonic_confirm_tap": {
+    "string": "Tapez les 12 mots dans le bon ordre."
+  },
+  "mnemonic_result_header": {
+    "string": "Succès"
+  },
+  "mnemonic_result_text": {
+    "string": "Veillez à conserver votre phrase de récupération dans un <accent>endroit sûr</accent>, car c'est le <accent>seul moyen de récupérer votre</accent> argent !"
+  },
+  "mnemonic_keep_header": {
+    "string": "Gardez-le en sécurité"
+  },
+  "mnemonic_keep_text": {
+    "string": "N'oubliez pas de <accent>ne jamais communiquer votre phrase de récupération</accent> à qui que ce soit ! Si vous le faites, cette personne peut vous voler votre argent, votre profil et d'autres données."
+  },
+  "mnemonic_data_header": {
+    "string": "Données du portefeuille"
+  },
+  "mnemonic_data_text": {
+    "string": "Votre profil, vos contacts, vos comptes, vos tags et votre activité seront sauvegardés automatiquement sur notre service cloud gratuit."
+  },
+  "mnemonic_multiple_header": {
+    "string": "Multiple appareils"
+  },
+  "mnemonic_multiple_text": {
+    "string": "N'utilisez pas votre phrase de récupération Bitkit sur plusieurs téléphones simultanément, car cela pourrait corrompre vos données."
+  },
+  "mnemonic_latest_backup": {
+    "string": "<bold>Dernière sauvegarde des données :</bold> {time}"
+  },
+  "pin_security_header": {
+    "string": "Renforcer la sécurité"
+  },
+  "pin_security_title": {
+    "string": "<accent>Protégez</accent>\nvos bitcoins"
+  },
+  "pin_security_text": {
+    "string": "Pour renforcer la sécurité du portefeuille, vous pouvez configurer un code PIN et Face ID."
+  },
+  "pin_security_button": {
+    "string": "Portefeuille sécurisé"
+  },
+  "pin_choose_header": {
+    "string": "Choisissez un code PIN à 4 chiffres"
+  },
+  "pin_choose_text": {
+    "string": "Veuillez utiliser un code PIN dont vous vous souviendrez. Si vous oubliez votre code PIN, vous pouvez le réinitialiser, mais cela nécessitera de restaurer votre portefeuille."
+  },
+  "pin_retype_header": {
+    "string": "Retapez le code PIN à 4 chiffres"
+  },
+  "pin_retype_text": {
+    "string": "Veuillez retaper votre code PIN à 4 chiffres pour terminer la procédure de configuration."
+  },
+  "pin_not_match": {
+    "string": "Réessayez, il ne s'agit pas du même code PIN."
+  },
+  "pin_disable_title": {
+    "string": "Désactiver le code PIN"
+  },
+  "pin_disable_text": {
+    "string": "Le code PIN est actuellement activé. Si vous souhaitez désactiver votre code PIN, vous devez d'abord saisir votre code PIN actuel."
+  },
+  "pin_disable_button": {
+    "string": "Désactiver le code PIN"
+  },
+  "pin_enter": {
+    "string": "Veuillez saisir votre code PIN"
+  },
+  "pin_last_attempt": {
+    "string": "Dernière tentative. Si vous saisissez à nouveau un code PIN erroné, votre portefeuille sera réinitialisé."
+  },
+  "pin_attempts": {
+    "string": "{attemptsRemaining} tentatives restantes. Vous avez oublié votre code PIN ?"
+  },
+  "pin_forgot_title": {
+    "string": "Vous avez oublié votre code PIN ?"
+  },
+  "pin_forgot_text": {
+    "string": "Vous avez oublié votre code PIN ? Réinitialisez et récupérez votre portefeuille Bitkit avec votre phrase de récupération. Définissez un nouveau code PIN après avoir terminé la récupération."
+  },
+  "pin_forgot_reset": {
+    "string": "Réinitialisation (nécessite une phrase de récupération)"
+  },
+  "pin_send": {
+    "string": "Veuillez saisir votre code PIN pour confirmer et envoyer ce paiement."
+  },
+  "pin_send_title": {
+    "string": ""
+  },
+  "pin_use_biometrics": {
+    "string": "Utiliser {biometricsName}"
+  },
+  "bio": {
+    "string": "Biométrie"
+  },
+  "bio_auth_with": {
+    "string": "S'authentifier avec {biometricsName}"
+  },
+  "bio_no": {
+    "string": "Il semble que votre appareil ne prenne pas en charge la sécurité biométrique."
+  },
+  "bio_face_id": {
+    "string": "Face ID"
+  },
+  "bio_touch_id": {
+    "string": "Touch ID"
+  },
+  "bio_confirm": {
+    "string": "Confirmer {biometricsName}"
+  },
+  "bio_error_title": {
+    "string": "Échec de la configuration des données biométriques"
+  },
+  "bio_error_message": {
+    "string": "Bitkit n'a pas pu configurer {type} pour votre appareil."
+  },
+  "bio_loading": {
+    "string": "Chargement..."
+  },
+  "bio_not_available": {
+    "string": "Il semble que vous n'ayez pas encore configuré la sécurité biométrique (ou qu'elle ne soit pas prise en charge). Essayez de l'activer dans les paramètres de votre téléphone."
+  },
+  "bio_ask": {
+    "string": "Code PIN défini. Vous souhaitez utiliser {biometricsName} au lieu de votre code PIN ?"
+  },
+  "bio_use": {
+    "string": "Utiliser {biometricsName}"
+  },
+  "bio_phone_settings": {
+    "string": "Paramètres du téléphone"
+  },
+  "success_title": {
+    "string": "Portefeuille sécurisé"
+  },
+  "success_bio": {
+    "string": "Vous avez configuré avec succès un code PIN et {biometricsName} pour améliorer la sécurité de votre portefeuille."
+  },
+  "success_no_bio": {
+    "string": "Vous avez configuré avec succès un code PIN pour améliorer la sécurité de votre portefeuille."
+  },
+  "success_payments": {
+    "string": "Également l'exiger pour les paiements"
+  },
+  "reset_title": {
+    "string": "Réinitialisation et restauration"
+  },
+  "reset_text": {
+    "string": "Sauvegardez d'abord votre portefeuille afin d'éviter de perdre vos fonds et les données de votre portefeuille. La réinitialisation écrasera votre configuration Bitkit actuelle."
+  },
+  "reset_button_backup": {
+    "string": "Sauvegarder"
+  },
+  "reset_button_reset": {
+    "string": "Réinitialiser"
+  },
+  "reset_dialog_title": {
+    "string": "Réinitialiser Bitkit ?"
+  },
+  "reset_dialog_desc": {
+    "string": "Êtes-vous sûr de vouloir réinitialiser votre portefeuille Bitkit ? Avez-vous une sauvegarde de votre phrase de récupération et des données de votre portefeuille ?"
+  },
+  "reset_confirm": {
+    "string": "Oui, Réinitialisation"
+  },
+  "recovery": {
+    "string": "Récupération"
+  },
+  "recovery_text": {
+    "string": "Vous êtes entré dans le mode de récupération de Bitkit. Voici quelques actions à effectuer lorsque vous rencontrez des problèmes qui empêchent l'application de fonctionner pleinement. Redémarrez l'application pour un démarrage normal."
+  },
+  "display_seed": {
+    "string": "Afficher la phrase de récupération."
+  },
+  "contact_support": {
+    "string": "Contacter le support"
+  },
+  "wipe_app": {
+    "string": "Effacer l'application"
+  },
+  "close_app": {
+    "string": "Fermer Bitkit"
+  },
+  "export_title": {
+    "string": "Exporter vers le téléphone"
+  },
+  "export_text": {
+    "string": "Vous pouvez exporter une copie des données de votre portefeuille sous la forme d'un fichier .ZIP. Ce fichier est chiffré avec le mot de passe que vous avez défini ci-dessous."
+  },
+  "export_password": {
+    "string": "Mot de passe"
+  },
+  "export_button": {
+    "string": "Exportation"
+  },
+  "export_share": {
+    "string": "Partager le fichier de sauvegarde"
+  },
+  "export_success_title": {
+    "string": "Sauvegarde exportée"
+  },
+  "export_success_msg": {
+    "string": "Bitkit a réussi à exporter le fichier de sauvegarde vers votre téléphone."
+  },
+  "export_error_title": {
+    "string": "Échec de la sauvegarde"
+  },
+  "export_error_msg": {
+    "string": "Bitkit n'a pas pu exporter le fichier de sauvegarde vers votre téléphone."
+  },
+  "export_error_file": {
+    "string": "Bitkit n'a pas pu créer le fichier de sauvegarde."
+  },
+  "cp_title": {
+    "string": "Modifier le code PIN"
+  },
+  "cp_text": {
+    "string": "Vous pouvez remplacer votre code PIN par une nouvelle\ncombinaison de 4 chiffres. Veuillez d'abord introduire votre code PIN actuel."
+  },
+  "cp_retype_title": {
+    "string": "Confirmer le nouveau code PIN"
+  },
+  "cp_retype_text": {
+    "string": "Veuillez retaper votre code PIN à 4 chiffres pour terminer la procédure de configuration."
+  },
+  "cp_setnew_title": {
+    "string": "Définir un nouveau code PIN"
+  },
+  "cp_setnew_text": {
+    "string": "Veuillez utiliser un code PIN dont vous vous souviendrez. Si vous oubliez votre code PIN, vous pouvez le réinitialiser, mais cela nécessitera de restaurer votre portefeuille."
+  },
+  "cp_try_again": {
+    "string": "Réessayez, il ne s'agit pas du même code PIN."
+  },
+  "cp_changed_title": {
+    "string": "Le code PIN a été modifié"
+  },
+  "cp_changed_text": {
+    "string": "Vous avez modifié avec succès votre code PIN en le remplaçant par une nouvelle combinaison de 4 chiffres."
+  },
+  "use_pin": {
+    "string": "Utiliser le code PIN"
+  },
+  "wiped_title": {
+    "string": "Données du portefeuille supprimées"
+  },
+  "wiped_message": {
+    "string": "Bitkit a été réinitialisé et toutes les données du portefeuille ont été supprimées."
+  },
+  "authorization": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "authorize": {
+      "string": ""
+    },
+    "deny": {
+      "string": ""
+    },
+    "authorizing": {
+      "string": ""
+    },
+    "success": {
+      "string": "Succès"
+    },
+    "claims": {
+      "string": ""
+    },
+    "requested_permissions": {
+      "string": ""
+    },
+    "pubky_secret_error_title": {
+      "string": ""
+    },
+    "pubky_secret_error_description": {
+      "string": ""
+    },
+    "pubky_auth_error_title": {
+        "string": ""
+        },
+    "pubky_auth_error_description": {
+        "string": ""
+    }
+  }
+}

@@ -1,0 +1,726 @@
+{
+	"settings": {
+		"string": ""
+	},
+	"dev_enabled_title": {
+		"string": ""
+	},
+	"dev_enabled_message": {
+		"string": ""
+	},
+	"dev_disabled_title": {
+		"string": ""
+	},
+	"dev_disabled_message": {
+		"string": ""
+	},
+	"general_title": {
+		"string": ""
+	},
+	"security_title": {
+		"string": ""
+	},
+	"backup_title": {
+		"string": ""
+	},
+	"advanced_title": {
+		"string": ""
+	},
+	"about_title": {
+		"string": ""
+	},
+	"support_title": {
+		"string": ""
+	},
+	"about": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"legal": {
+			"string": ""
+		},
+		"share": {
+			"string": ""
+		},
+		"version": {
+			"string": ""
+		},
+		"shareText": {
+			"string": ""
+		}
+	},
+	"dev_title": {
+		"string": ""
+	},
+	"general": {
+		"currency_local": {
+			"string": ""
+		},
+		"currency_local_title": {
+			"string": ""
+		},
+		"currency_footer": {
+			"string": ""
+		},
+		"currency_most_used": {
+			"string": ""
+		},
+		"currency_other": {
+			"string": ""
+		},
+		"unit": {
+			"string": ""
+		},
+		"unit_title": {
+			"string": ""
+		},
+		"unit_display": {
+			"string": ""
+		},
+		"unit_bitcoin": {
+			"string": ""
+		},
+		"unit_note": {
+			"string": ""
+		},
+		"denomination_label": {
+			"string": ""
+		},
+		"denomination_modern": {
+			"string": ""
+		},
+		"denomination_classic": {
+			"string": ""
+		},
+		"speed": {
+			"string": ""
+		},
+		"speed_title": {
+			"string": ""
+		},
+		"speed_default": {
+			"string": ""
+		},
+		"speed_fee_custom": {
+			"string": ""
+		},
+		"speed_fee_total": {
+			"string": ""
+		},
+		"speed_fee_total_fiat": {
+			"string": ""
+		},
+		"tags": {
+			"string": ""
+		},
+		"tags_previously": {
+			"string": ""
+		}
+	},
+	"widgets": {
+		"nav_title": {
+			"string": ""
+		},
+		"showWidgets": {
+			"string": ""
+		},
+		"showWidgetTitles": {
+			"string": ""
+		}
+	},
+	"quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"intro": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"settings": {
+			"toggle": {
+				"string": ""
+			},
+			"text": {
+				"string": ""
+			},
+			"label": {
+				"string": ""
+			},
+			"note": {
+				"string": ""
+			}
+		}
+	},
+	"security": {
+		"title": {
+			"string": ""
+		},
+		"swipe_balance_to_hide": {
+			"string": ""
+		},
+		"hide_balance_on_open": {
+			"string": ""
+		},
+		"clipboard": {
+			"string": ""
+		},
+		"warn_100": {
+			"string": ""
+		},
+		"pin": {
+			"string": ""
+		},
+		"pin_change": {
+			"string": ""
+		},
+		"pin_launch": {
+			"string": ""
+		},
+		"pin_idle": {
+			"string": ""
+		},
+		"pin_payments": {
+			"string": ""
+		},
+		"pin_enabled": {
+			"string": ""
+		},
+		"pin_disabled": {
+			"string": ""
+		},
+		"use_bio": {
+			"string": ""
+		},
+		"footer": {
+			"string": ""
+		}
+	},
+	"backup": {
+		"title": {
+			"string": ""
+		},
+		"wallet": {
+			"string": ""
+		},
+		"export": {
+			"string": ""
+		},
+		"reset": {
+			"string": ""
+		},
+		"failed_title": {
+			"string": ""
+		},
+		"failed_message": {
+			"string": ""
+		},
+		"latest": {
+			"string": ""
+		},
+		"status_failed": {
+			"string": ""
+		},
+		"status_success": {
+			"string": ""
+		},
+		"category_connections": {
+			"string": ""
+		},
+		"category_connection_receipts": {
+			"string": ""
+		},
+		"category_transaction_log": {
+			"string": ""
+		},
+		"category_wallet": {
+			"string": ""
+		},
+		"category_settings": {
+			"string": ""
+		},
+		"category_widgets": {
+			"string": ""
+		},
+		"category_tags": {
+			"string": ""
+		},
+		"category_profile": {
+			"string": ""
+		},
+		"category_contacts": {
+			"string": ""
+		}
+	},
+	"support": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"report": {
+			"string": ""
+		},
+		"help": {
+			"string": ""
+		},
+		"status": {
+			"string": ""
+		},
+		"report_text": {
+			"string": ""
+		},
+		"label_address": {
+			"string": ""
+		},
+		"label_message": {
+			"string": ""
+		},
+		"placeholder_address": {
+			"string": ""
+		},
+		"placeholder_message": {
+			"string": ""
+		},
+		"text_button": {
+			"string": ""
+		},
+		"title_success": {
+			"string": ""
+		},
+		"text_success": {
+			"string": ""
+		},
+		"text_success_button": {
+			"string": ""
+		},
+		"title_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess_button": {
+			"string": ""
+		}
+	},
+	"status": {
+		"title": {
+			"string": ""
+		},
+		"internet": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"bitcoin_node": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_node": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_connection": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"full_backup": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		}
+	},
+	"adv": {
+		"section_payments": {
+			"string": ""
+		},
+		"section_networks": {
+			"string": ""
+		},
+		"section_other": {
+			"string": ""
+		},
+		"address_type": {
+			"string": ""
+		},
+		"monitored_address_types": {
+			"string": ""
+		},
+		"monitored_address_types_update_title": {
+			"string": ""
+		},
+		"monitored_address_types_update_description": {
+			"string": ""
+		},
+		"gap_limit": {
+			"string": ""
+		},
+		"coin_selection": {
+			"string": ""
+		},
+		"cs_method": {
+			"string": ""
+		},
+		"cs_manual": {
+			"string": ""
+		},
+		"cs_auto": {
+			"string": ""
+		},
+		"cs_auto_mode": {
+			"string": ""
+		},
+		"cs_max": {
+			"string": ""
+		},
+		"cs_max_description": {
+			"string": ""
+		},
+		"cs_min": {
+			"string": ""
+		},
+		"cs_min_description": {
+			"string": ""
+		},
+		"cs_consolidate": {
+			"string": ""
+		},
+		"cs_consolidate_description": {
+			"string": ""
+		},
+		"payment_preference": {
+			"string": ""
+		},
+		"pp_header": {
+			"string": ""
+		},
+		"pp_footer": {
+			"string": ""
+		},
+		"pp_drag": {
+			"string": ""
+		},
+		"pp_contacts": {
+			"string": ""
+		},
+		"pp_contacts_switch": {
+			"string": ""
+		},
+		"address_viewer": {
+			"string": ""
+		},
+		"rescan": {
+			"string": ""
+		},
+		"suggestions_reset": {
+			"string": ""
+		},
+		"reset_title": {
+			"string": ""
+		},
+		"reset_desc": {
+			"string": ""
+		},
+		"reset_confirm": {
+			"string": ""
+		},
+		"lightning_connections": {
+			"string": ""
+		},
+		"lightning_node": {
+			"string": ""
+		},
+		"electrum_server": {
+			"string": ""
+		},
+		"rgs_server": {
+			"string": ""
+		},
+		"web_relay": {
+			"string": ""
+		},
+		"bitcoin_network": {
+			"string": ""
+		}
+	},
+	"fee": {
+		"fast": {
+			"label": {
+				"string": ""
+			},
+			"value": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"normal": {
+			"label": {
+				"string": ""
+			},
+			"value": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"slow": {
+			"label": {
+				"string": ""
+			},
+			"value": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"custom": {
+			"label": {
+				"string": ""
+			},
+			"value": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		}
+	},
+	"addr": {
+		"no_addrs": {
+			"string": ""
+		},
+		"loading": {
+			"string": ""
+		},
+		"no_funds_receiving": {
+			"string": ""
+		},
+		"no_funds_change": {
+			"string": ""
+		},
+		"no_addrs_with_funds": {
+			"string": ""
+		},
+		"no_addrs_str": {
+			"string": ""
+		},
+		"rescan_error": {
+			"string": ""
+		},
+		"rescan_error_description": {
+			"string": ""
+		},
+		"spend_number": {
+			"string": "{count, plural, one {} few {} other {}}"
+		},
+		"spend_all": {
+			"string": "{count, plural, one {} few {} other {}}"
+		},
+		"index": {
+			"string": ""
+		},
+		"path": {
+			"string": ""
+		},
+		"private_hide": {
+			"string": ""
+		},
+		"private_view": {
+			"string": ""
+		},
+		"private_key": {
+			"string": ""
+		},
+		"addr_change": {
+			"string": ""
+		},
+		"addr_receiving": {
+			"string": ""
+		},
+		"sats_found": {
+			"string": ""
+		},
+		"gen_20": {
+			"string": ""
+		},
+		"check_balances": {
+			"string": ""
+		},
+		"copied": {
+			"string": ""
+		}
+	},
+	"es": {
+		"error_host_port": {
+			"string": ""
+		},
+		"error_host": {
+			"string": ""
+		},
+		"error_port": {
+			"string": ""
+		},
+		"error_port_invalid": {
+			"string": ""
+		},
+		"error_invalid_http": {
+			"string": ""
+		},
+		"error_peer": {
+			"string": ""
+		},
+		"server_updated_title": {
+			"string": ""
+		},
+		"server_updated_message": {
+			"string": ""
+		},
+		"server_error": {
+			"string": ""
+		},
+		"server_error_description": {
+			"string": ""
+		},
+		"connected_to": {
+			"string": ""
+		},
+		"disconnected": {
+			"string": ""
+		},
+		"host": {
+			"string": ""
+		},
+		"port": {
+			"string": ""
+		},
+		"protocol": {
+			"string": ""
+		},
+		"button_reset": {
+			"string": ""
+		},
+		"button_connect": {
+			"string": ""
+		}
+	},
+	"gap": {
+		"save": {
+			"string": ""
+		},
+		"reset": {
+			"string": ""
+		},
+		"gap_limit_update_title": {
+			"string": ""
+		},
+		"gap_limit_update_description": {
+			"string": ""
+		},
+		"look_behind": {
+			"string": ""
+		},
+		"look_ahead": {
+			"string": ""
+		},
+		"look_behind_change": {
+			"string": ""
+		},
+		"look_ahead_change": {
+			"string": ""
+		}
+	},
+	"rgs": {
+		"server_url": {
+			"string": ""
+		},
+		"button_connect": {
+			"string": ""
+		},
+		"update_success_title": {
+			"string": ""
+		},
+		"update_success_description": {
+			"string": ""
+		}
+	},
+	"wr": {
+		"error_wr": {
+			"string": ""
+		},
+		"error_url": {
+			"string": ""
+		},
+		"error_https": {
+			"string": ""
+		},
+		"error_healthcheck": {
+			"string": ""
+		},
+		"url_updated_title": {
+			"string": ""
+		},
+		"url_updated_message": {
+			"string": ""
+		}
+	}
+}

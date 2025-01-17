@@ -1,0 +1,152 @@
+{
+  "tos_header": {
+    "string": "Bitkit\n<accent>terms of use</accent>"
+  },
+  "tos_checkbox": {
+    "string": "Terms of use"
+  },
+  "tos_checkbox_value": {
+    "string": "I declare that I have read and accept the <accent>terms of use.</accent>"
+  },
+  "pp_checkbox": {
+    "string": "Privacy Policy"
+  },
+  "pp_checkbox_value": {
+    "string": "I declare that I have read and accept the <accent>privacy policy.</accent>"
+  },
+  "welcome_title": {
+    "string": "You can ₿ \n<accent>the change</accent>"
+  },
+  "welcome_text": {
+    "string": "Use Bitkit to pay anyone, anywhere, any time, and spend your bitcoin on the things you value in life."
+  },
+  "get_started": {
+    "string": "Get Started"
+  },
+  "skip_intro": {
+    "string": "Skip Intro"
+  },
+  "skip": {
+    "string": "Skip"
+  },
+  "slide0_header": {
+    "string": "Freedom in\n<accent>your pocket</accent>"
+  },
+  "slide0_text": {
+    "string": "Bitkit hands you the keys to manage your money. Spend now or save for later. The choice is yours."
+  },
+  "slide1_header": {
+    "string": "Instant\n<accent>payments</accent>"
+  },
+  "slide1_text": {
+    "string": "Spend bitcoin faster than ever. Enjoy instant and cheap payments with friends, family, and merchants."
+  },
+  "slide1_note": {
+    "string": "*Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes."
+  },
+  "slide2_header": {
+    "string": "Bitcoiners,\n<accent>borderless</accent>"
+  },
+  "slide2_text": {
+    "string": "Take charge of your digital life with portable profiles and payable contacts."
+  },
+  "slide3_header": {
+    "string": "Privacy is\n<accent>not a crime</accent>"
+  },
+  "slide3_text": {
+    "string": "Swipe to hide your balance, enjoy more private payments, and protect your wallet by enabling security features."
+  },
+  "slide4_header": {
+    "string": "Your keys,\n<accent>your coins</accent>"
+  },
+  "slide4_text": {
+    "string": "Let’s create your wallet. Please be aware that Bitkit is mobile software. <accent>Don’t store all your money in Bitkit.</accent>"
+  },
+  "new_wallet": {
+    "string": "New Wallet"
+  },
+  "restore": {
+    "string": "Restore"
+  },
+  "restore_wallet": {
+    "string": "Restore Wallet"
+  },
+  "advanced_setup": {
+    "string": "Advanced Setup"
+  },
+  "advanced": {
+    "string": "Advanced"
+  },
+  "passphrase_header": {
+    "string": "Secure with <accent>Passphrase</accent>"
+  },
+  "passphrase_text": {
+    "string": "You can add a secret passphrase to the 12-word recovery phrase. If you do, make sure you don’t forget."
+  },
+  "passphrase": {
+    "string": "Passphrase"
+  },
+  "create_new_wallet": {
+    "string": "Create New Wallet"
+  },
+  "restore_header": {
+    "string": "<accent>Restore</accent>\nyour wallet"
+  },
+  "restore_phrase": {
+    "string": "Please type in your recovery phrase from any (paper) backup."
+  },
+  "restore_red_explain": {
+    "string": "If a word is shown in <accent>red</accent>, it means that it was not found in the recovery phrase dictionary. Check for spelling errors."
+  },
+  "restore_inv_checksum": {
+    "string": "The checksum for the recovery phrase appears to be incorrect. Please double check your recovery phrase."
+  },
+  "restore_suggestions": {
+    "string": "SUGGESTIONS"
+  },
+  "restore_passphrase_placeholder": {
+    "string": "Passphrase*"
+  },
+  "restore_passphrase_meaning": {
+    "string": "*Optional, enter only if you’ve set up one."
+  },
+  "restore_error_title": {
+    "string": "Wallet Restore Failed"
+  },
+  "restore_error_description": {
+    "string": "Bitkit could not restore your wallet from backup or recovery phrase."
+  },
+  "loading_header": {
+    "string": "Setting up\n<accent>your wallet</accent>"
+  },
+  "restore_success_header": {
+    "string": "Wallet <accent>restored</accent>"
+  },
+  "restore_success_text": {
+    "string": "You have successfully restored your wallet from backup. Enjoy Bitkit!"
+  },
+  "restore_failed_header": {
+    "string": "Spending balance <accent>error</accent>"
+  },
+  "restore_failed_text": {
+    "string": "Bitkit restored your savings, but failed to restore your current spending balance (Lightning state) and wallet data."
+  },
+  "restore_no_backup_button": {
+    "string": "Proceed Without Backup"
+  },
+  "restore_no_backup_warn": {
+    "string": "If you previously had a lightning backup it will be overwritten and lost. This could result in a loss of funds."
+  },
+  "empty_wallet": {
+    "string": "To get\nstarted\n<accent>send\nBitcoin</accent>\nto your\nwallet"
+  },
+  "error_create": {
+    "string": "Wallet Creation Failed"
+  },
+  "multiple_header": {
+    "string": "<accent>Caution:</accent>\nmultiple devices"
+  },
+  "multiple_text": {
+    "string": "Don't install your Bitkit recovery phrase into multiple phones simultaneously, as this can corrupt your data."
+  }
+}

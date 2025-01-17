@@ -1,0 +1,128 @@
+{
+  "backupSeedPhrase": {
+    "title": {
+      "string": "",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
+    "description": {
+      "string": "Bewaar uw bitcoin"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Korting"
+    },
+    "description": {
+      "string": "Bestedingssaldo"
+    }
+  },
+  "quickpay": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": "Scan en betaal"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Uitnodiging"
+    },
+    "description": {
+      "string": "Deel Bitkit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Besteed"
+    },
+    "description": {
+      "string": "Onmiddellijke betalingen"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Overboeken"
+    },
+    "description": {
+      "string": "Bezig..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Verbinding aan het maken"
+    },
+    "description": {
+      "string": "Klaar in ±10m"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Gereed"
+    },
+    "description": {
+      "string": "Verbonden!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Overboeken"
+    },
+    "description": {
+      "string": "Klaar in ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": "Houd de app open"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "Beveilig"
+    },
+    "description": {
+      "string": "Pincode instellen"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Profiel"
+    },
+    "description": {
+      "string": "Vul uw gegevens in"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Ondersteuning"
+    },
+    "description": {
+      "string": "Hulp krijgen"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Koop"
+    },
+    "description": {
+      "string": "Bitcoin kopen"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Mislukt"
+    },
+    "description": {
+      "string": "Probeer het opnieuw"
+    }
+  },
+  "suggestions": {
+    "string": "Suggesties"
+  }
+}

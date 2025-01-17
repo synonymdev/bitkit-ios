@@ -1,0 +1,709 @@
+{
+	"send": {
+		"string": "Senden"
+	},
+	"receive": {
+		"string": "Empfangen"
+	},
+	"balance_total_pending": {
+		"string": "<text>(</text><pending/><text>anhängig)</text>"
+	},
+	"create_wallet_error": {
+		"string": "Bitte öffne die App erneut und versuche es nochmal."
+	},
+	"create_wallet_existing_error": {
+		"string": "Wallet \"{walletName}\" existiert bereits."
+	},
+	"create_wallet_mnemonic_error": {
+		"string": "Ungültige Wiederherstellungsphrase."
+	},
+	"create_wallet_mnemonic_restore_error": {
+		"string": "Bitte überprüfe deine Wiederherstellungsphrase auf Richtigkeit."
+	},
+	"send_bitcoin": {
+		"string": "Bitcoin senden"
+	},
+	"send_to": {
+		"string": "An"
+	},
+	"recipient_contact": {
+		"string": "Kontakt"
+	},
+	"recipient_invoice": {
+		"string": "Rechnung einfügen"
+	},
+	"recipient_manual": {
+		"string": "Manuell eingeben"
+	},
+	"recipient_scan": {
+		"string": "QR-Code scannen"
+	},
+	"send_invoice": {
+		"string": "Rechnung"
+	},
+	"send_address_placeholder": {
+		"string": "Gib eine Bitcoin- oder Lightning-Rechnung oder Adresse ein"
+	},
+	"send_clipboard_empty_title": {
+		"string": "Zwischenablage leer"
+	},
+	"send_clipboard_empty_text": {
+		"string": "Bitte kopiere eine Adresse oder eine Rechnung."
+	},
+	"send_amount": {
+		"string": "Bitcoin Betrag"
+	},
+	"send_max": {
+		"string": "MAX"
+	},
+	"send_done": {
+		"string": "FERTIG"
+	},
+	"send_available": {
+		"string": "Verfügbar"
+	},
+	"send_available_spending": {
+		"string": "Verfügbar (ausgeben)"
+	},
+	"send_available_savings": {
+		"string": "Verfügbar (sparen)"
+	},
+	"send_max_spending": {
+		"title": {
+			"string": "Reserve-Saldo"
+		},
+		"description": {
+			"string": "Der maximal auszahlbare Betrag ist etwas niedriger, da eine Reserve erforderlich ist."
+		}
+	},
+	"send_review": {
+		"string": "Überprüfen & Senden"
+	},
+	"send_confirming_in": {
+		"string": "Bestätigung in"
+	},
+	"send_invoice_expiration": {
+		"string": "Rechnungsverfall"
+	},
+	"send_swipe": {
+		"string": "Zum Bezahlen wischen"
+	},
+	"send_yes": {
+		"string": "Ja, senden"
+	},
+	"send_dialog1": {
+		"string": "Es scheint, dass du über $100 sendest. Möchtest du fortfahren?"
+	},
+	"send_dialog2": {
+		"string": "Es scheint, dass du über 50% deines Gesamtguthabens sendest. Möchtest du fortfahren?"
+	},
+	"send_dialog3": {
+		"string": "Die Transaktionsgebühr scheint über 50% des gesendeten Betrags zu liegen. Möchtest du fortfahren?"
+	},
+	"send_dialog4": {
+		"string": "Die Transaktionsgebühr scheint über $10 zu liegen. Möchtest du fortfahren?"
+	},
+	"send_dialog5_title": {
+		"string": "Gebühr ist möglicherweise zu niedrig"
+	},
+	"send_dialog5_description": {
+		"string": "Aktuelle Netzbedingungen erfordern, dass deine Gebühr größer als {minimumFee} ₿/vbyte ist. Diese Transaktion könnte fehlschlagen, lange dauern oder aus dem Mempool entfernt werden. Möchtest du fortfahren?"
+	},
+	"send_sent": {
+		"string": "Bitcoin gesendet"
+	},
+	"send_pending": {
+		"string": "Zahlung ausstehend"
+	},
+	"send_quickpay": {
+		"nav_title": {
+			"string": "QuickPay"
+		},
+		"title": {
+			"string": "Bezahlen\n<accent>Rechnung...</accent>"
+		}
+	},
+	"send_pending_note": {
+		"string": "Diese Zahlung dauert länger als erwartet. Du kannst Bitkit weiterhin verwenden."
+	},
+	"send_instant_failed": {
+		"string": "Sofortige Zahlung fehlgeschlagen"
+	},
+	"send_regular": {
+		"string": "Reguläre Zahlung"
+	},
+	"send_error_slash_ln": {
+		"string": "Dieser Kontakt konnte leider nicht sofort bezahlt werden. Du kannst eine reguläre Zahlung versuchen (teurer, langsamer)."
+	},
+	"send_error_tx_failed": {
+		"string": "Transaktion fehlgeschlagen"
+	},
+	"send_error_create_tx": {
+		"string": "Die Transaktion konnte nicht gesendet werden. Bitte versuche es erneut."
+	},
+	"tag_remove_error_title": {
+		"string": "Tag entfernen fehlgeschlagen"
+	},
+	"tag_remove_error_description": {
+		"string": "Bitkit konnte die Transaktionsdaten nicht finden."
+	},
+	"error_no_invoice": {
+		"string": "Keine Lightning-Rechnung gefunden."
+	},
+	"error_no_tx_title": {
+		"string": "Keine Transaktion verfügbar zum Senden."
+	},
+	"error_no_tx_msg": {
+		"string": "Bitte überprüfe deine Transaktionsinformationen und versuche es erneut."
+	},
+	"error_min_fee_title": {
+		"string": "Mindestübertragungsgebühr nicht erreicht"
+	},
+	"error_min_fee_msg": {
+		"string": "Bitte erhöhe deine Gebühr und versuche es erneut."
+	},
+	"send_amount_error_title": {
+		"string": "Ungültiger Betrag"
+	},
+	"send_amount_error_balance": {
+		"string": "Der Betrag ist größer als dein aktuelles Guthaben."
+	},
+	"send_amount_error_fee": {
+		"string": "Der angegebene Betrag ermöglicht keine Gebühr."
+	},
+	"send_details": {
+		"string": "Details"
+	},
+	"send_fee_and_speed": {
+		"string": "Geschwindigkeit und Gebühr"
+	},
+	"send_fee_speed": {
+		"string": "Geschwindigkeit"
+	},
+	"send_fee_error": {
+		"string": "Ungültige Gebühr"
+	},
+	"max_possible_fee_rate": {
+		"string": "Gebühr überschreitet das maximale Limit"
+	},
+	"max_possible_fee_rate_msg": {
+		"string": "Reduziere die benutzerdefinierte Gebühr und versuche es erneut."
+	},
+	"min_possible_fee_rate": {
+		"string": "Gebühr unterschreitet das Mindestlimit"
+	},
+	"min_possible_fee_rate_msg": {
+		"string": "Erhöhe die benutzerdefinierte Gebühr und versuche es erneut."
+	},
+	"sats_per_vbyte": {
+		"string": "sats/vbyte"
+	},
+	"send_output_to_small_title": {
+		"string": "Gesendeter Betrag zu klein"
+	},
+	"send_output_to_small_description": {
+		"string": "Bitte erhöhe deinen Betrag, um fortzufahren."
+	},
+	"send_coin_selection_output_to_small_description": {
+		"string": "Bitte entferne UTXOs oder erhöhe deinen Betrag, um fortzufahren."
+	},
+	"send_fee_error_min": {
+		"string": "Gebühr kann nicht weiter reduziert werden."
+	},
+	"send_fee_custom": {
+		"string": "Benutzerdefinierte Gebühr festlegen"
+	},
+	"send_fee_total": {
+		"string": "₿ {feeSats} für diese Transaktion"
+	},
+	"send_fee_total_fiat": {
+		"string": "₿ {feeSats} für diese Transaktion ({fiatSymbol}{fiatFormatted})"
+	},
+	"note": {
+		"string": "Notiz"
+	},
+	"lnurl_pay_confirm": {
+		"comment": {
+			"string": "Kommentar"
+		},
+		"comment_placeholder": {
+			"string": "Optionaler Kommentar zum Empfänger"
+		}
+	},
+	"tags": {
+		"string": "Tags"
+	},
+	"tags_add": {
+		"string": "Tag hinzufügen"
+	},
+	"tags_add_button": {
+		"string": "Hinzufügen"
+	},
+	"tags_add_error_header": {
+		"string": "Tag hinzufügen fehlgeschlagen"
+	},
+	"tags_add_error_description": {
+		"string": "Bitkit konnte die Transaktionsdaten nicht finden."
+	},
+	"tags_new": {
+		"string": "Neuer Tag"
+	},
+	"tags_new_enter": {
+		"string": "Neuen Tag eingeben"
+	},
+	"tags_previously": {
+		"string": "Früher verwendete Tags"
+	},
+	"tags_filter": {
+		"string": "Aktivität nach Tags filtern"
+	},
+	"tags_filter_title": {
+		"string": "Tag auswählen"
+	},
+	"tags_no": {
+		"string": "Noch keine Tags verfügbar"
+	},
+	"toast_payment_success_title": {
+		"string": "Zahlung gesendet"
+	},
+	"toast_payment_success_description": {
+		"string": "Deine sofortige Zahlung wurde erfolgreich gesendet."
+	},
+	"toast_payment_failed_title": {
+		"string": "Zahlung fehlgeschlagen"
+	},
+	"toast_payment_failed_description": {
+		"string": "Deine sofortige Zahlung ist fehlgeschlagen. Bitte versuche es erneut."
+	},
+	"selection_title": {
+		"string": "Coin-Auswahl"
+	},
+	"selection_auto": {
+		"string": "Auto"
+	},
+	"selection_total_required": {
+		"string": "Gesamterforderlich"
+	},
+	"selection_total_selected": {
+		"string": "Gesamtausgewählt"
+	},
+	"receive_bitcoin": {
+		"string": "Bitcoin empfangen"
+	},
+	"receive_specify": {
+		"string": "Rechnung bearbeiten"
+	},
+	"receive_copied": {
+		"string": "Rechnung in die Zwischenablage kopiert"
+	},
+	"receive_share_address": {
+		"string": "Empfangsadresse teilen"
+	},
+	"receive_bitcoin_invoice": {
+		"string": "Bitcoin-Rechnung"
+	},
+	"receive_lightning_invoice": {
+		"string": "Lightning-Rechnung"
+	},
+	"receive_note_placeholder": {
+		"string": "Optionale Notiz an den Zahler"
+	},
+	"receive_show_qr": {
+		"string": "QR-Code anzeigen"
+	},
+	"receive_text_lnfunds": {
+		"string": "Möchtest du <accent>Lightning</accent>-Gelder empfangen?"
+	},
+	"receive_spending": {
+		"string": "Auf Ausgabenkonto empfangen"
+	},
+	"receive_connect_initial": {
+		"string": ""
+	},
+	"receive_connect_additional": {
+		"string": ""
+	},
+	"receive_liquidity": {
+		"nav_title": {
+			"string": "Einrichtung des Ausgabensaldos"
+		},
+		"nav_title_additional": {
+			"string": "Erhöhung der Empfangskapazität"
+		},
+		"text": {
+			"string": "Your Spending Balance nutzt das Lightning Network, um Ihre Zahlungen günstiger, schneller und privater zu machen.\n\nDies funktioniert wie ein Internetzugang, aber Sie zahlen für Liquidität und Routing statt für Bandbreite.\n\nDiese Einrichtung umfasst einige einmalige Kosten."
+		},
+		"text_additional": {
+			"string": "Your Spending Balance nutzt das Lightning Network, um Ihre Zahlungen günstiger, schneller und privater zu machen.\n\nDies funktioniert wie ein Internetzugang, aber Sie zahlen für Liquidität und Routing statt für Bandbreite.\n\nBitkit muss die Aufnahmekapazität Ihres Guthabens erhöhen, um diese Zahlung zu verarbeiten."
+		},
+		"label": {
+			"string": "Ausgabensaldo Liquidität"
+		},
+		"label_additional": {
+			"string": "Zusätzliche Ausgaben Saldo Liquidität"
+		}
+	},
+	"receive_cjit_error": {
+		"string": "CJIT Fehler"
+	},
+	"receive_cjit_error_msg": {
+		"string": "Fehler beim Senden der Gelder auf dein Ausgabenkonto."
+	},
+	"receive_will": {
+		"string": "Du wirst empfangen"
+	},
+	"receive_ldk_init": {
+		"string": "Ausgabensaldo Initialisierung..."
+	},
+	"minimum": {
+		"string": "MINIMUM"
+	},
+	"activity": {
+		"string": "Aktivität"
+	},
+	"activity_show_all": {
+		"string": "Alle Aktivitäten anzeigen"
+	},
+	"activity_no": {
+		"string": "Noch keine Aktivitäten"
+	},
+	"activity_no_explain": {
+		"string": "Empfange einige Gelder, um zu starten"
+	},
+	"activity_sent": {
+		"string": "Gesendet"
+	},
+	"activity_received": {
+		"string": "Empfangen"
+	},
+	"activity_pending": {
+		"string": "Ausstehend"
+	},
+	"activity_failed": {
+		"string": "Fehlgeschlagen"
+	},
+	"activity_transfer": {
+		"string": "Übertragung"
+	},
+	"activity_transfer_savings_pending": {
+		"string": "Von Ausgabenkonto (±{duration})"
+	},
+	"activity_transfer_savings_done": {
+		"string": "Von Ausgabenkonto"
+	},
+	"activity_transfer_spending_pending": {
+		"string": "Von Sparkonto (±{duration})"
+	},
+	"activity_transfer_spending_done": {
+		"string": "Von Sparkonto"
+	},
+	"activity_transfer_to_spending": {
+		"string": "Zum Ausgabenkonto"
+	},
+	"activity_transfer_pending": {
+		"string": "Übertragung (±{duration})"
+	},
+	"activity_confirms_in": {
+		"string": "Bestätigungen in {feeRateDescription}"
+	},
+	"activity_confirms_in_boosted": {
+		"string": "Beschleunigung. Bestätigungen in {feeRateDescription}"
+	},
+	"activity_low_fee": {
+		"string": "Gebühr möglicherweise zu niedrig"
+	},
+	"activity_bitcoin_sent": {
+		"string": "Bitcoin gesendet"
+	},
+	"activity_bitcoin_received": {
+		"string": "Bitcoin empfangen"
+	},
+	"activity_error_get": {
+		"string": "Transaktionsabruf fehlgeschlagen"
+	},
+	"activity_error_get_description": {
+		"string": "Bitkit konnte die Transaktionsdaten nicht abrufen."
+	},
+	"activity_error_tx_not_found": {
+		"string": "Die Transaktion wurde nicht gefunden."
+	},
+	"activity_confirming": {
+		"string": "Bestätigung"
+	},
+	"activity_confirmed": {
+		"string": "Bestätigt"
+	},
+	"activity_removed": {
+		"string": "Aus Mempool entfernt"
+	},
+	"activity_removed_title": {
+		"string": "Transaktionen aus Mempool entfernt"
+	},
+	"activity_removed_msg": {
+		"string": "Bitte überprüfe deine Aktivitätsliste. Die {count} betroffene(n) Transaktion(en) wird/werden in Rot hervorgehoben."
+	},
+	"activity_boosting": {
+		"string": "Beschleunigung"
+	},
+	"activity_fee": {
+		"string": "Gebühr"
+	},
+	"activity_payment": {
+		"string": "Zahlung"
+	},
+	"activity_status": {
+		"string": "Status"
+	},
+	"activity_date": {
+		"string": "Datum"
+	},
+	"activity_time": {
+		"string": "Zeit"
+	},
+	"activity_contact": {
+		"string": "Kontakt"
+	},
+	"activity_assign": {
+		"string": "Zuweisen"
+	},
+	"activity_detach": {
+		"string": "Trennen"
+	},
+	"activity_tag": {
+		"string": "Tag"
+	},
+	"activity_boost": {
+		"string": "Beschleunigen"
+	},
+	"activity_boosted": {
+		"string": "Bereits beschleunigt"
+	},
+	"activity_explore": {
+		"string": "Erkunden"
+	},
+	"activity_tx_id": {
+		"string": "Transaktions-ID"
+	},
+	"activity_preimage": {
+		"string": "Preimage"
+	},
+	"activity_payment_hash": {
+		"string": "Zahlungs-Hash"
+	},
+	"activity_address": {
+		"string": "Adresse"
+	},
+	"activity_input": {
+		"string": "{count, plural, one {EINGANG} other {EINGÄNGE (#)}}"
+	},
+	"activity_output": {
+		"string": "{count, plural, one {AUSGANG} other {AUSGÄNGE (#)}}"
+	},
+	"activity_boosted_cpfp": {
+		"string": "BESCHLEUNIGTE TRANSAKTION {num} (CPFP)"
+	},
+	"activity_boosted_rbf": {
+		"string": "BESCHLEUNIGTE TRANSAKTION {num} (RBF)"
+	},
+	"activity_explorer": {
+		"string": "Block-Explorer öffnen"
+	},
+	"activity_successful": {
+		"string": "Erfolgreich"
+	},
+	"activity_invoice_note": {
+		"string": "Rechnungsnotiz"
+	},
+	"activity_invoice_comment": {
+		"string": "Kommentar"
+	},
+	"activity_invoice": {
+		"string": "Rechnung"
+	},
+	"activity_all": {
+		"string": "Alle Aktivitäten"
+	},
+	"activity_tabs": {
+		"all": {
+			"string": "Alle"
+		},
+		"sent": {
+			"string": "Gesendet"
+		},
+		"received": {
+			"string": "Empfangen"
+		},
+		"other": {
+			"string": "Sonstiges"
+		}
+	},
+	"details_savings_title": {
+		"string": "Sparen"
+	},
+	"details_spending_title": {
+		"string": "Ausgaben"
+	},
+	"savings": {
+		"title": {
+			"string": "Sparkonto"
+		},
+		"onboarding": {
+			"string": "<accent>Sende\nBitcoin</accent>\nauf dein\nSparkonto"
+		}
+	},
+	"spending": {
+		"title": {
+			"string": "AusgabenKonto"
+		},
+		"onboarding": {
+			"string": "<accent>Sende\nBitcoin</accent>\nauf dein\nAusgabenkonto"
+		}
+	},
+	"details_transfer_subtitle": {
+		"string": "Eingehender Transfer:"
+	},
+	"tx_invalid": {
+		"string": "Ungültige Transaktion"
+	},
+	"boost": {
+		"string": "Beschleunigen"
+	},
+	"boost_title": {
+		"string": "Transaktion beschleunigen"
+	},
+	"boost_success_title": {
+		"string": "Beschleunigt!"
+	},
+	"boost_success_msg": {
+		"string": "Die Transaktion wurde erfolgreich beschleunigt."
+	},
+	"boost_error_title": {
+		"string": "Beschleunigen fehlgeschlagen"
+	},
+	"boost_error_msg": {
+		"string": "Bitkit konnte die Transaktion nicht beschleunigen."
+	},
+	"boost_fee_custom": {
+		"string": "Deine Transaktion könnte schneller abgeschlossen werden, wenn du eine zusätzliche Netzwerkgebühr einbeziehst. Lege deine benutzerdefinierte Gebühr unten fest."
+	},
+	"boost_fee_recomended": {
+		"string": "Deine Transaktion könnte schneller abgeschlossen werden, wenn du eine zusätzliche Netzwerkgebühr einbeziehst. Hier ist eine Empfehlung:"
+	},
+	"boost_recomended_button": {
+		"string": "Empfohlene Gebühr verwenden"
+	},
+	"boost_swipe": {
+		"string": "Zum Beschleunigen wischen"
+	},
+	"payment_received": {
+		"string": "Bitcoin empfangen"
+	},
+	"instant_payment_received": {
+		"string": "Sofortiger Bitcoin empfangen"
+	},
+	"error_create_tx": {
+		"string": "Transaktionserstellung fehlgeschlagen"
+	},
+	"error_create_tx_msg": {
+		"string": "Ein Fehler ist aufgetreten. Bitte versuche es erneut {raw}"
+	},
+	"error_broadcast_tx": {
+		"string": "Transaktionsübertragung fehlgeschlagen"
+	},
+	"error_broadcast_tx_msg": {
+		"string": "Ein Fehler ist aufgetreten beim Übertragen deiner Transaktion. {raw}"
+	},
+	"error_broadcast_tx_connection": {
+		"string": "Bitte überprüfe deine Verbindung und versuche es erneut.\n{message}"
+	},
+	"filter_title": {
+		"string": "Zeitraum auswählen"
+	},
+	"filter_clear": {
+		"string": "Löschen"
+	},
+	"filter_apply": {
+		"string": "Anwenden"
+	},
+	"reorg_detected": {
+		"string": "Blockchain-Reorganisation erkannt"
+	},
+	"reorg_msg_begin": {
+		"string": "{count, plural, one {# deiner Transaktionen ist nicht mehr bestätigt.} other {# deiner Transaktionen sind nicht mehr bestätigt.}} Please wait."
+	},
+	"reorg_msg_end": {
+		"string": "Bitte überprüfe deine Aktivitätsliste auf betroffene Transaktionen."
+	},
+	"lnurl_w_title": {
+		"string": "Bitcoin abheben"
+	},
+	"lnurl_w_max": {
+		"string": "Verfügbar zum Abheben"
+	},
+	"lnurl_w_text": {
+		"string": "Die abgehobenen Gelder werden auf dein Bitkit-Ausgabenkonto eingezahlt."
+	},
+	"lnurl_w_button": {
+		"string": "Abheben"
+	},
+	"lnurl_p_title": {
+		"string": "Bitcoin bezahlen"
+	},
+	"lnurl_pay": {
+		"error_min": {
+			"title": {
+				"string": "Zu niedriger Betrag"
+			},
+			"description": {
+				"string": "Der Mindestbetrag für diese Rechnung beträgt ₿ {amount}."
+			}
+		}
+	},
+	"lnurl_p_max": {
+		"string": "Maximaler Betrag"
+	},
+	"balance_hidden_title": {
+		"string": "Wallet-Guthaben versteckt"
+	},
+	"balance_hidden_message": {
+		"string": "Streiche über dein Wallet-Guthaben, um es erneut anzuzeigen."
+	},
+	"balance_unit_switched_title": {
+		"string": "Gewechselt zu {unit}"
+	},
+	"balance_unit_switched_message": {
+		"string": "Tippe auf dein Wallet-Guthaben, um es zurück zu {unit} zu wechseln."
+	},
+	"refresh_error_title": {
+		"string": "Aktualisieren fehlgeschlagen"
+	},
+	"refresh_error_msg": {
+		"string": "Ein Fehler ist aufgetreten und das Wallet konnte nicht aktualisiert werden. Bitte versuche es erneut."
+	},
+	"refresh_error_throttle_title": {
+		"string": "Verbindung gedrosselt"
+	},
+	"refresh_error_throttle_description": {
+		"string": "Die Verbindung zum Electrum-Server ist gedrosselt. Bitte warte einige Minuten, bevor du es erneut versuchst."
+	},
+	"ldk_sync_error_title": {
+		"string": "Lightning-Synchronisierungsfehler"
+	},
+	"ldk_start_error_title": {
+		"string": ""
+	},
+	"receive_insufficient_title": {
+		"string": "Unzureichendes Empfangskonto."
+	},
+	"receive_insufficient_text": {
+		"string": "Unzureichende Empfangskapazität, um diesen Betrag über Lightning zu empfangen."
+	},
+	"receive_foreground_title": {
+		"string": "Bitkit im Vordergrund halten",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	},
+	"receive_foreground_msg": {
+		"string": "Zahlungen auf Ihr Guthaben können fehlschlagen, wenn Sie zwischen Apps wechseln.",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	}
+}

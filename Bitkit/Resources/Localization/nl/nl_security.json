@@ -1,0 +1,352 @@
+{
+  "backup_wallet": {
+    "string": "Wallet Backup"
+  },
+  "backup_title": {
+    "string": "Uw Bitcoin <accent>veilig bewaren</accent> "
+  },
+  "backup_funds": {
+    "string": "Er staat nu geld op uw wallet, tijd om een backup te maken!"
+  },
+  "backup_funds_no": {
+    "string": "Er is nog geen geld in uw wallet, maar u kunt wel alvast een backup maken."
+  },
+  "backup_button": {
+    "string": "Backup"
+  },
+  "pass": {
+    "string": "Wachtwoordzin"
+  },
+  "pass_your": {
+    "string": "Uw Wachtwoordzin"
+  },
+  "pass_text": {
+    "string": "U heeft een wachtwoordzin aan de herstelwoorden toegevoegd tijdens de configuratie van uw wallet. "
+  },
+  "pass_never_share": {
+    "string": "Deel uw wachtwoordzin <accent>nooit</accent> met iemand anders, dit mag tot geldverlies leiden."
+  },
+  "pass_confirm": {
+    "string": "Wachtwoordzin Bevestigen"
+  },
+  "pass_confirm_text": {
+    "string": "Voer de wachtwoordzin in die u tijdens het creëren van uw wallet heeft gebruikt. "
+  },
+  "pass_recovery": {
+    "string": "<accent>Passphrase:</accent> {passphrase}"
+  },
+  "mnemonic_phrase": {
+    "string": "Herstelwoorden"
+  },
+  "mnemonic_your": {
+    "string": "Herstelwoorden"
+  },
+  "mnemonic_error": {
+    "string": "Wallet-fout"
+  },
+  "mnemonic_error_description": {
+    "string": "Bitkit kon uw herstelzin niet lezen."
+  },
+  "mnemonic_write": {
+    "string": "Schrijf deze {length}woorden op in de juiste volgorde en bewaar ze op een veilige plek. "
+  },
+  "mnemonic_use": {
+    "string": "De 12 woorden hieronder kunnen gebruikt worden om uw geld later weer te herstellen."
+  },
+  "mnemonic_reveal": {
+    "string": "Tik Aan Om Weer Te Geven"
+  },
+  "mnemonic_never_share": {
+    "string": "Deel uw wachtwoordzin <accent>nooit</accent> met iemand anders, dit mag tot geldverlies leiden."
+  },
+  "mnemonic_confirm": {
+    "string": "Herstelwoorden Bevestigen"
+  },
+  "mnemonic_confirm_tap": {
+    "string": "Tik de 12 woorden aan in de juiste volgorde."
+  },
+  "mnemonic_result_header": {
+    "string": "Succesvol"
+  },
+  "mnemonic_result_text": {
+    "string": "Zorg ervoor dat u uw herstelzin op een <accent>veilige plaats</accent> bewaart, want dit is de <accent>enige manier</accent> om uw geld terug te krijgen!"
+  },
+  "mnemonic_keep_header": {
+    "string": "Houd het veilig"
+  },
+  "mnemonic_keep_text": {
+    "string": "Denk eraan, <accent>deel nooit uw herstelzin</accent> met iemand! Als u dat wel doet, kunnen zij uw geld, profiel en andere gegevens stelen."
+  },
+  "mnemonic_data_header": {
+    "string": "Wallet Data"
+  },
+  "mnemonic_data_text": {
+    "string": "Uw profiel, contacten, web accounts, labels en activiteiten worden automatisch opgeslagen met onze gratis cloud dienst. "
+  },
+  "mnemonic_multiple_header": {
+    "string": "Meerdere Apparaten"
+  },
+  "mnemonic_multiple_text": {
+    "string": "Gebruik dezelfde Bitkit herstelwoorden niet op verschillende apparaten te gelijk, dit kan uw data corrumpteren. "
+  },
+  "mnemonic_latest_backup": {
+    "string": "<bold>Meeste recente backup:</bold>{time}"
+  },
+  "pin_security_header": {
+    "string": "Verbeter de Beveiliging"
+  },
+  "pin_security_title": {
+    "string": "<accent>Bescherm</accent>\nuw bitcoin"
+  },
+  "pin_security_text": {
+    "string": "Om uw wallet nog beter te beveiligen, kunt u een PIN-code en Face ID instellen."
+  },
+  "pin_security_button": {
+    "string": "Beveilig de Wallet"
+  },
+  "pin_choose_header": {
+    "string": "Kies een 4-cijferige pincode"
+  },
+  "pin_choose_text": {
+    "string": "Zorg dat u een pincode gebruikt die u kunt onthouden. U kunt de pincode wel resetten als u die vergeet, maar dat vereist wel dat de hele wallet hersteld wordt. "
+  },
+  "pin_retype_header": {
+    "string": "Type de 4-cijferige pincode opnieuw"
+  },
+  "pin_retype_text": {
+    "string": "Voer uw 4-cijferige pincode nogmaals in om de instellingen te voltooien. "
+  },
+  "pin_not_match": {
+    "string": "Probeer het nogmaals, dit is niet dezelfde pincode."
+  },
+  "pin_disable_title": {
+    "string": "Pincode Uitschakelen"
+  },
+  "pin_disable_text": {
+    "string": "Er is momenteel een pincode. Als deze uit wilt zetten dan moet u de huidige pincode eerst invoeren. "
+  },
+  "pin_disable_button": {
+    "string": "Pincode Uitschakelen"
+  },
+  "pin_enter": {
+    "string": "Voer uw pincode in"
+  },
+  "pin_last_attempt": {
+    "string": "Laatste poging. Als u nogmaals een foutieve pincode invoert dan zal de wallet gereset worden."
+  },
+  "pin_attempts": {
+    "string": "{attemptsRemaining}resterende pogingen. Uw pincode vergeten?"
+  },
+  "pin_forgot_title": {
+    "string": "Pincode Vergeten?"
+  },
+  "pin_forgot_text": {
+    "string": "Uw pincode vergeten? Reset en herstel uw Bitkit wallet met de herstelwoorden. Na het herstel kunt u een niewe pincode configureren."
+  },
+  "pin_forgot_reset": {
+    "string": "Reset (Vereist de Herstelwooden)"
+  },
+  "pin_send": {
+    "string": "Voer uw pincode in om deze betaling te bevestigen en versturen. "
+  },
+  "pin_send_title": {
+    "string": ""
+  },
+  "pin_use_biometrics": {
+    "string": "Gebruik {biometricsName}"
+  },
+  "bio": {
+    "string": "Biometrie"
+  },
+  "bio_auth_with": {
+    "string": "Identiteit verifiëren met {biometricsName}"
+  },
+  "bio_no": {
+    "string": "Het lijkt er op dat uw apparaat biometrische beveiliging niet ondersteunt."
+  },
+  "bio_face_id": {
+    "string": "Face ID"
+  },
+  "bio_touch_id": {
+    "string": "Touch ID"
+  },
+  "bio_confirm": {
+    "string": "Bevestig {biometricsName}"
+  },
+  "bio_error_title": {
+    "string": "Instellen Biometrie Mislukt"
+  },
+  "bio_error_message": {
+    "string": "Bitkit kon {type} niet instellen voor uw toestel."
+  },
+  "bio_loading": {
+    "string": "Aan het laden..."
+  },
+  "bio_not_available": {
+    "string": "Het lijkt erop dat u de biometrische beveiliging nog niet hebt ingesteld (of dat deze niet wordt ondersteund). Probeer het in te schakelen in de instellingen van uw telefoon."
+  },
+  "bio_ask": {
+    "string": "PIN-code gezet. Wilt u {biometricsName} gebruiken in plaats van uw PIN-code?"
+  },
+  "bio_use": {
+    "string": "Gebruik {biometricsName}"
+  },
+  "bio_phone_settings": {
+    "string": "Telefooninstellingen"
+  },
+  "success_title": {
+    "string": "Wallet beveiligd"
+  },
+  "success_bio": {
+    "string": "U hebt met succes een PIN-code en {biometricsName} ingesteld om uw wallet beter te beveiligen."
+  },
+  "success_no_bio": {
+    "string": "U heeft een pincode geconfigureerd om uw wallet beter te beveiligen. "
+  },
+  "success_payments": {
+    "string": "Ook voor betalingen"
+  },
+  "reset_title": {
+    "string": "Reset En Herstel"
+  },
+  "reset_text": {
+    "string": "Maak eerst een backup van uw wallet om uw geld en data veilig te stellen. Een reset zal uw huidige wallet overschrijven. "
+  },
+  "reset_button_backup": {
+    "string": "Maak Eerst Een Backup"
+  },
+  "reset_button_reset": {
+    "string": "Wallet Resetten"
+  },
+  "reset_dialog_title": {
+    "string": "Bitkit Resetten?"
+  },
+  "reset_dialog_desc": {
+    "string": "Weet u zeker u uw Bitkit wallet wilt resetten? Heeft u een backup van uw herstelwoorden en wallet data?"
+  },
+  "reset_confirm": {
+    "string": "Ja, Resetten"
+  },
+  "recovery": {
+    "string": "Herstel"
+  },
+  "recovery_text": {
+    "string": "U bent in de herstelmodus van Bitkit terechtgekomen. Hier zijn enkele acties die u kunt uitvoeren als u tegen problemen aanloopt waardoor de app niet volledig functioneert. Herstart de app voor een normale opstart."
+  },
+  "display_seed": {
+    "string": "Toon Herstelwoorden"
+  },
+  "contact_support": {
+    "string": "Contact Opnemen"
+  },
+  "wipe_app": {
+    "string": "Wis de App"
+  },
+  "close_app": {
+    "string": "Bitkit Sluiten"
+  },
+  "export_title": {
+    "string": "Naar Telefoon Exporteren"
+  },
+  "export_text": {
+    "string": "U kunt een .ZIP bestand van uw wallet data exporteren. Deze is cryptografisch versleuteld met het wachtwoord wat u hieronder kan instellen. "
+  },
+  "export_password": {
+    "string": "Wachtwoord"
+  },
+  "export_button": {
+    "string": "Exporteren"
+  },
+  "export_share": {
+    "string": "Backup bestand delen"
+  },
+  "export_success_title": {
+    "string": "Back-up geëxporteerd"
+  },
+  "export_success_msg": {
+    "string": "Bitkit heeft het back-up met succes naar uw telefoon geëxporteerd."
+  },
+  "export_error_title": {
+    "string": "Back-up mislukt"
+  },
+  "export_error_msg": {
+    "string": "Bitkit kon het back-up bestand niet naar uw telefoon exporteren."
+  },
+  "export_error_file": {
+    "string": "Bitkit kon het back-up bestand niet aanmaken."
+  },
+  "cp_title": {
+    "string": "Pincode Veranderen"
+  },
+  "cp_text": {
+    "string": "U kunt de 4 cijfers van uw pincode veranderen. Voer dan eerst uw huidige pincode in. "
+  },
+  "cp_retype_title": {
+    "string": "Voer De Nieuwe Pincode Nogmaals In"
+  },
+  "cp_retype_text": {
+    "string": "Voer uw 4-cijferige pincode nogmaals in om de instellingen te voltooien. "
+  },
+  "cp_setnew_title": {
+    "string": "Nieuwe Pincode Instellen"
+  },
+  "cp_setnew_text": {
+    "string": "Zorg dat u een pincode gebruikt die u kunt onthouden. U kunt de pincode wel resetten als u die vergeet, maar dat vereist wel dat de hele wallet hersteld wordt. "
+  },
+  "cp_try_again": {
+    "string": "Probeer het nogmaals, dit is niet dezelfde pincode."
+  },
+  "cp_changed_title": {
+    "string": "De pincode is veranderd"
+  },
+  "cp_changed_text": {
+    "string": "U heeft de 4-cijferige pincode succesvol aangepast. "
+  },
+  "use_pin": {
+    "string": "Pincode Gebruiken"
+  },
+  "wiped_title": {
+    "string": "Wallet gegevens verwijderd"
+  },
+  "wiped_message": {
+    "string": "Bitkit is gereset en alle wallet gegevens zijn verwijderd."
+  },
+  "authorization": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    },
+    "authorize": {
+      "string": ""
+    },
+    "deny": {
+      "string": ""
+    },
+    "authorizing": {
+      "string": ""
+    },
+    "success": {
+      "string": "Succes"
+    },
+    "claims": {
+      "string": ""
+    },
+    "requested_permissions": {
+      "string": ""
+    },
+    "pubky_secret_error_title": {
+      "string": ""
+    },
+    "pubky_secret_error_description": {
+      "string": ""
+    },
+    "pubky_auth_error_title": {
+        "string": ""
+        },
+    "pubky_auth_error_description": {
+        "string": ""
+    }
+  }
+}

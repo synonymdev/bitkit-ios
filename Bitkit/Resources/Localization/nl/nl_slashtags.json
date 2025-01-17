@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "Uw naam"
+  },
+  "your_name_capital": {
+    "string": "Uw Naam"
+  },
+  "contact_name": {
+    "string": "Naam Contactpersoon"
+  },
+  "contact": {
+    "string": "Contactpersoon"
+  },
+  "contacts": {
+    "string": "Contacten"
+  },
+  "contact_add": {
+    "string": "Contact toevoegen"
+  },
+  "contact_add_capital": {
+    "string": "Contact toevoegen"
+  },
+  "contact_add_explain": {
+    "string": "Voeg een nieuw contact toe door hun QR code te scannen of hun sleutel hieronder te plakken."
+  },
+  "contact_add_button": {
+    "string": "Toevoegen"
+  },
+  "contact_key_paste": {
+    "string": "Plak een sleutel"
+  },
+  "contact_error_yourself": {
+    "string": "U kunt uzelf niet als contact toevoegen."
+  },
+  "contact_error_key": {
+    "string": "Dit is geen valide sleutel. "
+  },
+  "contact_edit_capital": {
+    "string": "Contact Bewerken"
+  },
+  "contacts_name": {
+    "string": "Naam van contact"
+  },
+  "contact_your_name": {
+    "string": "Naam van uw\npublieke profiel"
+  },
+  "contact_retrieving": {
+    "string": "Gegevens van contact\naan het ophalen..."
+  },
+  "contact_no_links": {
+    "string": "Er zijn nog geen links toegevoegd..."
+  },
+  "contact_pay_error": {
+    "string": ""
+  },
+  "contact_share": {
+    "string": "Profielsleutel delen"
+  },
+  "contact_this": {
+    "string": "deze contact"
+  },
+  "contact_copied": {
+    "string": "Profielsleutel Gekopieerd Naar Klembord"
+  },
+  "contact_delete_title": {
+    "string": "{name}wissen?"
+  },
+  "contact_delete_text": {
+    "string": "Weet u zeker dat u {name}wilt verwijderen uit uw contactenlijst?"
+  },
+  "contact_delete_yes": {
+    "string": "Ja, Verwijder"
+  },
+  "contact_select": {
+    "string": "Selecteer Een Contact"
+  },
+  "contact_assign": {
+    "string": "Contact Toewijzen"
+  },
+  "contacts_no_found": {
+    "string": "Geen Contacten Gevonden"
+  },
+  "disabled": {
+    "string": "Slashtags uitgeschakeld"
+  },
+  "onboarding_header": {
+    "string": ""
+  },
+  "onboarding_text": {
+    "string": ""
+  },
+  "onboarding_button": {
+    "string": ""
+  },
+  "onboarding_profile1_header": {
+    "string": ""
+  },
+  "onboarding_profile1_text": {
+    "string": ""
+  },
+  "onboarding_profile2_header": {
+    "string": ""
+  },
+  "onboarding_profile2_text": {
+    "string": "U en uw contacten kunnen Bitkit gebruiken voor directe betalingen zonder banken, waar u wilt, wanneer u wilt."
+  },
+  "onboarding_widgets_header": {
+    "string": ""
+  },
+  "onboarding_widgets_text": {
+    "string": ""
+  },
+  "my_profile": {
+    "string": "Mijn profiel"
+  },
+  "profile": {
+    "string": "Profiel"
+  },
+  "profile_save": {
+    "string": "Profiel Opslaan"
+  },
+  "profile_pay_contacts": {
+    "string": "Betaal Uw Contacten"
+  },
+  "profile_create": {
+    "string": "Profiel Aanmaken"
+  },
+  "profile_public_warn": {
+    "string": "Let op, al uw profiel informatie is openbaar beschikbaar."
+  },
+  "profile_bio": {
+    "string": "Korte bio. Zeg iets over uzelf. "
+  },
+  "profile_add_link": {
+    "string": "Link Toevoegen"
+  },
+  "profile_link_label": {
+    "string": "Label"
+  },
+  "profile_link_label_placeholder": {
+    "string": "Bijvoorbeeld 'Website'"
+  },
+  "profile_link_value": {
+    "string": "Link of text"
+  },
+  "profile_link_public": {
+    "string": "Let op: Iedere link die u toevoegd is openbaar beschikbaar."
+  },
+  "profile_link_suggestions": {
+    "string": "Suggesties"
+  },
+  "profile_link_suggestions_to_add": {
+    "string": "Suggesties Om Toe Te Voegen"
+  },
+  "profile_scan_to_add": {
+    "string": "Scan om {name}toe te voegen"
+  },
+  "profile_edit": {
+    "string": "Profiel Bewerken"
+  },
+  "offline_enable": {
+    "string": "Activeer betalingen met contacten*"
+  },
+  "offline_enable_explain": {
+    "string": "*Dit vereist het delen van data om betalingen te kunnen maken"
+  },
+  "widgets": {
+    "string": "Widgets"
+  },
+  "widget_add": {
+    "string": "Widget Toevoegen"
+  },
+  "widget_loading_description": {
+    "string": ""
+  },
+  "widget_failed_description": {
+    "string": ""
+  },
+  "widget_source": {
+    "string": ""
+  },
+  "widget_price": {
+    "string": "Bitcoinprijs"
+  },
+  "widget_headlines": {
+    "string": "Bitcoin Nieuwes"
+  },
+  "widget_blocks": {
+    "string": "Bitcoin Blokken"
+  },
+  "widget_facts": {
+    "string": "Bitcoin Feiten"
+  },
+  "widget_qr": {
+    "string": "Of Scan QR Code"
+  },
+  "widget_error_drive": {
+    "string": ""
+  },
+  "widget_feed": {
+    "string": ""
+  },
+  "widget_edit": {
+    "string": "Widget Feed"
+  },
+  "widget_edit_default": {
+    "string": ""
+  },
+  "widget_edit_custom": {
+    "string": "Op maat"
+  },
+  "widget_edit_description": {
+    "string": ""
+  },
+  "widget_loading_options": {
+    "string": "Widget opties aan het laden..."
+  },
+  "widget_reset": {
+    "string": "Resetten"
+  },
+  "widget_preview": {
+    "string": ""
+  },
+  "widget_delete_yes": {
+    "string": "Ja, Verwijder"
+  },
+  "widget_delete_title": {
+    "string": "Widget Verwijderen?"
+  },
+  "widget_delete_desc": {
+    "string": "Weet u zeker dat u '{name}' wilt wissen van uw widgetlijst?"
+  },
+  "error_saving_contact": {
+    "string": ""
+  },
+  "error_saving_profile": {
+    "string": ""
+  },
+  "error_pay_title": {
+    "string": ""
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": ""
+  },
+  "auth_depricated_msg": {
+    "string": ""
+  }
+}

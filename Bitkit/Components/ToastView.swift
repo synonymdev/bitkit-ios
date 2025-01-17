@@ -17,8 +17,10 @@ struct ToastView: View {
                 VStack(alignment: .leading) {
                     Text(toast.title)
                         .font(.headline)
-                    Text(toast.description)
-                        .font(.subheadline)
+                    if let description = toast.description {
+                        Text(description)
+                            .font(.subheadline)
+                    }
                 }
                 Spacer()
                 if !toast.autoHide {

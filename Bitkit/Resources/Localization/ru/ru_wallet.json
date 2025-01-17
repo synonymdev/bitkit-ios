@@ -1,0 +1,709 @@
+{
+	"send": {
+		"string": "Отправить"
+	},
+	"receive": {
+		"string": "Получить"
+	},
+	"balance_total_pending": {
+		"string": ""
+	},
+	"create_wallet_error": {
+		"string": "Пожалуйста, перезапустите приложение и попробуйте снова."
+	},
+	"create_wallet_existing_error": {
+		"string": "Кошелек {walletName}уже существует."
+	},
+	"create_wallet_mnemonic_error": {
+		"string": "Неверная фраза восстановления."
+	},
+	"create_wallet_mnemonic_restore_error": {
+		"string": "Пожалуйста, дважды проверьте точность вашей фразы восстановления."
+	},
+	"send_bitcoin": {
+		"string": "Отправить Биткоин"
+	},
+	"send_to": {
+		"string": "Кому"
+	},
+	"recipient_contact": {
+		"string": "Контакт"
+	},
+	"recipient_invoice": {
+		"string": "Вставить Инвойс"
+	},
+	"recipient_manual": {
+		"string": "Ввести Вручную"
+	},
+	"recipient_scan": {
+		"string": "Сканировать QR"
+	},
+	"send_invoice": {
+		"string": "Инвойс"
+	},
+	"send_address_placeholder": {
+		"string": "Введите Биткоин или Лайтнинг инвойс или адрес"
+	},
+	"send_clipboard_empty_title": {
+		"string": "Буфер обмена пуст"
+	},
+	"send_clipboard_empty_text": {
+		"string": "Пожалуйста, скопируйте адрес или инвойс."
+	},
+	"send_amount": {
+		"string": "Количество Биткоин"
+	},
+	"send_max": {
+		"string": "МАКС"
+	},
+	"send_done": {
+		"string": "ГОТОВО"
+	},
+	"send_available": {
+		"string": ""
+	},
+	"send_available_spending": {
+		"string": "Доступно (Баланс Расходов)"
+	},
+	"send_available_savings": {
+		"string": "Доступно (Сбережения)"
+	},
+	"send_max_spending": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"send_review": {
+		"string": "Проверить и Отправить"
+	},
+	"send_confirming_in": {
+		"string": "Подтверждение через"
+	},
+	"send_invoice_expiration": {
+		"string": "Срок действия инвойса"
+	},
+	"send_swipe": {
+		"string": "Отправить"
+	},
+	"send_yes": {
+		"string": "Да, Отправить"
+	},
+	"send_dialog1": {
+		"string": "Похоже, вы отправляете более 100$. Вы хотите продолжать?"
+	},
+	"send_dialog2": {
+		"string": "Похоже, вы отправляете более 50% от общего баланса. Вы хотите продолжать?"
+	},
+	"send_dialog3": {
+		"string": "Комиссия за транзакцию составляет более 50% от суммы, которую вы отправляете. Вы хотите продолжать?"
+	},
+	"send_dialog4": {
+		"string": "Комиссия за транзакцию составляет более 10$. Вы хотите продолжать?"
+	},
+	"send_dialog5_title": {
+		"string": "Комиссия может быть слишком низкой"
+	},
+	"send_dialog5_description": {
+		"string": "Текущие условия сети требуют, чтобы ваша комиссия была больше {minimumFee} ₿/вбайт. Эта транзакция может не пройти, занять время на подтверждение или быть удалена из мемпула. Вы хотите продолжить?"
+	},
+	"send_sent": {
+		"string": "Биткоины отправлены"
+	},
+	"send_pending": {
+		"string": "Платеж в ожидании"
+	},
+	"send_quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		}
+	},
+	"send_pending_note": {
+		"string": "Этот платеж занимает больше времени, чем ожидалось. Вы можете продолжать использовать Bitkit."
+	},
+	"send_instant_failed": {
+		"string": "Не удалось выполнить мгновенный платеж"
+	},
+	"send_regular": {
+		"string": "Обычный Платеж"
+	},
+	"send_error_slash_ln": {
+		"string": "К сожалению, мгновенный платеж к контакту не выполнен. Можно попробовать обычный платеж (дороже, медленнее)."
+	},
+	"send_error_tx_failed": {
+		"string": "Транзакция не удалась"
+	},
+	"send_error_create_tx": {
+		"string": "Не удалось отправить транзакцию. Пожалуйста, попробуйте снова."
+	},
+	"tag_remove_error_title": {
+		"string": "Ошибка удаления тега"
+	},
+	"tag_remove_error_description": {
+		"string": "Bitkit не удалось найти данные транзакции."
+	},
+	"error_no_invoice": {
+		"string": "Лайтнинг инвойс не найден."
+	},
+	"error_no_tx_title": {
+		"string": "Нет доступных транзакций для отправки."
+	},
+	"error_no_tx_msg": {
+		"string": "Пожалуйста, проверьте информацию о транзакции и повторите попытку."
+	},
+	"error_min_fee_title": {
+		"string": "Не достигнут минимальный уровень комиссии"
+	},
+	"error_min_fee_msg": {
+		"string": "Пожалуйста, увеличьте вашу комиссию и повторите попытку."
+	},
+	"send_amount_error_title": {
+		"string": "Неверная сумма"
+	},
+	"send_amount_error_balance": {
+		"string": "Сумма превышает текущий баланс."
+	},
+	"send_amount_error_fee": {
+		"string": "Указанная сумма не позволяет включить комиссию."
+	},
+	"send_details": {
+		"string": "Подробности"
+	},
+	"send_fee_and_speed": {
+		"string": "Скорость и комиссия"
+	},
+	"send_fee_speed": {
+		"string": "Скорость"
+	},
+	"send_fee_error": {
+		"string": "Неверная комиссия"
+	},
+	"max_possible_fee_rate": {
+		"string": "Комиссия превышает максимальный лимит"
+	},
+	"max_possible_fee_rate_msg": {
+		"string": "Уменьшите заданную комиссию и попробуйте снова."
+	},
+	"min_possible_fee_rate": {
+		"string": "Комиссия ниже минимального лимита"
+	},
+	"min_possible_fee_rate_msg": {
+		"string": "Увеличьте заданную комиссию и попробуйте снова."
+	},
+	"sats_per_vbyte": {
+		"string": "сат/вбайт"
+	},
+	"send_output_to_small_title": {
+		"string": "Сумма слишком мала"
+	},
+	"send_output_to_small_description": {
+		"string": "Пожалуйста, увеличьте сумму для отправки."
+	},
+	"send_coin_selection_output_to_small_description": {
+		"string": "Пожалуйста, удалите UTXO или увеличьте сумму для отправки."
+	},
+	"send_fee_error_min": {
+		"string": "Невозможно уменьшить комиссию дальше."
+	},
+	"send_fee_custom": {
+		"string": "Установить Пользовательскую Комиссию"
+	},
+	"send_fee_total": {
+		"string": "₿ {feeSats} за эту транзакцию"
+	},
+	"send_fee_total_fiat": {
+		"string": "₿ {feeSats} за эту транзакцию ({fiatSymbol}{fiatFormatted})"
+	},
+	"note": {
+		"string": "Заметка"
+	},
+	"lnurl_pay_confirm": {
+		"comment": {
+			"string": "Комментарий"
+		},
+		"comment_placeholder": {
+			"string": "Необязательный комментарий получателю"
+		}
+	},
+	"tags": {
+		"string": "Теги"
+	},
+	"tags_add": {
+		"string": "Добавить Тег"
+	},
+	"tags_add_button": {
+		"string": "Добавить"
+	},
+	"tags_add_error_header": {
+		"string": "Ошибка добавления тега"
+	},
+	"tags_add_error_description": {
+		"string": "Bitkit не удалось найти данные транзакции."
+	},
+	"tags_new": {
+		"string": "Новый тег"
+	},
+	"tags_new_enter": {
+		"string": "Введите тег"
+	},
+	"tags_previously": {
+		"string": "Ранее использовавшиеся теги"
+	},
+	"tags_filter": {
+		"string": "Фильтрация активности по тегам"
+	},
+	"tags_filter_title": {
+		"string": "Выберите тег"
+	},
+	"tags_no": {
+		"string": "Тегов пока нет"
+	},
+	"toast_payment_success_title": {
+		"string": "Платеж отправлен"
+	},
+	"toast_payment_success_description": {
+		"string": "Ваш мгновенный платеж был успешно отправлен."
+	},
+	"toast_payment_failed_title": {
+		"string": "Платеж не выполнен"
+	},
+	"toast_payment_failed_description": {
+		"string": "Ваш мгновенный платеж не удался. Пожалуйста, попробуйте снова."
+	},
+	"selection_title": {
+		"string": "Управление монетами"
+	},
+	"selection_auto": {
+		"string": "Авто"
+	},
+	"selection_total_required": {
+		"string": "Всего требуется"
+	},
+	"selection_total_selected": {
+		"string": "Всего выбрано"
+	},
+	"receive_bitcoin": {
+		"string": "Получить Биткоин"
+	},
+	"receive_specify": {
+		"string": "Редактировать Инвойс"
+	},
+	"receive_copied": {
+		"string": "Инвойс скопирован в буфер обмена"
+	},
+	"receive_share_address": {
+		"string": "Поделиться адресом"
+	},
+	"receive_bitcoin_invoice": {
+		"string": "Биткоин инвойс"
+	},
+	"receive_lightning_invoice": {
+		"string": "Лайтнинг инвойс"
+	},
+	"receive_note_placeholder": {
+		"string": "Опциональная заметка для плательщика"
+	},
+	"receive_show_qr": {
+		"string": "Показать QR-код"
+	},
+	"receive_text_lnfunds": {
+		"string": "Хотите получить <accent>Лайтнинг</accent> средства?"
+	},
+	"receive_spending": {
+		"string": "Получить на Баланс Расходов"
+	},
+	"receive_connect_initial": {
+		"string": ""
+	},
+	"receive_connect_additional": {
+		"string": ""
+	},
+	"receive_liquidity": {
+		"nav_title": {
+			"string": "Настройка Баланса Расходов"
+		},
+		"nav_title_additional": {
+			"string": "Увеличить Приёмную Мощность"
+		},
+		"text": {
+			"string": ""
+		},
+		"text_additional": {
+			"string": ""
+		},
+		"label": {
+			"string": "Ликвидность Баланса Расходов"
+		},
+		"label_additional": {
+			"string": "Дополнительная Ликвидность Баланса Расходов"
+		}
+	},
+	"receive_cjit_error": {
+		"string": "Транзакция не удалась"
+	},
+	"receive_cjit_error_msg": {
+		"string": "Не удалось отправить средства на ваш Баланс Расходов."
+	},
+	"receive_will": {
+		"string": "Вы получите"
+	},
+	"receive_ldk_init": {
+		"string": "Инициализация Баланса Расходов..."
+	},
+	"minimum": {
+		"string": "МИНИМУМ"
+	},
+	"activity": {
+		"string": "Активность"
+	},
+	"activity_show_all": {
+		"string": "Показать Все"
+	},
+	"activity_no": {
+		"string": "Пока нет транзакций"
+	},
+	"activity_no_explain": {
+		"string": "Получите немного средств, чтобы начать"
+	},
+	"activity_sent": {
+		"string": "Отправлено"
+	},
+	"activity_received": {
+		"string": "Получено"
+	},
+	"activity_pending": {
+		"string": "В ожидании"
+	},
+	"activity_failed": {
+		"string": "Не удалось"
+	},
+	"activity_transfer": {
+		"string": "Перенос"
+	},
+	"activity_transfer_savings_pending": {
+		"string": "От Расходов (±{duration}м)"
+	},
+	"activity_transfer_savings_done": {
+		"string": "От Расходов"
+	},
+	"activity_transfer_spending_pending": {
+		"string": "От Сбережений (±{duration}м)"
+	},
+	"activity_transfer_spending_done": {
+		"string": "От Сбережений"
+	},
+	"activity_transfer_to_spending": {
+		"string": "В Расходы"
+	},
+	"activity_transfer_pending": {
+		"string": "Перевод (±{duration})"
+	},
+	"activity_confirms_in": {
+		"string": "Подтверждение через {feeRateDescription}"
+	},
+	"activity_confirms_in_boosted": {
+		"string": "Ускоряем. Подтверждение через {feeRateDescription}"
+	},
+	"activity_low_fee": {
+		"string": "Комиссия может быть слишком низкой"
+	},
+	"activity_bitcoin_sent": {
+		"string": "Отправлен Биткоин"
+	},
+	"activity_bitcoin_received": {
+		"string": "Получен Биткоин"
+	},
+	"activity_error_get": {
+		"string": "Ошибка получения транзакции"
+	},
+	"activity_error_get_description": {
+		"string": "Bitkit не удалось получить данные транзакции."
+	},
+	"activity_error_tx_not_found": {
+		"string": "Транзакция не найдена."
+	},
+	"activity_confirming": {
+		"string": "Подтверждение"
+	},
+	"activity_confirmed": {
+		"string": "Подтверждена"
+	},
+	"activity_removed": {
+		"string": "Удалено из мемпула"
+	},
+	"activity_removed_title": {
+		"string": "Транзакции удалены из мемпула"
+	},
+	"activity_removed_msg": {
+		"string": "Пожалуйста, проверьте свой список активности. {count}затронутых(ая) транзакции будут выделены красным."
+	},
+	"activity_boosting": {
+		"string": "Ускоряем"
+	},
+	"activity_fee": {
+		"string": "Комиссия"
+	},
+	"activity_payment": {
+		"string": "Платеж"
+	},
+	"activity_status": {
+		"string": "Статус"
+	},
+	"activity_date": {
+		"string": "Дата"
+	},
+	"activity_time": {
+		"string": "Время"
+	},
+	"activity_contact": {
+		"string": "Контакт"
+	},
+	"activity_assign": {
+		"string": "Привязать"
+	},
+	"activity_detach": {
+		"string": "Отвязать"
+	},
+	"activity_tag": {
+		"string": "Тег"
+	},
+	"activity_boost": {
+		"string": "Ускорить"
+	},
+	"activity_boosted": {
+		"string": "Уже ускорено"
+	},
+	"activity_explore": {
+		"string": "Эксплорер"
+	},
+	"activity_tx_id": {
+		"string": "ID Транзакции"
+	},
+	"activity_preimage": {
+		"string": ""
+	},
+	"activity_payment_hash": {
+		"string": "Хеш платежа"
+	},
+	"activity_address": {
+		"string": "Адрес"
+	},
+	"activity_input": {
+		"string": "{count, plural, one {ВВОД} few {ВВОДЫ (#)} many {ВВОДЫ (#)} other {ВВОДЫ (#)}}"
+	},
+	"activity_output": {
+		"string": "{count, plural, one {ВЫХОД} few {ВЫХОДЫ (#)} many {ВЫХОДЫ (#)} other {ВЫХОДЫ (#)}}"
+	},
+	"activity_boosted_cpfp": {
+		"string": "УСКОРЕННАЯ ТРАНЗАКЦИЯ {num} (CPFP)"
+	},
+	"activity_boosted_rbf": {
+		"string": "УСКОРЕННАЯ ТРАНЗАКЦИЯ {num} (RBF)"
+	},
+	"activity_explorer": {
+		"string": "Открыть Эксплорер"
+	},
+	"activity_successful": {
+		"string": "Успешно"
+	},
+	"activity_invoice_note": {
+		"string": "Заметка инвойса"
+	},
+	"activity_invoice_comment": {
+		"string": "Комментарий"
+	},
+	"activity_invoice": {
+		"string": "Инвойс"
+	},
+	"activity_all": {
+		"string": "Все транзакции"
+	},
+	"activity_tabs": {
+		"all": {
+			"string": "Все"
+		},
+		"sent": {
+			"string": "Исходящие"
+		},
+		"received": {
+			"string": "Входящие"
+		},
+		"other": {
+			"string": "Другое"
+		}
+	},
+	"details_savings_title": {
+		"string": "Сбережения"
+	},
+	"details_spending_title": {
+		"string": "Расходы"
+	},
+	"savings": {
+		"title": {
+			"string": "Сбережения"
+		},
+		"onboarding": {
+			"string": "<accent>Отправьте\nбиткоин</accent>\nна ваш\nбаланс сбережений"
+		}
+	},
+	"spending": {
+		"title": {
+			"string": "Расходы"
+		},
+		"onboarding": {
+			"string": "<accent>Отправьте\nбиткоин</accent>\nна ваш\nБаланс Расходов"
+		}
+	},
+	"details_transfer_subtitle": {
+		"string": "Входящий перевод: "
+	},
+	"tx_invalid": {
+		"string": "Неверная Транзакция"
+	},
+	"boost": {
+		"string": "Ускорить"
+	},
+	"boost_title": {
+		"string": "Ускорить Транзакцию"
+	},
+	"boost_success_title": {
+		"string": "Ускорена!"
+	},
+	"boost_success_msg": {
+		"string": "Транзакция успешно ускорена."
+	},
+	"boost_error_title": {
+		"string": "Не удалось ускорить"
+	},
+	"boost_error_msg": {
+		"string": "Bitkit не удалось ускорить транзакцию."
+	},
+	"boost_fee_custom": {
+		"string": "Ваша транзакция может быть подтверждена быстрее, если вы включите дополнительную комиссию. Установите значение ниже."
+	},
+	"boost_fee_recomended": {
+		"string": "Ваша транзакция может быть подтверждена быстрее, если вы включите дополнительную комиссию. Вот рекомендация:"
+	},
+	"boost_recomended_button": {
+		"string": "Использовать рекомендованную комиссию"
+	},
+	"boost_swipe": {
+		"string": "Ускорить"
+	},
+	"payment_received": {
+		"string": "Получен Биткоин"
+	},
+	"instant_payment_received": {
+		"string": "Получен Мгновенный Биткоин"
+	},
+	"error_create_tx": {
+		"string": "Ошибка создания транзакции"
+	},
+	"error_create_tx_msg": {
+		"string": "Произошла ошибка. Пожалуйста, попробуйте снова {raw}"
+	},
+	"error_broadcast_tx": {
+		"string": "Ошибка отправки транзакции"
+	},
+	"error_broadcast_tx_msg": {
+		"string": "Произошла ошибка во время отправки транзакции. {raw}"
+	},
+	"error_broadcast_tx_connection": {
+		"string": "Пожалуйста, проверьте своё соединение и попробуйте ещё раз.\n{message}"
+	},
+	"filter_title": {
+		"string": "Выберите Диапазон"
+	},
+	"filter_clear": {
+		"string": "Очистить"
+	},
+	"filter_apply": {
+		"string": "Применить"
+	},
+	"reorg_detected": {
+		"string": "Обнаружена Реорганизация Блокчейна"
+	},
+	"reorg_msg_begin": {
+		"string": "{count, plural, one {# из ваших транзакций более не подтверждена.} few {# из ваших транзакций более не подтверждены.} many {# из ваших транзакций более не подтверждены.} other {# из ваших транзакций более не подтверждены.}} Please wait."
+	},
+	"reorg_msg_end": {
+		"string": "Пожалуйста, проверьте свой список активности для затронутых транзакций."
+	},
+	"lnurl_w_title": {
+		"string": "Вывести Биткоин"
+	},
+	"lnurl_w_max": {
+		"string": "ДОСТУПНО ДЛЯ ВЫВОДА"
+	},
+	"lnurl_w_text": {
+		"string": "Средства, которые вы выводите, будут зачислены на Баланс Расходов Bitkit."
+	},
+	"lnurl_w_button": {
+		"string": "Вывести"
+	},
+	"lnurl_p_title": {
+		"string": "Оплатить Биткоин"
+	},
+	"lnurl_pay": {
+		"error_min": {
+			"title": {
+				"string": "Сумма слишком мала"
+			},
+			"description": {
+				"string": "Минимальная сумма для этого инвойса — ₿ {amount}."
+			}
+		}
+	},
+	"lnurl_p_max": {
+		"string": "Максимальная сумма"
+	},
+	"balance_hidden_title": {
+		"string": "Баланс Кошелька Скрыт"
+	},
+	"balance_hidden_message": {
+		"string": "Смахните ваш баланс кошелька, чтобы снова его показать."
+	},
+	"balance_unit_switched_title": {
+		"string": "Переключено на {unit}"
+	},
+	"balance_unit_switched_message": {
+		"string": "Нажмите на баланс кошелька, чтобы переключить обратно на {unit}."
+	},
+	"refresh_error_title": {
+		"string": "Ошибка Обновления"
+	},
+	"refresh_error_msg": {
+		"string": "Произошла ошибка и не удалось обновить кошелёк. Пожалуйста, попробуйте снова."
+	},
+	"refresh_error_throttle_title": {
+		"string": "Соединение Ограничено"
+	},
+	"refresh_error_throttle_description": {
+		"string": "Соединение с сервером Electrum ограничено. Пожалуйста, подождите несколько минут перед повторной попыткой."
+	},
+	"ldk_sync_error_title": {
+		"string": "Ошибка Синхронизации Lightning"
+	},
+	"ldk_start_error_title": {
+		"string": ""
+	},
+	"receive_insufficient_title": {
+		"string": "Недостаточный входящий баланс."
+	},
+	"receive_insufficient_text": {
+		"string": "Недостаточно входящей ликвидности для получения данной суммы через Lightning."
+	},
+	"receive_foreground_title": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	},
+	"receive_foreground_msg": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	}
+}

@@ -14,6 +14,7 @@ struct InitializingWalletView: View {
     @State private var percentage: Double = 0
     @State private var timer: Timer?
     @State private var hapticTimer: Timer?
+    private let t = useTranslation(.onboarding)
 
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
@@ -141,11 +142,12 @@ struct InitializingWalletView: View {
                     spinner
 
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("SETTING UP")
-                            .font(.system(size: 44, weight: .black))
-                        Text("YOUR WALLET")
-                            .font(.system(size: 44, weight: .black))
-                            .foregroundColor(.brand)
+                        let parts = t.parts("loading_header")
+                        parts.reduce(Text("")) { current, part in
+                            current + Text(part.text.uppercased())
+                                .font(.system(size: 44, weight: .black))
+                                .foregroundColor(part.isAccent ? .brand : .primary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()

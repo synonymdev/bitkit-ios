@@ -1,0 +1,352 @@
+{
+  "backup_wallet": {
+    "string": "Záloha peněženky"
+  },
+  "backup_title": {
+    "string": "<accent>Bezpečně uložte</accent> své bitcoiny"
+  },
+  "backup_funds": {
+    "string": "Nyní, když máte v peněžence nějaké prostředky, je čas je zálohovat!"
+  },
+  "backup_funds_no": {
+    "string": "Ve vaší peněžence zatím nejsou žádné prostředky, ale pokud chcete, můžete si vytvořit zálohu."
+  },
+  "backup_button": {
+    "string": "Zálohování"
+  },
+  "pass": {
+    "string": "přístupová fráze"
+  },
+  "pass_your": {
+    "string": "Vaše přístupová fráze"
+  },
+  "pass_text": {
+    "string": "Během nastavení peněženky jste do fráze pro obnovení přidali přístupovou frázi."
+  },
+  "pass_never_share": {
+    "string": "<accent>Nikdy nikomu nesdělujte</accent> svou přístupovou frázi, protože to může vést ke ztrátě finančních prostředků."
+  },
+  "pass_confirm": {
+    "string": "Potvrďte přístupovou frázi"
+  },
+  "pass_confirm_text": {
+    "string": "Zadejte přístupovou frázi, kterou jste přidali při nastavování a vytváření peněženky."
+  },
+  "pass_recovery": {
+    "string": "<accent>Přístupová fráze:</accent> {passphrase}"
+  },
+  "mnemonic_phrase": {
+    "string": "Mnemotechnická fráze"
+  },
+  "mnemonic_your": {
+    "string": "Vaše obnovovací fráze"
+  },
+  "mnemonic_error": {
+    "string": "Selhání peněženky"
+  },
+  "mnemonic_error_description": {
+    "string": "Bitkit nemohl přečíst vaši frázi pro obnovení."
+  },
+  "mnemonic_write": {
+    "string": "Zapište si těchto {length} slov ve správném pořadí a uložte je na bezpečném místě."
+  },
+  "mnemonic_use": {
+    "string": "Pomocí níže uvedených 12 slov můžete později obnovit zpět své peníze."
+  },
+  "mnemonic_reveal": {
+    "string": "Klepnutím zobrazíte"
+  },
+  "mnemonic_never_share": {
+    "string": "<accent>Nikdy nikomu nesdělujte</accent> svou frázi pro obnovení, protože to může vést ke ztrátě finančních prostředků."
+  },
+  "mnemonic_confirm": {
+    "string": "Potvrďte obnovovací frázi."
+  },
+  "mnemonic_confirm_tap": {
+    "string": "Klepněte na 12 slov ve správném pořadí."
+  },
+  "mnemonic_result_header": {
+    "string": "Úspěšné"
+  },
+  "mnemonic_result_text": {
+    "string": "Ujistěte se, že jste uložili frázi pro obnovení na <accent>bezpečném místě</accent>, protože to je <accent>jediný způsob, jak získat</accent> své peníze <accent>zpět</accent>!"
+  },
+  "mnemonic_keep_header": {
+    "string": "Udržujte to v bezpečí"
+  },
+  "mnemonic_keep_text": {
+    "string": "Pamatujte, že <accent>nikdy nesmíte nikomu sdělovat svou obnovovací frázi</accent>! Pokud tak učiníte, může vám ukrást peníze, profil a další údaje."
+  },
+  "mnemonic_data_header": {
+    "string": "Údaje o peněžence"
+  },
+  "mnemonic_data_text": {
+    "string": "Váš profil, kontakty, účty, tagy a aktivita budou automaticky zálohovány do naší bezplatné cloudové služby."
+  },
+  "mnemonic_multiple_header": {
+    "string": "Více zařízení"
+  },
+  "mnemonic_multiple_text": {
+    "string": "Nepoužívejte obnovovací frázi Bitkit na více telefonech současně, protože by to mohlo poškodit vaše data."
+  },
+  "mnemonic_latest_backup": {
+    "string": "<bold>Nejnovější záloha dat:</bold> {time}"
+  },
+  "pin_security_header": {
+    "string": "Zvýšit zabezpečení"
+  },
+  "pin_security_title": {
+    "string": "<accent>Chraňte</accent>\nsvé bitcoiny"
+  },
+  "pin_security_text": {
+    "string": "Chcete-li zvýšit zabezpečení peněženky, můžete si nastavit kód PIN a Face ID."
+  },
+  "pin_security_button": {
+    "string": "Zabezpečit peněženku"
+  },
+  "pin_choose_header": {
+    "string": "Vyberte 4místný PIN"
+  },
+  "pin_choose_text": {
+    "string": "Použijte prosím PIN, který si zapamatujete. Pokud svůj PIN zapomenete, můžete jej resetovat, ale to bude vyžadovat obnovení vaší peněženky."
+  },
+  "pin_retype_header": {
+    "string": "Znovu zadejte 4místný PIN"
+  },
+  "pin_retype_text": {
+    "string": "Chcete-li dokončit proces nastavení, zadejte znovu svůj 4místný kód PIN."
+  },
+  "pin_not_match": {
+    "string": "Zkuste to znovu, toto není stejný PIN."
+  },
+  "pin_disable_title": {
+    "string": "Zakázat PIN"
+  },
+  "pin_disable_text": {
+    "string": "PIN kód je aktuálně povolen. Pokud chcete deaktivovat svůj PIN, musíte nejprve zadat svůj aktuální PIN kód."
+  },
+  "pin_disable_button": {
+    "string": "Zakázat PIN"
+  },
+  "pin_enter": {
+    "string": "Zadejte prosím svůj PIN kód"
+  },
+  "pin_last_attempt": {
+    "string": "Poslední pokus. Opětovným zadáním špatného PIN se vaše peněženka resetuje."
+  },
+  "pin_attempts": {
+    "string": "Zbývá {attemptsRemaining} pokus/ů. Zapomněli jste svůj PIN?"
+  },
+  "pin_forgot_title": {
+    "string": "Zapomněli jste PIN?"
+  },
+  "pin_forgot_text": {
+    "string": "Zapomněli jste svůj PIN? Resetujte a obnovte svou peněženku Bitkit pomocí vaší obnovovací fráze. Po dokončení obnovení nastavte nový PIN."
+  },
+  "pin_forgot_reset": {
+    "string": "Resetovat (vyžaduje obnovovací frázi)"
+  },
+  "pin_send": {
+    "string": "Pro potvrzení a odeslání této platby prosím zadejte svůj PIN kód."
+  },
+  "pin_send_title": {
+    "string": "Zadejte kód PIN"
+  },
+  "pin_use_biometrics": {
+    "string": "Použít {biometricsName}"
+  },
+  "bio": {
+    "string": "Biometrické údaje"
+  },
+  "bio_auth_with": {
+    "string": "Ověřit pomocí {biometricsName}"
+  },
+  "bio_no": {
+    "string": "Zdá se, že vaše zařízení nepodporuje biometrické zabezpečení."
+  },
+  "bio_face_id": {
+    "string": "Face ID"
+  },
+  "bio_touch_id": {
+    "string": "Touch ID"
+  },
+  "bio_confirm": {
+    "string": "Potvrďte {biometricsName}"
+  },
+  "bio_error_title": {
+    "string": "Nastavení biometrických údajů se nezdařilo"
+  },
+  "bio_error_message": {
+    "string": "Bitkit se nepodařilo nastavit {type} pro vaše zařízení."
+  },
+  "bio_loading": {
+    "string": "Nahrávání..."
+  },
+  "bio_not_available": {
+    "string": "Vypadá to, že jste ještě nenastavili biometrické zabezpečení (nebo není podporováno). Zkuste jej povolit v nastavení telefonu."
+  },
+  "bio_ask": {
+    "string": "PIN kód nastaven. Chcete místo kódu PIN používat {biometricsName}?"
+  },
+  "bio_use": {
+    "string": "Použít {biometricsName}"
+  },
+  "bio_phone_settings": {
+    "string": "Nastavení telefonu"
+  },
+  "success_title": {
+    "string": "Peněženka zabezpečena"
+  },
+  "success_bio": {
+    "string": "Úspěšně jste nastavili kód PIN a {biometricsName} abyste zvýšili bezpečnost peněženky."
+  },
+  "success_no_bio": {
+    "string": "Úspěšně jste nastavili PIN kód pro zlepšení zabezpečení vaší peněženky."
+  },
+  "success_payments": {
+    "string": "Vyžadovat také pro platby"
+  },
+  "reset_title": {
+    "string": "Resetovat a obnovit"
+  },
+  "reset_text": {
+    "string": "Nejprve si zálohujte peněženku, abyste se vyhnuli ztrátě finančních prostředků a dat peněženky. Resetováním se přepíše vaše aktuální nastavení Bitkitu."
+  },
+  "reset_button_backup": {
+    "string": "Nejprve zálohujte"
+  },
+  "reset_button_reset": {
+    "string": "Resetovat peněženku"
+  },
+  "reset_dialog_title": {
+    "string": "Resetovat Bitkit?"
+  },
+  "reset_dialog_desc": {
+    "string": "Opravdu chcete resetovat svou peněženku Bitkit? Máte zálohu své fráze pro obnovení a dat peněženky?"
+  },
+  "reset_confirm": {
+    "string": "Ano, resetovat"
+  },
+  "recovery": {
+    "string": "Obnova"
+  },
+  "recovery_text": {
+    "string": "Vstoupili jste do režimu obnovy Bitkitu. Zde je několik akcí, které je třeba provést když narazíte na problémy, které brání plnému fungování aplikace. Restartujte aplikaci pro normální spuštění."
+  },
+  "display_seed": {
+    "string": "Zobrazit seed frázi"
+  },
+  "contact_support": {
+    "string": "Kontaktovat podporu"
+  },
+  "wipe_app": {
+    "string": "Vymazat aplikaci"
+  },
+  "close_app": {
+    "string": "Ukončit Bitkit"
+  },
+  "export_title": {
+    "string": "Export do telefonu"
+  },
+  "export_text": {
+    "string": "Kopii dat své peněženky můžete exportovat jako soubor ZIP. Tento soubor je zašifrován níže nastaveným heslem."
+  },
+  "export_password": {
+    "string": "Heslo"
+  },
+  "export_button": {
+    "string": "Exportovat"
+  },
+  "export_share": {
+    "string": "Sdílet záložní soubor"
+  },
+  "export_success_title": {
+    "string": "Záloha exportována"
+  },
+  "export_success_msg": {
+    "string": "Bitkit úspěšně exportoval záložní soubor do telefonu."
+  },
+  "export_error_title": {
+    "string": "Zálohování se nezdařilo"
+  },
+  "export_error_msg": {
+    "string": "Bitkit se nepodařilo exportovat záložní soubor do telefonu."
+  },
+  "export_error_file": {
+    "string": "Bitkit se nepodařilo vytvořit záložní soubor."
+  },
+  "cp_title": {
+    "string": "Změna PIN"
+  },
+  "cp_text": {
+    "string": "Svůj PIN kód můžete změnit na novou\n4místnou kombinaci. Nejprve zadejte svůj aktuální PIN kód."
+  },
+  "cp_retype_title": {
+    "string": "Znovu zadejte nový PIN"
+  },
+  "cp_retype_text": {
+    "string": "Chcete-li dokončit proces nastavení, zadejte znovu svůj 4místný kód PIN."
+  },
+  "cp_setnew_title": {
+    "string": "Nastavte nový PIN"
+  },
+  "cp_setnew_text": {
+    "string": "Použijte prosím PIN, který si zapamatujete. Pokud svůj PIN zapomenete, můžete jej resetovat, ale to bude vyžadovat obnovení vaší peněženky."
+  },
+  "cp_try_again": {
+    "string": "Zkuste to znovu, toto není stejný PIN."
+  },
+  "cp_changed_title": {
+    "string": "PIN změněn"
+  },
+  "cp_changed_text": {
+    "string": "Úspěšně jste změnili svůj PIN na novou 4místnou kombinaci."
+  },
+  "use_pin": {
+    "string": "Použít PIN kód"
+  },
+  "wiped_title": {
+    "string": "Odstranění dat peněženky"
+  },
+  "wiped_message": {
+    "string": "Bitkit byla resetována a všechna data peněženky byla vymazána."
+  },
+  "authorization": {
+    "title": {
+      "string": "Autorizace"
+    },
+    "description": {
+      "string": "Před udělením povolení ke správě vašich dat se ujistěte, že této službě důvěřujete."
+    },
+    "authorize": {
+      "string": "Autorizovat"
+    },
+    "deny": {
+      "string": "Odmítnout"
+    },
+    "authorizing": {
+      "string": "Autorizování..."
+    },
+    "success": {
+      "string": "Úspěch"
+    },
+    "claims": {
+      "string": "Tato služba tvrdí, že je"
+    },
+    "requested_permissions": {
+      "string": "Požadovaná oprávnění"
+    },
+    "pubky_secret_error_title": {
+      "string": "Pubky Error"
+    },
+    "pubky_secret_error_description": {
+      "string": "Nelze načíst klíč Pubky"
+    },
+    "pubky_auth_error_title": {
+        "string": "Chyba ověření Pubky"
+        },
+    "pubky_auth_error_description": {
+        "string": "Nelze se přihlásit pomocí služby Pubky"
+    }
+  }
+}

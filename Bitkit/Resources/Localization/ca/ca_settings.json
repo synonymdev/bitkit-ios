@@ -1,0 +1,726 @@
+{
+	"settings": {
+		"string": "Configuracions"
+	},
+	"dev_enabled_title": {
+		"string": "Opcions de Dev activades"
+	},
+	"dev_enabled_message": {
+		"string": ""
+	},
+	"dev_disabled_title": {
+		"string": "Opcions de Dev desactivades"
+	},
+	"dev_disabled_message": {
+		"string": "Les opcions per a desenvolupadors ara estan desactivades a tota l'aplicació."
+	},
+	"general_title": {
+		"string": "General"
+	},
+	"security_title": {
+		"string": "Seguretat i privacitat"
+	},
+	"backup_title": {
+		"string": ""
+	},
+	"advanced_title": {
+		"string": "Avançat"
+	},
+	"about_title": {
+		"string": "Sobre"
+	},
+	"support_title": {
+		"string": "Suport"
+	},
+	"about": {
+		"title": {
+			"string": "Sobre Bitkit"
+		},
+		"text": {
+			"string": ""
+		},
+		"legal": {
+			"string": "Legal"
+		},
+		"share": {
+			"string": "Compartir"
+		},
+		"version": {
+			"string": "Versió"
+		},
+		"shareText": {
+			"string": ""
+		}
+	},
+	"dev_title": {
+		"string": "Configuració de Desenvolupador"
+	},
+	"general": {
+		"currency_local": {
+			"string": "Moneda local"
+		},
+		"currency_local_title": {
+			"string": "Moneda local"
+		},
+		"currency_footer": {
+			"string": "Preus proporcionats per Bitfinex i CoinGecko."
+		},
+		"currency_most_used": {
+			"string": "Més utilitzat"
+		},
+		"currency_other": {
+			"string": "Altres monedes"
+		},
+		"unit": {
+			"string": "Unitat per defecte"
+		},
+		"unit_title": {
+			"string": "Unitat per defecte"
+		},
+		"unit_display": {
+			"string": "Mostra les quantitats en"
+		},
+		"unit_bitcoin": {
+			"string": "Bitcoin"
+		},
+		"unit_note": {
+			"string": ""
+		},
+		"denomination_label": {
+			"string": "Denominacions de Bitcoin"
+		},
+		"denomination_modern": {
+			"string": "Modern (₿ 10 000)"
+		},
+		"denomination_classic": {
+			"string": "Clàssic (₿ 0.00010000)"
+		},
+		"speed": {
+			"string": "Velocitat de transacció"
+		},
+		"speed_title": {
+			"string": "Velocitat de transacció"
+		},
+		"speed_default": {
+			"string": "Velocitat de transacció per defecte"
+		},
+		"speed_fee_custom": {
+			"string": "Estableix una tarifa personalitzada"
+		},
+		"speed_fee_total": {
+			"string": ""
+		},
+		"speed_fee_total_fiat": {
+			"string": ""
+		},
+		"tags": {
+			"string": "Etiquetes"
+		},
+		"tags_previously": {
+			"string": "Etiquetes prèviament utilitzades"
+		}
+	},
+	"widgets": {
+		"nav_title": {
+			"string": "Ginys"
+		},
+		"showWidgets": {
+			"string": "Ginys"
+		},
+		"showWidgetTitles": {
+			"string": ""
+		}
+	},
+	"quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"intro": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"settings": {
+			"toggle": {
+				"string": ""
+			},
+			"text": {
+				"string": ""
+			},
+			"label": {
+				"string": ""
+			},
+			"note": {
+				"string": ""
+			}
+		}
+	},
+	"security": {
+		"title": {
+			"string": "Seguretat i privacitat"
+		},
+		"swipe_balance_to_hide": {
+			"string": ""
+		},
+		"hide_balance_on_open": {
+			"string": ""
+		},
+		"clipboard": {
+			"string": ""
+		},
+		"warn_100": {
+			"string": ""
+		},
+		"pin": {
+			"string": "Codi Pin"
+		},
+		"pin_change": {
+			"string": "Canviar el codi PIN"
+		},
+		"pin_launch": {
+			"string": "Requereix un PIN per activar-se"
+		},
+		"pin_idle": {
+			"string": "Requereix un PIN quan està inactiu"
+		},
+		"pin_payments": {
+			"string": "Requereix un PIN per als pagaments"
+		},
+		"pin_enabled": {
+			"string": "Activat"
+		},
+		"pin_disabled": {
+			"string": "Desactivat"
+		},
+		"use_bio": {
+			"string": "Utilitza {biometryTypeName} enlloc"
+		},
+		"footer": {
+			"string": ""
+		}
+	},
+	"backup": {
+		"title": {
+			"string": ""
+		},
+		"wallet": {
+			"string": ""
+		},
+		"export": {
+			"string": ""
+		},
+		"reset": {
+			"string": ""
+		},
+		"failed_title": {
+			"string": ""
+		},
+		"failed_message": {
+			"string": ""
+		},
+		"latest": {
+			"string": ""
+		},
+		"status_failed": {
+			"string": "Error de còpia de seguretat: {time}"
+		},
+		"status_success": {
+			"string": "Última còpia de seguretat: {time}"
+		},
+		"category_connections": {
+			"string": "Connexions"
+		},
+		"category_connection_receipts": {
+			"string": ""
+		},
+		"category_transaction_log": {
+			"string": ""
+		},
+		"category_wallet": {
+			"string": ""
+		},
+		"category_settings": {
+			"string": "Configuracions"
+		},
+		"category_widgets": {
+			"string": "Ginys"
+		},
+		"category_tags": {
+			"string": "Etiquetes"
+		},
+		"category_profile": {
+			"string": "Perfil"
+		},
+		"category_contacts": {
+			"string": "Contactes"
+		}
+	},
+	"support": {
+		"title": {
+			"string": "Suport"
+		},
+		"text": {
+			"string": ""
+		},
+		"report": {
+			"string": ""
+		},
+		"help": {
+			"string": "Centre d'ajuda"
+		},
+		"status": {
+			"string": "Estat de l'Aplicació"
+		},
+		"report_text": {
+			"string": ""
+		},
+		"label_address": {
+			"string": "Adreça de correu electrònic"
+		},
+		"label_message": {
+			"string": ""
+		},
+		"placeholder_address": {
+			"string": "satoshi@satoshi.com"
+		},
+		"placeholder_message": {
+			"string": ""
+		},
+		"text_button": {
+			"string": "Envia"
+		},
+		"title_success": {
+			"string": "Enviat correctament"
+		},
+		"text_success": {
+			"string": ""
+		},
+		"text_success_button": {
+			"string": "OK"
+		},
+		"title_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess_button": {
+			"string": "Torna a intentar"
+		}
+	},
+	"status": {
+		"title": {
+			"string": "Estat de l'Aplicació"
+		},
+		"internet": {
+			"title": {
+				"string": "Internet"
+			},
+			"ready": {
+				"string": "Conectat"
+			},
+			"pending": {
+				"string": "Reconectant ..."
+			},
+			"error": {
+				"string": "Desconectat"
+			}
+		},
+		"bitcoin_node": {
+			"title": {
+				"string": "Node Bitcoin"
+			},
+			"ready": {
+				"string": "Conectat"
+			},
+			"pending": {
+				"string": "Conectant ..."
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_node": {
+			"title": {
+				"string": "Node de Lightning"
+			},
+			"ready": {
+				"string": "Sincronitzat"
+			},
+			"pending": {
+				"string": "Sincronitzant ..."
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_connection": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": "Obrir"
+			},
+			"pending": {
+				"string": "Obrint ..."
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"full_backup": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		}
+	},
+	"adv": {
+		"section_payments": {
+			"string": "Pagaments"
+		},
+		"section_networks": {
+			"string": "Xarxes"
+		},
+		"section_other": {
+			"string": "Altres"
+		},
+		"address_type": {
+			"string": ""
+		},
+		"monitored_address_types": {
+			"string": ""
+		},
+		"monitored_address_types_update_title": {
+			"string": ""
+		},
+		"monitored_address_types_update_description": {
+			"string": ""
+		},
+		"gap_limit": {
+			"string": ""
+		},
+		"coin_selection": {
+			"string": "Selecció de monedes"
+		},
+		"cs_method": {
+			"string": ""
+		},
+		"cs_manual": {
+			"string": "Manual"
+		},
+		"cs_auto": {
+			"string": ""
+		},
+		"cs_auto_mode": {
+			"string": ""
+		},
+		"cs_max": {
+			"string": "Més privacitat"
+		},
+		"cs_max_description": {
+			"string": ""
+		},
+		"cs_min": {
+			"string": ""
+		},
+		"cs_min_description": {
+			"string": ""
+		},
+		"cs_consolidate": {
+			"string": ""
+		},
+		"cs_consolidate_description": {
+			"string": ""
+		},
+		"payment_preference": {
+			"string": "Preferències de pagament"
+		},
+		"pp_header": {
+			"string": ""
+		},
+		"pp_footer": {
+			"string": "* Això requereix compartir les dades de pagament."
+		},
+		"pp_drag": {
+			"string": ""
+		},
+		"pp_contacts": {
+			"string": ""
+		},
+		"pp_contacts_switch": {
+			"string": "Habilitar pagaments amb contactes*"
+		},
+		"address_viewer": {
+			"string": "Visor de adreces"
+		},
+		"rescan": {
+			"string": ""
+		},
+		"suggestions_reset": {
+			"string": ""
+		},
+		"reset_title": {
+			"string": ""
+		},
+		"reset_desc": {
+			"string": ""
+		},
+		"reset_confirm": {
+			"string": "Si, reinicia"
+		},
+		"lightning_connections": {
+			"string": "Connexions Lightning"
+		},
+		"lightning_node": {
+			"string": "Node de Lightning"
+		},
+		"electrum_server": {
+			"string": "Servidor Electrum"
+		},
+		"rgs_server": {
+			"string": ""
+		},
+		"web_relay": {
+			"string": ""
+		},
+		"bitcoin_network": {
+			"string": "Xarxa Bitcoin"
+		}
+	},
+	"fee": {
+		"fast": {
+			"label": {
+				"string": "Ràpid (més car)"
+			},
+			"value": {
+				"string": "Ràpid"
+			},
+			"description": {
+				"string": "± 10-20 minuts"
+			}
+		},
+		"normal": {
+			"label": {
+				"string": "Normal"
+			},
+			"value": {
+				"string": "Normal"
+			},
+			"description": {
+				"string": "± 20-60 minuts"
+			}
+		},
+		"slow": {
+			"label": {
+				"string": "Lent (més barat)"
+			},
+			"value": {
+				"string": "Lent"
+			},
+			"description": {
+				"string": "± 1-2 hores"
+			}
+		},
+		"custom": {
+			"label": {
+				"string": "Personalitzat"
+			},
+			"value": {
+				"string": "Personalitzat"
+			},
+			"description": {
+				"string": ""
+			}
+		}
+	},
+	"addr": {
+		"no_addrs": {
+			"string": ""
+		},
+		"loading": {
+			"string": ""
+		},
+		"no_funds_receiving": {
+			"string": ""
+		},
+		"no_funds_change": {
+			"string": ""
+		},
+		"no_addrs_with_funds": {
+			"string": ""
+		},
+		"no_addrs_str": {
+			"string": ""
+		},
+		"rescan_error": {
+			"string": ""
+		},
+		"rescan_error_description": {
+			"string": ""
+		},
+		"spend_number": {
+			"string": "{count, plural, one {} other {}}"
+		},
+		"spend_all": {
+			"string": "{count, plural, one {} other {}}"
+		},
+		"index": {
+			"string": "Index: {index}"
+		},
+		"path": {
+			"string": ""
+		},
+		"private_hide": {
+			"string": "Amaga la clau privada"
+		},
+		"private_view": {
+			"string": "Veure la clau privada"
+		},
+		"private_key": {
+			"string": "Clau privada: {privateKey}"
+		},
+		"addr_change": {
+			"string": ""
+		},
+		"addr_receiving": {
+			"string": ""
+		},
+		"sats_found": {
+			"string": ""
+		},
+		"gen_20": {
+			"string": ""
+		},
+		"check_balances": {
+			"string": ""
+		},
+		"copied": {
+			"string": ""
+		}
+	},
+	"es": {
+		"error_host_port": {
+			"string": ""
+		},
+		"error_host": {
+			"string": ""
+		},
+		"error_port": {
+			"string": ""
+		},
+		"error_port_invalid": {
+			"string": ""
+		},
+		"error_invalid_http": {
+			"string": ""
+		},
+		"error_peer": {
+			"string": "Error Electrum"
+		},
+		"server_updated_title": {
+			"string": ""
+		},
+		"server_updated_message": {
+			"string": ""
+		},
+		"server_error": {
+			"string": ""
+		},
+		"server_error_description": {
+			"string": ""
+		},
+		"connected_to": {
+			"string": ""
+		},
+		"disconnected": {
+			"string": "desconnectat"
+		},
+		"host": {
+			"string": "Amfitrió"
+		},
+		"port": {
+			"string": "Port"
+		},
+		"protocol": {
+			"string": ""
+		},
+		"button_reset": {
+			"string": ""
+		},
+		"button_connect": {
+			"string": ""
+		}
+	},
+	"gap": {
+		"save": {
+			"string": "Guardar"
+		},
+		"reset": {
+			"string": "Reinicia"
+		},
+		"gap_limit_update_title": {
+			"string": ""
+		},
+		"gap_limit_update_description": {
+			"string": ""
+		},
+		"look_behind": {
+			"string": ""
+		},
+		"look_ahead": {
+			"string": ""
+		},
+		"look_behind_change": {
+			"string": ""
+		},
+		"look_ahead_change": {
+			"string": ""
+		}
+	},
+	"rgs": {
+		"server_url": {
+			"string": ""
+		},
+		"button_connect": {
+			"string": "Conecta"
+		},
+		"update_success_title": {
+			"string": ""
+		},
+		"update_success_description": {
+			"string": ""
+		}
+	},
+	"wr": {
+		"error_wr": {
+			"string": ""
+		},
+		"error_url": {
+			"string": ""
+		},
+		"error_https": {
+			"string": ""
+		},
+		"error_healthcheck": {
+			"string": ""
+		},
+		"url_updated_title": {
+			"string": ""
+		},
+		"url_updated_message": {
+			"string": ""
+		}
+	}
+}
