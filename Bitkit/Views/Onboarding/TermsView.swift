@@ -90,12 +90,11 @@ struct TermsView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 0) {
-                        let parts = t.parts("tos_header")
-                        Text(parts[0].text.uppercased())
+                        Text(t.getPart("tos_header", index: 0)?.text.uppercased() ?? "")
                             .font(.largeTitle)
                             .fontWeight(.black)
                             .foregroundColor(.primary) +
-                            Text(parts[1].text.uppercased())
+                            Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "")
                             .font(.largeTitle)
                             .fontWeight(.black)
                             .foregroundColor(.brand)
