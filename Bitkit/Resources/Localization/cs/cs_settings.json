@@ -1,0 +1,726 @@
+{
+	"settings": {
+		"string": "Nastavení"
+	},
+	"dev_enabled_title": {
+		"string": "Nastavení pro vývojáře povoleno"
+	},
+	"dev_enabled_message": {
+		"string": "V celé aplikaci jsou nyní povoleny možnosti pro vývojáře."
+	},
+	"dev_disabled_title": {
+		"string": "Nastavení pro vývojáře zakázáno"
+	},
+	"dev_disabled_message": {
+		"string": "Možnosti pro vývojáře jsou nyní v celé aplikaci vypnuté."
+	},
+	"general_title": {
+		"string": "Obecné"
+	},
+	"security_title": {
+		"string": "Bezpečnost a soukromí"
+	},
+	"backup_title": {
+		"string": "Záloha nebo obnovení"
+	},
+	"advanced_title": {
+		"string": "Pokročilé"
+	},
+	"about_title": {
+		"string": "O nás"
+	},
+	"support_title": {
+		"string": "Podpora"
+	},
+	"about": {
+		"title": {
+			"string": "O Bitkit"
+		},
+		"text": {
+			"string": "Děkujeme, že jste zodpovědní uživatelé bitcoinu.\nZměňte svou peněženku, změňte svět.\n\nBitkit vám předá klíče k vašim penězům, profilu, kontaktům a webovým účtům.\n\nBitkit byl vytvořen společností Synonym Software Ltd."
+		},
+		"legal": {
+			"string": "Právní"
+		},
+		"share": {
+			"string": "Sdílet"
+		},
+		"version": {
+			"string": "Verze"
+		},
+		"shareText": {
+			"string": "Změňte svou peněženku, změňte svět. Stáhněte si Bitkit pro iPhone {appStoreUrl} nebo Android {playStoreUrl}"
+		}
+	},
+	"dev_title": {
+		"string": "Vývojářské nastavení"
+	},
+	"general": {
+		"currency_local": {
+			"string": "Lokální měna"
+		},
+		"currency_local_title": {
+			"string": "Lokální měna"
+		},
+		"currency_footer": {
+			"string": "Ceny zprostředkované společnostmi Bitfinex & CoinGecko."
+		},
+		"currency_most_used": {
+			"string": "Nejčastěji používané"
+		},
+		"currency_other": {
+			"string": "Ostatní měny"
+		},
+		"unit": {
+			"string": "Výchozí jednotka"
+		},
+		"unit_title": {
+			"string": "Výchozí jednotka"
+		},
+		"unit_display": {
+			"string": "Zobrazit částky v"
+		},
+		"unit_bitcoin": {
+			"string": "Bitcoin"
+		},
+		"unit_note": {
+			"string": "Tip: Klepnutím na zůstatek v peněžence můžete rychle přepínat mezi bitcoiny a {currency}."
+		},
+		"denomination_label": {
+			"string": "Nominální hodnota bitcoinu"
+		},
+		"denomination_modern": {
+			"string": "Moderní (₿ 10 000)"
+		},
+		"denomination_classic": {
+			"string": "Klasický (₿ 0.00010000)"
+		},
+		"speed": {
+			"string": "Rychlost transakce"
+		},
+		"speed_title": {
+			"string": "Rychlost transakce"
+		},
+		"speed_default": {
+			"string": "Výchozí rychlost transakce"
+		},
+		"speed_fee_custom": {
+			"string": "Nastavit vlastní poplatek"
+		},
+		"speed_fee_total": {
+			"string": "₿ {feeSats} za průměrnou transakci"
+		},
+		"speed_fee_total_fiat": {
+			"string": "₿ {feeSats} za průměrnou transakci ({fiatSymbol}{fiatFormatted} )."
+		},
+		"tags": {
+			"string": "Tagy"
+		},
+		"tags_previously": {
+			"string": "Dříve použité tagy"
+		}
+	},
+	"widgets": {
+		"nav_title": {
+			"string": "Widgety"
+		},
+		"showWidgets": {
+			"string": "Widgety"
+		},
+		"showWidgetTitles": {
+			"string": "Zobrazit názvy widgetů"
+		}
+	},
+	"quickpay": {
+		"nav_title": {
+			"string": "QuickPay"
+		},
+		"intro": {
+			"title": {
+				"string": "<accent>Okamžité</accent>\nplatby"
+			},
+			"description": {
+				"string": "Služba Bitkit QuickPay urychluje odbavení tím, že po naskenování QR kódu automaticky zaplatí."
+			}
+		},
+		"settings": {
+			"toggle": {
+				"string": "Povolení služby QuickPay"
+			},
+			"text": {
+				"string": "Pokud je tato funkce povolena, budou naskenované faktury nižší než{amount} placeny automaticky bez nutnosti potvrzení nebo zadání kódu PIN*."
+			},
+			"label": {
+				"string": "Quickpay limit"
+			},
+			"note": {
+				"string": "* Bitkit QuickPay podporuje výhradně platby z vašeho disponibilního zůstatku."
+			}
+		}
+	},
+	"security": {
+		"title": {
+			"string": "Zabezpečení a soukromí"
+		},
+		"swipe_balance_to_hide": {
+			"string": "Skrýt zůstatek přejetím"
+		},
+		"hide_balance_on_open": {
+			"string": "Skrýt zůstatek při otevření"
+		},
+		"clipboard": {
+			"string": "Číst schránku pro snadné použití"
+		},
+		"warn_100": {
+			"string": "Upozornit při odesílání více než $100"
+		},
+		"pin": {
+			"string": "PIN kód"
+		},
+		"pin_change": {
+			"string": "Změna PIN kódu"
+		},
+		"pin_launch": {
+			"string": "Při spuštění vyžadovat PIN"
+		},
+		"pin_idle": {
+			"string": "Při nečinnosti vyžadovat PIN"
+		},
+		"pin_payments": {
+			"string": "Při platbě vyžadovat PIN"
+		},
+		"pin_enabled": {
+			"string": "Povoleno"
+		},
+		"pin_disabled": {
+			"string": "Zakázáno"
+		},
+		"use_bio": {
+			"string": "Namísto toho použít {biometryTypeName}"
+		},
+		"footer": {
+			"string": "Pokud povoleno, můžete pro odemčení peněženky nebo zaslání platby použít {biometryTypeName} namísto PIN kódu."
+		}
+	},
+	"backup": {
+		"title": {
+			"string": "Záloha nebo obnovení"
+		},
+		"wallet": {
+			"string": "Zálohujte svou peněženku"
+		},
+		"export": {
+			"string": "Exportovat data peněženky do telefonu"
+		},
+		"reset": {
+			"string": "Resetovat a obnovit peněženku"
+		},
+		"failed_title": {
+			"string": "Zálohování dat selhalo"
+		},
+		"failed_message": {
+			"string": "Bitkitu se nepodařilo zálohovat data peněženky. Opakovaný pokus za {interval, plural, one {# minute} dalších {# minutes}}."
+		},
+		"latest": {
+			"string": "nejnovější zálohy dat"
+		},
+		"status_failed": {
+			"string": "Zálohování se nezdařilo: {time}"
+		},
+		"status_success": {
+			"string": "Poslední záloha: {time}"
+		},
+		"category_connections": {
+			"string": "Spojení"
+		},
+		"category_connection_receipts": {
+			"string": "Potvrzení o připojení"
+		},
+		"category_transaction_log": {
+			"string": "Transakční protokol"
+		},
+		"category_wallet": {
+			"string": "Posílení a převody"
+		},
+		"category_settings": {
+			"string": "Nastavení"
+		},
+		"category_widgets": {
+			"string": "Widgety"
+		},
+		"category_tags": {
+			"string": "Tagy"
+		},
+		"category_profile": {
+			"string": "Profil"
+		},
+		"category_contacts": {
+			"string": "Kontakty"
+		}
+	},
+	"support": {
+		"title": {
+			"string": "Podpora"
+		},
+		"text": {
+			"string": "Potřebujete pomoc? Nahlaste svůj problém přímo ze služby Bitkit, navštivte centrum nápovědy, zkontrolujte stav nebo nás kontaktujte na našich sociálních sítích."
+		},
+		"report": {
+			"string": "Nahlásit problém"
+		},
+		"help": {
+			"string": "Centrum pomoci"
+		},
+		"status": {
+			"string": "Stav aplikace"
+		},
+		"report_text": {
+			"string": "Popište prosím problém, se kterým se setkáváte, nebo položte obecnou otázku."
+		},
+		"label_address": {
+			"string": "E-mailová adresa"
+		},
+		"label_message": {
+			"string": "Problém nebo otázka"
+		},
+		"placeholder_address": {
+			"string": "satoshi@satoshi.com"
+		},
+		"placeholder_message": {
+			"string": "Popište problém nebo položte otázku"
+		},
+		"text_button": {
+			"string": "Odeslat"
+		},
+		"title_success": {
+			"string": "Úspěšně odesláno"
+		},
+		"text_success": {
+			"string": "Děkujeme, že jste nás kontaktovali! Budeme se snažit odpovědět vám co nejdříve."
+		},
+		"text_success_button": {
+			"string": "OK"
+		},
+		"title_unsuccess": {
+			"string": "Odeslání se nezdařilo"
+		},
+		"text_unsuccess": {
+			"string": "Něco se pokazilo při pokusu o odeslání vašeho problému nebo otázky. Prosím, zkuste to znovu."
+		},
+		"text_unsuccess_button": {
+			"string": "Zkusit znovu"
+		}
+	},
+	"status": {
+		"title": {
+			"string": "Stav aplikace"
+		},
+		"internet": {
+			"title": {
+				"string": "Internet"
+			},
+			"ready": {
+				"string": "Připojeno"
+			},
+			"pending": {
+				"string": "Obnovování spojení..."
+			},
+			"error": {
+				"string": "Odpojeno"
+			}
+		},
+		"bitcoin_node": {
+			"title": {
+				"string": "Bitcoinový uzel"
+			},
+			"ready": {
+				"string": "Připojeno"
+			},
+			"pending": {
+				"string": "Připojování..."
+			},
+			"error": {
+				"string": "Nelze se připojit k Electrum"
+			}
+		},
+		"lightning_node": {
+			"title": {
+				"string": "Lightning uzel"
+			},
+			"ready": {
+				"string": "Synchronizováno"
+			},
+			"pending": {
+				"string": "Synchronizace..."
+			},
+			"error": {
+				"string": "Nemohlo být spuštěno"
+			}
+		},
+		"lightning_connection": {
+			"title": {
+				"string": "Připojení lightning"
+			},
+			"ready": {
+				"string": "Otevřít"
+			},
+			"pending": {
+				"string": "Otevírání..."
+			},
+			"error": {
+				"string": "Žádná otevřená spojení"
+			}
+		},
+		"full_backup": {
+			"title": {
+				"string": "Nejnovější úplná záloha dat"
+			},
+			"ready": {
+				"string": "Zálohováno"
+			},
+			"pending": {
+				"string": "Zálohování..."
+			},
+			"error": {
+				"string": "Selhalo dokončení úplné zálohy"
+			}
+		}
+	},
+	"adv": {
+		"section_payments": {
+			"string": "Platby"
+		},
+		"section_networks": {
+			"string": "Sítě"
+		},
+		"section_other": {
+			"string": "Další"
+		},
+		"address_type": {
+			"string": "Typ bitcoinové adresy"
+		},
+		"monitored_address_types": {
+			"string": "Sledované typy adres"
+		},
+		"monitored_address_types_update_title": {
+			"string": "Aktualizace sledovaných typů adres"
+		},
+		"monitored_address_types_update_description": {
+			"string": "Změny se plně projeví po restartu aplikace."
+		},
+		"gap_limit": {
+			"string": "Limit mezery v adrese"
+		},
+		"coin_selection": {
+			"string": "Výběr mince"
+		},
+		"cs_method": {
+			"string": "Metoda výběru mince"
+		},
+		"cs_manual": {
+			"string": "Manuální"
+		},
+		"cs_auto": {
+			"string": "Autopilot"
+		},
+		"cs_auto_mode": {
+			"string": "Autopilot mód"
+		},
+		"cs_max": {
+			"string": "Více soukromí"
+		},
+		"cs_max_description": {
+			"string": "Seřadit a použít nejmenší UTXO jako první. Vyšší poplatek, ale skrývá vaše největší UTXO."
+		},
+		"cs_min": {
+			"string": "Nejnižší poplatek"
+		},
+		"cs_min_description": {
+			"string": "Seřadit a použít největší UTXO jako první. Nejnižší poplatek, ale odhaluje vaše největší UTXO."
+		},
+		"cs_consolidate": {
+			"string": "Konsolidovat"
+		},
+		"cs_consolidate_description": {
+			"string": "Použijte všechny dostupné UTXO bez ohledu na částku, která se odesílá. Použijte tuto metodu, když jsou poplatky nízké, abyste snížili poplatky v budoucích transakcích."
+		},
+		"payment_preference": {
+			"string": "Platební preference"
+		},
+		"pp_header": {
+			"string": "Vyberte, jak chcete přijímat peníze, když uživatelé pošlou prostředky na váš profilový klíč."
+		},
+		"pp_footer": {
+			"string": "* Toto vyžaduje sdílení dat o platbě"
+		},
+		"pp_drag": {
+			"string": "Preference platby (přetáhněte pro změnu pořadí)"
+		},
+		"pp_contacts": {
+			"string": "Zaplatit od/komu kontakty"
+		},
+		"pp_contacts_switch": {
+			"string": "Povolit platby s kontakty*"
+		},
+		"address_viewer": {
+			"string": "Prohlížeč adres"
+		},
+		"rescan": {
+			"string": "Znovu naskenovat adresy"
+		},
+		"suggestions_reset": {
+			"string": "Resetovat návrhy"
+		},
+		"reset_title": {
+			"string": "Resetovat návrhy?"
+		},
+		"reset_desc": {
+			"string": "Opravdu chcete návrhy resetovat? Znovu se objeví v případě, že jste je odstranili z přehledu peněženky Bitkit."
+		},
+		"reset_confirm": {
+			"string": "Ano, resetovat"
+		},
+		"lightning_connections": {
+			"string": "Lightning spojení"
+		},
+		"lightning_node": {
+			"string": "Lightning uzel"
+		},
+		"electrum_server": {
+			"string": "Electrum server"
+		},
+		"rgs_server": {
+			"string": "Rapid-Gossip-Sync"
+		},
+		"web_relay": {
+			"string": "Slashtags web přenos"
+		},
+		"bitcoin_network": {
+			"string": "bitcoinová síť"
+		}
+	},
+	"fee": {
+		"fast": {
+			"label": {
+				"string": "Rychlá (dražší)"
+			},
+			"value": {
+				"string": "Rychle"
+			},
+			"description": {
+				"string": "± 10-20 minut"
+			}
+		},
+		"normal": {
+			"label": {
+				"string": "Standardní"
+			},
+			"value": {
+				"string": "Standardní"
+			},
+			"description": {
+				"string": "± 20-60 minut"
+			}
+		},
+		"slow": {
+			"label": {
+				"string": "Pomalá (levnější)"
+			},
+			"value": {
+				"string": "Pomalu"
+			},
+			"description": {
+				"string": "± 1-2 hodiny"
+			}
+		},
+		"custom": {
+			"label": {
+				"string": "Vlastní"
+			},
+			"value": {
+				"string": "Vlastní"
+			},
+			"description": {
+				"string": "Odvíjí se od poplatku"
+			}
+		}
+	},
+	"addr": {
+		"no_addrs": {
+			"string": "Žádné adresy k zobrazení"
+		},
+		"loading": {
+			"string": "Nahrávání adres..."
+		},
+		"no_funds_receiving": {
+			"string": "Pod typem adresy {addressType} nebyly nalezeny žádné prostředky, přijímající adresy do indexu {index}."
+		},
+		"no_funds_change": {
+			"string": "Pod typem adresy {addressType} nebyly nalezeny žádné prostředky, změňte adresy až do indexu {index}."
+		},
+		"no_addrs_with_funds": {
+			"string": "Při hledání „{searchTxt}“ nebyly nalezeny žádné adresy s finančními prostředky"
+		},
+		"no_addrs_str": {
+			"string": "Při hledání „{searchTxt}“ nebyly nalezeny žádné adresy"
+		},
+		"rescan_error": {
+			"string": "Obnovení skenování se nezdařilo"
+		},
+		"rescan_error_description": {
+			"string": "Bitkit nebyl schopen zkontrolovat zůstatky adres."
+		},
+		"spend_number": {
+			"string": "{count, plural, one {Utratit ₿ {fundsToSpend} Od # adresa} few {Utratit ₿ {fundsToSpend} Z # adres} many {Utratit ₿ {fundsToSpend} Z # adres} other {Utratit ₿ {fundsToSpend} z # adres}}"
+		},
+		"spend_all": {
+			"string": "{count, plural, one {Utratit všechny prostředky z # adresa} few {Utratit všechny prostředky z # adres} many {Utratit všechny prostředky z # adres} other {Utratit všechny prostředky z # adres}}"
+		},
+		"index": {
+			"string": "Index: {index}"
+		},
+		"path": {
+			"string": "Path: {path}"
+		},
+		"private_hide": {
+			"string": "Skrýt privátní klíč"
+		},
+		"private_view": {
+			"string": "Zobrazit privátní klíč"
+		},
+		"private_key": {
+			"string": "Privátní klíč: {privateKey}"
+		},
+		"addr_change": {
+			"string": "Změnit adresu"
+		},
+		"addr_receiving": {
+			"string": "Adresy pro příjem"
+		},
+		"sats_found": {
+			"string": "₿ {totalBalance} nalezeno"
+		},
+		"gen_20": {
+			"string": "Vygenerovat 20 dalších"
+		},
+		"check_balances": {
+			"string": "Kontrola zůstatků"
+		},
+		"copied": {
+			"string": "Zkopírováno do schránky"
+		}
+	},
+	"es": {
+		"error_host_port": {
+			"string": "Zadejte host a port, ke kterému se chcete připojit."
+		},
+		"error_host": {
+			"string": "Zadejte host, ke kterému se chcete připojit."
+		},
+		"error_port": {
+			"string": "Zadejte port, ke kterému se chcete připojit."
+		},
+		"error_port_invalid": {
+			"string": "Zadejte platný port."
+		},
+		"error_invalid_http": {
+			"string": "Zadejte prosím platnou adresu url."
+		},
+		"error_peer": {
+			"string": "Chyba Electrum"
+		},
+		"server_updated_title": {
+			"string": "Electrum Server aktualizován"
+		},
+		"server_updated_message": {
+			"string": "Úspěšně připojeno k {host}:{port}"
+		},
+		"server_error": {
+			"string": "Electrum připojení selhalo"
+		},
+		"server_error_description": {
+			"string": "Bitkit se nepodařilo vytvořit spojení na Electrum."
+		},
+		"connected_to": {
+			"string": "Aktuálně připojeno k"
+		},
+		"disconnected": {
+			"string": "Odpojeno"
+		},
+		"host": {
+			"string": "Host"
+		},
+		"port": {
+			"string": "Port"
+		},
+		"protocol": {
+			"string": "Protokol"
+		},
+		"button_reset": {
+			"string": "Obnovit do základního nastavení"
+		},
+		"button_connect": {
+			"string": "Připojit se k Host"
+		}
+	},
+	"gap": {
+		"save": {
+			"string": "Uložit"
+		},
+		"reset": {
+			"string": "Obnovit"
+		},
+		"gap_limit_update_title": {
+			"string": "Aktualizovaný limit mezery v adrese"
+		},
+		"gap_limit_update_description": {
+			"string": "Změny se plně projeví po restartu aplikace."
+		},
+		"look_behind": {
+			"string": "Podívat se za sebe"
+		},
+		"look_ahead": {
+			"string": "Podívat se před sebe"
+		},
+		"look_behind_change": {
+			"string": "Podívat se za změnu"
+		},
+		"look_ahead_change": {
+			"string": "Podívat se před změnu"
+		}
+	},
+	"rgs": {
+		"server_url": {
+			"string": "URL dresa serveru Rapid-Gossip-Sync"
+		},
+		"button_connect": {
+			"string": "Připojit"
+		},
+		"update_success_title": {
+			"string": "Server Rapid-Gossip-Sync aktualizován"
+		},
+		"update_success_description": {
+			"string": "Aby se tato změna projevila, může být nutné aplikaci jednou nebo dvakrát restartovat."
+		}
+	},
+	"wr": {
+		"error_wr": {
+			"string": "Chyba webového přenosu"
+		},
+		"error_url": {
+			"string": "Zadejte prosím adresu URL, ke které se chcete připojit."
+		},
+		"error_https": {
+			"string": "Není platná url HTTPS adresa."
+		},
+		"error_healthcheck": {
+			"string": "Kontrola stavu se nezdařila"
+		},
+		"url_updated_title": {
+			"string": "Webový přenos aktualizován"
+		},
+		"url_updated_message": {
+			"string": "Úspěšně připojeno k {url}"
+		}
+	}
+}

@@ -1,0 +1,103 @@
+{
+  "advanced": {
+    "string": "Avanzado"
+  },
+  "continue": {
+    "string": "Continúe en"
+  },
+  "cancel": {
+    "string": "Cancelar"
+  },
+  "close": {
+    "string": "Cerrar"
+  },
+  "are_you_sure": {
+    "string": "¿Está seguro?"
+  },
+  "yes_proceed": {
+    "string": "Sí, proceda"
+  },
+  "try_again": {
+    "string": "Inténtelo de nuevo"
+  },
+  "dialog_cancel": {
+    "string": "No, Cancelar"
+  },
+  "sat_vbyte": {
+    "string": ""
+  },
+  "sat_vbyte_compact": {
+    "string": ""
+  },
+  "edit": {
+    "string": ""
+  },
+  "copy": {
+    "string": "Copiar"
+  },
+  "share": {
+    "string": "Compartir"
+  },
+  "search": {
+    "string": "Busqueda"
+  },
+  "discard": {
+    "string": "Descartar"
+  },
+  "save": {
+    "string": "Guardar"
+  },
+  "done": {
+    "string": "Listo"
+  },
+  "delete": {
+    "string": "Borrar"
+  },
+  "ok": {
+    "string": "OK"
+  },
+  "ok_random": {
+		"string": "",
+		"context": "A list of positive words to show the user after they have completed an action",
+		"developer_comment": "Use a number of words separated by a newline character"
+	},
+  "retry": {
+    "string": "Vuelva a intentarlo"
+  },
+  "later": {
+    "string": "Más tarde"
+  },
+  "skip": {
+    "string": "Saltar"
+  },
+  "copied": {
+    "string": ""
+  },
+  "yes": {
+    "string": "Sí"
+  },
+  "no": {
+    "string": "No"
+  },
+  "back": {
+    "string": "Volver"
+  },
+  "learn_more": {
+    "string": "Más informaciónes"
+  },
+  "understood": {
+    "string": "Comprendido"
+  },
+  "connect": {
+    "string": ""
+  },
+  "min": {
+    "string": ""
+  },
+  "max": {
+    "string": ""
+  },
+  "default": {
+    "string": ""
+  }
+}

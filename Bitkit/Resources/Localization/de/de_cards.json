@@ -1,0 +1,128 @@
+{
+  "backupSeedPhrase": {
+    "title": {
+      "string": "Sichern",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
+    "description": {
+      "string": "Sichere deine bitcoin"
+    }
+  },
+  "discount": {
+    "title": {
+      "string": "Rabatt"
+    },
+    "description": {
+      "string": "Ausgabenkonto"
+    }
+  },
+  "quickpay": {
+    "title": {
+      "string": "QuickPay"
+    },
+    "description": {
+      "string": "Scanne und zahle"
+    }
+  },
+  "invite": {
+    "title": {
+      "string": "Einladen"
+    },
+    "description": {
+      "string": "Teile Bitkit"
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": "Ausgeben"
+    },
+    "description": {
+      "string": "Sofortüberweisung"
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": "Übertragung"
+    },
+    "description": {
+      "string": "in Vorbereitung..."
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": "Verbinden"
+    },
+    "description": {
+      "string": "Bereit in ±10m"
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": "Bereit"
+    },
+    "description": {
+      "string": "Verbunden!"
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": "Übertragung"
+    },
+    "description": {
+      "string": "Bereit in ±{duration}"
+    }
+  },
+  "transferClosingChannel": {
+    "title": {
+      "string": "Initiieren"
+    },
+    "description": {
+      "string": "App geöffnet lassen"
+    }
+  },
+  "pin": {
+    "title": {
+      "string": "Sichern"
+    },
+    "description": {
+      "string": "Lege eine PIN fest"
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": "Profil"
+    },
+    "description": {
+      "string": "Details über dich"
+    }
+  },
+  "support": {
+    "title": {
+      "string": "Support"
+    },
+    "description": {
+      "string": "Hilfe bekommen"
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": "Kaufen"
+    },
+    "description": {
+      "string": "Kaufe bitcoin"
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": "Fehlgeschlagen"
+    },
+    "description": {
+      "string": "Versuche es erneut"
+    }
+  },
+  "suggestions": {
+    "string": "Vorschläge"
+  }
+}

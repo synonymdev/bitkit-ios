@@ -14,7 +14,7 @@ struct Toast: Equatable {
 
     let type: ToastType
     let title: String
-    let description: String
+    let description: String?
     let autoHide: Bool
     let visibilityTime: Double
 }

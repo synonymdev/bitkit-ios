@@ -1,0 +1,709 @@
+{
+	"send": {
+		"string": "Odeslat"
+	},
+	"receive": {
+		"string": "Přijmout"
+	},
+	"balance_total_pending": {
+		"string": "<text> (</text><pending/><text> čeká na vyřízení)</text>"
+	},
+	"create_wallet_error": {
+		"string": "Znovu otevřete aplikaci a zkuste to znovu."
+	},
+	"create_wallet_existing_error": {
+		"string": "Peněženka \"{walletName}\" již existuje."
+	},
+	"create_wallet_mnemonic_error": {
+		"string": "Neplatná fráze pro obnovení."
+	},
+	"create_wallet_mnemonic_restore_error": {
+		"string": "Překontrolujte, zda je vaše fráze pro obnovení správná."
+	},
+	"send_bitcoin": {
+		"string": "Odeslat bitcoin"
+	},
+	"send_to": {
+		"string": "Komu"
+	},
+	"recipient_contact": {
+		"string": "Kontakt"
+	},
+	"recipient_invoice": {
+		"string": "Vložit fakturu"
+	},
+	"recipient_manual": {
+		"string": "Zadat ručně"
+	},
+	"recipient_scan": {
+		"string": "Skenovat QR"
+	},
+	"send_invoice": {
+		"string": "Faktura"
+	},
+	"send_address_placeholder": {
+		"string": "Zadejte bitcoinovou nebo lightningovou fakturu nebo adresu"
+	},
+	"send_clipboard_empty_title": {
+		"string": "Schránka je prázdná"
+	},
+	"send_clipboard_empty_text": {
+		"string": "Zkopírujte prosím adresu nebo fakturu."
+	},
+	"send_amount": {
+		"string": "Množství bitcoinu"
+	},
+	"send_max": {
+		"string": "MAX"
+	},
+	"send_done": {
+		"string": "HOTOVO"
+	},
+	"send_available": {
+		"string": "K dispozici"
+	},
+	"send_available_spending": {
+		"string": "Dostupné (k útratě)"
+	},
+	"send_available_savings": {
+		"string": "Dostupné (úspory)"
+	},
+	"send_max_spending": {
+		"title": {
+			"string": "Zůstatek rezervy"
+		},
+		"description": {
+			"string": "Maximální částka, kterou lze utratit, je o něco nižší kvůli požadovanému zůstatku rezervy."
+		}
+	},
+	"send_review": {
+		"string": "Zkontrolovat a odeslat"
+	},
+	"send_confirming_in": {
+		"string": "Potvrzení během"
+	},
+	"send_invoice_expiration": {
+		"string": "Expirace faktury"
+	},
+	"send_swipe": {
+		"string": "Zaplatit přejetím prstem"
+	},
+	"send_yes": {
+		"string": "Ano, odeslat"
+	},
+	"send_dialog1": {
+		"string": "Zdá se, že posíláte více než $100. Přejete si pokračovat?"
+	},
+	"send_dialog2": {
+		"string": "Zdá se, že posíláte více než 50 % svého celkového zůstatku. Přejete si pokračovat?"
+	},
+	"send_dialog3": {
+		"string": "Zdá se, že transakční poplatek přesahuje 50 % částky, kterou odesíláte. Přejete si pokračovat?"
+	},
+	"send_dialog4": {
+		"string": "Transakční poplatek se zdá být vyšší než $10. Přejete si pokračovat?"
+	},
+	"send_dialog5_title": {
+		"string": "Poplatek je potenciálně příliš nízký"
+	},
+	"send_dialog5_description": {
+		"string": "Současné síťové podmínky vyžadují, aby váš poplatek byl vyšší než {minimumFee} ₿/vbyte. Tato transakce může selhat, chvíli trvat, než se potvrdí nebo může být z mempoolu odstraněna. Přejete si pokračovat?"
+	},
+	"send_sent": {
+		"string": "bitcoin odeslán"
+	},
+	"send_pending": {
+		"string": "Platba čeká na vyřízení"
+	},
+	"send_quickpay": {
+		"nav_title": {
+			"string": "QuickPay"
+		},
+		"title": {
+			"string": "Placení\n<accent>faktury...</accent>"
+		}
+	},
+	"send_pending_note": {
+		"string": "Tato platba trvá o něco déle, než se očekávalo. Bitkit můžete používat i nadále."
+	},
+	"send_instant_failed": {
+		"string": "Okamžitá platba se nezdařila"
+	},
+	"send_regular": {
+		"string": "Pravidelná platba"
+	},
+	"send_error_slash_ln": {
+		"string": "Bohužel kontakt nemohl obdržet okamžitou platbu. Můžete zkusit běžnou platbu (dražší, pomalejší)."
+	},
+	"send_error_tx_failed": {
+		"string": "Transakce selhala"
+	},
+	"send_error_create_tx": {
+		"string": "Transakci se nepodařilo provést. Zkuste to prosím znovu."
+	},
+	"tag_remove_error_title": {
+		"string": "Odstranění značky se nezdařilo"
+	},
+	"tag_remove_error_description": {
+		"string": "Bitkit se nepodařilo najít data transakce."
+	},
+	"error_no_invoice": {
+		"string": "Nebyla nalezena žádná lightningová faktura."
+	},
+	"error_no_tx_title": {
+		"string": "Není k dispozici žádná transakce pro vysílání."
+	},
+	"error_no_tx_msg": {
+		"string": "Zkontrolujte prosím údaje o transakci a zkuste to znovu."
+	},
+	"error_min_fee_title": {
+		"string": "Minimální poplatek za přenos nebyl splněn"
+	},
+	"error_min_fee_msg": {
+		"string": "Zvyšte prosím poplatek a zkuste to znovu."
+	},
+	"send_amount_error_title": {
+		"string": "Neplatná částka"
+	},
+	"send_amount_error_balance": {
+		"string": "Částka je vyšší než váš aktuální zůstatek."
+	},
+	"send_amount_error_fee": {
+		"string": "Uvedená částka neumožňuje zahrnutí poplatku."
+	},
+	"send_details": {
+		"string": "Podrobnosti"
+	},
+	"send_fee_and_speed": {
+		"string": "Rychlost a poplatek"
+	},
+	"send_fee_speed": {
+		"string": "Rychlost"
+	},
+	"send_fee_error": {
+		"string": "Neplatný poplatek"
+	},
+	"max_possible_fee_rate": {
+		"string": "Poplatek překračuje maximální limit"
+	},
+	"max_possible_fee_rate_msg": {
+		"string": "Snižte vlastní poplatek a zkuste to znovu."
+	},
+	"min_possible_fee_rate": {
+		"string": "Poplatek pod minimální hranicí"
+	},
+	"min_possible_fee_rate_msg": {
+		"string": "Zvyšte vlastní poplatek a zkuste to znovu."
+	},
+	"sats_per_vbyte": {
+		"string": "sats/vbyte"
+	},
+	"send_output_to_small_title": {
+		"string": "Odeslaná částka příliš nízká"
+	},
+	"send_output_to_small_description": {
+		"string": "Chcete-li pokračovat, zvyšte prosím odesílanou částku."
+	},
+	"send_coin_selection_output_to_small_description": {
+		"string": "Pro pokračování odstraňte UTXO nebo zvyšte odesílanou částku."
+	},
+	"send_fee_error_min": {
+		"string": "Není možné poplatek dále snížit."
+	},
+	"send_fee_custom": {
+		"string": "Nastavit vlastní poplatek"
+	},
+	"send_fee_total": {
+		"string": "₿ {feeSats} za tuto transakci"
+	},
+	"send_fee_total_fiat": {
+		"string": "₿ {feeSats} za tuto transakci ({fiatSymbol}{fiatFormatted} )."
+	},
+	"note": {
+		"string": "Poznámka"
+	},
+	"lnurl_pay_confirm": {
+		"comment": {
+			"string": "Komentář"
+		},
+		"comment_placeholder": {
+			"string": "Nepovinný komentář pro příjemce"
+		}
+	},
+	"tags": {
+		"string": "Tagy"
+	},
+	"tags_add": {
+		"string": "Vložit tag"
+	},
+	"tags_add_button": {
+		"string": "Vložit"
+	},
+	"tags_add_error_header": {
+		"string": "Přidání značky se nezdařilo"
+	},
+	"tags_add_error_description": {
+		"string": "Bitkit se nepodařilo najít data transakce."
+	},
+	"tags_new": {
+		"string": "Nový tag"
+	},
+	"tags_new_enter": {
+		"string": "Vložte nový tag"
+	},
+	"tags_previously": {
+		"string": "Dříve použité tagy"
+	},
+	"tags_filter": {
+		"string": "Filtrujte aktivitu pomocí tagů"
+	},
+	"tags_filter_title": {
+		"string": "Vyberte popisek"
+	},
+	"tags_no": {
+		"string": "Zatím nejsou k dispozici žádné popisky"
+	},
+	"toast_payment_success_title": {
+		"string": "Platba odeslána"
+	},
+	"toast_payment_success_description": {
+		"string": "Vaše okamžitá platba byla úspěšně odeslána."
+	},
+	"toast_payment_failed_title": {
+		"string": "Platba se nezdařila"
+	},
+	"toast_payment_failed_description": {
+		"string": "Vaše okamžitá platba se nezdařila. Zkuste to prosím znovu."
+	},
+	"selection_title": {
+		"string": "Výběr mince"
+	},
+	"selection_auto": {
+		"string": "Auto"
+	},
+	"selection_total_required": {
+		"string": "Celkem požadováno"
+	},
+	"selection_total_selected": {
+		"string": "Celkem vybráno"
+	},
+	"receive_bitcoin": {
+		"string": "Přijmout bitcoin"
+	},
+	"receive_specify": {
+		"string": "Upravit fakturu"
+	},
+	"receive_copied": {
+		"string": "Faktura zkopírovaná do schránky"
+	},
+	"receive_share_address": {
+		"string": "Sdílet přijímací adresu"
+	},
+	"receive_bitcoin_invoice": {
+		"string": "bitcoinová faktura"
+	},
+	"receive_lightning_invoice": {
+		"string": "Lightningová faktura"
+	},
+	"receive_note_placeholder": {
+		"string": "Nepovinná poznámka pro plátce"
+	},
+	"receive_show_qr": {
+		"string": "Zobrazit QR kód"
+	},
+	"receive_text_lnfunds": {
+		"string": "Chcete obdržet prostředky <accent>lightning</accent>?"
+	},
+	"receive_spending": {
+		"string": "Příijmout na disponibilní zůstatek"
+	},
+	"receive_connect_initial": {
+		"string": "Chcete-li nastavit disponibilní zůstatek, bude odečten síťový poplatek <accent>{networkFee}</accent>  a <accent>{serviceFee}</accent> poplatek poskytovateli služeb."
+	},
+	"receive_connect_additional": {
+		"string": "Chcete-li získat více okamžitých bitcoinů, musí Bitkit navýšit vaši likviditu. Od vámi zadané částky bude odečten síťový poplatek <accent>{networkFee}</accent> a <accent>{serviceFee}</accent> poplatek poskytovatele služeb  ."
+	},
+	"receive_liquidity": {
+		"nav_title": {
+			"string": "Nastavení disponibilního zůstatku"
+		},
+		"nav_title_additional": {
+			"string": "Zvýšení přijímací kapacity"
+		},
+		"text": {
+			"string": "Váš zůstatek na účtu využívá síť lightning network, aby byly vaše platby levnější, rychlejší a soukromější.\n\nFunguje to jako přístup k internetu, ale místo za šířku pásma platíte za likviditu a směrování.\n\nToto nastavení zahrnuje některé jednorázové náklady."
+		},
+		"text_additional": {
+			"string": "Váš zůstatek na účtu využívá síť lightning network, aby byly vaše platby levnější, rychlejší a soukromější.\n\nFunguje to jako přístup k internetu, ale místo za šířku pásma platíte za likviditu a směrování.\n\nBitkit potřebuje zvýšit přijímací kapacitu vašeho výdajového zůstatku, aby mohl tuto platbu zpracovat."
+		},
+		"label": {
+			"string": "Likvidita disponibilního zůstatku"
+		},
+		"label_additional": {
+			"string": "Dodatečná likvidita disponibilního zůstatku"
+		}
+	},
+	"receive_cjit_error": {
+		"string": "Transakce selhala"
+	},
+	"receive_cjit_error_msg": {
+		"string": "Nepodařilo se odeslat prostředky na váš disponibilní účet."
+	},
+	"receive_will": {
+		"string": "Obdržíte"
+	},
+	"receive_ldk_init": {
+		"string": "Inicializace disponibilního zůstatku..."
+	},
+	"minimum": {
+		"string": "MINIMUM"
+	},
+	"activity": {
+		"string": "Aktivita"
+	},
+	"activity_show_all": {
+		"string": "Zobrazit veškerou aktivitu"
+	},
+	"activity_no": {
+		"string": "Zatím žádná aktivita"
+	},
+	"activity_no_explain": {
+		"string": "Získejte finanční prostředky, abyste mohli začít"
+	},
+	"activity_sent": {
+		"string": "Posláno"
+	},
+	"activity_received": {
+		"string": "Přijmuto"
+	},
+	"activity_pending": {
+		"string": "Zpracovávání"
+	},
+	"activity_failed": {
+		"string": "Selhání"
+	},
+	"activity_transfer": {
+		"string": "Převod"
+	},
+	"activity_transfer_savings_pending": {
+		"string": "Z disponibilního zůstatku (±{duration})"
+	},
+	"activity_transfer_savings_done": {
+		"string": "Z útraty"
+	},
+	"activity_transfer_spending_pending": {
+		"string": "Z úspor (±{duration})"
+	},
+	"activity_transfer_spending_done": {
+		"string": "Z úspor"
+	},
+	"activity_transfer_to_spending": {
+		"string": "Do útrat"
+	},
+	"activity_transfer_pending": {
+		"string": "Převod (±{duration})"
+	},
+	"activity_confirms_in": {
+		"string": "Potvrzení během {feeRateDescription}"
+	},
+	"activity_confirms_in_boosted": {
+		"string": "Posílení. Potvrzení během {feeRateDescription}"
+	},
+	"activity_low_fee": {
+		"string": "Poplatek je potenciálně příliš nízký"
+	},
+	"activity_bitcoin_sent": {
+		"string": "bitcoin odeslaný"
+	},
+	"activity_bitcoin_received": {
+		"string": "bitcoin přijatý"
+	},
+	"activity_error_get": {
+		"string": "Neúspěšné načtení transakce"
+	},
+	"activity_error_get_description": {
+		"string": "Bitkit se nepodařilo načíst data transakce."
+	},
+	"activity_error_tx_not_found": {
+		"string": "Transakce nebyla nalezena."
+	},
+	"activity_confirming": {
+		"string": "Potvrzování"
+	},
+	"activity_confirmed": {
+		"string": "Potvrzeno"
+	},
+	"activity_removed": {
+		"string": "Odebráno z Mempoolu"
+	},
+	"activity_removed_title": {
+		"string": "Transakce odstraněna z Mempoolu"
+	},
+	"activity_removed_msg": {
+		"string": "Zkontrolujte si seznam aktivit. Těchto/tato {count} dotčených transakce(í) budou zvýrazněny červeně."
+	},
+	"activity_boosting": {
+		"string": "Posílení"
+	},
+	"activity_fee": {
+		"string": "Poplatek"
+	},
+	"activity_payment": {
+		"string": "Platba"
+	},
+	"activity_status": {
+		"string": "Status"
+	},
+	"activity_date": {
+		"string": "Datum"
+	},
+	"activity_time": {
+		"string": "Čas"
+	},
+	"activity_contact": {
+		"string": "Kontakt"
+	},
+	"activity_assign": {
+		"string": "Přiřadit"
+	},
+	"activity_detach": {
+		"string": "Oddělit"
+	},
+	"activity_tag": {
+		"string": "Tag"
+	},
+	"activity_boost": {
+		"string": "Posílit"
+	},
+	"activity_boosted": {
+		"string": "Již posíleno"
+	},
+	"activity_explore": {
+		"string": "Prozkoumat"
+	},
+	"activity_tx_id": {
+		"string": "ID transakce"
+	},
+	"activity_preimage": {
+		"string": "Preimage"
+	},
+	"activity_payment_hash": {
+		"string": "Hash platby"
+	},
+	"activity_address": {
+		"string": "Adresa"
+	},
+	"activity_input": {
+		"string": "{count, plural, one {INPUT} few {VSTUPY (#)} many {VSTUPY (#)} other {VSTUPY (#)}}"
+	},
+	"activity_output": {
+		"string": "{count, plural, one {VÝSTUP} few {VÝSTUPY (#)} many {VÝSTUPY (#)} other {VÝSTUPY (#)}}"
+	},
+	"activity_boosted_cpfp": {
+		"string": "POSÍLENÁ TRANSAKCE {num} (CPFP)"
+	},
+	"activity_boosted_rbf": {
+		"string": "POSÍLENÁ TRANSAKCE {num} (RBF)"
+	},
+	"activity_explorer": {
+		"string": "Otevřít průzkumník bloků"
+	},
+	"activity_successful": {
+		"string": "Úspěch"
+	},
+	"activity_invoice_note": {
+		"string": "Poznámka k faktuře"
+	},
+	"activity_invoice_comment": {
+		"string": "Komentář"
+	},
+	"activity_invoice": {
+		"string": "Faktura"
+	},
+	"activity_all": {
+		"string": "Veškerá aktivita"
+	},
+	"activity_tabs": {
+		"all": {
+			"string": "Vše"
+		},
+		"sent": {
+			"string": "Posláno"
+		},
+		"received": {
+			"string": "Přijmuto"
+		},
+		"other": {
+			"string": "Další"
+		}
+	},
+	"details_savings_title": {
+		"string": "Úspory"
+	},
+	"details_spending_title": {
+		"string": "Útraty"
+	},
+	"savings": {
+		"title": {
+			"string": "Úspory"
+		},
+		"onboarding": {
+			"string": "<accent>Odeslat\nbitcoin</accent>\ndo vašeho\nzůstatku na spořicím účtu"
+		}
+	},
+	"spending": {
+		"title": {
+			"string": "Útraty"
+		},
+		"onboarding": {
+			"string": "<accent>Odeslat\nbitcoin</accent>\ndo vašeho\ndisponibilního zůstatku"
+		}
+	},
+	"details_transfer_subtitle": {
+		"string": "Příchozí transakce: "
+	},
+	"tx_invalid": {
+		"string": "Neplatná transakce"
+	},
+	"boost": {
+		"string": "Posílit"
+	},
+	"boost_title": {
+		"string": "Posílit transakci"
+	},
+	"boost_success_title": {
+		"string": "Posíleno!"
+	},
+	"boost_success_msg": {
+		"string": "Transakce byla úspěšně posílena."
+	},
+	"boost_error_title": {
+		"string": "Posílení se nezdařilo"
+	},
+	"boost_error_msg": {
+		"string": "Bitkit se nepodařilo posílit transakci."
+	},
+	"boost_fee_custom": {
+		"string": "Vaše transakce se může vypořádat rychleji, pokud zahrnete další síťový poplatek. Níže si nastavte vlastní poplatek."
+	},
+	"boost_fee_recomended": {
+		"string": "Vaše transakce se může vypořádat rychleji, pokud zahrnete další síťový poplatek. Zde je doporučení:"
+	},
+	"boost_recomended_button": {
+		"string": "Použít navrhovaný poplatek"
+	},
+	"boost_swipe": {
+		"string": "Přejetím posilte"
+	},
+	"payment_received": {
+		"string": "bitcoin přijatý"
+	},
+	"instant_payment_received": {
+		"string": "Přijatý okamžitý bitcoin"
+	},
+	"error_create_tx": {
+		"string": "Vytvoření transakce se nezdařilo"
+	},
+	"error_create_tx_msg": {
+		"string": "Došlo k chybě. Zkuste to prosím znovu {raw}"
+	},
+	"error_broadcast_tx": {
+		"string": "Vysílání transakce se nezdařilo"
+	},
+	"error_broadcast_tx_msg": {
+		"string": "Při odesílání vaší transakce došlo k chybě. {raw}"
+	},
+	"error_broadcast_tx_connection": {
+		"string": "Zkontrolujte prosím své připojení a zkuste to znovu.\n{message}"
+	},
+	"filter_title": {
+		"string": "Zvolte rozsah"
+	},
+	"filter_clear": {
+		"string": "Vymazat"
+	},
+	"filter_apply": {
+		"string": "Použít"
+	},
+	"reorg_detected": {
+		"string": "Zjištěna reorganizace blockchainu"
+	},
+	"reorg_msg_begin": {
+		"string": "{count, plural, one {# vašich transakcí již není potvrzen.} few {# vašich transakcí již není potvrzeno.} many {# vašich transakcí již není potvrzeno.} other {# vašich transakcí již není potvrzeno.}} Please wait."
+	},
+	"reorg_msg_end": {
+		"string": "Zkontrolujte si, zda jsou v seznamu aktivit uvedeny transakce, kterých se to týká."
+	},
+	"lnurl_w_title": {
+		"string": "Vybrat bitcoin"
+	},
+	"lnurl_w_max": {
+		"string": "K dispozici k výběru"
+	},
+	"lnurl_w_text": {
+		"string": "Vybrané prostředky se připíší na váš výdajový zůstatek na BitKitu."
+	},
+	"lnurl_w_button": {
+		"string": "Výběr"
+	},
+	"lnurl_p_title": {
+		"string": "Platit bitcoinem"
+	},
+	"lnurl_pay": {
+		"error_min": {
+			"title": {
+				"string": "Příliš nízká částka"
+			},
+			"description": {
+				"string": "Minimální částka pro tuto fakturu je ₿ {amount}."
+			}
+		}
+	},
+	"lnurl_p_max": {
+		"string": "Maximální částka"
+	},
+	"balance_hidden_title": {
+		"string": "Skrytý zůstatek peněženky"
+	},
+	"balance_hidden_message": {
+		"string": "Přejeďte prstem po zůstatku v peněžence a znovu jej odkryjte."
+	},
+	"balance_unit_switched_title": {
+		"string": "Přepnuto na {unit}"
+	},
+	"balance_unit_switched_message": {
+		"string": "Klepnutím na zůstatek v peněžence jej přepnete zpět na {unit}."
+	},
+	"refresh_error_title": {
+		"string": "Obnovení se nezdařilo"
+	},
+	"refresh_error_msg": {
+		"string": "Došlo k chybě a peněženku nešlo obnovit. Zkuste to prosím znovu."
+	},
+	"refresh_error_throttle_title": {
+		"string": "Připojení omezeno"
+	},
+	"refresh_error_throttle_description": {
+		"string": "Připojení k serveru Electrum je omezené. Před dalším pokusem vyčkejte několik minut."
+	},
+	"ldk_sync_error_title": {
+		"string": "Chyba synchronizace lightning"
+	},
+	"ldk_start_error_title": {
+		"string": "Chyba při spuštění lightning"
+	},
+	"receive_insufficient_title": {
+		"string": "Nedostatečný zůstatek na příjmovém účtu."
+	},
+	"receive_insufficient_text": {
+		"string": "Nedostatečná přijímací kapacita pro příjem této částky přes lightning."
+	},
+	"receive_foreground_title": {
+		"string": "Udržovat Bitkit na popředí",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	},
+	"receive_foreground_msg": {
+		"string": "Při přepínání mezi aplikacemi může dojít k selhání plateb na váš disponibilní zůstatek.",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	}
+}

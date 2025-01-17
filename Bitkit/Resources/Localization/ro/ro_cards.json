@@ -1,0 +1,128 @@
+{
+  "backupSeedPhrase": {
+    "title": {
+      "string": "",
+      "context": "Context",
+      "developer_comment": "Developer comment",
+      "character_limit": 10
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "discount": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "quickpay": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "invite": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "lightning": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "lightningSettingUp": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "lightningConnecting": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "lightningReady": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "transferPending": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "transferClosingChannel": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "pin": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "slashtagsProfile": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "support": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "buyBitcoin": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "btFailed": {
+    "title": {
+      "string": ""
+    },
+    "description": {
+      "string": ""
+    }
+  },
+  "suggestions": {
+    "string": ""
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "advanced": {
+    "string": ""
+  },
+  "continue": {
+    "string": "Συνέχεια"
+  },
+  "cancel": {
+    "string": "Ακύρωση"
+  },
+  "close": {
+    "string": "Κλείσιμο"
+  },
+  "are_you_sure": {
+    "string": "Είσαι σίγουρος;"
+  },
+  "yes_proceed": {
+    "string": "Ναι, Προχώρα"
+  },
+  "try_again": {
+    "string": "Προσπαθείστε Ξανά"
+  },
+  "dialog_cancel": {
+    "string": "Όχι, Ακύρωσε"
+  },
+  "sat_vbyte": {
+    "string": ""
+  },
+  "sat_vbyte_compact": {
+    "string": ""
+  },
+  "edit": {
+    "string": ""
+  },
+  "copy": {
+    "string": "Αντιγραφή"
+  },
+  "share": {
+    "string": "Διαμοιρασμός"
+  },
+  "search": {
+    "string": "Αναζήτηση"
+  },
+  "discard": {
+    "string": "Απόρριψη"
+  },
+  "save": {
+    "string": "Καταχώρηση"
+  },
+  "done": {
+    "string": "Ολοκληρώθηκε"
+  },
+  "delete": {
+    "string": "Διαγραφή"
+  },
+  "ok": {
+    "string": "ΟΚ"
+  },
+  "ok_random": {
+		"string": "",
+		"context": "A list of positive words to show the user after they have completed an action",
+		"developer_comment": "Use a number of words separated by a newline character"
+	},
+  "retry": {
+    "string": "Δοκιμάστε Ξανά"
+  },
+  "later": {
+    "string": "Αργότερα"
+  },
+  "skip": {
+    "string": "Παράλειψη"
+  },
+  "copied": {
+    "string": ""
+  },
+  "yes": {
+    "string": "Ναι"
+  },
+  "no": {
+    "string": "Όχι"
+  },
+  "back": {
+    "string": "Επιστροφή"
+  },
+  "learn_more": {
+    "string": ""
+  },
+  "understood": {
+    "string": "Κατανοητό"
+  },
+  "connect": {
+    "string": ""
+  },
+  "min": {
+    "string": ""
+  },
+  "max": {
+    "string": ""
+  },
+  "default": {
+    "string": ""
+  }
+}

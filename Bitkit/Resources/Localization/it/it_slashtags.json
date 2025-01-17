@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": "Tuo nome"
+  },
+  "your_name_capital": {
+    "string": "Tuo Nome"
+  },
+  "contact_name": {
+    "string": "Nome contatto"
+  },
+  "contact": {
+    "string": "Contatto"
+  },
+  "contacts": {
+    "string": "Contatti"
+  },
+  "contact_add": {
+    "string": "Aggiungi contatto"
+  },
+  "contact_add_capital": {
+    "string": "Aggiungi Contatto"
+  },
+  "contact_add_explain": {
+    "string": "Aggiungi un nuovo contatto scansionando il suo QR o incollando la sua chiave sotto"
+  },
+  "contact_add_button": {
+    "string": "Aggiungi"
+  },
+  "contact_key_paste": {
+    "string": "Incolla una chiave"
+  },
+  "contact_error_yourself": {
+    "string": "Non puoi aggiungere te stesso come contatto"
+  },
+  "contact_error_key": {
+    "string": "Questa non è una chiave valida"
+  },
+  "contact_edit_capital": {
+    "string": "Modifica Contatto"
+  },
+  "contacts_name": {
+    "string": "Nome del contatto"
+  },
+  "contact_your_name": {
+    "string": "Nome profilo\npubblico"
+  },
+  "contact_retrieving": {
+    "string": "Recupero\ninformazioni di contatto..."
+  },
+  "contact_no_links": {
+    "string": "Non sono ancora stati aggiunti link..."
+  },
+  "contact_pay_error": {
+    "string": "Impossibile pagare questo contatto"
+  },
+  "contact_share": {
+    "string": "Condividi la Chiave del Profilo"
+  },
+  "contact_this": {
+    "string": "questo contatto"
+  },
+  "contact_copied": {
+    "string": "Chiave Profilo Copiata Negli Appunti"
+  },
+  "contact_delete_title": {
+    "string": "Eliminare {name}?"
+  },
+  "contact_delete_text": {
+    "string": "Sei sicuro di volere eliminare {name} dai tuoi contatti?"
+  },
+  "contact_delete_yes": {
+    "string": "Si, Elimina"
+  },
+  "contact_select": {
+    "string": "Seleziona Contatto"
+  },
+  "contact_assign": {
+    "string": "Assegna Contatto"
+  },
+  "contacts_no_found": {
+    "string": "Nessun Contatto trovato"
+  },
+  "disabled": {
+    "string": "Slashtag disabilitati"
+  },
+  "onboarding_header": {
+    "string": "Contatti\n<accent>dinamici</accent>"
+  },
+  "onboarding_text": {
+    "string": "Ricevi aggiornamenti automatici dai tuoi contatti Bitkit, pagali e segui i loro profili pubblici."
+  },
+  "onboarding_button": {
+    "string": "Aggiungi il primo contatto"
+  },
+  "onboarding_profile1_header": {
+    "string": "Possiedi il tuo\n<accent>profilo</accent>"
+  },
+  "onboarding_profile1_text": {
+    "string": "Configura il tuo profilo pubblico e i tuoi collegamenti, in modo che i tuoi contatti Bitkit possano raggiungerti o pagarti sempre e ovunque."
+  },
+  "onboarding_profile2_header": {
+    "string": "Paga <accent>Bitkit\ncontatti</accent>"
+  },
+  "onboarding_profile2_text": {
+    "string": "Tu e i tuoi contatti potete usare BitKit per inviarvi pagamenti direttamente, senza banche, sempre, ovunque."
+  },
+  "onboarding_widgets_header": {
+    "string": "Ciao,\n<accent>Widgets</accent>"
+  },
+  "onboarding_widgets_text": {
+    "string": "Goditi i feed decentralizzati dai tuoi servizi web preferiti, aggiungendo widget divertenti e utili al tuo portafoglio Bitkit."
+  },
+  "my_profile": {
+    "string": "Il mio profilo"
+  },
+  "profile": {
+    "string": "Profilo"
+  },
+  "profile_save": {
+    "string": "Salva Profilo"
+  },
+  "profile_pay_contacts": {
+    "string": "Paga i tuoi Contatti"
+  },
+  "profile_create": {
+    "string": "Crea Profilo"
+  },
+  "profile_public_warn": {
+    "string": "Tieni presente che tutte le informazioni del tuo profilo saranno disponibili e visibili pubblicamente."
+  },
+  "profile_bio": {
+    "string": "Breve bio. Dicci qualcosa su di te."
+  },
+  "profile_add_link": {
+    "string": "Aggiungi Link"
+  },
+  "profile_link_label": {
+    "string": "Etichetta"
+  },
+  "profile_link_label_placeholder": {
+    "string": "Per esempio 'Sito web'"
+  },
+  "profile_link_value": {
+    "string": "Link o testo"
+  },
+  "profile_link_public": {
+    "string": "Nota: qualsiasi link aggiunto sarà visibile pubblicamente."
+  },
+  "profile_link_suggestions": {
+    "string": "Consigli"
+  },
+  "profile_link_suggestions_to_add": {
+    "string": "Suggerimenti Da Aggiungere"
+  },
+  "profile_scan_to_add": {
+    "string": "Scansiona per aggiungere {name}"
+  },
+  "profile_edit": {
+    "string": "Modifica Profilo"
+  },
+  "offline_enable": {
+    "string": "Abilita i pagamenti con i contatti*"
+  },
+  "offline_enable_explain": {
+    "string": "* Questo richiede la condivisione dei dati di pagamento."
+  },
+  "widgets": {
+    "string": "Widget"
+  },
+  "widget_add": {
+    "string": "Aggiungi Widget"
+  },
+  "widget_loading_description": {
+    "string": "Caricamento descrizione del widget..."
+  },
+  "widget_failed_description": {
+    "string": "Impossibile caricare il widget"
+  },
+  "widget_source": {
+    "string": "Fonte"
+  },
+  "widget_price": {
+    "string": "Prezzo Bitcoin"
+  },
+  "widget_headlines": {
+    "string": "Titoli di Testa di Bitcoin"
+  },
+  "widget_blocks": {
+    "string": "Blocchi Bitcoin"
+  },
+  "widget_facts": {
+    "string": "Fatti su Bitcoin"
+  },
+  "widget_qr": {
+    "string": "O Scansiona QR"
+  },
+  "widget_error_drive": {
+    "string": "Impossibile ottenere dati"
+  },
+  "widget_feed": {
+    "string": "Widget"
+  },
+  "widget_edit": {
+    "string": "Feed Widget"
+  },
+  "widget_edit_default": {
+    "string": "Predefinito"
+  },
+  "widget_edit_custom": {
+    "string": "Custom"
+  },
+  "widget_edit_description": {
+    "string": "Seleziona quali campi desideri visualizzare nel widget {name}."
+  },
+  "widget_loading_options": {
+    "string": "Caricamento opzioni widget..."
+  },
+  "widget_reset": {
+    "string": "Ripristino"
+  },
+  "widget_preview": {
+    "string": "Anteprima"
+  },
+  "widget_delete_yes": {
+    "string": "Si, Elimina"
+  },
+  "widget_delete_title": {
+    "string": "Eliminare Widget?"
+  },
+  "widget_delete_desc": {
+    "string": "Sei sicuro di volere eliminare ‘{name}‘ dai tuoi widget?"
+  },
+  "error_saving_contact": {
+    "string": "Impossibile salvare il profilo"
+  },
+  "error_saving_profile": {
+    "string": "Impossibile salvare il profilo"
+  },
+  "error_pay_title": {
+    "string": "Impossibile pagare questo contatto"
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": "Deprecato"
+  },
+  "auth_depricated_msg": {
+    "string": "Slashauth è deprecato. Si prega di utilizzare Bitkit Beta."
+  }
+}

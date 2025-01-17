@@ -1,0 +1,12 @@
+{
+  "name": "bitkit-translation-validator",
+  "version": "1.0.0",
+  "description": "Validates translation keys in Swift files against JSON translation files",
+  "main": "validate-translations.js",
+  "scripts": {
+    "validate": "node validate-translations.js"
+  },
+  "dependencies": {
+    "glob": "^8.1.0"
+  }
+} 

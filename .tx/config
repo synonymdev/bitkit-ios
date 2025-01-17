@@ -1,0 +1,62 @@
+[main]
+host = https://www.transifex.com
+
+[o:synonym:p:bitkit:r:cards]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_cards.json
+source_file  = Bitkit/Resources/Localization/en/en_cards.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:common]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_common.json
+source_file  = Bitkit/Resources/Localization/en/en_common.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:fee]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_fee.json
+source_file  = Bitkit/Resources/Localization/en/en_fee.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:lightning]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_lightning.json
+source_file  = Bitkit/Resources/Localization/en/en_lightning.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:onboarding]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_onboarding.json
+source_file  = Bitkit/Resources/Localization/en/en_onboarding.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:other]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_other.json
+source_file  = Bitkit/Resources/Localization/en/en_other.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:security]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_security.json
+source_file  = Bitkit/Resources/Localization/en/en_security.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:settingss]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_settings.json
+source_file  = Bitkit/Resources/Localization/en/en_settings.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:slashtags]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_slashtags.json
+source_file  = Bitkit/Resources/Localization/en/en_slashtags.json
+source_lang  = en
+type         = STRUCTURED_JSON
+
+[o:synonym:p:bitkit:r:wallet]
+file_filter  = Bitkit/Resources/Localization/<lang>/<lang>_wallet.json
+source_file  = Bitkit/Resources/Localization/en/en_wallet.json
+source_lang  = en
+type         = STRUCTURED_JSON

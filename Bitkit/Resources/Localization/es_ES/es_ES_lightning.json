@@ -1,0 +1,586 @@
+{
+	"transfer_intro": {
+		"title": {
+			"string": "Saldo de\n<accent>Gasto</accent>"
+		},
+		"text": {
+			"string": "Rellene el saldo de gasto para disfrutar de transacciones baratas e instantáneas con amigos, familia y comerciantes."
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"funding": {
+		"nav_title": {
+			"string": "Saldo de gastos"
+		},
+		"title": {
+			"string": "Rellene su <accent>saldo de gastos</accent>"
+		},
+		"text": {
+			"string": "Puede usar sus ahorros en Bitkit o enviar bitcoin desde un monedero diferente."
+		},
+		"text_blocked": {
+			"string": ""
+		},
+		"text_blocked_cjit": {
+			"string": ""
+		},
+		"button1": {
+			"string": "Transferir desde Ahorros"
+		},
+		"button2": {
+			"string": "Usar Otro Monedero"
+		},
+		"button3": {
+			"string": "Avanzado"
+		}
+	},
+	"funding_advanced": {
+		"nav_title": {
+			"string": "Saldo de gastos"
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"button1": {
+			"string": ""
+		},
+		"button2": {
+			"string": ""
+		}
+	},
+	"no_funds": {
+		"title": {
+			"string": "No hay fondos disponibles"
+		},
+		"description": {
+			"string": "Antes de que pueda transferir fondos a su saldo de ahorros, tiene que enviar bitcoin a su monedero Bitkit."
+		},
+		"fund": {
+			"string": ""
+		}
+	},
+	"transfer": {
+		"nav_title": {
+			"string": "Transferir fondos"
+		},
+		"confirm": {
+			"string": "Por favor,\n<accent>confirme</accent>"
+		},
+		"custom_fee": {
+			"string": ""
+		},
+		"swipe": {
+			"string": "Deslizar para transferir"
+		}
+	},
+	"spending_intro": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": "Transfiera fondos a su saldo de gasto para disfrutar de transacciones baratas e instantáneas con amigos, familia y comerciantes."
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"transfer_failed": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"cancel": {
+			"string": ""
+		},
+		"continue": {
+			"string": "Inténtelo de nuevo"
+		}
+	},
+	"spending_amount": {
+		"title": {
+			"string": ""
+		},
+		"quarter": {
+			"string": "25%"
+		},
+		"error_max": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			},
+			"description_zero": {
+				"string": ""
+			}
+		}
+	},
+	"spending_confirm": {
+		"network_fee": {
+			"string": "Comisión de red"
+		},
+		"lsp_fee": {
+			"string": "Comisión de servicio"
+		},
+		"amount": {
+			"string": ""
+		},
+		"total": {
+			"string": "Total"
+		},
+		"default": {
+			"string": ""
+		}
+	},
+	"spending_advanced": {
+		"title": {
+			"string": ""
+		},
+		"fee": {
+			"string": ""
+		}
+	},
+	"liquidity": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		}
+	},
+	"savings_intro": {
+		"title": {
+			"string": "Transferir\n<accent>a ahorros</accent>"
+		},
+		"text": {
+			"string": ""
+		},
+		"button": {
+			"string": "Empezar"
+		}
+	},
+	"availability": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_confirm": {
+		"label": {
+			"string": ""
+		},
+		"transfer_all": {
+			"string": "Transferir todo"
+		}
+	},
+	"savings_advanced": {
+		"title": {
+			"string": "Seleccionar fondos\n<accent>para transferir</accent>"
+		},
+		"text": {
+			"string": "Puedes transferir parte de tu saldo de gastos a ahorros, porque tienes varias Conexiones Lightning activas."
+		},
+		"total": {
+			"string": "Total seleccionado"
+		}
+	},
+	"savings_progress": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		}
+	},
+	"savings_interrupted": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": "Mantener Bitkit\n<accent>abierto</accent>"
+		},
+		"text": {
+			"string": "Los fondos todavía no se transfirieron. Bitkit intentará iniciar la transferencia durante los próximos <accent>30 minutos</accent>. Por favor, mantenga la aplicación abierta."
+		}
+	},
+	"transfer_success": {
+		"nav_title": {
+			"string": "Transferencia exitosa"
+		},
+		"title_spending": {
+			"string": ""
+		},
+		"text_spending": {
+			"string": ""
+		},
+		"title_savings": {
+			"string": ""
+		},
+		"text_savings": {
+			"string": ""
+		}
+	},
+	"external": {
+		"nav_title": {
+			"string": "Conexión Lightning"
+		}
+	},
+	"external_manual": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"node_id": {
+			"string": ""
+		},
+		"host": {
+			"string": "Servidor"
+		},
+		"port": {
+			"string": "Puerto"
+		},
+		"paste": {
+			"string": ""
+		},
+		"scan": {
+			"string": "Escanear QR"
+		}
+	},
+	"external_amount": {
+		"title": {
+			"string": ""
+		}
+	},
+	"external_success": {
+		"title": {
+			"string": ""
+		},
+		"text": {
+			"string": "Conexión Lightning iniciada. Podrá usar su balance para pagar en <accent>±30 minutos</accent> (depende de la configuración del nodo)."
+		}
+	},
+	"error_channel_purchase": {
+		"string": "Error en la Configuración de Pago Instántaneo"
+	},
+	"error_channel_setup_msg": {
+		"string": ""
+	},
+	"error_channel_receiving": {
+		"string": "La cantidad a recibir debe ser mayor de $ 1 {usdValue}"
+	},
+	"spending": {
+		"string": "Gasto"
+	},
+	"savings": {
+		"string": "Ahorro"
+	},
+	"spending_label": {
+		"string": "Saldo para gastos"
+	},
+	"receiving_label": {
+		"string": "Capacidad de recepción"
+	},
+	"setting_up_header": {
+		"string": ""
+	},
+	"setting_up_text": {
+		"string": ""
+	},
+	"setting_up_step1": {
+		"string": "Procesando Pago"
+	},
+	"setting_up_step2": {
+		"string": ""
+	},
+	"setting_up_step3": {
+		"string": ""
+	},
+	"setting_up_step4": {
+		"string": "Abriendo Conexión"
+	},
+	"setting_up_button": {
+		"string": "Continuar Usando Bitkit"
+	},
+	"node_info": {
+		"string": "Nodo Lightning"
+	},
+	"node_id": {
+		"string": "ID del nodo LDK"
+	},
+	"node_disconnected": {
+		"string": "desconectado"
+	},
+	"node_failed": {
+		"string": "Bitkit ha fallado al inicializar el nodo Lightning."
+	},
+	"connections": {
+		"string": "Conexiones Lightning"
+	},
+	"conn_pending": {
+		"string": "Conexiones pendientes"
+	},
+	"conn_open": {
+		"string": "Conexiones abiertas"
+	},
+	"conn_closed": {
+		"string": "Conexiones cerradas"
+	},
+	"conn_failed": {
+		"string": "Conexiones fallidas"
+	},
+	"conn_closed_show": {
+		"string": ""
+	},
+	"conn_closed_hide": {
+		"string": ""
+	},
+	"conn_button_export_logs": {
+		"string": "Exportar registros"
+	},
+	"conn_button_add": {
+		"string": "Añadir conexión"
+	},
+	"export_logs": {
+		"string": ""
+	},
+	"error_logs": {
+		"string": ""
+	},
+	"error_logs_description": {
+		"string": "Bitkit no fue capaz de exportar los logs LDK."
+	},
+	"error_invoice": {
+		"string": "Falla al crear la factura"
+	},
+	"error_add_title": {
+		"string": "Incapaz De Añadir Par Lightning"
+	},
+	"error_add": {
+		"string": ""
+	},
+	"error_add_uri": {
+		"string": "La URI parece ser inválida."
+	},
+	"error_add_tor": {
+		"string": ""
+	},
+	"error_save_title": {
+		"string": "Incapaz De Guardar Par Lightning"
+	},
+	"error_save": {
+		"string": "No se puede guardar el par Lightning"
+	},
+	"error_decode": {
+		"string": "No se puede descodificar la factura"
+	},
+	"peer_saved": {
+		"string": ""
+	},
+	"invoice_copied": {
+		"string": "Factura Copiada al Portapapeles"
+	},
+	"connection": {
+		"string": ""
+	},
+	"status": {
+		"string": "Estatus"
+	},
+	"order_details": {
+		"string": "Detalles del pedido"
+	},
+	"order": {
+		"string": "Ordene"
+	},
+	"created_on": {
+		"string": "Creado en"
+	},
+	"order_expiry": {
+		"string": ""
+	},
+	"transaction": {
+		"string": "Transacción"
+	},
+	"order_fee": {
+		"string": "Tarifa de pedido"
+	},
+	"balance": {
+		"string": "Saldo"
+	},
+	"reserve_balance": {
+		"string": "Saldo de reserva"
+	},
+	"total_size": {
+		"string": "Tamaño total del canal"
+	},
+	"fees": {
+		"string": ""
+	},
+	"base_fee": {
+		"string": ""
+	},
+	"fee_rate": {
+		"string": ""
+	},
+	"other": {
+		"string": "Otros"
+	},
+	"is_usable": {
+		"string": "¿Es utilizable?"
+	},
+	"opened_on": {
+		"string": "Abierto en"
+	},
+	"closed_on": {
+		"string": ""
+	},
+	"channel_node_id": {
+		"string": ""
+	},
+	"channel_id": {
+		"string": ""
+	},
+	"channel_point": {
+		"string": ""
+	},
+	"closure_reason": {
+		"string": ""
+	},
+	"support": {
+		"string": "Soporte"
+	},
+	"connection_closed": {
+		"title": {
+			"string": "Conexión Cerrada"
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"close_conn": {
+		"string": "Terminar conexión"
+	},
+	"close_error": {
+		"string": ""
+	},
+	"close_error_msg": {
+		"string": ""
+	},
+	"close_success_title": {
+		"string": ""
+	},
+	"close_success_msg": {
+		"string": ""
+	},
+	"close_text": {
+		"string": "La comisión para cerrar esta Conexión Lightning y transferir los fondos de vuelva a sus ahorros depende de las condiciones de la red.\n\nTransferir fondos a los ahorros normalmente es instantáneo, pero la liquidación podría llevar hasta <accent>14 días</accent> en ciertas condiciones de red."
+	},
+	"close_button": {
+		"string": "Cerrar"
+	},
+	"force_nav_title": {
+		"string": "Fuerzar transferencia"
+	},
+	"force_title": {
+		"string": "Forzar\n<accent>Transferencia</accent>"
+	},
+	"force_text": {
+		"string": "No se ha podido iniciar la transferencia. ¿Desea forzar esta transferencia? No podrá utilizar estos fondos durante ±14 días (!)"
+	},
+	"force_button": {
+		"string": "Fuerzar transferencia"
+	},
+	"force_init_title": {
+		"string": "Forzado de Transferencia Iniciado"
+	},
+	"force_init_msg": {
+		"string": "Sus fondos estarán accesibles en ±14 días."
+	},
+	"force_failed_title": {
+		"string": "Transferencia forzada falló"
+	},
+	"force_failed_msg": {
+		"string": ""
+	},
+	"channel_opened_title": {
+		"string": ""
+	},
+	"channel_opened_msg": {
+		"string": "Ahora puede pagar a cualquier persona, en cualquier lugar y al instante."
+	},
+	"order_given_up_title": {
+		"string": "Error en la Configuración de Pago Instántaneo"
+	},
+	"order_given_up_msg": {
+		"string": ""
+	},
+	"order_expired_title": {
+		"string": "Error en la Configuración de Pago Instántaneo"
+	},
+	"order_expired_msg": {
+		"string": ""
+	},
+	"order_state": {
+		"awaiting_payment": {
+			"string": "Procesando pago"
+		},
+		"payment_canceled": {
+			"string": "Pago cancelado"
+		},
+		"paid": {
+			"string": "Pago realizado"
+		},
+		"refund_available": {
+			"string": ""
+		},
+		"refunded": {
+			"string": "Pago devuelto"
+		},
+		"queued": {
+			"string": ""
+		},
+		"opening": {
+			"string": "Abriendo conexión"
+		},
+		"closing": {
+			"string": ""
+		},
+		"given_up": {
+			"string": ""
+		},
+		"expired": {
+			"string": ""
+		},
+		"closed": {
+			"string": "Conexión cerrada"
+		},
+		"open": {
+			"string": "Conexión abierta"
+		},
+		"inactive": {
+			"string": ""
+		}
+	},
+	"wait_text_top": {
+		"string": "Por favor, espere a que Bitkit se conecte a la red de pagos (±10 segundos)."
+	},
+	"wait_text_bottom": {
+		"string": "Conectando y Sincronizando..."
+	}
+}

@@ -2,9 +2,8 @@ import SwiftUI
 
 struct OnboardingTab: View {
     let imageName: String
-    let titleFirstLine: String
-    let titleSecondLine: String
-    let text: String
+    let title: [TranslationPart]
+    let text: [TranslationPart]
     var disclaimerText: String? = nil
     let secondLineColor: Color
 
@@ -21,23 +20,26 @@ struct OnboardingTab: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(titleFirstLine)
-                    .font(.largeTitle)
-                    .fontWeight(.black)
-                Text(titleSecondLine)
-                    .font(.largeTitle)
-                    .fontWeight(.black)
-                    .foregroundColor(secondLineColor)
+                title.reduce(Text("")) { current, part in
+                    current + Text(part.text.uppercased())
+                        .font(.largeTitle)
+                        .fontWeight(.black)
+                        .foregroundColor(part.isAccent ? secondLineColor : .primary)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 4)
 
-            Text(text)
-                .font(.body)
-                .multilineTextAlignment(.leading)
-                .foregroundColor(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 4)
+            // Text with conditional accent parts
+            text.reduce(Text("")) { current, part in
+                current + Text(part.text)
+                    .foregroundColor(part.isAccent ? .primary : .secondary)
+                    .fontWeight(part.isAccent ? .bold : .regular)
+            }
+            .font(.body)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 4)
 
             if let disclaimer = disclaimerText {
                 Text(disclaimer)
@@ -56,9 +58,14 @@ struct OnboardingTab: View {
 #Preview {
     OnboardingTab(
         imageName: "lock.shield",
-        titleFirstLine: "Security",
-        titleSecondLine: "First",
-        text: "Your funds are secured with industry-leading encryption",
+        title: [
+            TranslationPart(text: "Security ", isAccent: false),
+            TranslationPart(text: "First", isAccent: true)
+        ],
+        text: [
+            TranslationPart(text: "Your funds are secured with industry-leading encryption. ", isAccent: false),
+            TranslationPart(text: "Keep them safe!", isAccent: true)
+        ],
         disclaimerText: "*Some features may require additional setup",
         secondLineColor: .brand
     )

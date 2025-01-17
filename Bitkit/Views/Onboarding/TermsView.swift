@@ -8,18 +8,32 @@
 import SwiftUI
 
 struct TermsDeclarationText: View {
+    private let t = useTranslation(.onboarding)
+    
     var body: some View {
-        Text("I declare that I have read and\naccept the [terms of use](https://bitkit.to/terms-of-use).")
-            .foregroundColor(.secondary)
-            .tint(.brand) // This controls the link color
+        let parts = t.parts("tos_checkbox_value")
+        parts.reduce(Text("")) { current, part in
+            current + Text(part.text)
+                .foregroundColor(part.isAccent ? .brand : .secondary)
+                .underline(part.isAccent)
+        }
+        .font(.subheadline)
+        .tint(.brand)
     }
 }
 
 struct PrivacyDeclarationText: View {
+    private let t = useTranslation(.onboarding)
+    
     var body: some View {
-        Text("I declare that I have read and\naccept the [privacy policy](https://bitkit.to/privacy-policy).")
-            .foregroundColor(.secondary)
-            .tint(.brand)
+        let parts = t.parts("pp_checkbox_value")
+        parts.reduce(Text("")) { current, part in
+            current + Text(part.text)
+                .foregroundColor(part.isAccent ? .brand : .secondary)
+                .underline(part.isAccent)
+        }
+        .font(.subheadline)
+        .tint(.brand)
     }
 }
 
@@ -28,19 +42,23 @@ struct TermsView: View {
     @State private var privacyAccepted = false
     @State private var navigateToIntro = false
     
+    private let t = useTranslation(.onboarding)
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("BITKIT")
+                        let parts = t.parts("tos_header")
+                        Text(parts[0].text.uppercased())
                             .font(.largeTitle)
-                    .fontWeight(.black)
-                        Text("TERMS OF USE")
+                            .fontWeight(.black)
+                            .foregroundColor(.primary) +
+                            Text(parts[1].text.uppercased())
                             .font(.largeTitle)
-                    .fontWeight(.black)
-                            .foregroundColor(Color.brand)
+                            .fontWeight(.black)
+                            .foregroundColor(.brand)
                     }
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -77,10 +95,11 @@ struct TermsView: View {
                     // Terms checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text("Terms of Use")
+                            Text(t("tos_checkbox"))
                                 .font(.headline)
                             TermsDeclarationText()
                                 .font(.subheadline)
+                                .tint(.brand)
                         }
                         
                         Spacer()
@@ -89,21 +108,22 @@ struct TermsView: View {
                             .foregroundColor(termsAccepted ? .brand : .gray)
                             .font(.system(size: 32))
                     }
-                    .contentShape(Rectangle()) // Makes entire HStack tappable
+                    .contentShape(Rectangle())
                     .onTapGesture {
                         termsAccepted.toggle()
                         Haptics.play(.medium)
                     }
-
+                    
                     Divider()
                     
                     // Privacy checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text("Privacy Policy")
+                            Text(t("pp_checkbox"))
                                 .font(.headline)
                             PrivacyDeclarationText()
                                 .font(.subheadline)
+                                .tint(.brand)
                         }
                         
                         Spacer()
@@ -112,24 +132,24 @@ struct TermsView: View {
                             .foregroundColor(privacyAccepted ? .brand : .gray)
                             .font(.system(size: 32))
                     }
-                    .contentShape(Rectangle()) // Makes entire HStack tappable
+                    .contentShape(Rectangle())
                     .onTapGesture {
                         privacyAccepted.toggle()
                         Haptics.play(.medium)
                     }
-
+                    
                     Divider()
                 }
                 .padding(.horizontal)
                 
                 Button(action: {
-                    if termsAccepted && privacyAccepted {
+                    if termsAccepted, privacyAccepted {
                         navigateToIntro = true
                     } else {
                         Haptics.notify(.error)
                     }
                 }) {
-                    Text("Continue")
+                    Text(t("get_started"))
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding()

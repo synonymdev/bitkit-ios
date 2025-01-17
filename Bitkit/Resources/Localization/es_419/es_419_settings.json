@@ -1,0 +1,726 @@
+{
+	"settings": {
+		"string": "Ajustes"
+	},
+	"dev_enabled_title": {
+		"string": "Opciones de desarrollo activadas"
+	},
+	"dev_enabled_message": {
+		"string": ""
+	},
+	"dev_disabled_title": {
+		"string": "Opciones de desarrollo desactivadas"
+	},
+	"dev_disabled_message": {
+		"string": ""
+	},
+	"general_title": {
+		"string": "Geral"
+	},
+	"security_title": {
+		"string": "Seguridad y Privacidad"
+	},
+	"backup_title": {
+		"string": "Copia de seguridad o restauración"
+	},
+	"advanced_title": {
+		"string": "Avanzado"
+	},
+	"about_title": {
+		"string": ""
+	},
+	"support_title": {
+		"string": "Soporte"
+	},
+	"about": {
+		"title": {
+			"string": "Acerca de Bitkit"
+		},
+		"text": {
+			"string": ""
+		},
+		"legal": {
+			"string": "Legal"
+		},
+		"share": {
+			"string": "Compartir"
+		},
+		"version": {
+			"string": "Versión"
+		},
+		"shareText": {
+			"string": ""
+		}
+	},
+	"dev_title": {
+		"string": "Ajustes de desarrollo"
+	},
+	"general": {
+		"currency_local": {
+			"string": "Moneda local"
+		},
+		"currency_local_title": {
+			"string": "Moneda local"
+		},
+		"currency_footer": {
+			"string": "Precios proporcionados por Bitfinex y CoinGecko."
+		},
+		"currency_most_used": {
+			"string": "Más utilizados"
+		},
+		"currency_other": {
+			"string": "Otras monedas"
+		},
+		"unit": {
+			"string": ""
+		},
+		"unit_title": {
+			"string": ""
+		},
+		"unit_display": {
+			"string": ""
+		},
+		"unit_bitcoin": {
+			"string": "Bitcoin"
+		},
+		"unit_note": {
+			"string": ""
+		},
+		"denomination_label": {
+			"string": "Bitcoin denominación"
+		},
+		"denomination_modern": {
+			"string": "Moderno (₿ 10 000)"
+		},
+		"denomination_classic": {
+			"string": "Clásico (₿ 0.00010000)"
+		},
+		"speed": {
+			"string": "Velocidad de transacción"
+		},
+		"speed_title": {
+			"string": "Velocidad de la transacción"
+		},
+		"speed_default": {
+			"string": "Velocidad de transacción predeterminada"
+		},
+		"speed_fee_custom": {
+			"string": "Fijar tarifa personalizada"
+		},
+		"speed_fee_total": {
+			"string": ""
+		},
+		"speed_fee_total_fiat": {
+			"string": ""
+		},
+		"tags": {
+			"string": "Etiquetas"
+		},
+		"tags_previously": {
+			"string": "Etiquetas utilizadas anteriormente"
+		}
+	},
+	"widgets": {
+		"nav_title": {
+			"string": "Widgets"
+		},
+		"showWidgets": {
+			"string": "Widgets"
+		},
+		"showWidgetTitles": {
+			"string": ""
+		}
+	},
+	"quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"intro": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		},
+		"settings": {
+			"toggle": {
+				"string": ""
+			},
+			"text": {
+				"string": ""
+			},
+			"label": {
+				"string": ""
+			},
+			"note": {
+				"string": ""
+			}
+		}
+	},
+	"security": {
+		"title": {
+			"string": ""
+		},
+		"swipe_balance_to_hide": {
+			"string": ""
+		},
+		"hide_balance_on_open": {
+			"string": ""
+		},
+		"clipboard": {
+			"string": ""
+		},
+		"warn_100": {
+			"string": ""
+		},
+		"pin": {
+			"string": "Código PIN"
+		},
+		"pin_change": {
+			"string": "Cambiar código PIN"
+		},
+		"pin_launch": {
+			"string": "Exigir PIN en arranque"
+		},
+		"pin_idle": {
+			"string": ""
+		},
+		"pin_payments": {
+			"string": "Exigir PIN para pagamientos"
+		},
+		"pin_enabled": {
+			"string": "Activado"
+		},
+		"pin_disabled": {
+			"string": "Disabilitado"
+		},
+		"use_bio": {
+			"string": "Utilice {biometryTypeName} en su lugar"
+		},
+		"footer": {
+			"string": "Cuando activado, puede utilizar {biometryTypeName} en lugar de su código PIN para desbloquear su monedero o enviar pagos."
+		}
+	},
+	"backup": {
+		"title": {
+			"string": "Copia de seguridad o restauración"
+		},
+		"wallet": {
+			"string": "Haga una copia de seguridad de su cartera"
+		},
+		"export": {
+			"string": "Exportar los datos del monedero al teléfono"
+		},
+		"reset": {
+			"string": ""
+		},
+		"failed_title": {
+			"string": "Falla en la copia de seguridad de los datos"
+		},
+		"failed_message": {
+			"string": ""
+		},
+		"latest": {
+			"string": ""
+		},
+		"status_failed": {
+			"string": "Copia de seguridad falló: {time}"
+		},
+		"status_success": {
+			"string": "Última Copia de Seguridad: {time}"
+		},
+		"category_connections": {
+			"string": "Conexiones"
+		},
+		"category_connection_receipts": {
+			"string": ""
+		},
+		"category_transaction_log": {
+			"string": "Registro de transacciones"
+		},
+		"category_wallet": {
+			"string": ""
+		},
+		"category_settings": {
+			"string": "Ajustes"
+		},
+		"category_widgets": {
+			"string": "Widgets"
+		},
+		"category_tags": {
+			"string": "Etiquetas"
+		},
+		"category_profile": {
+			"string": "Perfil"
+		},
+		"category_contacts": {
+			"string": "Contactos"
+		}
+	},
+	"support": {
+		"title": {
+			"string": "Soporte"
+		},
+		"text": {
+			"string": ""
+		},
+		"report": {
+			"string": ""
+		},
+		"help": {
+			"string": ""
+		},
+		"status": {
+			"string": ""
+		},
+		"report_text": {
+			"string": ""
+		},
+		"label_address": {
+			"string": ""
+		},
+		"label_message": {
+			"string": ""
+		},
+		"placeholder_address": {
+			"string": ""
+		},
+		"placeholder_message": {
+			"string": ""
+		},
+		"text_button": {
+			"string": "Enviar"
+		},
+		"title_success": {
+			"string": ""
+		},
+		"text_success": {
+			"string": ""
+		},
+		"text_success_button": {
+			"string": "OK"
+		},
+		"title_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess": {
+			"string": ""
+		},
+		"text_unsuccess_button": {
+			"string": "Inténtelo de nuevo"
+		}
+	},
+	"status": {
+		"title": {
+			"string": ""
+		},
+		"internet": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": "Conectado"
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"bitcoin_node": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": "Conectado"
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_node": {
+			"title": {
+				"string": "Nodo Lightning"
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"lightning_connection": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": "Abierta"
+			},
+			"pending": {
+				"string": "Abriendo..."
+			},
+			"error": {
+				"string": ""
+			}
+		},
+		"full_backup": {
+			"title": {
+				"string": ""
+			},
+			"ready": {
+				"string": ""
+			},
+			"pending": {
+				"string": ""
+			},
+			"error": {
+				"string": ""
+			}
+		}
+	},
+	"adv": {
+		"section_payments": {
+			"string": "Pagos"
+		},
+		"section_networks": {
+			"string": "Redes"
+		},
+		"section_other": {
+			"string": "Otros"
+		},
+		"address_type": {
+			"string": "Tipo de dirección Bitcoin"
+		},
+		"monitored_address_types": {
+			"string": ""
+		},
+		"monitored_address_types_update_title": {
+			"string": ""
+		},
+		"monitored_address_types_update_description": {
+			"string": ""
+		},
+		"gap_limit": {
+			"string": ""
+		},
+		"coin_selection": {
+			"string": "Selección de monedas"
+		},
+		"cs_method": {
+			"string": "Método de selección de monedas"
+		},
+		"cs_manual": {
+			"string": "Manual"
+		},
+		"cs_auto": {
+			"string": "Piloto automático"
+		},
+		"cs_auto_mode": {
+			"string": "Modo de piloto automático"
+		},
+		"cs_max": {
+			"string": ""
+		},
+		"cs_max_description": {
+			"string": ""
+		},
+		"cs_min": {
+			"string": ""
+		},
+		"cs_min_description": {
+			"string": ""
+		},
+		"cs_consolidate": {
+			"string": "Consolidar"
+		},
+		"cs_consolidate_description": {
+			"string": ""
+		},
+		"payment_preference": {
+			"string": "Preferencia de pago"
+		},
+		"pp_header": {
+			"string": "Elija cómo prefiere recibir dinero cuando los usuarios envíen fondos a su clave de perfil."
+		},
+		"pp_footer": {
+			"string": "* Esto requiere compartir los datos de pago."
+		},
+		"pp_drag": {
+			"string": "Preferencia de pago (arrastre para reordenar)"
+		},
+		"pp_contacts": {
+			"string": "Pagar a/desde contactos"
+		},
+		"pp_contacts_switch": {
+			"string": "Habilitar pagos con contactos*"
+		},
+		"address_viewer": {
+			"string": "Visor de direcciones"
+		},
+		"rescan": {
+			"string": "Volver a escanear direcciones"
+		},
+		"suggestions_reset": {
+			"string": ""
+		},
+		"reset_title": {
+			"string": "¿Restablecer sugerencias?"
+		},
+		"reset_desc": {
+			"string": "¿Está seguro de que desea restablecer las sugerencias? Volverán a aparecer en caso de que las haya eliminado de la vista general de su monedero Bitkit."
+		},
+		"reset_confirm": {
+			"string": "Sí, Restaurar"
+		},
+		"lightning_connections": {
+			"string": "Conexiones Lightning"
+		},
+		"lightning_node": {
+			"string": "Nodo Lightning"
+		},
+		"electrum_server": {
+			"string": "Servidor Electrum"
+		},
+		"rgs_server": {
+			"string": ""
+		},
+		"web_relay": {
+			"string": ""
+		},
+		"bitcoin_network": {
+			"string": "Red Bitcoin"
+		}
+	},
+	"fee": {
+		"fast": {
+			"label": {
+				"string": "Rápido (más caro)"
+			},
+			"value": {
+				"string": "Rápido"
+			},
+			"description": {
+				"string": "± 10-20 minutos"
+			}
+		},
+		"normal": {
+			"label": {
+				"string": "Normal"
+			},
+			"value": {
+				"string": "Normal"
+			},
+			"description": {
+				"string": "± 20-60 minutos"
+			}
+		},
+		"slow": {
+			"label": {
+				"string": "Lento (más barato)"
+			},
+			"value": {
+				"string": "Lento "
+			},
+			"description": {
+				"string": "± 1-2 horas"
+			}
+		},
+		"custom": {
+			"label": {
+				"string": "personalizado"
+			},
+			"value": {
+				"string": "personalizado"
+			},
+			"description": {
+				"string": "Depende de la tasa"
+			}
+		}
+	},
+	"addr": {
+		"no_addrs": {
+			"string": "No hay direcciones que mostrar"
+		},
+		"loading": {
+			"string": "Cargando direcciones..."
+		},
+		"no_funds_receiving": {
+			"string": "No se han encontrado fondos bajo el tipo de dirección {addressType}, recibiendo direcciones hasta el índice {index}."
+		},
+		"no_funds_change": {
+			"string": ""
+		},
+		"no_addrs_with_funds": {
+			"string": "No se han encontrado direcciones con fondos al buscar \"{searchTxt}\""
+		},
+		"no_addrs_str": {
+			"string": "No se han encontrado direcciones al buscar \"{searchTxt}\""
+		},
+		"rescan_error": {
+			"string": ""
+		},
+		"rescan_error_description": {
+			"string": ""
+		},
+		"spend_number": {
+			"string": "{count, plural, one {} many {} other {}}"
+		},
+		"spend_all": {
+			"string": "{count, plural, one {} many {} other {}}"
+		},
+		"index": {
+			"string": "Índice: {index}"
+		},
+		"path": {
+			"string": "Ruta: {path}"
+		},
+		"private_hide": {
+			"string": "Ocultar clave privada"
+		},
+		"private_view": {
+			"string": "Ver clave privada"
+		},
+		"private_key": {
+			"string": "Clave privada: {privateKey}"
+		},
+		"addr_change": {
+			"string": "Cambiar direcciones"
+		},
+		"addr_receiving": {
+			"string": "Direcciones de recibimiento"
+		},
+		"sats_found": {
+			"string": ""
+		},
+		"gen_20": {
+			"string": "Generar 20 más"
+		},
+		"check_balances": {
+			"string": "Consultar Saldos"
+		},
+		"copied": {
+			"string": ""
+		}
+	},
+	"es": {
+		"error_host_port": {
+			"string": "Especifique un host y una puerta al que conectarse."
+		},
+		"error_host": {
+			"string": "Por favor, especifique un host para conectarse."
+		},
+		"error_port": {
+			"string": "Especifique una puerta para conectarse."
+		},
+		"error_port_invalid": {
+			"string": ""
+		},
+		"error_invalid_http": {
+			"string": ""
+		},
+		"error_peer": {
+			"string": ""
+		},
+		"server_updated_title": {
+			"string": "Servidor Electrum actualizado"
+		},
+		"server_updated_message": {
+			"string": "Conectado con éxito a {host}:{port}"
+		},
+		"server_error": {
+			"string": ""
+		},
+		"server_error_description": {
+			"string": ""
+		},
+		"connected_to": {
+			"string": "Actualmente conectado a"
+		},
+		"disconnected": {
+			"string": "desconectado"
+		},
+		"host": {
+			"string": "Anfitrión"
+		},
+		"port": {
+			"string": "Puerta"
+		},
+		"protocol": {
+			"string": "Protocolo"
+		},
+		"button_reset": {
+			"string": "Restablecer padrones iniciales"
+		},
+		"button_connect": {
+			"string": "Conectar con el anfitrión"
+		}
+	},
+	"gap": {
+		"save": {
+			"string": "Guardar"
+		},
+		"reset": {
+			"string": ""
+		},
+		"gap_limit_update_title": {
+			"string": ""
+		},
+		"gap_limit_update_description": {
+			"string": ""
+		},
+		"look_behind": {
+			"string": ""
+		},
+		"look_ahead": {
+			"string": ""
+		},
+		"look_behind_change": {
+			"string": ""
+		},
+		"look_ahead_change": {
+			"string": ""
+		}
+	},
+	"rgs": {
+		"server_url": {
+			"string": ""
+		},
+		"button_connect": {
+			"string": ""
+		},
+		"update_success_title": {
+			"string": ""
+		},
+		"update_success_description": {
+			"string": ""
+		}
+	},
+	"wr": {
+		"error_wr": {
+			"string": ""
+		},
+		"error_url": {
+			"string": ""
+		},
+		"error_https": {
+			"string": ""
+		},
+		"error_healthcheck": {
+			"string": ""
+		},
+		"url_updated_title": {
+			"string": ""
+		},
+		"url_updated_message": {
+			"string": ""
+		}
+	}
+}

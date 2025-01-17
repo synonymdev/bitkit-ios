@@ -1,0 +1,251 @@
+{
+  "your_name": {
+    "string": ""
+  },
+  "your_name_capital": {
+    "string": ""
+  },
+  "contact_name": {
+    "string": ""
+  },
+  "contact": {
+    "string": ""
+  },
+  "contacts": {
+    "string": ""
+  },
+  "contact_add": {
+    "string": ""
+  },
+  "contact_add_capital": {
+    "string": ""
+  },
+  "contact_add_explain": {
+    "string": ""
+  },
+  "contact_add_button": {
+    "string": ""
+  },
+  "contact_key_paste": {
+    "string": ""
+  },
+  "contact_error_yourself": {
+    "string": ""
+  },
+  "contact_error_key": {
+    "string": ""
+  },
+  "contact_edit_capital": {
+    "string": ""
+  },
+  "contacts_name": {
+    "string": ""
+  },
+  "contact_your_name": {
+    "string": ""
+  },
+  "contact_retrieving": {
+    "string": ""
+  },
+  "contact_no_links": {
+    "string": ""
+  },
+  "contact_pay_error": {
+    "string": ""
+  },
+  "contact_share": {
+    "string": ""
+  },
+  "contact_this": {
+    "string": ""
+  },
+  "contact_copied": {
+    "string": ""
+  },
+  "contact_delete_title": {
+    "string": ""
+  },
+  "contact_delete_text": {
+    "string": ""
+  },
+  "contact_delete_yes": {
+    "string": ""
+  },
+  "contact_select": {
+    "string": ""
+  },
+  "contact_assign": {
+    "string": ""
+  },
+  "contacts_no_found": {
+    "string": ""
+  },
+  "disabled": {
+    "string": ""
+  },
+  "onboarding_header": {
+    "string": ""
+  },
+  "onboarding_text": {
+    "string": ""
+  },
+  "onboarding_button": {
+    "string": ""
+  },
+  "onboarding_profile1_header": {
+    "string": ""
+  },
+  "onboarding_profile1_text": {
+    "string": ""
+  },
+  "onboarding_profile2_header": {
+    "string": ""
+  },
+  "onboarding_profile2_text": {
+    "string": ""
+  },
+  "onboarding_widgets_header": {
+    "string": ""
+  },
+  "onboarding_widgets_text": {
+    "string": ""
+  },
+  "my_profile": {
+    "string": ""
+  },
+  "profile": {
+    "string": ""
+  },
+  "profile_save": {
+    "string": ""
+  },
+  "profile_pay_contacts": {
+    "string": ""
+  },
+  "profile_create": {
+    "string": ""
+  },
+  "profile_public_warn": {
+    "string": ""
+  },
+  "profile_bio": {
+    "string": ""
+  },
+  "profile_add_link": {
+    "string": ""
+  },
+  "profile_link_label": {
+    "string": ""
+  },
+  "profile_link_label_placeholder": {
+    "string": ""
+  },
+  "profile_link_value": {
+    "string": ""
+  },
+  "profile_link_public": {
+    "string": ""
+  },
+  "profile_link_suggestions": {
+    "string": ""
+  },
+  "profile_link_suggestions_to_add": {
+    "string": ""
+  },
+  "profile_scan_to_add": {
+    "string": ""
+  },
+  "profile_edit": {
+    "string": ""
+  },
+  "offline_enable": {
+    "string": ""
+  },
+  "offline_enable_explain": {
+    "string": ""
+  },
+  "widgets": {
+    "string": ""
+  },
+  "widget_add": {
+    "string": ""
+  },
+  "widget_loading_description": {
+    "string": ""
+  },
+  "widget_failed_description": {
+    "string": ""
+  },
+  "widget_source": {
+    "string": ""
+  },
+  "widget_price": {
+    "string": ""
+  },
+  "widget_headlines": {
+    "string": ""
+  },
+  "widget_blocks": {
+    "string": ""
+  },
+  "widget_facts": {
+    "string": ""
+  },
+  "widget_qr": {
+    "string": ""
+  },
+  "widget_error_drive": {
+    "string": ""
+  },
+  "widget_feed": {
+    "string": ""
+  },
+  "widget_edit": {
+    "string": ""
+  },
+  "widget_edit_default": {
+    "string": ""
+  },
+  "widget_edit_custom": {
+    "string": ""
+  },
+  "widget_edit_description": {
+    "string": ""
+  },
+  "widget_loading_options": {
+    "string": ""
+  },
+  "widget_reset": {
+    "string": ""
+  },
+  "widget_preview": {
+    "string": ""
+  },
+  "widget_delete_yes": {
+    "string": ""
+  },
+  "widget_delete_title": {
+    "string": ""
+  },
+  "widget_delete_desc": {
+    "string": ""
+  },
+  "error_saving_contact": {
+    "string": ""
+  },
+  "error_saving_profile": {
+    "string": ""
+  },
+  "error_pay_title": {
+    "string": ""
+  },
+  "error_pay_empty_msg": {
+    "string": ""
+  },
+  "auth_depricated_title": {
+    "string": ""
+  },
+  "auth_depricated_msg": {
+    "string": ""
+  }
+}

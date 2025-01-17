@@ -1,0 +1,586 @@
+{
+	"transfer_intro": {
+		"title": {
+			"string": "Расходы\n<accent>Баланс</accent>"
+		},
+		"text": {
+			"string": "Пополните свой баланс расходов, чтобы наслаждаться мгновенными и недорогими транзакциями с друзьями, семьёй и продавцами."
+		},
+		"button": {
+			"string": "Начать"
+		}
+	},
+	"funding": {
+		"nav_title": {
+			"string": "Баланс Расходов"
+		},
+		"title": {
+			"string": "Пополните свой <accent>Баланс Расходов</accent>"
+		},
+		"text": {
+			"string": "Вы можете использовать свои сбережения Bitkit или отправить биткойны из другого кошелька."
+		},
+		"text_blocked": {
+			"string": ""
+		},
+		"text_blocked_cjit": {
+			"string": ""
+		},
+		"button1": {
+			"string": "Перевести из Сбережений"
+		},
+		"button2": {
+			"string": "Использовать Другой Кошелёк"
+		},
+		"button3": {
+			"string": "Дополнительно"
+		}
+	},
+	"funding_advanced": {
+		"nav_title": {
+			"string": "Баланс Расходов"
+		},
+		"title": {
+			"string": "Расширенная <accent>Настройка</accent>"
+		},
+		"text": {
+			"string": "Сканируйте QR-код, чтобы получить свой LNURL Канал от другого LSP, или выберите ручную настройку."
+		},
+		"button1": {
+			"string": "QR LNURL Канала"
+		},
+		"button2": {
+			"string": "Ручная Настройка"
+		}
+	},
+	"no_funds": {
+		"title": {
+			"string": "Недостаточно Средств"
+		},
+		"description": {
+			"string": "Прежде чем вы сможете перевести средства со своего баланса сбережений, вам нужно отправить биткойны в ваш кошелёк Bitkit."
+		},
+		"fund": {
+			"string": "Пополнить Кошелёк"
+		}
+	},
+	"transfer": {
+		"nav_title": {
+			"string": "Перевод Средств"
+		},
+		"confirm": {
+			"string": "Пожалуйста,\n<accent>Подтвердите</accent>"
+		},
+		"custom_fee": {
+			"string": ""
+		},
+		"swipe": {
+			"string": "Проведите для Перевода"
+		}
+	},
+	"spending_intro": {
+		"title": {
+			"string": "Перевод\n<accent>на Расходы</accent>"
+		},
+		"text": {
+			"string": "Переведите средства на свой баланс расходов, чтобы наслаждаться мгновенными и недорогими транзакциями с друзьями, семьёй и продавцами."
+		},
+		"button": {
+			"string": "Начать"
+		}
+	},
+	"transfer_failed": {
+		"nav_title": {
+			"string": "Неудачный Перевод"
+		},
+		"title": {
+			"string": "Перевод\n<accent>Не Удался</accent>"
+		},
+		"text": {
+			"string": "Извините, Bitkit не смог настроить ваш баланс расходов или завершить ваш перевод. Пожалуйста, попробуйте снова."
+		},
+		"cancel": {
+			"string": "Проверить Ошибку"
+		},
+		"continue": {
+			"string": "Попробовать Снова"
+		}
+	},
+	"spending_amount": {
+		"title": {
+			"string": "Перевод\n<accent>на Расходы</accent>"
+		},
+		"quarter": {
+			"string": "25%"
+		},
+		"error_max": {
+			"title": {
+				"string": "Максимум Баланса Расходов"
+			},
+			"description": {
+				"string": "Сумма, которую вы можете перевести на баланс расходов, в настоящее время ограничена ₿ {amount}."
+			},
+			"description_zero": {
+				"string": ""
+			}
+		}
+	},
+	"spending_confirm": {
+		"network_fee": {
+			"string": "Сетевые Комиссии"
+		},
+		"lsp_fee": {
+			"string": "Сервисные Комиссии"
+		},
+		"amount": {
+			"string": "На Баланс Расходов"
+		},
+		"total": {
+			"string": "Итого"
+		},
+		"default": {
+			"string": "Использовать По Умолчанию"
+		}
+	},
+	"spending_advanced": {
+		"title": {
+			"string": "Входящая\n<accent>Ёмкость</accent>"
+		},
+		"fee": {
+			"string": "Комиссия за Ликвидность"
+		}
+	},
+	"liquidity": {
+		"title": {
+			"string": "Ликвидность\n<accent>& Маршрутизация</accent>"
+		},
+		"text": {
+			"string": ""
+		},
+		"label": {
+			"string": "Ликвидность Баланса Расходов"
+		}
+	},
+	"savings_intro": {
+		"title": {
+			"string": "Перевод\n<accent>в Сбережения</accent>"
+		},
+		"text": {
+			"string": "Переведите свой баланс расходов в сбережения, чтобы хранить свой биткойн в долгосрочной перспективе и обеспечить своё будущее."
+		},
+		"button": {
+			"string": "Начать"
+		}
+	},
+	"availability": {
+		"title": {
+			"string": "Доступность\n<accent>Средств</accent>"
+		},
+		"text": {
+			"string": "Перевод средств в сбережения обычно мгновенный, но расчёт может занять до <accent>14 дней</accent> в определённых сетевых условиях."
+		}
+	},
+	"savings_confirm": {
+		"label": {
+			"string": "Перевести в Сбережения"
+		},
+		"transfer_all": {
+			"string": "Перевести Всё"
+		}
+	},
+	"savings_advanced": {
+		"title": {
+			"string": "Выберите Средства\n<accent>для Перевода</accent>"
+		},
+		"text": {
+			"string": "Вы можете перевести часть своего баланса расходов в сбережения, поскольку у вас есть несколько активных Lightning соединений."
+		},
+		"total": {
+			"string": "Всего Выбрано"
+		}
+	},
+	"savings_progress": {
+		"title": {
+			"string": "Средства\n<accent>в Процессе Перевода</accent>"
+		},
+		"text": {
+			"string": "Пожалуйста, подождите, ваш перевод средств выполняется. Это займёт <accent>±10 секунд.</accent>"
+		}
+	},
+	"savings_interrupted": {
+		"nav_title": {
+			"string": "Перевод\n<accent>Прерван</accent>"
+		},
+		"title": {
+			"string": "Держите Bitkit\n<accent>Открытым</accent>"
+		},
+		"text": {
+			"string": "Средства ещё не переведены. Bitkit попытается инициировать перевод в течение следующих <accent>30 минут</accent>. Пожалуйста, держите приложение открытым."
+		}
+	},
+	"transfer_success": {
+		"nav_title": {
+			"string": "Перевод Выполнен Успешно"
+		},
+		"title_spending": {
+			"string": "Средства Переведены\n<accent>на Расходы</accent>"
+		},
+		"text_spending": {
+			"string": "Ваши средства переведены, и ваш баланс расходов готов к использованию."
+		},
+		"title_savings": {
+			"string": "Средства Переведены\n<accent>в Сбережения</accent>"
+		},
+		"text_savings": {
+			"string": "Ваши средства переведены. Вы можете использовать эти средства немедленно."
+		}
+	},
+	"external": {
+		"nav_title": {
+			"string": "Lightning Соединение"
+		}
+	},
+	"external_manual": {
+		"title": {
+			"string": "<accent>Ручная Настройка</accent>"
+		},
+		"text": {
+			"string": "Вы можете использовать внешний узел для ручного открытия Lightning соединения. Введите данные узла, чтобы продолжить."
+		},
+		"node_id": {
+			"string": "ID Узла"
+		},
+		"host": {
+			"string": "Хост"
+		},
+		"port": {
+			"string": "Порт"
+		},
+		"paste": {
+			"string": "Вставить URI Узла"
+		},
+		"scan": {
+			"string": "Сканировать QR"
+		}
+	},
+	"external_amount": {
+		"title": {
+			"string": "Баланс\n<accent>Расходов</accent>"
+		}
+	},
+	"external_success": {
+		"title": {
+			"string": "Соединение\n<accent>Инициировано</accent>"
+		},
+		"text": {
+			"string": "Lightning соединение инициировано. Вы сможете использовать ваш баланс расходов через <accent>±30 минут</accent> (зависит от конфигурации узла)."
+		}
+	},
+	"error_channel_purchase": {
+		"string": "Ошибка Настройки Мгновенных Платежей"
+	},
+	"error_channel_setup_msg": {
+		"string": "Произошла ошибка при настройке вашего мгновенного баланса. {raw}"
+	},
+	"error_channel_receiving": {
+		"string": "Входящая ёмкость должна быть больше ${usdValue}"
+	},
+	"spending": {
+		"string": "Расходы"
+	},
+	"savings": {
+		"string": "Сбережения"
+	},
+	"spending_label": {
+		"string": "Баланс Расходов"
+	},
+	"receiving_label": {
+		"string": "Входящая Ёмкость"
+	},
+	"setting_up_header": {
+		"string": "В Процессе Перевода"
+	},
+	"setting_up_text": {
+		"string": "Пожалуйста, подождите, ваш перевод средств выполняется. Это займёт <accent>±10 минут.</accent>"
+	},
+	"setting_up_step1": {
+		"string": "Обработка Платежа"
+	},
+	"setting_up_step2": {
+		"string": "Платеж Успешен"
+	},
+	"setting_up_step3": {
+		"string": "В Очереди на Открытие"
+	},
+	"setting_up_step4": {
+		"string": "Открытие Соединения"
+	},
+	"setting_up_button": {
+		"string": "Продолжить Использование Bitkit"
+	},
+	"node_info": {
+		"string": "Lightning Узел"
+	},
+	"node_id": {
+		"string": "ID Узла LDK"
+	},
+	"node_disconnected": {
+		"string": "отключен"
+	},
+	"node_failed": {
+		"string": "Bitkit не удалось инициализировать узел Lightning."
+	},
+	"connections": {
+		"string": "Lightning Соединения"
+	},
+	"conn_pending": {
+		"string": "Ожидающие Соединения"
+	},
+	"conn_open": {
+		"string": "Открытые Соединения"
+	},
+	"conn_closed": {
+		"string": "Закрытые Соединения"
+	},
+	"conn_failed": {
+		"string": "Неудачные Соединения"
+	},
+	"conn_closed_show": {
+		"string": "Показать Закрытые и Неудачные"
+	},
+	"conn_closed_hide": {
+		"string": "Скрыть Закрытые и Неудачные"
+	},
+	"conn_button_export_logs": {
+		"string": "Экспортировать Логи"
+	},
+	"conn_button_add": {
+		"string": "Добавить Соединение"
+	},
+	"export_logs": {
+		"string": "Экспортировать Логи Lightning"
+	},
+	"error_logs": {
+		"string": "Ошибка Экспорта Логов"
+	},
+	"error_logs_description": {
+		"string": "Bitkit не удалось экспортировать логи LDK."
+	},
+	"error_invoice": {
+		"string": "Ошибка Создания Инвойса"
+	},
+	"error_add_title": {
+		"string": "Не Удалось Добавить Узел Lightning"
+	},
+	"error_add": {
+		"string": "Bitkit не удалось добавить узел Lightning."
+	},
+	"error_add_uri": {
+		"string": "URI кажется недействительным."
+	},
+	"error_add_tor": {
+		"string": ""
+	},
+	"error_save_title": {
+		"string": "Не Удалось Сохранить Узел Lightning"
+	},
+	"error_save": {
+		"string": "Не удалось сохранить узел Lightning"
+	},
+	"error_decode": {
+		"string": "Не Удалось Декодировать Инвойс"
+	},
+	"peer_saved": {
+		"string": "Узел Lightning успешно добавлен и сохранён."
+	},
+	"invoice_copied": {
+		"string": "Инвойс Скопирован в Буфер Обмена"
+	},
+	"connection": {
+		"string": "Соединение"
+	},
+	"status": {
+		"string": "Статус"
+	},
+	"order_details": {
+		"string": "Детали Ордера"
+	},
+	"order": {
+		"string": "ID Ордера"
+	},
+	"created_on": {
+		"string": "Создано"
+	},
+	"order_expiry": {
+		"string": "Истечение Ордера"
+	},
+	"transaction": {
+		"string": "Транзакция"
+	},
+	"order_fee": {
+		"string": "Комиссия Ордера"
+	},
+	"balance": {
+		"string": "Баланс"
+	},
+	"reserve_balance": {
+		"string": "Резервный Баланс (не доступен для трат)"
+	},
+	"total_size": {
+		"string": "Общий Размер Канала"
+	},
+	"fees": {
+		"string": "Комиссии"
+	},
+	"base_fee": {
+		"string": "Базовая Комиссия за Расходы"
+	},
+	"fee_rate": {
+		"string": "Ставка Комиссии"
+	},
+	"other": {
+		"string": "Другое"
+	},
+	"is_usable": {
+		"string": "Можно Использовать"
+	},
+	"opened_on": {
+		"string": "Открыто"
+	},
+	"closed_on": {
+		"string": "Закрыто"
+	},
+	"channel_node_id": {
+		"string": "ID Узла"
+	},
+	"channel_id": {
+		"string": "ID Канала"
+	},
+	"channel_point": {
+		"string": "Точка Канала"
+	},
+	"closure_reason": {
+		"string": "Причина Закрытия"
+	},
+	"support": {
+		"string": "Поддержка"
+	},
+	"connection_closed": {
+		"title": {
+			"string": "Соединение Закрыто"
+		},
+		"description": {
+			"string": "Средства на вашем балансе расходов были переведены в ваши сбережения."
+		}
+	},
+	"close_conn": {
+		"string": "Закрыть Соединение"
+	},
+	"close_error": {
+		"string": "Перевод Не Удался"
+	},
+	"close_error_msg": {
+		"string": "Не удалось перевести ваши средства обратно в сбережения. Пожалуйста, попробуйте снова."
+	},
+	"close_success_title": {
+		"string": "Перевод Инициирован"
+	},
+	"close_success_msg": {
+		"string": "Ваши средства переводятся обратно в сбережения."
+	},
+	"close_text": {
+		"string": "Комиссия за закрытие этого Lightning соединения и перевод ваших средств обратно в сбережения зависит от условий сети.\n\nПеревод средств в сбережения обычно мгновенный, но расчёт может занять до <accent>14 дней</accent> в определённых сетевых условиях."
+	},
+	"close_button": {
+		"string": "Закрыть"
+	},
+	"force_nav_title": {
+		"string": "Принудительный Перевод"
+	},
+	"force_title": {
+		"string": "Принудительный\n<accent>Перевод</accent>"
+	},
+	"force_text": {
+		"string": "Не удалось инициировать перевод. Хотите выполнить принудительный перевод? Вы не сможете использовать эти средства в течение ±14 дней (!)"
+	},
+	"force_button": {
+		"string": "Принудительный Перевод"
+	},
+	"force_init_title": {
+		"string": "Принудительный Перевод Инициирован"
+	},
+	"force_init_msg": {
+		"string": "Ваши средства будут доступны через ±14 дней."
+	},
+	"force_failed_title": {
+		"string": "Неудачный Принудительный Перевод"
+	},
+	"force_failed_msg": {
+		"string": "Не удалось перевести ваши средства обратно в сбережения. Пожалуйста, попробуйте снова."
+	},
+	"channel_opened_title": {
+		"string": "Баланс Расходов Готов"
+	},
+	"channel_opened_msg": {
+		"string": "Теперь вы можете платить кому угодно, где угодно, мгновенно."
+	},
+	"order_given_up_title": {
+		"string": "Ошибка Настройки Мгновенных Платежей"
+	},
+	"order_given_up_msg": {
+		"string": "Процесс настройки истёк. Пожалуйста, попробуйте снова."
+	},
+	"order_expired_title": {
+		"string": "Ошибка Настройки Мгновенных Платежей"
+	},
+	"order_expired_msg": {
+		"string": "Процесс настройки истёк. Пожалуйста, попробуйте снова."
+	},
+	"order_state": {
+		"awaiting_payment": {
+			"string": "Обработка Платежа"
+		},
+		"payment_canceled": {
+			"string": "Платеж Отменён"
+		},
+		"paid": {
+			"string": "Платеж Успешен"
+		},
+		"refund_available": {
+			"string": "Доступен Возврат"
+		},
+		"refunded": {
+			"string": "Платеж Возвращён"
+		},
+		"queued": {
+			"string": "В Очереди на Открытие"
+		},
+		"opening": {
+			"string": "Открытие Соединения"
+		},
+		"closing": {
+			"string": "Закрытие Соединения"
+		},
+		"given_up": {
+			"string": "Прекращено"
+		},
+		"expired": {
+			"string": "Ордер Истёк"
+		},
+		"closed": {
+			"string": "Соединение Закрыто"
+		},
+		"open": {
+			"string": "Соединение Открыто"
+		},
+		"inactive": {
+			"string": ""
+		}
+	},
+	"wait_text_top": {
+		"string": "Пожалуйста, подождите, пока Bitkit подключается к платёжной сети (±10 секунд)."
+	},
+	"wait_text_bottom": {
+		"string": "Подключение и Синхронизация..."
+	}
+}

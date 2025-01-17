@@ -1,0 +1,709 @@
+{
+	"send": {
+		"string": ""
+	},
+	"receive": {
+		"string": ""
+	},
+	"balance_total_pending": {
+		"string": ""
+	},
+	"create_wallet_error": {
+		"string": ""
+	},
+	"create_wallet_existing_error": {
+		"string": ""
+	},
+	"create_wallet_mnemonic_error": {
+		"string": ""
+	},
+	"create_wallet_mnemonic_restore_error": {
+		"string": ""
+	},
+	"send_bitcoin": {
+		"string": ""
+	},
+	"send_to": {
+		"string": ""
+	},
+	"recipient_contact": {
+		"string": ""
+	},
+	"recipient_invoice": {
+		"string": ""
+	},
+	"recipient_manual": {
+		"string": ""
+	},
+	"recipient_scan": {
+		"string": ""
+	},
+	"send_invoice": {
+		"string": ""
+	},
+	"send_address_placeholder": {
+		"string": ""
+	},
+	"send_clipboard_empty_title": {
+		"string": ""
+	},
+	"send_clipboard_empty_text": {
+		"string": ""
+	},
+	"send_amount": {
+		"string": ""
+	},
+	"send_max": {
+		"string": ""
+	},
+	"send_done": {
+		"string": ""
+	},
+	"send_available": {
+		"string": ""
+	},
+	"send_available_spending": {
+		"string": ""
+	},
+	"send_available_savings": {
+		"string": ""
+	},
+	"send_max_spending": {
+		"title": {
+			"string": ""
+		},
+		"description": {
+			"string": ""
+		}
+	},
+	"send_review": {
+		"string": ""
+	},
+	"send_confirming_in": {
+		"string": ""
+	},
+	"send_invoice_expiration": {
+		"string": ""
+	},
+	"send_swipe": {
+		"string": ""
+	},
+	"send_yes": {
+		"string": ""
+	},
+	"send_dialog1": {
+		"string": ""
+	},
+	"send_dialog2": {
+		"string": ""
+	},
+	"send_dialog3": {
+		"string": ""
+	},
+	"send_dialog4": {
+		"string": ""
+	},
+	"send_dialog5_title": {
+		"string": ""
+	},
+	"send_dialog5_description": {
+		"string": ""
+	},
+	"send_sent": {
+		"string": ""
+	},
+	"send_pending": {
+		"string": ""
+	},
+	"send_quickpay": {
+		"nav_title": {
+			"string": ""
+		},
+		"title": {
+			"string": ""
+		}
+	},
+	"send_pending_note": {
+		"string": ""
+	},
+	"send_instant_failed": {
+		"string": ""
+	},
+	"send_regular": {
+		"string": ""
+	},
+	"send_error_slash_ln": {
+		"string": ""
+	},
+	"send_error_tx_failed": {
+		"string": ""
+	},
+	"send_error_create_tx": {
+		"string": ""
+	},
+	"tag_remove_error_title": {
+		"string": ""
+	},
+	"tag_remove_error_description": {
+		"string": ""
+	},
+	"error_no_invoice": {
+		"string": ""
+	},
+	"error_no_tx_title": {
+		"string": ""
+	},
+	"error_no_tx_msg": {
+		"string": ""
+	},
+	"error_min_fee_title": {
+		"string": ""
+	},
+	"error_min_fee_msg": {
+		"string": ""
+	},
+	"send_amount_error_title": {
+		"string": ""
+	},
+	"send_amount_error_balance": {
+		"string": ""
+	},
+	"send_amount_error_fee": {
+		"string": ""
+	},
+	"send_details": {
+		"string": ""
+	},
+	"send_fee_and_speed": {
+		"string": ""
+	},
+	"send_fee_speed": {
+		"string": ""
+	},
+	"send_fee_error": {
+		"string": ""
+	},
+	"max_possible_fee_rate": {
+		"string": ""
+	},
+	"max_possible_fee_rate_msg": {
+		"string": ""
+	},
+	"min_possible_fee_rate": {
+		"string": ""
+	},
+	"min_possible_fee_rate_msg": {
+		"string": ""
+	},
+	"sats_per_vbyte": {
+		"string": ""
+	},
+	"send_output_to_small_title": {
+		"string": ""
+	},
+	"send_output_to_small_description": {
+		"string": ""
+	},
+	"send_coin_selection_output_to_small_description": {
+		"string": ""
+	},
+	"send_fee_error_min": {
+		"string": ""
+	},
+	"send_fee_custom": {
+		"string": ""
+	},
+	"send_fee_total": {
+		"string": ""
+	},
+	"send_fee_total_fiat": {
+		"string": ""
+	},
+	"note": {
+		"string": ""
+	},
+	"lnurl_pay_confirm": {
+		"comment": {
+			"string": ""
+		},
+		"comment_placeholder": {
+			"string": ""
+		}
+	},
+	"tags": {
+		"string": ""
+	},
+	"tags_add": {
+		"string": ""
+	},
+	"tags_add_button": {
+		"string": ""
+	},
+	"tags_add_error_header": {
+		"string": ""
+	},
+	"tags_add_error_description": {
+		"string": ""
+	},
+	"tags_new": {
+		"string": ""
+	},
+	"tags_new_enter": {
+		"string": ""
+	},
+	"tags_previously": {
+		"string": ""
+	},
+	"tags_filter": {
+		"string": ""
+	},
+	"tags_filter_title": {
+		"string": ""
+	},
+	"tags_no": {
+		"string": ""
+	},
+	"toast_payment_success_title": {
+		"string": ""
+	},
+	"toast_payment_success_description": {
+		"string": ""
+	},
+	"toast_payment_failed_title": {
+		"string": ""
+	},
+	"toast_payment_failed_description": {
+		"string": ""
+	},
+	"selection_title": {
+		"string": ""
+	},
+	"selection_auto": {
+		"string": ""
+	},
+	"selection_total_required": {
+		"string": ""
+	},
+	"selection_total_selected": {
+		"string": ""
+	},
+	"receive_bitcoin": {
+		"string": ""
+	},
+	"receive_specify": {
+		"string": ""
+	},
+	"receive_copied": {
+		"string": ""
+	},
+	"receive_share_address": {
+		"string": ""
+	},
+	"receive_bitcoin_invoice": {
+		"string": ""
+	},
+	"receive_lightning_invoice": {
+		"string": ""
+	},
+	"receive_note_placeholder": {
+		"string": ""
+	},
+	"receive_show_qr": {
+		"string": ""
+	},
+	"receive_text_lnfunds": {
+		"string": ""
+	},
+	"receive_spending": {
+		"string": ""
+	},
+	"receive_connect_initial": {
+		"string": ""
+	},
+	"receive_connect_additional": {
+		"string": ""
+	},
+	"receive_liquidity": {
+		"nav_title": {
+			"string": ""
+		},
+		"nav_title_additional": {
+			"string": ""
+		},
+		"text": {
+			"string": ""
+		},
+		"text_additional": {
+			"string": ""
+		},
+		"label": {
+			"string": ""
+		},
+		"label_additional": {
+			"string": ""
+		}
+	},
+	"receive_cjit_error": {
+		"string": ""
+	},
+	"receive_cjit_error_msg": {
+		"string": ""
+	},
+	"receive_will": {
+		"string": ""
+	},
+	"receive_ldk_init": {
+		"string": ""
+	},
+	"minimum": {
+		"string": ""
+	},
+	"activity": {
+		"string": ""
+	},
+	"activity_show_all": {
+		"string": ""
+	},
+	"activity_no": {
+		"string": ""
+	},
+	"activity_no_explain": {
+		"string": ""
+	},
+	"activity_sent": {
+		"string": ""
+	},
+	"activity_received": {
+		"string": ""
+	},
+	"activity_pending": {
+		"string": ""
+	},
+	"activity_failed": {
+		"string": ""
+	},
+	"activity_transfer": {
+		"string": ""
+	},
+	"activity_transfer_savings_pending": {
+		"string": ""
+	},
+	"activity_transfer_savings_done": {
+		"string": ""
+	},
+	"activity_transfer_spending_pending": {
+		"string": ""
+	},
+	"activity_transfer_spending_done": {
+		"string": ""
+	},
+	"activity_transfer_to_spending": {
+		"string": ""
+	},
+	"activity_transfer_pending": {
+		"string": ""
+	},
+	"activity_confirms_in": {
+		"string": ""
+	},
+	"activity_confirms_in_boosted": {
+		"string": ""
+	},
+	"activity_low_fee": {
+		"string": ""
+	},
+	"activity_bitcoin_sent": {
+		"string": ""
+	},
+	"activity_bitcoin_received": {
+		"string": ""
+	},
+	"activity_error_get": {
+		"string": ""
+	},
+	"activity_error_get_description": {
+		"string": ""
+	},
+	"activity_error_tx_not_found": {
+		"string": ""
+	},
+	"activity_confirming": {
+		"string": ""
+	},
+	"activity_confirmed": {
+		"string": ""
+	},
+	"activity_removed": {
+		"string": ""
+	},
+	"activity_removed_title": {
+		"string": ""
+	},
+	"activity_removed_msg": {
+		"string": ""
+	},
+	"activity_boosting": {
+		"string": ""
+	},
+	"activity_fee": {
+		"string": ""
+	},
+	"activity_payment": {
+		"string": ""
+	},
+	"activity_status": {
+		"string": ""
+	},
+	"activity_date": {
+		"string": ""
+	},
+	"activity_time": {
+		"string": ""
+	},
+	"activity_contact": {
+		"string": ""
+	},
+	"activity_assign": {
+		"string": ""
+	},
+	"activity_detach": {
+		"string": ""
+	},
+	"activity_tag": {
+		"string": ""
+	},
+	"activity_boost": {
+		"string": ""
+	},
+	"activity_boosted": {
+		"string": ""
+	},
+	"activity_explore": {
+		"string": ""
+	},
+	"activity_tx_id": {
+		"string": ""
+	},
+	"activity_preimage": {
+		"string": ""
+	},
+	"activity_payment_hash": {
+		"string": ""
+	},
+	"activity_address": {
+		"string": ""
+	},
+	"activity_input": {
+		"string": "{count, plural, one {} few {} other {}}"
+	},
+	"activity_output": {
+		"string": "{count, plural, one {} few {} other {}}"
+	},
+	"activity_boosted_cpfp": {
+		"string": ""
+	},
+	"activity_boosted_rbf": {
+		"string": ""
+	},
+	"activity_explorer": {
+		"string": ""
+	},
+	"activity_successful": {
+		"string": ""
+	},
+	"activity_invoice_note": {
+		"string": ""
+	},
+	"activity_invoice_comment": {
+		"string": ""
+	},
+	"activity_invoice": {
+		"string": ""
+	},
+	"activity_all": {
+		"string": ""
+	},
+	"activity_tabs": {
+		"all": {
+			"string": ""
+		},
+		"sent": {
+			"string": ""
+		},
+		"received": {
+			"string": ""
+		},
+		"other": {
+			"string": ""
+		}
+	},
+	"details_savings_title": {
+		"string": ""
+	},
+	"details_spending_title": {
+		"string": ""
+	},
+	"savings": {
+		"title": {
+			"string": ""
+		},
+		"onboarding": {
+			"string": ""
+		}
+	},
+	"spending": {
+		"title": {
+			"string": ""
+		},
+		"onboarding": {
+			"string": ""
+		}
+	},
+	"details_transfer_subtitle": {
+		"string": ""
+	},
+	"tx_invalid": {
+		"string": ""
+	},
+	"boost": {
+		"string": ""
+	},
+	"boost_title": {
+		"string": ""
+	},
+	"boost_success_title": {
+		"string": ""
+	},
+	"boost_success_msg": {
+		"string": ""
+	},
+	"boost_error_title": {
+		"string": ""
+	},
+	"boost_error_msg": {
+		"string": ""
+	},
+	"boost_fee_custom": {
+		"string": ""
+	},
+	"boost_fee_recomended": {
+		"string": ""
+	},
+	"boost_recomended_button": {
+		"string": ""
+	},
+	"boost_swipe": {
+		"string": ""
+	},
+	"payment_received": {
+		"string": ""
+	},
+	"instant_payment_received": {
+		"string": ""
+	},
+	"error_create_tx": {
+		"string": ""
+	},
+	"error_create_tx_msg": {
+		"string": ""
+	},
+	"error_broadcast_tx": {
+		"string": ""
+	},
+	"error_broadcast_tx_msg": {
+		"string": ""
+	},
+	"error_broadcast_tx_connection": {
+		"string": ""
+	},
+	"filter_title": {
+		"string": ""
+	},
+	"filter_clear": {
+		"string": ""
+	},
+	"filter_apply": {
+		"string": ""
+	},
+	"reorg_detected": {
+		"string": ""
+	},
+	"reorg_msg_begin": {
+		"string": "{count, plural, one {} few {} other {}} Please wait."
+	},
+	"reorg_msg_end": {
+		"string": ""
+	},
+	"lnurl_w_title": {
+		"string": ""
+	},
+	"lnurl_w_max": {
+		"string": ""
+	},
+	"lnurl_w_text": {
+		"string": ""
+	},
+	"lnurl_w_button": {
+		"string": ""
+	},
+	"lnurl_p_title": {
+		"string": ""
+	},
+	"lnurl_pay": {
+		"error_min": {
+			"title": {
+				"string": ""
+			},
+			"description": {
+				"string": ""
+			}
+		}
+	},
+	"lnurl_p_max": {
+		"string": ""
+	},
+	"balance_hidden_title": {
+		"string": ""
+	},
+	"balance_hidden_message": {
+		"string": ""
+	},
+	"balance_unit_switched_title": {
+		"string": ""
+	},
+	"balance_unit_switched_message": {
+		"string": ""
+	},
+	"refresh_error_title": {
+		"string": ""
+	},
+	"refresh_error_msg": {
+		"string": ""
+	},
+	"refresh_error_throttle_title": {
+		"string": ""
+	},
+	"refresh_error_throttle_description": {
+		"string": ""
+	},
+	"ldk_sync_error_title": {
+		"string": ""
+	},
+	"ldk_start_error_title": {
+		"string": ""
+	},
+	"receive_insufficient_title": {
+		"string": ""
+	},
+	"receive_insufficient_text": {
+		"string": ""
+	},
+	"receive_foreground_title": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	},
+	"receive_foreground_msg": {
+		"string": "",
+		"developer_comment": "This message appears when the user is shown an LN invoice but tries to switch to another app"
+	}
+}
