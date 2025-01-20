@@ -63,4 +63,5 @@ struct TabBar: View {
         TabBar()
             .environmentObject(AppViewModel())
     }
+    .preferredColorScheme(.dark)
 }

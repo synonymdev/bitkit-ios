@@ -205,4 +205,5 @@ struct RestoreWalletView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
     }
+    .preferredColorScheme(.dark)
 }

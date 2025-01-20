@@ -4,7 +4,7 @@ struct CreateWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     private let t = useTranslation(.onboarding)
-    
+
     var body: some View {
         VStack {
             OnboardingTab(
@@ -13,7 +13,7 @@ struct CreateWalletView: View {
                 text: t.parts("slide4_text"),
                 secondLineColor: .brandAccent
             )
-            
+
             // Action buttons
             HStack(spacing: 16) {
                 Button(action: {
@@ -32,7 +32,7 @@ struct CreateWalletView: View {
                         .foregroundColor(.white)
                         .cornerRadius(30)
                 }
-                
+
                 NavigationLink {
                     RestoreWalletView()
                 } label: {
@@ -55,4 +55,5 @@ struct CreateWalletView: View {
     CreateWalletView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
 }

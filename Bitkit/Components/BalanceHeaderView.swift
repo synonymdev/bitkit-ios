@@ -110,3 +110,16 @@ struct BalanceHeaderView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: currency.primaryDisplay)
     }
 }
+
+#Preview {
+    ScrollView {
+        VStack(alignment: .leading) {
+            BalanceHeaderView(sats: 123456)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .padding(.top)
+    }
+    .environmentObject(CurrencyViewModel())
+    .preferredColorScheme(.dark)
+}

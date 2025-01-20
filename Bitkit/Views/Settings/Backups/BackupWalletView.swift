@@ -109,6 +109,7 @@ struct BackupWalletView: View {
 #Preview {
     NavigationView {
         BackupWalletView()
-            .environmentObject(AppViewModel())
     }
-} 
+    .environmentObject(AppViewModel())
+    .preferredColorScheme(.dark)
+}

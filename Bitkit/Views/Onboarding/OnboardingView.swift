@@ -93,4 +93,5 @@ struct OnboardingView: View {
 
 #Preview {
     OnboardingView()
+        .preferredColorScheme(.dark)
 }

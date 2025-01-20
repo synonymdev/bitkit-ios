@@ -76,7 +76,7 @@ struct SettingsListView: View {
                         }
                         .foregroundColor(.redAccent)
                     }
-                    
+
                     Button {
                         Task {
                             do {
@@ -139,4 +139,5 @@ struct SettingsListView: View {
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(ActivityListViewModel())
+        .preferredColorScheme(.dark)
 }

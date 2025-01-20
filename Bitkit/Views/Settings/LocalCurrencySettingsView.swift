@@ -67,6 +67,7 @@ struct LocalCurrencySettingsView: View {
 #Preview {
     NavigationView {
         LocalCurrencySettingsView()
-            .environmentObject(CurrencyViewModel())
     }
+    .environmentObject(CurrencyViewModel())
+    .preferredColorScheme(.dark)
 }

@@ -70,4 +70,5 @@ struct IntroView: View {
     NavigationView {
         IntroView()
     }
+    .preferredColorScheme(.dark)
 }

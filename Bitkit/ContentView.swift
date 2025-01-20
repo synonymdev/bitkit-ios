@@ -77,7 +77,7 @@ struct ContentView: View {
                 withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
                     hideSplash = true
                 }
-                
+
                 // Remove splash view after animation completes
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     removeSplash = true
@@ -148,4 +148,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+        .preferredColorScheme(.dark)
 }

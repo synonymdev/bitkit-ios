@@ -219,4 +219,5 @@ struct TermsView: View {
 
 #Preview {
     TermsView()
+        .preferredColorScheme(.dark)
 }
