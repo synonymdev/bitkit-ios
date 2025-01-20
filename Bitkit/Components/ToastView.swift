@@ -89,4 +89,5 @@ extension View {
             visibilityTime: 3.0
         ), onDismiss: {}
     )
+    .preferredColorScheme(.dark)
 }

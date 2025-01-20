@@ -246,4 +246,5 @@ struct LightningBalanceRow: View {
 
 #Preview {
     NodeStateView()
+        .preferredColorScheme(.dark)
 }

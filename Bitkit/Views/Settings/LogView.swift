@@ -83,13 +83,13 @@ struct LogView: View {
     private func prepareFileForSharing(_ sourceURL: URL) -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         let destURL = tempDir.appendingPathComponent("ldk_node_latest.log")
-        
+
         try? FileManager.default.removeItem(at: destURL) // Remove any existing file
-        
+
         do {
             // Read the content from the symbolic link
             let content = try String(contentsOf: sourceURL, encoding: .utf8)
-            
+
             // Write the content to a new file
             try content.write(to: destURL, atomically: true, encoding: .utf8)
             return destURL
@@ -102,7 +102,7 @@ struct LogView: View {
 
 struct ShareSheet: UIViewControllerRepresentable {
     let activityItems: [Any]
-    
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(
             activityItems: activityItems,
@@ -110,10 +110,11 @@ struct ShareSheet: UIViewControllerRepresentable {
         )
         return controller
     }
-    
+
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
     LogView()
+        .preferredColorScheme(.dark)
 }

@@ -139,4 +139,5 @@ struct WalletInitResultView: View {
         WalletInitResultView(result: .failed(NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Something went wrong"])))
     }
     .environmentObject(WalletViewModel())
+    .preferredColorScheme(.dark)
 }

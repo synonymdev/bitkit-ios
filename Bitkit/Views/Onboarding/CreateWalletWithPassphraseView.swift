@@ -12,13 +12,13 @@ struct CreateWalletWithPassphraseView: View {
     
     var content: some View {
         VStack {
-           OnboardingTab(
-               imageName: "padlock2",
-               title: t.parts("passphrase_header"),
-               text: t.parts("passphrase_text"),
-               secondLineColor: .brandAccent
-           )
-           .frame(maxHeight: .infinity)
+            OnboardingTab(
+                imageName: "padlock2",
+                title: t.parts("passphrase_header"),
+                text: t.parts("passphrase_text"),
+                secondLineColor: .brandAccent
+            )
+            .frame(maxHeight: .infinity)
     
             TextField(t("passphrase"), text: $bip39Passphrase)
                 .textInputAutocapitalization(.never)

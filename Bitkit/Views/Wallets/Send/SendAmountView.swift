@@ -80,4 +80,5 @@ struct SendAmountView: View {
     SendAmountView()
         .environmentObject(AppViewModel())
         .environmentObject(WalletViewModel())
+        .preferredColorScheme(.dark)
 }

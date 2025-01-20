@@ -58,4 +58,5 @@ struct LightningSettingsView: View {
 
 #Preview {
     LightningSettingsView()
+        .preferredColorScheme(.dark)
 }

@@ -67,11 +67,11 @@ struct InitializingWalletView: View {
                             let increment: Double
                             if !shouldFinish {
                                 if percentage >= 80 {
-                                    increment = baseIncrement * 0.125  // Halved three times (0.5 * 0.5 * 0.5)
+                                    increment = baseIncrement * 0.125 // Halved three times (0.5 * 0.5 * 0.5)
                                 } else if percentage >= 70 {
-                                    increment = baseIncrement * 0.25   // Halved twice (0.5 * 0.5)
+                                    increment = baseIncrement * 0.25 // Halved twice (0.5 * 0.5)
                                 } else if percentage >= 60 {
-                                    increment = baseIncrement * 0.5    // Halved once
+                                    increment = baseIncrement * 0.5 // Halved once
                                 } else {
                                     increment = baseIncrement
                                 }

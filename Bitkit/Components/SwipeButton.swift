@@ -120,4 +120,5 @@ struct SwipeButton: View {
         }
     }
     .padding()
+    .preferredColorScheme(.dark)
 }

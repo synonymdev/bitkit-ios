@@ -69,4 +69,5 @@ struct OnboardingTab: View {
         disclaimerText: "*Some features may require additional setup",
         secondLineColor: .brandAccent
     )
+    .preferredColorScheme(.dark)
 }

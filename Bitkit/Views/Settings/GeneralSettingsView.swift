@@ -19,4 +19,5 @@ struct GeneralSettingsView: View {
     NavigationView {
         GeneralSettingsView()
     }
-} 
+    .preferredColorScheme(.dark)
+}

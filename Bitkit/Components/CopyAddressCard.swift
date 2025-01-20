@@ -48,4 +48,5 @@ struct CopyAddressCard: View {
 
 #Preview {
     CopyAddressCard(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")
+        .preferredColorScheme(.dark)
 }
