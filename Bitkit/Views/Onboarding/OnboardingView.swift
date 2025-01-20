@@ -12,7 +12,7 @@ struct OnboardingView: View {
                     imageName: "keyring",
                     title: t.parts("slide0_header"),
                     text: t.parts("slide0_text"),
-                    secondLineColor: .blue
+                    secondLineColor: .blueAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -24,7 +24,7 @@ struct OnboardingView: View {
                     title: t.parts("slide1_header"),
                     text: t.parts("slide1_text"),
                     disclaimerText: t("slide1_note"),
-                    secondLineColor: .purple
+                    secondLineColor: .purpleAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -35,7 +35,7 @@ struct OnboardingView: View {
                     imageName: "spark",
                     title: t.parts("slide2_header"),
                     text: t.parts("slide2_text"),
-                    secondLineColor: .yellow
+                    secondLineColor: .yellowAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -46,7 +46,7 @@ struct OnboardingView: View {
                     imageName: "shield",
                     title: t.parts("slide3_header"),
                     text: t.parts("slide3_text"),
-                    secondLineColor: .green
+                    secondLineColor: .greenAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)

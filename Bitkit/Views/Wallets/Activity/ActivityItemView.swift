@@ -61,7 +61,7 @@ struct ActivityItemView: View {
         case .lightning:
             Image(systemName: "bolt")
                 .font(.title)
-                .foregroundColor(.purple)
+                .foregroundColor(.purpleAccent)
                 .opacity(0.8)
         case .onchain:
             Image(systemName: "link")
@@ -99,14 +99,14 @@ struct ActivityItemView: View {
                 .foregroundColor(.gray)
         case .succeeded:
             Image(systemName: "checkmark")
-                .foregroundColor(.green)
+                .foregroundColor(Color.greenAccent)
             Text("Successful")
-                .foregroundColor(.green)
+                .foregroundColor(Color.greenAccent)
         case .failed:
             Image(systemName: "xmark")
-                .foregroundColor(.red)
+                .foregroundColor(.red16)
             Text("Failed")
-                .foregroundColor(.red)
+                .foregroundColor(.red16)
         case .none:
             EmptyView()
         }
@@ -116,9 +116,9 @@ struct ActivityItemView: View {
     private func onchainStatusView(confirmed: Bool?) -> some View {
         if confirmed == true {
             Image(systemName: "checkmark")
-                .foregroundColor(.green)
+                .foregroundColor(Color.greenAccent)
             Text("Confirmed")
-                .foregroundColor(.green)
+                .foregroundColor(Color.greenAccent)
         } else {
             Image(systemName: "clock")
                 .foregroundColor(.gray)
@@ -165,6 +165,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                 createdAt: nil,
                 updatedAt: nil
             )))
+            .environmentObject(CurrencyViewModel())
             .previewDisplayName("Lightning Payment")
 
             // Onchain Activity Preview
@@ -187,8 +188,8 @@ struct ActivityItemView_Previews: PreviewProvider {
                 createdAt: nil,
                 updatedAt: nil
             )))
+            .environmentObject(CurrencyViewModel())
             .previewDisplayName("Onchain Payment")
         }
-        .environmentObject(CurrencyViewModel())
     }
 }

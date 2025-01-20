@@ -94,9 +94,9 @@ struct WalletInitResultView: View {
     private var titleColor: Color {
         switch result {
         case .created, .restored:
-            return .green
+            return .greenAccent
         case .failed:
-            return .red
+            return .redAccent
         }
     }
     

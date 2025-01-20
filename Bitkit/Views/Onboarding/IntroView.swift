@@ -19,7 +19,7 @@ struct IntroView: View {
                 parts.reduce(Text("")) { current, part in
                     current + Text(part.text.uppercased())
                         .font(.system(size: 44, weight: .black))
-                        .foregroundColor(part.isAccent ? Color.brand : .primary)
+                        .foregroundColor(part.isAccent ? Color.brandAccent : .primary)
                 }
                     
                 Text(t("welcome_text"))

@@ -21,7 +21,7 @@ struct LogView: View {
                     Text(line)
                         .font(.system(size: 8))
                         .multilineTextAlignment(.leading)
-                        .foregroundColor(.green)
+                        .foregroundColor(.greenAccent)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }

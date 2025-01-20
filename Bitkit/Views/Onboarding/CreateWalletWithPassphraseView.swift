@@ -16,7 +16,7 @@ struct CreateWalletWithPassphraseView: View {
                imageName: "padlock2",
                title: t.parts("passphrase_header"),
                text: t.parts("passphrase_text"),
-               secondLineColor: .brand
+               secondLineColor: .brandAccent
            )
            .frame(maxHeight: .infinity)
     
@@ -73,5 +73,6 @@ struct CreateWalletWithPassphraseView: View {
         CreateWalletWithPassphraseView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
+            .preferredColorScheme(.dark)
     }
 }
