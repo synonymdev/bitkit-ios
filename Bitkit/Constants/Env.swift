@@ -182,4 +182,12 @@ enum Env {
             fatalError("Signet network not implemented")
         }
     }
+
+    static var termsOfServiceUrl: String {
+        "https://www.bitkit.to/terms-of-use"
+    }
+
+    static var privacyPolicyUrl: String {
+        "https://www.bitkit.to/privacy-policy"
+    }
 }
