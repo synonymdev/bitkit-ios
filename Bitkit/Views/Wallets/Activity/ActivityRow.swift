@@ -139,11 +139,11 @@ private struct TransactionIcon: View {
         if isLightning {
             if status == .failed {
                 Image(systemName: "xmark")
-                    .foregroundColor(.red)
+                    .foregroundColor(.redAccent)
             } else {
                 let systemName = txType == .sent ? "arrow.up" : "arrow.down"
                 Image(systemName: systemName)
-                    .foregroundColor(.purple)
+                    .foregroundColor(.purpleAccent)
             }
         } else {
             let systemName = txType == .sent ? "arrow.up" : "arrow.down"

@@ -74,7 +74,7 @@ struct SettingsListView: View {
                         } icon: {
                             Image(systemName: "clock.badge.xmark")
                         }
-                        .foregroundColor(.red)
+                        .foregroundColor(.redAccent)
                     }
                     
                     Button {
@@ -119,7 +119,7 @@ struct SettingsListView: View {
                         } icon: {
                             Image(systemName: "trash.fill")
                         }
-                        .foregroundColor(.red)
+                        .foregroundColor(.redAccent)
                     }
                 }
             } header: {

@@ -43,7 +43,7 @@ struct RestoreWalletView: View {
                             current + Text(part.text.uppercased())
                                 .font(.largeTitle)
                                 .fontWeight(.black)
-                                .foregroundColor(part.isAccent ? .blue : .primary)
+                                .foregroundColor(part.isAccent ? .blueAccent : .primary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)

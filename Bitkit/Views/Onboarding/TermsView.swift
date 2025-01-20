@@ -30,7 +30,7 @@ struct TermsDeclarationText: View {
             var current = result
             var partText = AttributedString(part.text)
             if part.isAccent {
-                partText.foregroundColor = .brand
+                partText.foregroundColor = .brandAccent
                 partText.underlineStyle = .single
                 
                 if let url = URL(string: Env.termsOfServiceUrl) {
@@ -45,7 +45,7 @@ struct TermsDeclarationText: View {
         
         Text(text)
             .font(.subheadline)
-            .tint(.brand)
+            .tint(.brandAccent)
     }
 }
 
@@ -58,7 +58,7 @@ struct PrivacyDeclarationText: View {
             var current = result
             var partText = AttributedString(part.text)
             if part.isAccent {
-                partText.foregroundColor = .brand
+                partText.foregroundColor = .brandAccent
                 partText.underlineStyle = .single
                 
                 if let url = URL(string: Env.privacyPolicyUrl) {
@@ -73,7 +73,7 @@ struct PrivacyDeclarationText: View {
         
         Text(text)
             .font(.subheadline)
-            .tint(.brand)
+            .tint(.brandAccent)
     }
 }
 
@@ -97,7 +97,7 @@ struct TermsView: View {
                             Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "")
                             .font(.largeTitle)
                             .fontWeight(.black)
-                            .foregroundColor(.brand)
+                            .foregroundColor(.brandAccent)
                     }
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,13 +138,13 @@ struct TermsView: View {
                                 .font(.headline)
                             TermsDeclarationText()
                                 .font(.subheadline)
-                                .tint(.brand)
+                                .tint(.brandAccent)
                         }
                         
                         Spacer()
                         
                         Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(termsAccepted ? .brand : .gray)
+                            .foregroundColor(termsAccepted ? .brandAccent : .gray)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())
@@ -162,13 +162,13 @@ struct TermsView: View {
                                 .font(.headline)
                             PrivacyDeclarationText()
                                 .font(.subheadline)
-                                .tint(.brand)
+                                .tint(.brandAccent)
                         }
                         
                         Spacer()
                         
                         Image(systemName: privacyAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(privacyAccepted ? .brand : .gray)
+                            .foregroundColor(privacyAccepted ? .brandAccent : .gray)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())

@@ -67,6 +67,6 @@ struct OnboardingTab: View {
             TranslationPart(text: "Keep them safe!", isAccent: true)
         ],
         disclaimerText: "*Some features may require additional setup",
-        secondLineColor: .brand
+        secondLineColor: .brandAccent
     )
 }

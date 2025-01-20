@@ -161,7 +161,7 @@ struct NodeStateView: View {
                             Label(closingChannels.contains(channel.channelId) ? "Closing..." : "Close Channel", systemImage: "xmark")
                         }
                         .disabled(closingChannels.contains(channel.channelId))
-                        .tint(.red)
+                        .tint(.redAccent)
                     }
                 }
             }

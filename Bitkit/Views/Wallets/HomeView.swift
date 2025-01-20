@@ -49,7 +49,7 @@ struct HomeView: View {
                             title: "SPENDING",
                             sats: UInt64(wallet.totalLightningSats),
                             icon: "bolt.circle",
-                            iconColor: .purple
+                            iconColor: .purpleAccent
                         )
                     }
                 }

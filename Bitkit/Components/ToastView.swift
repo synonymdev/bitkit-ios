@@ -41,11 +41,11 @@ struct ToastView: View {
 
     private var color: Color {
         switch toast.type {
-        case .success: return .green
-        case .info: return .blue
-        case .lightning: return .purple
+        case .success: return .greenAccent
+        case .info: return .blueAccent
+        case .lightning: return .purpleAccent
         case .warning: return .orange
-        case .error: return .red
+        case .error: return .redAccent
         }
     }
 }

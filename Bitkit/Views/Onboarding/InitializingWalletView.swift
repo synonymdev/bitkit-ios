@@ -56,7 +56,7 @@ struct InitializingWalletView: View {
             Text("\(Int(percentage))%")
                 .font(.largeTitle)
                 .fontWeight(.black)
-                .foregroundColor(.brand)
+                .foregroundColor(.brandAccent)
                 .onAppear {
                     timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                         if percentage < 100 {
@@ -146,7 +146,7 @@ struct InitializingWalletView: View {
                         parts.reduce(Text("")) { current, part in
                             current + Text(part.text.uppercased())
                                 .font(.system(size: 44, weight: .black))
-                                .foregroundColor(part.isAccent ? .brand : .primary)
+                                .foregroundColor(part.isAccent ? .brandAccent : .primary)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
