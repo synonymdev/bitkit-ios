@@ -62,7 +62,7 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 ForEach(0 ..< 5) { index in
                     Circle()
-                        .fill(currentTab == index ? Color.primary : Color.secondary)
+                        .fill(currentTab == index ? Color.textPrimary : Color.textSecondary)
                         .frame(width: 7, height: 7)
                 }
             }
@@ -79,12 +79,14 @@ struct OnboardingView: View {
                     NavigationLink(t("advanced_setup")) {
                         CreateWalletWithPassphraseView()
                     }
+                    .bodyMTextStyle()
                 } else {
                     Button(t("skip")) {
                         withAnimation {
                             currentTab = 4
                         }
                     }
+                    .bodyMTextStyle()
                 }
             }
         }

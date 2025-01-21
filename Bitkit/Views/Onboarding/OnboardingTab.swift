@@ -20,31 +20,29 @@ struct OnboardingTab: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                title.reduce(Text("")) { current, part in
+                (title.reduce(Text("")) { current, part in
                     current + Text(part.text.uppercased())
-                        .font(.largeTitle)
-                        .fontWeight(.black)
-                        .foregroundColor(part.isAccent ? secondLineColor : .primary)
-                }
+                        .foregroundColor(part.isAccent ? secondLineColor : .textPrimary)
+                })
+                .displayTextStyle()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 4)
 
             // Text with conditional accent parts
-            text.reduce(Text("")) { current, part in
+            (text.reduce(Text("")) { current, part in
                 current + Text(part.text)
-                    .foregroundColor(part.isAccent ? .primary : .secondary)
+                    .foregroundColor(part.isAccent ? .textPrimary : .textSecondary)
                     .fontWeight(part.isAccent ? .bold : .regular)
-            }
-            .font(.body)
+            })
+            .bodyMTextStyle()
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 4)
 
             if let disclaimer = disclaimerText {
                 Text(disclaimer)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .captionTextStyle(color: .textSecondary)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 4)
