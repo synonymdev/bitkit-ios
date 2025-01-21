@@ -20,3 +20,9 @@ node scripts/validate-translations.js
 ```
 
 This checks for missing translations and validates that all translation keys used in the Swift code exist in the JSON files. (This check is also automated in GitHub Actions)
+
+## Development
+
+### Xcode Previews
+
+Due to the Rust dependencies in the project, Xcode previews are only compatible with iOS 17 and below.

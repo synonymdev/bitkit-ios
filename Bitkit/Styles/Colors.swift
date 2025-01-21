@@ -50,6 +50,27 @@ extension Color {
     static let yellow24 = Color.yellowAccent.opacity(0.24)
 }
 
+// MARK: - Text Colors
+extension Color {
+    static let textPrimary = Color(uiColor: UIColor { traitCollection in
+        switch traitCollection.userInterfaceStyle {
+        case .dark:
+            return UIColor(Color.customWhite)
+        default:
+            return UIColor(Color.black92)
+        }
+    })
+    
+    static let textSecondary = Color(uiColor: UIColor { traitCollection in
+        switch traitCollection.userInterfaceStyle {
+        case .dark:
+            return UIColor(Color.white64)
+        default:
+            return UIColor(Color.black50)
+        }
+    })
+}
+
 // MARK: - Hex Initializer
 extension Color {
     init(hex: UInt, alpha: Double = 1) {
