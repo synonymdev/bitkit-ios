@@ -12,7 +12,7 @@ fileprivate extension View {
     }
 }
 
-fileprivate struct DisplayStyle: ViewModifier {
+fileprivate struct DisplayTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -24,7 +24,7 @@ fileprivate struct DisplayStyle: ViewModifier {
     }
 }
 
-fileprivate struct HeadlineStyle: ViewModifier {
+fileprivate struct HeadlineTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -36,7 +36,7 @@ fileprivate struct HeadlineStyle: ViewModifier {
     }
 }
 
-fileprivate struct TitleStyle: ViewModifier {
+fileprivate struct TitleTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -47,7 +47,7 @@ fileprivate struct TitleStyle: ViewModifier {
     }
 }
 
-fileprivate struct SubtitleStyle: ViewModifier {
+fileprivate struct SubtitleTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -58,7 +58,7 @@ fileprivate struct SubtitleStyle: ViewModifier {
     }
 }
 
-fileprivate struct BodyMStyle: ViewModifier {
+fileprivate struct BodyMTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -70,7 +70,7 @@ fileprivate struct BodyMStyle: ViewModifier {
     }
 }
 
-fileprivate struct BodyMBoldStyle: ViewModifier {
+fileprivate struct BodyMBoldTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -82,7 +82,7 @@ fileprivate struct BodyMBoldStyle: ViewModifier {
     }
 }
 
-fileprivate struct BodySStyle: ViewModifier {
+fileprivate struct BodySTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -94,7 +94,7 @@ fileprivate struct BodySStyle: ViewModifier {
     }
 }
 
-fileprivate struct CaptionStyle: ViewModifier {
+fileprivate struct CaptionTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -106,7 +106,7 @@ fileprivate struct CaptionStyle: ViewModifier {
     }
 }
 
-fileprivate struct FootnoteStyle: ViewModifier {
+fileprivate struct FootnoteTextStyle: ViewModifier {
     let color: Color
     
     func body(content: Content) -> some View {
@@ -120,39 +120,39 @@ fileprivate struct FootnoteStyle: ViewModifier {
 
 // MARK: - Public Style Extensions
 extension View {
-    func displayStyle(color: Color = .textPrimary) -> some View {
-        modifier(DisplayStyle(color: color))
+    func displayTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(DisplayTextStyle(color: color))
     }
     
-    func headlineStyle(color: Color = .textPrimary) -> some View {
-        modifier(HeadlineStyle(color: color))
+    func headlineTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(HeadlineTextStyle(color: color))
     }
     
-    func titleStyle(color: Color = .textPrimary) -> some View {
-        modifier(TitleStyle(color: color))
+    func titleTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(TitleTextStyle(color: color))
     }
     
-    func subtitleStyle(color: Color = .textPrimary) -> some View {
-        modifier(SubtitleStyle(color: color))
+    func subtitleTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(SubtitleTextStyle(color: color))
     }
     
-    func bodyMStyle(color: Color = .textPrimary) -> some View {
-        modifier(BodyMStyle(color: color))
+    func bodyMTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(BodyMTextStyle(color: color))
     }
     
-    func bodyMBoldStyle(color: Color = .textPrimary) -> some View {
-        modifier(BodyMBoldStyle(color: color))
+    func bodyMBoldTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(BodyMBoldTextStyle(color: color))
     }
     
-    func bodySStyle(color: Color = .textPrimary) -> some View {
-        modifier(BodySStyle(color: color))
+    func bodySTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(BodySTextStyle(color: color))
     }
     
-    func captionStyle(color: Color = .textPrimary) -> some View {
-        modifier(CaptionStyle(color: color))
+    func captionTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(CaptionTextStyle(color: color))
     }
     
-    func footnoteStyle(color: Color = .textPrimary) -> some View {
-        modifier(FootnoteStyle(color: color))
+    func footnoteTextStyle(color: Color = .textPrimary) -> some View {
+        modifier(FootnoteTextStyle(color: color))
     }
 } 
