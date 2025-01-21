@@ -15,31 +15,31 @@ struct StyleGuideView: View {
         VStack(alignment: .leading, spacing: 24) {  
             Group {
                 (Text("Display Style With An ") + Text("Accent").foregroundColor(.brandAccent) + Text(" Over Here"))
-                    .displayStyle()
+                    .displayTextStyle()
                 
                 (Text("Headline Style With An ") + Text("Accent").foregroundColor(.blueAccent) + Text(" Over Here"))
-                    .headlineStyle()
+                    .headlineTextStyle()
                 
                 (Text("Title Style With An ") + Text("Accent").foregroundColor(.greenAccent) + Text(" Over Here"))
-                    .titleStyle()
+                    .titleTextStyle()
                 
                 (Text("Subtitle style with an ") + Text("accent").foregroundColor(.purpleAccent) + Text(" over here"))
-                    .subtitleStyle()
+                    .subtitleTextStyle()
                 
                 (Text("Body m style with an ") + Text("accent").foregroundColor(.brandAccent) + Text(" over here"))
-                    .bodyMStyle()
+                    .bodyMTextStyle()
                 
                 (Text("Body m bold style with an ") + Text("accent").foregroundColor(.yellowAccent) + Text(" over here"))
-                    .bodyMBoldStyle()
+                    .bodyMBoldTextStyle()
                 
                 (Text("Body s style with an ") + Text("accent").foregroundColor(.redAccent) + Text(" over here"))
-                    .bodySStyle()
+                    .bodySTextStyle()
                 
                 (Text("Caption style with an ") + Text("accent").foregroundColor(.blueAccent) + Text(" over here"))
-                    .captionStyle()
+                    .captionTextStyle()
                 
                 (Text("Footnote style with an ") + Text("accent").foregroundColor(.brandAccent) + Text(" over here"))
-                    .footnoteStyle()
+                    .footnoteTextStyle()
             }
             .foregroundStyle(Color.textPrimary)
         }
@@ -48,7 +48,7 @@ struct StyleGuideView: View {
     private var colorSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text("Colors")
-                .displayStyle()
+                .displayTextStyle()
             
             Group {
                 colorGroup(title: "Accent Colors", colors: [
@@ -78,7 +78,7 @@ struct StyleGuideView: View {
     private func colorGroup(title: String, colors: [(String, Color)]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title)
-                .subtitleStyle()
+                .subtitleTextStyle()
             
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: 16),
@@ -98,7 +98,7 @@ struct StyleGuideView: View {
                 .frame(height: 60)
             
             Text(name)
-                .bodySStyle()
+                .bodySTextStyle()
         }
     }
 }

@@ -37,14 +37,14 @@ struct TermsDeclarationText: View {
                     partText.link = url
                 }
             } else {
-                partText.foregroundColor = .secondary
+                partText.foregroundColor = .textSecondary
             }
             current.append(partText)
             return current
         }
         
         Text(text)
-            .font(.subheadline)
+            .bodySTextStyle(color: .textSecondary)
             .tint(.brandAccent)
     }
 }
@@ -65,14 +65,14 @@ struct PrivacyDeclarationText: View {
                     partText.link = url
                 }
             } else {
-                partText.foregroundColor = .secondary
+                partText.foregroundColor = .textSecondary
             }
             current.append(partText)
             return current
         }
         
         Text(text)
-            .font(.subheadline)
+            .bodySTextStyle(color: .textSecondary)
             .tint(.brandAccent)
     }
 }
@@ -90,14 +90,8 @@ struct TermsView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(t.getPart("tos_header", index: 0)?.text.uppercased() ?? "")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
-                            .foregroundColor(.primary) +
-                            Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
-                            .foregroundColor(.brandAccent)
+                        (Text(t.getPart("tos_header", index: 0)?.text.uppercased() ?? "") + Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "").foregroundColor(.brandAccent))
+                            .displayTextStyle()
                     }
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -135,16 +129,15 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(t("tos_checkbox"))
-                                .font(.headline)
+                                .subtitleTextStyle()
                             TermsDeclarationText()
-                                .font(.subheadline)
                                 .tint(.brandAccent)
                         }
                         
                         Spacer()
                         
                         Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(termsAccepted ? .brandAccent : .gray)
+                            .foregroundColor(termsAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())
@@ -159,16 +152,15 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             Text(t("pp_checkbox"))
-                                .font(.headline)
+                                .subtitleTextStyle()
                             PrivacyDeclarationText()
-                                .font(.subheadline)
                                 .tint(.brandAccent)
                         }
                         
                         Spacer()
                         
                         Image(systemName: privacyAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(privacyAccepted ? .brandAccent : .gray)
+                            .foregroundColor(privacyAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())
@@ -189,11 +181,10 @@ struct TermsView: View {
                     }
                 }) {
                     Text(t("get_started"))
-                        .font(.headline)
+                        .subtitleTextStyle(color: .customWhite)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .foregroundColor(.white)
-                        .background(.gray)
+                        .background(termsAccepted && privacyAccepted ? Color.brandAccent : Color.gray2)
                         .cornerRadius(30)
                 }
                 .padding(.horizontal)
@@ -220,4 +211,9 @@ struct TermsView: View {
 #Preview {
     TermsView()
         .preferredColorScheme(.dark)
+}
+
+#Preview {
+    TermsView()
+        .preferredColorScheme(.light)
 }
