@@ -116,7 +116,8 @@ struct SwipeButton: View {
 
         SwipeButton {
             try await Task.sleep(nanoseconds: 2_000_000_000)
-            print("Payment sent!")
+            // Throwing an error resets the button
+            throw NSError(domain: "com.bitkit.test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
         }
     }
     .padding()
