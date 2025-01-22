@@ -28,12 +28,10 @@ struct CreateWalletWithPassphraseView: View {
                 .cornerRadius(10)
                 .padding(.bottom)
         
-            Button {
-                guard isValidPassphrase else {
-                    Haptics.notify(.error)
-                    return
-                }
-                
+            CustomButton(
+                title: t("create_new_wallet"),
+                isDisabled: !isValidPassphrase
+            ) {
                 do {
                     wallet.nodeLifecycleState = .initializing
                     _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
@@ -42,13 +40,6 @@ struct CreateWalletWithPassphraseView: View {
                     Haptics.notify(.error)
                     app.toast(error)
                 }
-            } label: {
-                Text(t("create_new_wallet"))
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(30)
             }
         }
         .padding(.horizontal, 32)

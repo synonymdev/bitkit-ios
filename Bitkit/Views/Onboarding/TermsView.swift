@@ -97,6 +97,7 @@ struct TermsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     
                     TosContent()
+                        .bodyMTextStyle()
                         .padding(.bottom, 300) // Extra padding for footer
                 }
                 .padding()
@@ -173,19 +174,16 @@ struct TermsView: View {
                 }
                 .padding(.horizontal)
                 
-                Button(action: {
-                    if termsAccepted, privacyAccepted {
+                CustomButton(
+                    title: t("get_started"),
+                    variant: termsAccepted && privacyAccepted ? .primary : .secondary,
+                    isDisabled: !(termsAccepted && privacyAccepted)
+                ) {
+                    if termsAccepted && privacyAccepted {
                         navigateToIntro = true
                     } else {
                         Haptics.notify(.error)
                     }
-                }) {
-                    Text(t("get_started"))
-                        .subtitleTextStyle(color: .customWhite)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(termsAccepted && privacyAccepted ? Color.brandAccent : Color.gray2)
-                        .cornerRadius(30)
                 }
                 .padding(.horizontal)
             }
