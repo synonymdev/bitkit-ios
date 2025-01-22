@@ -106,33 +106,31 @@ struct RestoreWalletView: View {
                     Spacer()
                         .frame(height: 100)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
             }
             
             // Footer with buttons
-            VStack {
+            VStack(spacing: 0) {
                 HStack(spacing: 16) {
-                    Button(action: { showingPassphraseAlert = true }) {
-                        Text(t("advanced"))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                    CustomButton(
+                        title: t("advanced"),
+                        variant: .secondary
+                    ) {
+                        showingPassphraseAlert = true
                     }
                     
-                    Button(action: restoreWallet) {
-                        Text(t("restore"))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                    CustomButton(title: t("restore")) {
+                        restoreWallet()
                     }
                 }
-                .padding()
+                .padding(24)
                 .background(
                     Color(UIColor.systemBackground)
                         .shadow(radius: 8, y: -4)
+                        .edgesIgnoringSafeArea(.bottom)
                 )
             }
-            .padding(.horizontal)
         }
-        
         .navigationBarTitleDisplayMode(.inline)
         .alert(t("passphrase"), isPresented: $showingPassphraseAlert) {
             TextField(t("restore_passphrase_placeholder"), text: $tempPassphrase)

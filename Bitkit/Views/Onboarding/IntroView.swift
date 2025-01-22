@@ -29,24 +29,14 @@ struct IntroView: View {
                 
             HStack(spacing: 16) {
                 NavigationLink(destination: OnboardingView()) {
-                    Text(t("get_started"))
-                        .subtitleTextStyle()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.gray2)
-                        .cornerRadius(30)
+                    CustomButton(title: t("get_started"))
                 }
                     
                 NavigationLink(destination: OnboardingView(currentTab: 4)) {
-                    Text(t("skip_intro"))
-                        .subtitleTextStyle()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 30)
-                                .stroke(Color.gray2, lineWidth: 1)
-                        )
-                        .cornerRadius(30)
+                    CustomButton(
+                        title: t("skip_intro"),
+                        variant: .secondary
+                    )
                 }
             }
         }

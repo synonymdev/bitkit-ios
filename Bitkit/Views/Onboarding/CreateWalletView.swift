@@ -16,7 +16,7 @@ struct CreateWalletView: View {
 
             // Action buttons
             HStack(spacing: 16) {
-                Button(action: {
+                CustomButton(title: t("new_wallet")) {
                     do {
                         wallet.nodeLifecycleState = .initializing
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: nil)
@@ -24,27 +24,15 @@ struct CreateWalletView: View {
                     } catch {
                         app.toast(error)
                     }
-                }) {
-                    Text(t("new_wallet"))
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.gray)
-                        .foregroundColor(.white)
-                        .cornerRadius(30)
                 }
 
                 NavigationLink {
                     RestoreWalletView()
                 } label: {
-                    Text(t("restore"))
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .foregroundColor(.white)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 30)
-                                .stroke(Color.gray, lineWidth: 1)
-                        )
-                        .cornerRadius(30)
+                    CustomButton(
+                        title: t("restore"),
+                        variant: .secondary
+                    )
                 }
             }
         }

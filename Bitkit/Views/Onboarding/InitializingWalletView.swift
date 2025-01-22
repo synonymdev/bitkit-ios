@@ -158,7 +158,14 @@ struct InitializingWalletView: View {
     }
 }
 
-#Preview {
+#Preview("Dark") {
     InitializingWalletView(shouldFinish: .constant(false)) {}
         .environmentObject(WalletViewModel())
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    InitializingWalletView(shouldFinish: .constant(false)) {}
+        .environmentObject(WalletViewModel())
+        .preferredColorScheme(.light)
 }

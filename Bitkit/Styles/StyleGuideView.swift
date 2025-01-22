@@ -6,6 +6,8 @@ struct StyleGuideView: View {
             VStack(alignment: .leading, spacing: 32) {
                 textStylesSection
                 colorSection
+                buttonSection
+                buttonPairsSection
             }
             .padding()
         }
@@ -99,6 +101,149 @@ struct StyleGuideView: View {
             
             Text(name)
                 .bodySTextStyle()
+        }
+    }
+    
+    private var buttonSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Buttons")
+                .displayTextStyle()
+            
+            VStack(alignment: .leading, spacing: 16) {
+                // Primary Buttons
+                Text("Primary")
+                    .subtitleTextStyle()
+                    .padding(.top, 8)
+                
+                CustomButton(title: "Default") {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(
+                    title: "With Icon",
+                    icon: Image(systemName: "lock.shield").foregroundColor(.textPrimary)
+                ) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Large", size: .large) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Disabled", isDisabled: true) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Loading") {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                // Secondary Buttons
+                Text("Secondary")
+                    .subtitleTextStyle()
+                    .padding(.top, 24)
+                
+                CustomButton(title: "Default", variant: .secondary) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(
+                    title: "With Icon",
+                    variant: .secondary,
+                    icon: Image(systemName: "lock.shield").foregroundColor(.white64)
+                ) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Large", variant: .secondary, size: .large) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Disabled", variant: .secondary, isDisabled: true) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Loading", variant: .secondary) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                // Tertiary Buttons
+                Text("Tertiary")
+                    .subtitleTextStyle()
+                    .padding(.top, 24)
+                
+                CustomButton(title: "Default", variant: .tertiary) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(
+                    title: "With Icon",
+                    variant: .tertiary,
+                    icon: Image(systemName: "lock.shield").foregroundColor(.white64)
+                ) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Large", variant: .tertiary, size: .large) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Disabled", variant: .tertiary, isDisabled: true) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                
+                CustomButton(title: "Loading", variant: .tertiary) {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+            }
+        }
+    }
+    
+    private var buttonPairsSection: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text("Button Pairs")
+                .displayTextStyle()
+            
+            VStack(spacing: 16) {
+                HStack {
+                    CustomButton(title: "Accept") {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                    
+                    CustomButton(title: "Decline", variant: .secondary) {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                }
+                
+                HStack {
+                    CustomButton(title: "Save") {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                    
+                    CustomButton(title: "Cancel", variant: .tertiary) {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                }
+                
+                HStack {
+                    CustomButton(
+                        title: "Confirm",
+                        icon: Image(systemName: "checkmark")
+                            .foregroundColor(.textPrimary)
+                    ) {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                    
+                    CustomButton(
+                        title: "Delete",
+                        variant: .secondary,
+                        icon: Image(systemName: "trash")
+                            .foregroundColor(.white64)
+                    ) {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    }
+                }
+            }
         }
     }
 }
