@@ -33,6 +33,7 @@ struct CustomTextWrapper: View {
             DisplayTextUIView(text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width)
                 .preference(key: ViewWidthKey.self, value: geometry.size.width)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: calculateHeight())
         .onPreferenceChange(ViewWidthKey.self) { width in
             viewWidth = width

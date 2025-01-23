@@ -12,17 +12,17 @@ fileprivate extension View {
     }
 }
 
-fileprivate struct DisplayTextStyle: ViewModifier {
-    let color: Color
+// fileprivate struct DisplayTextStyle: ViewModifier {
+//     let color: Color
     
-    func body(content: Content) -> some View {
-        content
-            .font(Fonts.black(size: 44))
-            .foregroundColor(color)
-            .textCase(.uppercase)
-            .kerningIfSupported(-1)
-    }
-}
+//     func body(content: Content) -> some View {
+//         content
+//             .font(Fonts.black(size: 44))
+//             .foregroundColor(color)
+//             .textCase(.uppercase)
+//             .kerningIfSupported(-1)
+//     }
+// }
 
 fileprivate struct HeadlineTextStyle: ViewModifier {
     let color: Color
@@ -120,9 +120,9 @@ fileprivate struct FootnoteTextStyle: ViewModifier {
 
 // MARK: - Public Style Extensions
 extension View {
-    func displayTextStyle(color: Color = .textPrimary) -> some View {
-        modifier(DisplayTextStyle(color: color))
-    }
+    // func displayTextStyle(color: Color = .textPrimary) -> some View {
+    //     modifier(DisplayTextStyle(color: color))
+    // }
     
     func headlineTextStyle(color: Color = .textPrimary) -> some View {
         modifier(HeadlineTextStyle(color: color))

@@ -5,8 +5,11 @@ struct StyleGuideView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 32) {
                 textStylesSection
+                Divider()
                 colorSection
+                Divider()
                 buttonSection
+                Divider()
                 buttonPairsSection
             }
             .padding()
@@ -16,12 +19,7 @@ struct StyleGuideView: View {
     private var textStylesSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Group {
-                (Text("Display Style With An ") + Text("Accent").foregroundColor(.brandAccent) + Text(" Over Here"))
-                    .displayTextStyle()
-                    .background(Color.blue.opacity(0.1))
-
                 DisplayText(text: "Display Style With An <accent>Accent</accent> Over Here")
-                    .background(Color.red.opacity(0.1))
                 
                 (Text("Headline Style With An ") + Text("Accent").foregroundColor(.blueAccent) + Text(" Over Here"))
                     .headlineTextStyle()
@@ -53,9 +51,6 @@ struct StyleGuideView: View {
     
     private var colorSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Colors")
-                .displayTextStyle()
-            
             Group {
                 colorGroup(title: "Accent Colors", colors: [
                     ("Brand Accent", Color.brandAccent),
@@ -110,9 +105,6 @@ struct StyleGuideView: View {
     
     private var buttonSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Buttons")
-                .displayTextStyle()
-            
             VStack(alignment: .leading, spacing: 16) {
                 // Primary Buttons
                 Text("Primary")
@@ -205,9 +197,6 @@ struct StyleGuideView: View {
     
     private var buttonPairsSection: some View {
         VStack(alignment: .leading, spacing: 24) {
-            Text("Button Pairs")
-                .displayTextStyle()
-            
             VStack(spacing: 16) {
                 HStack {
                     CustomButton(title: "Accept") {

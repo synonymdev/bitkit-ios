@@ -89,12 +89,7 @@ struct TermsView: View {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        (Text(t.getPart("tos_header", index: 0)?.text.uppercased() ?? "") + Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "").foregroundColor(.brandAccent))
-                            .displayTextStyle()
-                    }
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    DisplayText(text: t("tos_header"))
                     
                     TosContent()
                         .bodyMTextStyle()
