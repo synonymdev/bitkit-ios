@@ -93,7 +93,7 @@ class LocalizationManager {
         }
     }
     
-    func t(section: TranslationSection, key: String, args: [String: String] = [:], preserveAccent: Bool = false) -> String {
+    func t(section: TranslationSection, key: String, args: [String: String] = [:], preserveAccent: Bool = true) -> String {
         // Try to get translation from specified section
         if let translation = getTranslation(from: section, key: key, args: args, preserveAccent: preserveAccent) {
             return translation
