@@ -30,7 +30,7 @@ class AppViewModel: ObservableObject {
     // Bottom tab bar
     @Published var showTabBar = true
 
-    // In app notifications
+    @AppStorage("showEmptyState") var showEmptyState: Bool = true
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
