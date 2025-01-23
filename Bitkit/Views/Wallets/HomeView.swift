@@ -21,8 +21,6 @@ struct HomeView: View {
 
     @State private var showProfile = false
 
-    @State private var showEmptyState: Bool? = nil
-
     var body: some View {
         NavigationView {
             ScrollView {
@@ -33,7 +31,7 @@ struct HomeView: View {
                 .padding()
                 .padding(.top)
 
-                if showEmptyState == false {
+                if !app.showEmptyState {
                     HStack {
                         NavigationLink(destination: SavingsWalletView()) {
                             WalletBalanceView(
@@ -66,6 +64,9 @@ struct HomeView: View {
                     ActivityLatest(viewType: .all)
                 }
             }
+            .onChange(of: wallet.totalBalanceSats) { _ in
+                app.showEmptyState = wallet.totalBalanceSats == 0
+            }
             .refreshable {
                 guard wallet.nodeLifecycleState == .running else {
                     return
@@ -95,18 +96,14 @@ struct HomeView: View {
                 }
             }
         }
-        .task {
-            showEmptyState = wallet.totalBalanceSats == 0
-        }
-        .onChange(of: wallet.totalBalanceSats) { _ in
-            showEmptyState = wallet.totalBalanceSats == 0
-        }
         .onAppear {
             app.showTabBar = true
         }
         .overlay {
-            if showEmptyState == true {
-                EmptyStateView()
+            if wallet.totalBalanceSats == 0 && app.showEmptyState {
+                EmptyStateView(onClose: {
+                    app.showEmptyState = false
+                })
             }
         }
         .overlay {

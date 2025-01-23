@@ -25,13 +25,6 @@ struct CustomButton: View {
             case .large: return 64
             }
         }
-        
-        var minWidth: CGFloat {
-            switch self {
-            case .small: return 0
-            case .large: return 134
-            }
-        }
     }
     
     enum Variant {
@@ -155,7 +148,6 @@ struct CustomButton: View {
                     .frame(maxWidth: icon == nil ? .infinity : nil)
             }
         }
-        .frame(minWidth: size.minWidth)
         .frame(maxWidth: .infinity)
         .frame(height: size.height)
         .padding(.horizontal, size.horizontalPadding)
@@ -206,4 +198,4 @@ struct CustomButton: View {
     .padding()
     .background(Color.gray6)
     .preferredColorScheme(.dark)
-} 
+}
