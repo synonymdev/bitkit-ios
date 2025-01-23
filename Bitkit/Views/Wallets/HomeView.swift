@@ -205,5 +205,6 @@ struct HomeView: View {
     HomeView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
 }

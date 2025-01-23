@@ -6,12 +6,8 @@ struct EmptyStateView: View {
             Spacer()
             HStack(alignment: .bottom, spacing: 0) {
                 let t = useTranslation(.onboarding)
-                let parts = t.parts("empty_wallet")
-                (parts.reduce(Text("")) { current, part in
-                    current + Text(part.text.uppercased()).foregroundColor(part.isAccent ? .brandAccent : .textPrimary)
-                })
-                .displayTextStyle()
-                .frame(maxWidth: UIScreen.main.bounds.width / 2)
+                DisplayText(text: t("empty_wallet"))
+                    .frame(maxWidth: UIScreen.main.bounds.width / 2)
 
                 Image("empty-state-arrow")
                     .resizable()
@@ -28,4 +24,4 @@ struct EmptyStateView: View {
 #Preview {
     EmptyStateView()
         .preferredColorScheme(.dark)
-} 
+}

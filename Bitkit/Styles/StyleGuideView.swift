@@ -14,10 +14,14 @@ struct StyleGuideView: View {
     }
     
     private var textStylesSection: some View {
-        VStack(alignment: .leading, spacing: 24) {  
+        VStack(alignment: .leading, spacing: 24) {
             Group {
                 (Text("Display Style With An ") + Text("Accent").foregroundColor(.brandAccent) + Text(" Over Here"))
                     .displayTextStyle()
+                    .background(Color.blue.opacity(0.1))
+
+                DisplayText(text: "Display Style With An <accent>Accent</accent> Over Here")
+                    .background(Color.red.opacity(0.1))
                 
                 (Text("Headline Style With An ") + Text("Accent").foregroundColor(.blueAccent) + Text(" Over Here"))
                     .headlineTextStyle()
