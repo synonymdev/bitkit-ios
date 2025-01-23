@@ -14,7 +14,7 @@ struct CreateWalletWithPassphraseView: View {
         VStack {
             OnboardingTab(
                 imageName: "padlock2",
-                title: t.parts("passphrase_header"),
+                title: t("passphrase_header"),
                 text: t.parts("passphrase_text"),
                 secondLineColor: .brandAccent
             )

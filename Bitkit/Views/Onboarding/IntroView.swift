@@ -15,11 +15,7 @@ struct IntroView: View {
             Spacer()
                 
             VStack(alignment: .leading, spacing: 0) {
-                let parts = t.parts("welcome_title")
-                (parts.reduce(Text("")) { current, part in
-                    current + Text(part.text.uppercased()).foregroundColor(part.isAccent ? .brandAccent : .textPrimary)
-                })
-                .displayTextStyle()
+                DisplayText(text: t("welcome_title"))
                     
                 Text(t("welcome_text"))
                     .bodyMTextStyle(color: .textSecondary)

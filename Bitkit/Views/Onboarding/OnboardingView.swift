@@ -10,7 +10,7 @@ struct OnboardingView: View {
                 // Slide 0
                 OnboardingTab(
                     imageName: "keyring",
-                    title: t.parts("slide0_header"),
+                    title: t("slide0_header"),
                     text: t.parts("slide0_text"),
                     secondLineColor: .blueAccent
                 )
@@ -21,7 +21,7 @@ struct OnboardingView: View {
                 // Slide 1
                 OnboardingTab(
                     imageName: "lightning",
-                    title: t.parts("slide1_header"),
+                    title: t("slide1_header"),
                     text: t.parts("slide1_text"),
                     disclaimerText: t("slide1_note"),
                     secondLineColor: .purpleAccent
@@ -33,7 +33,7 @@ struct OnboardingView: View {
                 // Slide 2
                 OnboardingTab(
                     imageName: "spark",
-                    title: t.parts("slide2_header"),
+                    title: t("slide2_header"),
                     text: t.parts("slide2_text"),
                     secondLineColor: .yellowAccent
                 )
@@ -44,7 +44,7 @@ struct OnboardingView: View {
                 // Slide 3
                 OnboardingTab(
                     imageName: "shield",
-                    title: t.parts("slide3_header"),
+                    title: t("slide3_header"),
                     text: t.parts("slide3_text"),
                     secondLineColor: .greenAccent
                 )

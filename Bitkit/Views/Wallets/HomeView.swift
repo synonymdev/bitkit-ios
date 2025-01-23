@@ -64,6 +64,13 @@ struct HomeView: View {
                     ActivityLatest(viewType: .all)
                 }
             }
+            .overlay {
+                if wallet.totalBalanceSats == 0 && app.showEmptyState {
+                    EmptyStateView(onClose: {
+                        app.showEmptyState = false
+                    })
+                }
+            }
             .onChange(of: wallet.totalBalanceSats) { _ in
                 app.showEmptyState = wallet.totalBalanceSats == 0
             }
@@ -98,13 +105,6 @@ struct HomeView: View {
         }
         .onAppear {
             app.showTabBar = true
-        }
-        .overlay {
-            if wallet.totalBalanceSats == 0 && app.showEmptyState {
-                EmptyStateView(onClose: {
-                    app.showEmptyState = false
-                })
-            }
         }
         .overlay {
             TabBar()
