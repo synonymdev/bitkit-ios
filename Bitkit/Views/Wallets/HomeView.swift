@@ -21,6 +21,8 @@ struct HomeView: View {
 
     @State private var showProfile = false
 
+    @State private var showEmptyState: Bool? = nil
+
     var body: some View {
         NavigationView {
             ScrollView {
@@ -31,36 +33,38 @@ struct HomeView: View {
                 .padding()
                 .padding(.top)
 
-                HStack {
-                    NavigationLink(destination: SavingsWalletView()) {
-                        WalletBalanceView(
-                            title: "SAVINGS",
-                            sats: UInt64(wallet.totalOnchainSats),
-                            icon: "bitcoinsign.circle",
-                            iconColor: .orange
-                        )
+                if showEmptyState == false {
+                    HStack {
+                        NavigationLink(destination: SavingsWalletView()) {
+                            WalletBalanceView(
+                                title: "SAVINGS",
+                                sats: UInt64(wallet.totalOnchainSats),
+                                icon: "bitcoinsign.circle",
+                                iconColor: .orange
+                            )
+                        }
+
+                        Divider()
+                            .frame(height: 50)
+
+                        NavigationLink(destination: SpendingWalletView()) {
+                            WalletBalanceView(
+                                title: "SPENDING",
+                                sats: UInt64(wallet.totalLightningSats),
+                                icon: "bolt.circle",
+                                iconColor: .purpleAccent
+                            )
+                        }
                     }
-
-                    Divider()
-                        .frame(height: 50)
-
-                    NavigationLink(destination: SpendingWalletView()) {
-                        WalletBalanceView(
-                            title: "SPENDING",
-                            sats: UInt64(wallet.totalLightningSats),
-                            icon: "bolt.circle",
-                            iconColor: .purpleAccent
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-
-                Text("ACTIVITY")
-                    .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
 
-                ActivityLatest(viewType: .all)
+                    Text("ACTIVITY")
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ActivityLatest(viewType: .all)
+                }
             }
             .refreshable {
                 guard wallet.nodeLifecycleState == .running else {
@@ -91,8 +95,19 @@ struct HomeView: View {
                 }
             }
         }
+        .task {
+            showEmptyState = wallet.totalBalanceSats == 0
+        }
+        .onChange(of: wallet.totalBalanceSats) { _ in
+            showEmptyState = wallet.totalBalanceSats == 0
+        }
         .onAppear {
             app.showTabBar = true
+        }
+        .overlay {
+            if showEmptyState == true {
+                EmptyStateView()
+            }
         }
         .overlay {
             TabBar()
