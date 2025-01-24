@@ -141,16 +141,8 @@ struct InitializingWalletView: View {
                 VStack(spacing: 24) {
                     spinner
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        let parts = t.parts("loading_header")
-                        parts.reduce(Text("")) { current, part in
-                            current + Text(part.text.uppercased())
-                                .font(.system(size: 44, weight: .black))
-                                .foregroundColor(part.isAccent ? .brandAccent : .primary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                    DisplayText(t("loading_header"))
+                        .padding()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
