@@ -11,8 +11,8 @@ struct OnboardingView: View {
                 OnboardingTab(
                     imageName: "keyring",
                     title: t("slide0_header"),
-                    text: t.parts("slide0_text"),
-                    secondLineColor: .blueAccent
+                    text: t("slide0_text"),
+                    accentColor: .blueAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -22,9 +22,9 @@ struct OnboardingView: View {
                 OnboardingTab(
                     imageName: "lightning",
                     title: t("slide1_header"),
-                    text: t.parts("slide1_text"),
+                    text: t("slide1_text"),
                     disclaimerText: t("slide1_note"),
-                    secondLineColor: .purpleAccent
+                    accentColor: .purpleAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -34,8 +34,8 @@ struct OnboardingView: View {
                 OnboardingTab(
                     imageName: "spark",
                     title: t("slide2_header"),
-                    text: t.parts("slide2_text"),
-                    secondLineColor: .yellowAccent
+                    text: t("slide2_text"),
+                    accentColor: .yellowAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -45,8 +45,8 @@ struct OnboardingView: View {
                 OnboardingTab(
                     imageName: "shield",
                     title: t("slide3_header"),
-                    text: t.parts("slide3_text"),
-                    secondLineColor: .greenAccent
+                    text: t("slide3_text"),
+                    accentColor: .greenAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -75,18 +75,22 @@ struct OnboardingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                if currentTab == 4 {
-                    NavigationLink(t("advanced_setup")) {
-                        CreateWalletWithPassphraseView()
-                    }
-                    .bodyMTextStyle()
-                } else {
-                    Button(t("skip")) {
-                        withAnimation {
-                            currentTab = 4
+                HStack {
+                    if currentTab == 4 {
+                        NavigationLink(destination: {
+                            CreateWalletWithPassphraseView()
+                        }) {
+                            BodyMText(t("advanced_setup"))
+                        }
+                    } else {
+                        Button {
+                            withAnimation {
+                                currentTab = 4
+                            }
+                        } label: {
+                            BodyMText(t("skip"))
                         }
                     }
-                    .bodyMTextStyle()
                 }
             }
         }
@@ -94,6 +98,8 @@ struct OnboardingView: View {
 }
 
 #Preview {
-    OnboardingView()
-        .preferredColorScheme(.dark)
+    NavigationView {
+        OnboardingView()
+    }
+    .preferredColorScheme(.dark)
 }

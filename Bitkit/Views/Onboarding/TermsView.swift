@@ -25,27 +25,27 @@ struct TermsDeclarationText: View {
     private let t = useTranslation(.onboarding)
     
     var body: some View {
-        let parts = t.parts("tos_checkbox_value")
-        let text = parts.reduce(AttributedString("")) { result, part in
-            var current = result
-            var partText = AttributedString(part.text)
-            if part.isAccent {
-                partText.foregroundColor = .brandAccent
-                partText.underlineStyle = .single
-                
-                if let url = URL(string: Env.termsOfServiceUrl) {
-                    partText.link = url
-                }
-            } else {
-                partText.foregroundColor = .textSecondary
-            }
-            current.append(partText)
-            return current
-        }
+//        let parts = t.parts("tos_checkbox_value")
+//        let text = parts.reduce(AttributedString("")) { result, part in
+//            var current = result
+//            var partText = AttributedString(part.text)
+//            if part.isAccent {
+//                partText.foregroundColor = .brandAccent
+//                partText.underlineStyle = .single
+//
+//                if let url = URL(string: Env.termsOfServiceUrl) {
+//                    partText.link = url
+//                }
+//            } else {
+//                partText.foregroundColor = .textSecondary
+//            }
+//            current.append(partText)
+//            return current
+//        }
         
-        Text(text)
-            .bodySTextStyle(color: .textSecondary)
-            .tint(.brandAccent)
+        BodySText(t("tos_checkbox_value"))
+//            .bodySTextStyle(color: .textSecondary)
+//            .tint(.brandAccent)
     }
 }
 
@@ -53,27 +53,29 @@ struct PrivacyDeclarationText: View {
     private let t = useTranslation(.onboarding)
     
     var body: some View {
-        let parts = t.parts("pp_checkbox_value")
-        let text = parts.reduce(AttributedString("")) { result, part in
-            var current = result
-            var partText = AttributedString(part.text)
-            if part.isAccent {
-                partText.foregroundColor = .brandAccent
-                partText.underlineStyle = .single
-                
-                if let url = URL(string: Env.privacyPolicyUrl) {
-                    partText.link = url
-                }
-            } else {
-                partText.foregroundColor = .textSecondary
-            }
-            current.append(partText)
-            return current
-        }
+//        let parts = t.parts("pp_checkbox_value")
+//        let text = parts.reduce(AttributedString("")) { result, part in
+//            var current = result
+//            var partText = AttributedString(part.text)
+//            if part.isAccent {
+//                partText.foregroundColor = .brandAccent
+//                partText.underlineStyle = .single
+//
+//                if let url = URL(string: Env.privacyPolicyUrl) {
+//                    partText.link = url
+//                }
+//            } else {
+//                partText.foregroundColor = .textSecondary
+//            }
+//            current.append(partText)
+//            return current
+//        }
         
-        Text(text)
-            .bodySTextStyle(color: .textSecondary)
-            .tint(.brandAccent)
+//        Text(t("tos_checkbox_value"))
+//            .bodySTextStyle(color: .textSecondary)
+//            .tint(.brandAccent)
+        
+        BodySText(t("tos_checkbox_value"))
     }
 }
 
@@ -89,11 +91,12 @@ struct TermsView: View {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
-                    DisplayText(text: t("tos_header"))
+                    DisplayText(t("tos_header"))
                     
                     TosContent()
-                        .bodyMTextStyle()
-                        .padding(.bottom, 300) // Extra padding for footer
+                        .font(Fonts.regular(size: 17))
+                        .foregroundColor(.textPrimary)
+                        .padding(.bottom, 300) // Extra padding for keeping it scrollable past footer
                 }
                 .padding()
             }
@@ -124,8 +127,7 @@ struct TermsView: View {
                     // Terms checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(t("tos_checkbox"))
-                                .subtitleTextStyle()
+                            SubtitleText(t("tos_checkbox"))
                             TermsDeclarationText()
                                 .tint(.brandAccent)
                         }
@@ -147,8 +149,8 @@ struct TermsView: View {
                     // Privacy checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(t("pp_checkbox"))
-                                .subtitleTextStyle()
+                            SubtitleText(t("pp_checkbox"))
+
                             PrivacyDeclarationText()
                                 .tint(.brandAccent)
                         }
