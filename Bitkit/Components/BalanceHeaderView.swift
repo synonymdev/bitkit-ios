@@ -2,7 +2,7 @@ import SwiftUI
 
 struct BalanceHeaderView: View {
     let sats: Int
-    var prefix: String? = nil
+    var sign: String? = nil
     var showBitcoinSymbol: Bool = true
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -11,16 +11,10 @@ struct BalanceHeaderView: View {
             if let converted = currency.convert(sats: UInt64(sats)) {
                 if currency.primaryDisplay == .bitcoin {
                     HStack {
-                        if let prefix {
-                            Text(prefix)
-                                .font(.subheadline)
-                                .bold()
-                                .foregroundColor(.secondary)
+                        if let sign {
+                            BodySText(sign, textColor: .textSecondary)
                         }
-                        Text("\(converted.symbol) \(converted.formatted)")
-                            .font(.subheadline)
-                            .bold()
-                            .foregroundColor(.secondary)
+                        BodySText("\(converted.symbol) \(converted.formatted)", textColor: .textSecondary)
                             .padding(.bottom, 4)
                     }
                     .transition(
@@ -32,21 +26,15 @@ struct BalanceHeaderView: View {
 
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
-                        if let prefix {
-                            Text(prefix)
-                                .font(.system(size: 46, weight: .bold))
-                                .bold()
-                                .opacity(0.6)
+                        if let sign {
+                            DisplayText(sign, textColor: .textPrimary.opacity(0.6))
+                                .frame(maxWidth: 30)
                         }
                         if showBitcoinSymbol {
-                            Text(btcComponents.symbol)
-                                .font(.system(size: 46, weight: .bold))
-                                .bold()
-                                .opacity(0.6)
+                            DisplayText(btcComponents.symbol, textColor: .textPrimary.opacity(0.6))
+                                .frame(maxWidth: 30)
                         }
-                        Text(btcComponents.value)
-                            .font(.system(size: 46, weight: .bold))
-                            .bold()
+                        DisplayText(btcComponents.value)
                     }
                     .transition(
                         .move(edge: .top)
@@ -57,16 +45,10 @@ struct BalanceHeaderView: View {
                 } else {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
-                        if let prefix {
-                            Text(prefix)
-                                .font(.subheadline)
-                                .bold()
-                                .foregroundColor(.secondary)
+                        if let sign {
+                            BodySText(sign, textColor: .textSecondary)
                         }
-                        Text("\(btcComponents.symbol) \(btcComponents.value)")
-                            .font(.subheadline)
-                            .bold()
-                            .foregroundColor(.secondary)
+                        BodySText("\(btcComponents.symbol) \(btcComponents.value)", textColor: .textSecondary)
                             .padding(.bottom, 4)
                     }
                     .transition(
@@ -77,19 +59,13 @@ struct BalanceHeaderView: View {
                     )
 
                     HStack {
-                        if let prefix {
-                            Text(prefix)
-                                .font(.system(size: 46, weight: .bold))
-                                .bold()
-                                .opacity(0.6)
+                        if let sign {
+                            DisplayText(sign, textColor: .textPrimary.opacity(0.6))
+                                .frame(maxWidth: 30)
                         }
-                        Text(converted.symbol)
-                            .font(.system(size: 46, weight: .bold))
-                            .bold()
-                            .opacity(0.6)
-                        Text(converted.formatted)
-                            .font(.system(size: 46, weight: .bold))
-                            .bold()
+                        DisplayText(converted.symbol, textColor: .textPrimary.opacity(0.6))
+                            .frame(maxWidth: 30)
+                        DisplayText(converted.formatted)
                     }
                     .transition(
                         .move(edge: .top)
@@ -113,13 +89,55 @@ struct BalanceHeaderView: View {
 
 #Preview {
     ScrollView {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 32) {
             BalanceHeaderView(sats: 123456)
+                .environmentObject({
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    return vm
+                }())
+            
+            Spacer()
+
+            BalanceHeaderView(sats: 123456)
+                .environmentObject({
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .fiat
+                    vm.selectedCurrency = "USD"
+                    return vm
+                }())
+
+            Spacer()
+
+            BalanceHeaderView(sats: 123456)
+                .environmentObject({
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .fiat
+                    vm.selectedCurrency = "EUR"
+                    return vm
+                }())
+
+            Spacer()
+
+            BalanceHeaderView(sats: 123456, sign: "+")
+                .environmentObject({
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    return vm
+                }())
+
+            Spacer()
+
+            BalanceHeaderView(sats: 123456, showBitcoinSymbol: false)
+                .environmentObject({
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    return vm
+                }())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
         .padding(.top)
     }
-    .environmentObject(CurrencyViewModel())
     .preferredColorScheme(.dark)
 }

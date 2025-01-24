@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-//Bugger headings need custom kerning and line spacing that isn't supported by SwiftUI perfectly so using a UIKit component for some text styles
+// Bugger headings need custom kerning and line spacing that isn't supported by SwiftUI perfectly so using a UIKit component for some text styles
 struct DisplayText: View {
     let text: String
     var textColor: Color = .textPrimary
@@ -158,7 +158,7 @@ struct FootnoteText: View {
 private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color, url: URL? = nil) -> NSAttributedString {
     let attributedString = NSMutableAttributedString(string: "")
     var currentIndex = text.startIndex
-    
+
     while currentIndex < text.endIndex {
         if let accentStartRange = text[currentIndex...].range(of: "<accent>") {
             // Add text before the accent tag
@@ -170,7 +170,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
                 ])
                 attributedString.append(normalString)
             }
-            
+
             // Find the end of accent tag
             if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                 // Get the accented text
@@ -179,14 +179,14 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
                     .foregroundColor: UIColor(accentColor),
                     .font: UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold)
                 ]
-                
+
                 if let url = url {
                     attributes[.link] = url
                 }
-                
+
                 let accentString = NSAttributedString(string: accentedText, attributes: attributes)
                 attributedString.append(accentString)
-                
+
                 currentIndex = accentEndRange.upperBound
             } else {
                 // No closing tag found, treat rest as normal text
@@ -209,7 +209,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             break
         }
     }
-    
+
     return attributedString
 }
 
@@ -247,7 +247,7 @@ struct CustomTextWrapper: View {
             DisplayTextUIView(text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width, shouldCapitalize: shouldCapitalize, font: font, textColor: textColor, accentColor: accentColor, kerning: kerning)
                 .preference(key: ViewWidthKey.self, value: geometry.size.width)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+//        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: calculateHeight())
         .onPreferenceChange(ViewWidthKey.self) { width in
             viewWidth = width
