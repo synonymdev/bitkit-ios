@@ -148,7 +148,7 @@ private struct TransactionIcon: View {
         } else {
             let systemName = txType == .sent ? "arrow.up" : "arrow.down"
             Image(systemName: systemName)
-                .foregroundColor(confirmed == true ? .orange : .orange.opacity(0.5))
+                .foregroundColor(confirmed == true ? .brandAccent : .brandAccent.opacity(0.5))
         }
     }
 }

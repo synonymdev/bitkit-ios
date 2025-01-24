@@ -66,7 +66,7 @@ struct ActivityItemView: View {
         case .onchain:
             Image(systemName: "link")
                 .font(.title)
-                .foregroundColor(.orange)
+                .foregroundColor(.brandAccent)
                 .opacity(0.8)
         }
     }

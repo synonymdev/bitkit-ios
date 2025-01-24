@@ -440,6 +440,15 @@ struct DisplayTextUIView: UIViewRepresentable {
         }
         .padding(.bottom, 20)
 
+        HStack {
+            DisplayText("One")
+                .background(Color.red.opacity(0.1))
+
+            DisplayText("Two")
+                .background(Color.blue.opacity(0.1))
+        }
+        .padding(.bottom, 20)
+
         DisplayText(t("slide0_header"))
             .background(Color.orange.opacity(0.1))
             .padding(.bottom, 20)

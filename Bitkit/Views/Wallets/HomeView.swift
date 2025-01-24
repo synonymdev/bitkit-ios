@@ -35,10 +35,8 @@ struct HomeView: View {
                     HStack {
                         NavigationLink(destination: SavingsWalletView()) {
                             WalletBalanceView(
-                                title: "SAVINGS",
-                                sats: UInt64(wallet.totalOnchainSats),
-                                icon: "bitcoinsign.circle",
-                                iconColor: .orange
+                                type: .bitcoin,
+                                sats: UInt64(wallet.totalOnchainSats)
                             )
                         }
 
@@ -47,10 +45,8 @@ struct HomeView: View {
 
                         NavigationLink(destination: SpendingWalletView()) {
                             WalletBalanceView(
-                                title: "SPENDING",
-                                sats: UInt64(wallet.totalLightningSats),
-                                icon: "bolt.circle",
-                                iconColor: .purpleAccent
+                                type: .lightning,
+                                sats: UInt64(wallet.totalLightningSats)
                             )
                         }
                     }
