@@ -56,21 +56,30 @@ struct HomeView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+                    .transition(.move(edge: .leading).combined(with: .opacity))
 
                     Text("ACTIVITY")
                         .padding()
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
 
                     ActivityLatest(viewType: .all)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
+            .animation(.spring(response: 0.3), value: app.showEmptyState)
             .overlay {
                 if wallet.totalBalanceSats == 0 && app.showEmptyState {
                     EmptyStateView(onClose: {
-                        app.showEmptyState = false
+                        withAnimation(.spring(response: 0.3)) {
+                            app.showEmptyState = false
+                        }
                     })
+                    .padding(.horizontal)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+            .animation(.spring(response: 0.3), value: app.showEmptyState)
             .onChange(of: wallet.totalBalanceSats) { _ in
                 app.showEmptyState = wallet.totalBalanceSats == 0
             }
@@ -105,6 +114,10 @@ struct HomeView: View {
         }
         .onAppear {
             app.showTabBar = true
+
+            if Env.isPreview {
+                app.showEmptyState = true
+            }
         }
         .overlay {
             TabBar()
@@ -203,5 +216,6 @@ struct HomeView: View {
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
+        .environmentObject(ActivityListViewModel())
         .preferredColorScheme(.dark)
 }
