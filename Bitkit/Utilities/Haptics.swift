@@ -11,8 +11,21 @@ import UIKit
 class Haptics {
     private static var engine: CHHapticEngine?
     private static var player: CHHapticPatternPlayer?
+    private static var lastHapticTime: TimeInterval = 0
+    private static let minimumHapticInterval: TimeInterval = 0.1 // 100ms
+
+    private static func shouldAllowHaptic() -> Bool {
+        let currentTime = Date().timeIntervalSince1970
+        let timeSinceLastHaptic = currentTime - lastHapticTime
+        if timeSinceLastHaptic >= minimumHapticInterval {
+            lastHapticTime = currentTime
+            return true
+        }
+        return false
+    }
 
     static func play(_ feedbackStyle: UIImpactFeedbackGenerator.FeedbackStyle, withDelay: Double = 0) {
+        guard shouldAllowHaptic() else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + withDelay) {
             let i = UIImpactFeedbackGenerator(style: feedbackStyle)
             i.prepare()
@@ -21,6 +34,7 @@ class Haptics {
     }
 
     static func notify(_ feedbackType: UINotificationFeedbackGenerator.FeedbackType, withDelay: Double = 0) {
+        guard shouldAllowHaptic() else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + withDelay) {
             UINotificationFeedbackGenerator().notificationOccurred(feedbackType)
         }
