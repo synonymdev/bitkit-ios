@@ -2,11 +2,11 @@ import SwiftUI
 
 struct EmptyStateView: View {
     var onClose: () -> Void
-    
+
     var body: some View {
         VStack {
             Spacer()
-          
+
             HStack(alignment: .bottom, spacing: 0) {
                 let t = useTranslation(.onboarding)
                 DisplayText(t("empty_wallet"))
@@ -23,11 +23,15 @@ struct EmptyStateView: View {
             .padding(.bottom, 130)
             .overlay {
                 VStack {
-                    Button(action: onClose) {
+                    Button(action: {
+                        Haptics.play(.buttonTap)
+                        onClose()
+                    }) {
                         Image(systemName: "xmark")
                             .foregroundColor(.textPrimary.opacity(0.8))
+                            .frame(width: 44, height: 44, alignment: .topTrailing)
                     }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
                     Spacer()
                 }
             }
