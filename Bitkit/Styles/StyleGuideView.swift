@@ -33,6 +33,8 @@ struct StyleGuideView: View {
                 
                 BodySText("Body s style with an <accent>accent</accent> over here", accentColor: .redAccent)
                 
+                BodySText("Click here to visit <accent>Google</accent> website", url: URL(string: "https://www.google.com"))
+                
                 CaptionText("Caption style with an <accent>accent</accent> over here", accentColor: .blueAccent)
               
                 FootnoteText("Footnote style with an <accent>accent</accent> over here", accentColor: .brandAccent)

@@ -21,64 +21,6 @@ struct TappableTextModifier: ViewModifier {
     }
 }
 
-struct TermsDeclarationText: View {
-    private let t = useTranslation(.onboarding)
-    
-    var body: some View {
-//        let parts = t.parts("tos_checkbox_value")
-//        let text = parts.reduce(AttributedString("")) { result, part in
-//            var current = result
-//            var partText = AttributedString(part.text)
-//            if part.isAccent {
-//                partText.foregroundColor = .brandAccent
-//                partText.underlineStyle = .single
-//
-//                if let url = URL(string: Env.termsOfServiceUrl) {
-//                    partText.link = url
-//                }
-//            } else {
-//                partText.foregroundColor = .textSecondary
-//            }
-//            current.append(partText)
-//            return current
-//        }
-        
-        BodySText(t("tos_checkbox_value"))
-//            .bodySTextStyle(color: .textSecondary)
-//            .tint(.brandAccent)
-    }
-}
-
-struct PrivacyDeclarationText: View {
-    private let t = useTranslation(.onboarding)
-    
-    var body: some View {
-//        let parts = t.parts("pp_checkbox_value")
-//        let text = parts.reduce(AttributedString("")) { result, part in
-//            var current = result
-//            var partText = AttributedString(part.text)
-//            if part.isAccent {
-//                partText.foregroundColor = .brandAccent
-//                partText.underlineStyle = .single
-//
-//                if let url = URL(string: Env.privacyPolicyUrl) {
-//                    partText.link = url
-//                }
-//            } else {
-//                partText.foregroundColor = .textSecondary
-//            }
-//            current.append(partText)
-//            return current
-//        }
-        
-//        Text(t("tos_checkbox_value"))
-//            .bodySTextStyle(color: .textSecondary)
-//            .tint(.brandAccent)
-        
-        BodySText(t("tos_checkbox_value"))
-    }
-}
-
 struct TermsView: View {
     @State private var termsAccepted = false
     @State private var privacyAccepted = false
@@ -128,8 +70,7 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             SubtitleText(t("tos_checkbox"))
-                            TermsDeclarationText()
-                                .tint(.brandAccent)
+                            BodySText(t("tos_checkbox_value"), url: URL(string: Env.termsOfServiceUrl))
                         }
                         
                         Spacer()
@@ -150,9 +91,7 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             SubtitleText(t("pp_checkbox"))
-
-                            PrivacyDeclarationText()
-                                .tint(.brandAccent)
+                            BodySText(t("pp_checkbox_value"), url: URL(string: Env.privacyPolicyUrl))
                         }
                         
                         Spacer()
