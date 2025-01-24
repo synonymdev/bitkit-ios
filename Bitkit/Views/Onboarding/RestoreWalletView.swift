@@ -37,21 +37,11 @@ struct RestoreWalletView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack {
-                    VStack(alignment: .leading, spacing: 0) {
-                        let parts = t.parts("restore_header")
-                        parts.reduce(Text("")) { current, part in
-                            current + Text(part.text.uppercased())
-                                .font(.largeTitle)
-                                .fontWeight(.black)
-                                .foregroundColor(part.isAccent ? .blueAccent : .primary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    Text(t("restore_phrase"))
-                        .multilineTextAlignment(.leading)
+                    DisplayText(t("restore_header"), accentColor: .blueAccent)
+                   
+                    BodyMText(t("restore_phrase"))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     HStack(alignment: .top, spacing: 4) {
                         // First column (1-6 or 1-12)
                         VStack(spacing: 8) {
