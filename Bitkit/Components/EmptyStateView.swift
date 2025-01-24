@@ -9,7 +9,7 @@ struct EmptyStateView: View {
           
             HStack(alignment: .bottom, spacing: 0) {
                 let t = useTranslation(.onboarding)
-                DisplayText(text: t("empty_wallet"))
+                DisplayText(t("empty_wallet"))
                     .frame(width: 224)
 
                 Image("empty-state-arrow")

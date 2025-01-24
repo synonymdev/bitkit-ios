@@ -19,31 +19,23 @@ struct StyleGuideView: View {
     private var textStylesSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Group {
-                DisplayText(text: "Display Style With An <accent>Accent</accent> Over Here")
+                DisplayText("Display Style With An <accent>Accent</accent> Over Here")
                 
-                (Text("Headline Style With An ") + Text("Accent").foregroundColor(.blueAccent) + Text(" Over Here"))
-                    .headlineTextStyle()
+                HeadlineText("Headline Style With An <accent>Accent</accent> Over Here", accentColor: .blueAccent)
                 
-                (Text("Title Style With An ") + Text("Accent").foregroundColor(.greenAccent) + Text(" Over Here"))
-                    .titleTextStyle()
+                TitleText("Title Style With An <accent>Accent</accent> Over Here", accentColor: .greenAccent)
                 
-                (Text("Subtitle style with an ") + Text("accent").foregroundColor(.purpleAccent) + Text(" over here"))
-                    .subtitleTextStyle()
+                SubtitleText("Subtitle style with an <accent>accent</accent> over here", accentColor: .purpleAccent)
+            
+                BodyMText("Body m style with an <accent>accent</accent> over here", accentColor: .brandAccent)
                 
-                (Text("Body m style with an ") + Text("accent").foregroundColor(.brandAccent) + Text(" over here"))
-                    .bodyMTextStyle()
+                BodyMBoldText("Body m bold style with an <accent>accent</accent> over here", accentColor: .yellowAccent)
                 
-                (Text("Body m bold style with an ") + Text("accent").foregroundColor(.yellowAccent) + Text(" over here"))
-                    .bodyMBoldTextStyle()
+                BodySText("Body s style with an <accent>accent</accent> over here", accentColor: .redAccent)
                 
-                (Text("Body s style with an ") + Text("accent").foregroundColor(.redAccent) + Text(" over here"))
-                    .bodySTextStyle()
-                
-                (Text("Caption style with an ") + Text("accent").foregroundColor(.blueAccent) + Text(" over here"))
-                    .captionTextStyle()
-                
-                (Text("Footnote style with an ") + Text("accent").foregroundColor(.brandAccent) + Text(" over here"))
-                    .footnoteTextStyle()
+                CaptionText("Caption style with an <accent>accent</accent> over here", accentColor: .blueAccent)
+              
+                FootnoteText("Footnote style with an <accent>accent</accent> over here", accentColor: .brandAccent)
             }
             .foregroundStyle(Color.textPrimary)
         }
@@ -78,8 +70,7 @@ struct StyleGuideView: View {
     
     private func colorGroup(title: String, colors: [(String, Color)]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(title)
-                .subtitleTextStyle()
+            SubtitleText(title)
             
             LazyVGrid(columns: [
                 GridItem(.flexible(), spacing: 16),
@@ -98,8 +89,7 @@ struct StyleGuideView: View {
                 .fill(color)
                 .frame(height: 60)
             
-            Text(name)
-                .bodySTextStyle()
+            BodyMText(name)
         }
     }
     
@@ -107,8 +97,7 @@ struct StyleGuideView: View {
         VStack(alignment: .leading, spacing: 24) {
             VStack(alignment: .leading, spacing: 16) {
                 // Primary Buttons
-                Text("Primary")
-                    .subtitleTextStyle()
+                SubtitleText("Primary")
                     .padding(.top, 8)
                 
                 CustomButton(title: "Default") {
@@ -135,8 +124,7 @@ struct StyleGuideView: View {
                 }
                 
                 // Secondary Buttons
-                Text("Secondary")
-                    .subtitleTextStyle()
+                SubtitleText("Secondary")
                     .padding(.top, 24)
                 
                 CustomButton(title: "Default", variant: .secondary) {
@@ -164,8 +152,7 @@ struct StyleGuideView: View {
                 }
                 
                 // Tertiary Buttons
-                Text("Tertiary")
-                    .subtitleTextStyle()
+                SubtitleText("Tertiary")
                     .padding(.top, 24)
                 
                 CustomButton(title: "Default", variant: .tertiary) {

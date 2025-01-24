@@ -15,10 +15,9 @@ struct IntroView: View {
             Spacer()
                 
             VStack(alignment: .leading, spacing: 0) {
-                DisplayText(text: t("welcome_title"))
+                DisplayText(t("welcome_title"))
                     
-                Text(t("welcome_text"))
-                    .bodyMTextStyle(color: .textSecondary)
+                BodyMText(t("welcome_text"))
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -15,8 +15,8 @@ struct CreateWalletWithPassphraseView: View {
             OnboardingTab(
                 imageName: "padlock2",
                 title: t("passphrase_header"),
-                text: t.parts("passphrase_text"),
-                secondLineColor: .brandAccent
+                text: t("passphrase_text"),
+                accentColor: .brandAccent
             )
             .frame(maxHeight: .infinity)
     

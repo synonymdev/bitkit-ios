@@ -3,9 +3,9 @@ import SwiftUI
 struct OnboardingTab: View {
     let imageName: String
     let title: String
-    let text: [TranslationPart]
+    let text: String
     var disclaimerText: String? = nil
-    let secondLineColor: Color
+    let accentColor: Color
 
     var body: some View {
         VStack {
@@ -19,23 +19,16 @@ struct OnboardingTab: View {
 
             Spacer()
 
-            DisplayText(text: title)
+            DisplayText(title, accentColor: accentColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 4)
 
-            // Text with conditional accent parts
-            (text.reduce(Text("")) { current, part in
-                current + Text(part.text)
-                    .foregroundColor(part.isAccent ? .textPrimary : .textSecondary)
-                    .fontWeight(part.isAccent ? .bold : .regular)
-            })
-            .bodyMTextStyle()
-            .multilineTextAlignment(.leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 4)
+            BodyMText(text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 4)
 
             if let disclaimer = disclaimerText {
-                Text(disclaimer)
-                    .captionTextStyle(color: .textSecondary)
+                CaptionText(disclaimer)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 4)

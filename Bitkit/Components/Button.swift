@@ -143,7 +143,8 @@ struct CustomButton: View {
                     .frame(width: 20, height: 20)
             } else {
                 Text(title)
-                    .subtitleTextStyle(color: foregroundColor)
+                    .font(Fonts.bold(size: 17))
+                    .foregroundColor(foregroundColor)
                     .lineLimit(1)
                     .frame(maxWidth: icon == nil ? .infinity : nil)
             }

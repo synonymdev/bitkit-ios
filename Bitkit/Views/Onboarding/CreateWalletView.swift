@@ -10,8 +10,8 @@ struct CreateWalletView: View {
             OnboardingTab(
                 imageName: "wallet",
                 title: t("slide4_header"),
-                text: t.parts("slide4_text"),
-                secondLineColor: .brandAccent
+                text: t("slide4_text"),
+                accentColor: .brandAccent
             )
 
             // Action buttons
