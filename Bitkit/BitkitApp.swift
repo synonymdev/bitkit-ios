@@ -58,12 +58,18 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 struct BitkitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
+    init() {
+        // Set dark mode as default
+        UIWindow.appearance().overrideUserInterfaceStyle = .dark
+    }
+    
     var body: some Scene {
         WindowGroup {
             if Env.isUnitTest {
                 Text("Running unit tests...")
             } else {
                 ContentView()
+                    .preferredColorScheme(.dark)
             }
         }
     }

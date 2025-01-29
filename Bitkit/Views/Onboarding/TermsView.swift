@@ -21,62 +21,6 @@ struct TappableTextModifier: ViewModifier {
     }
 }
 
-struct TermsDeclarationText: View {
-    private let t = useTranslation(.onboarding)
-    
-    var body: some View {
-        let parts = t.parts("tos_checkbox_value")
-        let text = parts.reduce(AttributedString("")) { result, part in
-            var current = result
-            var partText = AttributedString(part.text)
-            if part.isAccent {
-                partText.foregroundColor = .brand
-                partText.underlineStyle = .single
-                
-                if let url = URL(string: Env.termsOfServiceUrl) {
-                    partText.link = url
-                }
-            } else {
-                partText.foregroundColor = .secondary
-            }
-            current.append(partText)
-            return current
-        }
-        
-        Text(text)
-            .font(.subheadline)
-            .tint(.brand)
-    }
-}
-
-struct PrivacyDeclarationText: View {
-    private let t = useTranslation(.onboarding)
-    
-    var body: some View {
-        let parts = t.parts("pp_checkbox_value")
-        let text = parts.reduce(AttributedString("")) { result, part in
-            var current = result
-            var partText = AttributedString(part.text)
-            if part.isAccent {
-                partText.foregroundColor = .brand
-                partText.underlineStyle = .single
-                
-                if let url = URL(string: Env.privacyPolicyUrl) {
-                    partText.link = url
-                }
-            } else {
-                partText.foregroundColor = .secondary
-            }
-            current.append(partText)
-            return current
-        }
-        
-        Text(text)
-            .font(.subheadline)
-            .tint(.brand)
-    }
-}
-
 struct TermsView: View {
     @State private var termsAccepted = false
     @State private var privacyAccepted = false
@@ -89,21 +33,12 @@ struct TermsView: View {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(t.getPart("tos_header", index: 0)?.text.uppercased() ?? "")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
-                            .foregroundColor(.primary) +
-                            Text(t.getPart("tos_header", index: 1)?.text.uppercased() ?? "")
-                            .font(.largeTitle)
-                            .fontWeight(.black)
-                            .foregroundColor(.brand)
-                    }
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    DisplayText(t("tos_header"))
                     
                     TosContent()
-                        .padding(.bottom, 300) // Extra padding for footer
+                        .font(Fonts.regular(size: 17))
+                        .foregroundColor(.textPrimary)
+                        .padding(.bottom, 300) // Extra padding for keeping it scrollable past footer
                 }
                 .padding()
             }
@@ -134,17 +69,14 @@ struct TermsView: View {
                     // Terms checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(t("tos_checkbox"))
-                                .font(.headline)
-                            TermsDeclarationText()
-                                .font(.subheadline)
-                                .tint(.brand)
+                            SubtitleText(t("tos_checkbox"))
+                            BodySText(t("tos_checkbox_value"), url: URL(string: Env.termsOfServiceUrl))
                         }
                         
                         Spacer()
                         
                         Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(termsAccepted ? .brand : .gray)
+                            .foregroundColor(termsAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())
@@ -158,17 +90,14 @@ struct TermsView: View {
                     // Privacy checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(t("pp_checkbox"))
-                                .font(.headline)
-                            PrivacyDeclarationText()
-                                .font(.subheadline)
-                                .tint(.brand)
+                            SubtitleText(t("pp_checkbox"))
+                            BodySText(t("pp_checkbox_value"), url: URL(string: Env.privacyPolicyUrl))
                         }
                         
                         Spacer()
                         
                         Image(systemName: privacyAccepted ? "checkmark.square.fill" : "square")
-                            .foregroundColor(privacyAccepted ? .brand : .gray)
+                            .foregroundColor(privacyAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
                     }
                     .contentShape(Rectangle())
@@ -181,20 +110,16 @@ struct TermsView: View {
                 }
                 .padding(.horizontal)
                 
-                Button(action: {
-                    if termsAccepted, privacyAccepted {
+                CustomButton(
+                    title: t("get_started"),
+                    variant: termsAccepted && privacyAccepted ? .primary : .secondary,
+                    isDisabled: !(termsAccepted && privacyAccepted)
+                ) {
+                    if termsAccepted && privacyAccepted {
                         navigateToIntro = true
                     } else {
                         Haptics.notify(.error)
                     }
-                }) {
-                    Text(t("get_started"))
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .foregroundColor(.white)
-                        .background(.gray)
-                        .cornerRadius(30)
                 }
                 .padding(.horizontal)
             }
@@ -219,4 +144,10 @@ struct TermsView: View {
 
 #Preview {
     TermsView()
+        .preferredColorScheme(.dark)
+}
+
+#Preview {
+    TermsView()
+        .preferredColorScheme(.light)
 }

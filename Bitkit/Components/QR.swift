@@ -40,4 +40,5 @@ struct QR: View {
         QR(content: "Testing...")
             .frame(width: 200, height: 200)
     }
+    .preferredColorScheme(.dark)
 }

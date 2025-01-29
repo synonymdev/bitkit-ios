@@ -85,4 +85,5 @@ struct SendEnterManuallyView: View {
 #Preview {
     SendEnterManuallyView()
         .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
 }

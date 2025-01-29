@@ -97,4 +97,5 @@ struct CreateCjitView: View {
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(BlocktankViewModel())
+        .preferredColorScheme(.dark)
 }

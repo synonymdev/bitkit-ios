@@ -60,4 +60,5 @@ struct ScannerView: View {
         showSendConfirmationView: .constant(false)
     )
     .environmentObject(AppViewModel())
+    .preferredColorScheme(.dark)
 }

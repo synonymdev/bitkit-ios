@@ -27,7 +27,7 @@ struct SwipeButton: View {
 
                 // Green trail
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
-                    .fill(Color.green.opacity(0.2))
+                    .fill(Color.greenAccent.opacity(0.2) as Color)
                     .frame(width: max(0, min(offset + (buttonHeight - innerPadding), geometry.size.width - innerPadding)))
                     .frame(height: buttonHeight - innerPadding)
                     .padding(.horizontal, innerPadding / 2)
@@ -41,11 +41,11 @@ struct SwipeButton: View {
                 Text("Swipe To Pay")
                     .bold()
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(1.0 - (offset / (geometry.size.width - buttonHeight)))
+                    .opacity(Double(1.0 - (offset / (geometry.size.width - buttonHeight))))
 
                 // Sliding circle
                 Circle()
-                    .fill(Color.green)
+                    .fill(Color.greenAccent)
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
@@ -55,11 +55,11 @@ struct SwipeButton: View {
                             } else {
                                 Image(systemName: "arrow.right")
                                     .foregroundColor(.white)
-                                    .opacity(1.0 - (offset / (geometry.size.width / 2)))
+                                    .opacity(Double(1.0 - (offset / (geometry.size.width / 2))))
 
                                 Image(systemName: "checkmark")
                                     .foregroundColor(.white)
-                                    .opacity(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2)))
+                                    .opacity(Double(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2))))
                             }
                         }
                     )
@@ -111,7 +111,15 @@ struct SwipeButton: View {
 }
 
 #Preview {
-    SwipeButton {
-        print("Swiped")
+    VStack {
+        Spacer()
+
+        SwipeButton {
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            // Throwing an error resets the button
+            throw NSError(domain: "com.bitkit.test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
+        }
     }
+    .padding()
+    .preferredColorScheme(.dark)
 }

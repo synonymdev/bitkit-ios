@@ -2,12 +2,12 @@ import SwiftUI
 
 extension Color {
     // MARK: - Accents
-    static let brand = Color(hex: 0xFF4400)
-    static let blue = Color(hex: 0x0085FF)
-    static let green = Color(hex: 0x75BF72)
-    static let purple = Color(hex: 0xB95CE8)
-    static let red = Color(hex: 0xE95164)
-    static let yellow = Color(hex: 0xFFD200)
+    static let brandAccent = Color(hex: 0xFF4400)
+    static let blueAccent = Color(hex: 0x0085FF)
+    static let greenAccent = Color(hex: 0x75BF72)
+    static let purpleAccent = Color(hex: 0xB95CE8)
+    static let redAccent = Color(hex: 0xE95164)
+    static let yellowAccent = Color(hex: 0xFFD200)
     
     // MARK: - Base
     static let customBlack = Color.black
@@ -31,23 +31,44 @@ extension Color {
     static let white64 = Color.white.opacity(0.64)
     static let white80 = Color.white.opacity(0.80)
     
-    static let blue24 = Color.blue.opacity(0.24)
-    static let brand08 = Color.brand.opacity(0.08)
-    static let brand16 = Color.brand.opacity(0.16)
-    static let brand24 = Color.brand.opacity(0.24)
-    static let brand32 = Color.brand.opacity(0.32)
-    static let brand50 = Color.brand.opacity(0.50)
-    static let green16 = Color.green.opacity(0.16)
-    static let green24 = Color.green.opacity(0.24)
-    static let green32 = Color.green.opacity(0.32)
-    static let purple16 = Color.purple.opacity(0.16)
-    static let purple24 = Color.purple.opacity(0.24)
-    static let purple32 = Color.purple.opacity(0.32)
-    static let purple50 = Color.purple.opacity(0.50)
-    static let red16 = Color.red.opacity(0.16)
-    static let red24 = Color.red.opacity(0.24)
-    static let yellow16 = Color.yellow.opacity(0.16)
-    static let yellow24 = Color.yellow.opacity(0.24)
+    static let blue24 = Color.blueAccent.opacity(0.24)
+    static let brand08 = Color.brandAccent.opacity(0.08)
+    static let brand16 = Color.brandAccent.opacity(0.16)
+    static let brand24 = Color.brandAccent.opacity(0.24)
+    static let brand32 = Color.brandAccent.opacity(0.32)
+    static let brand50 = Color.brandAccent.opacity(0.50)
+    static let green16 = Color.greenAccent.opacity(0.16)
+    static let green24 = Color.greenAccent.opacity(0.24)
+    static let green32 = Color.greenAccent.opacity(0.32)
+    static let purple16 = Color.purpleAccent.opacity(0.16)
+    static let purple24 = Color.purpleAccent.opacity(0.24)
+    static let purple32 = Color.purpleAccent.opacity(0.32)
+    static let purple50 = Color.purpleAccent.opacity(0.50)
+    static let red16 = Color.redAccent.opacity(0.16)
+    static let red24 = Color.redAccent.opacity(0.24)
+    static let yellow16 = Color.yellowAccent.opacity(0.16)
+    static let yellow24 = Color.yellowAccent.opacity(0.24)
+}
+
+// MARK: - Text Colors
+extension Color {
+    static let textPrimary = Color(uiColor: UIColor { traitCollection in
+        switch traitCollection.userInterfaceStyle {
+        case .dark:
+            return UIColor(Color.customWhite)
+        default:
+            return UIColor(Color.black92)
+        }
+    })
+    
+    static let textSecondary = Color(uiColor: UIColor { traitCollection in
+        switch traitCollection.userInterfaceStyle {
+        case .dark:
+            return UIColor(Color.white64)
+        default:
+            return UIColor(Color.black50)
+        }
+    })
 }
 
 // MARK: - Hex Initializer
@@ -55,9 +76,9 @@ extension Color {
     init(hex: UInt, alpha: Double = 1) {
         self.init(
             .sRGB,
-            red: Double((hex >> 16) & 0xff) / 255,
-            green: Double((hex >> 08) & 0xff) / 255,
-            blue: Double((hex >> 00) & 0xff) / 255,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 08) & 0xFF) / 255,
+            blue: Double((hex >> 00) & 0xFF) / 255,
             opacity: alpha
         )
     }

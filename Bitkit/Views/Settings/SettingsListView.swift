@@ -74,9 +74,9 @@ struct SettingsListView: View {
                         } icon: {
                             Image(systemName: "clock.badge.xmark")
                         }
-                        .foregroundColor(.red)
+                        .foregroundColor(.redAccent)
                     }
-                    
+
                     Button {
                         Task {
                             do {
@@ -107,6 +107,7 @@ struct SettingsListView: View {
                                 if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting || wallet.nodeLifecycleState == .stopping {
                                     try await wallet.wipeLightningWallet()
                                 }
+                                try await ActivityListService.shared.removeAll()
                                 try Keychain.wipeEntireKeychain()
                                 try wallet.setWalletExistsState()
                             } catch {
@@ -119,7 +120,7 @@ struct SettingsListView: View {
                         } icon: {
                             Image(systemName: "trash.fill")
                         }
-                        .foregroundColor(.red)
+                        .foregroundColor(.redAccent)
                     }
                 }
             } header: {
@@ -139,4 +140,5 @@ struct SettingsListView: View {
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(ActivityListViewModel())
+        .preferredColorScheme(.dark)
 }

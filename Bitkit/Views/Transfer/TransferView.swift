@@ -61,4 +61,5 @@ struct TransferView: View {
     TransferView()
         .environmentObject(AppViewModel())
         .environmentObject(BlocktankViewModel())
+        .preferredColorScheme(.dark)
 }

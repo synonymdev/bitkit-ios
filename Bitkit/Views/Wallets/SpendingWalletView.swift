@@ -35,4 +35,5 @@ struct SpendingWalletView: View {
 
 #Preview {
     SpendingWalletView()
+        .preferredColorScheme(.dark)
 }
