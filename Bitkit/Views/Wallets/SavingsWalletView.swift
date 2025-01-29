@@ -55,4 +55,5 @@ struct SavingsWalletView: View {
     SavingsWalletView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
 }

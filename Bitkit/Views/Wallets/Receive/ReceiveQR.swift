@@ -157,4 +157,5 @@ struct ReceiveQR: View {
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(BlocktankViewModel())
+        .preferredColorScheme(.dark)
 }

@@ -36,7 +36,7 @@ struct SendConfirmationView: View {
                             Task {
                                 do {
                                     let paymentHash = try await wallet.send(
-                                        bolt11: bolt11, 
+                                        bolt11: bolt11,
                                         sats: app.sendAmountSats,
                                         onSuccess: {
                                             app.resetSendState()
@@ -159,4 +159,5 @@ struct SendConfirmationView: View {
 
 #Preview {
     SendConfirmationView()
+        .preferredColorScheme(.dark)
 }

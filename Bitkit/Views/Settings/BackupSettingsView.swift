@@ -10,7 +10,7 @@ struct BackupSettingsView: View {
                     Image(systemName: "arrow.up.doc")
                 }
             }
-            
+
             NavigationLink(destination: RestoreWalletView()) {
                 Label {
                     Text("Reset and restore your wallet")
@@ -28,4 +28,5 @@ struct BackupSettingsView: View {
     NavigationView {
         BackupSettingsView()
     }
-} 
+    .preferredColorScheme(.dark)
+}

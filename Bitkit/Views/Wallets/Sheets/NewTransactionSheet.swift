@@ -68,4 +68,5 @@ struct NewTransactionSheet: View {
 #Preview {
     NewTransactionSheet(details: .constant(NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000)))
         .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
 }

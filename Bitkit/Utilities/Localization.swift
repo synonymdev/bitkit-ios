@@ -22,16 +22,6 @@ struct Translation {
     func callAsFunction(_ key: String, _ args: [String: String] = [:]) -> String {
         LocalizationManager.shared.t(section: section, key: key, args: args)
     }
-    
-    func parts(_ key: String, _ args: [String: String] = [:]) -> [TranslationPart] {
-        let fullString = LocalizationManager.shared.t(section: section, key: key, args: args, preserveAccent: true)
-        return LocalizationManager.shared.splitIntoParts(fullString)
-    }
-    
-    func getPart(_ key: String, index: Int, args: [String: String] = [:]) -> TranslationPart? {
-        let allParts = parts(key, args)
-        return allParts.indices.contains(index) ? allParts[index] : nil
-    }
 }
 
 // MARK: - Global Translation Functions
@@ -93,7 +83,7 @@ class LocalizationManager {
         }
     }
     
-    func t(section: TranslationSection, key: String, args: [String: String] = [:], preserveAccent: Bool = false) -> String {
+    func t(section: TranslationSection, key: String, args: [String: String] = [:], preserveAccent: Bool = true) -> String {
         // Try to get translation from specified section
         if let translation = getTranslation(from: section, key: key, args: args, preserveAccent: preserveAccent) {
             return translation
@@ -171,39 +161,6 @@ class LocalizationManager {
                 .replacingOccurrences(of: "</accent>", with: "")
         }
         return result
-    }
-    
-    // Split a string into parts based on accent tags
-    func splitIntoParts(_ string: String) -> [TranslationPart] {
-        var parts: [TranslationPart] = []
-        var currentIndex = string.startIndex
-        
-        while currentIndex < string.endIndex {
-            if let startRange = string[currentIndex...].range(of: "<accent>") {
-                // Add non-accented text before the tag if any
-                if currentIndex < startRange.lowerBound {
-                    let text = String(string[currentIndex..<startRange.lowerBound])
-                    parts.append(TranslationPart(text: text, isAccent: false))
-                }
-                
-                // Find the end of the accented text
-                if let endRange = string[startRange.upperBound...].range(of: "</accent>") {
-                    let text = String(string[startRange.upperBound..<endRange.lowerBound])
-                    parts.append(TranslationPart(text: text, isAccent: true))
-                    currentIndex = endRange.upperBound
-                } else {
-                    // Malformed string, no closing tag
-                    break
-                }
-            } else {
-                // No more accent tags, add remaining text
-                let text = String(string[currentIndex...])
-                parts.append(TranslationPart(text: text, isAccent: false))
-                break
-            }
-        }
-        
-        return parts
     }
     
     func setLanguage(_ lang: String) {

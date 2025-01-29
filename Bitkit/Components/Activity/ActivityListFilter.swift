@@ -12,7 +12,7 @@ struct ActivityListFilter: View {
             TextField("Search", text: $viewModel.searchText)
             HStack(spacing: 12) {
                 Image(systemName: "tag")
-                    .foregroundColor(!viewModel.selectedTags.isEmpty ? .orange : .gray)
+                    .foregroundColor(!viewModel.selectedTags.isEmpty ? .brandAccent : .gray)
                     .onTapGesture {
                         showingTagSelector = true
                     }

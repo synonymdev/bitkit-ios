@@ -26,7 +26,7 @@ struct TagSelector: View {
                                     Spacer()
                                     if viewModel.selectedTags.contains(tag) {
                                         Image(systemName: "checkmark")
-                                            .foregroundColor(.orange)
+                                            .foregroundColor(.brandAccent)
                                     }
                                 }
                             }

@@ -96,4 +96,5 @@ struct SendOptionsView: View {
     SendOptionsView()
         .environmentObject(AppViewModel())
         .environmentObject(WalletViewModel())
+        .preferredColorScheme(.dark)
 }

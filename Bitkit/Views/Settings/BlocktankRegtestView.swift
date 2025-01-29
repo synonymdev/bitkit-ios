@@ -190,6 +190,7 @@ struct BlocktankRegtestView: View {
             .environmentObject(AppViewModel())
             .environmentObject(WalletViewModel())
     }
+     .preferredColorScheme(.dark)
 }
 
 private struct ValidationError: LocalizedError {

@@ -18,6 +18,7 @@ class CurrencyViewModel: ObservableObject {
     private let currencyService: CurrencyService
     private var refreshTimer: Timer?
     private var lastSuccessfulRefresh: Date?
+    private var refreshTask: Task<Void, Never>?
     
     init(currencyService: CurrencyService = .shared) {
         self.currencyService = currencyService
@@ -31,13 +32,15 @@ class CurrencyViewModel: ObservableObject {
     }
     
     deinit {
-        Task { @MainActor in
-            stopPolling()
+        RunLoop.main.perform { [weak self] in
+            Logger.debug("Stopping poll for rates")
+            self?.stopPolling()
         }
     }
     
     func refresh() async {
         do {
+            Logger.debug("Refreshing rates")
             rates = try await currencyService.fetchLatestRates()
             lastSuccessfulRefresh = Date()
             error = nil
@@ -58,20 +61,26 @@ class CurrencyViewModel: ObservableObject {
         
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.fxRateRefreshInterval, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor in
+            self.refreshTask?.cancel()
+            self.refreshTask = Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 await self.refresh()
             }
         }
         
         // Initial refresh
-        Task {
-            await refresh()
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.refresh()
         }
     }
     
     private func stopPolling() {
         refreshTimer?.invalidate()
         refreshTimer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
     }
     
     func togglePrimaryDisplay() {

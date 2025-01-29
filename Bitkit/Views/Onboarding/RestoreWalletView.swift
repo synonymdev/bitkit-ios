@@ -37,21 +37,11 @@ struct RestoreWalletView: View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack {
-                    VStack(alignment: .leading, spacing: 0) {
-                        let parts = t.parts("restore_header")
-                        parts.reduce(Text("")) { current, part in
-                            current + Text(part.text.uppercased())
-                                .font(.largeTitle)
-                                .fontWeight(.black)
-                                .foregroundColor(part.isAccent ? .blue : .primary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    Text(t("restore_phrase"))
-                        .multilineTextAlignment(.leading)
+                    DisplayText(t("restore_header"), accentColor: .blueAccent)
+                   
+                    BodyMText(t("restore_phrase"))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     HStack(alignment: .top, spacing: 4) {
                         // First column (1-6 or 1-12)
                         VStack(spacing: 8) {
@@ -106,33 +96,31 @@ struct RestoreWalletView: View {
                     Spacer()
                         .frame(height: 100)
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 24)
             }
             
             // Footer with buttons
-            VStack {
+            VStack(spacing: 0) {
                 HStack(spacing: 16) {
-                    Button(action: { showingPassphraseAlert = true }) {
-                        Text(t("advanced"))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                    CustomButton(
+                        title: t("advanced"),
+                        variant: .secondary
+                    ) {
+                        showingPassphraseAlert = true
                     }
                     
-                    Button(action: restoreWallet) {
-                        Text(t("restore"))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                    CustomButton(title: t("restore")) {
+                        restoreWallet()
                     }
                 }
-                .padding()
+                .padding(24)
                 .background(
                     Color(UIColor.systemBackground)
                         .shadow(radius: 8, y: -4)
+                        .edgesIgnoringSafeArea(.bottom)
                 )
             }
-            .padding(.horizontal)
         }
-        
         .navigationBarTitleDisplayMode(.inline)
         .alert(t("passphrase"), isPresented: $showingPassphraseAlert) {
             TextField(t("restore_passphrase_placeholder"), text: $tempPassphrase)
@@ -205,4 +193,5 @@ struct RestoreWalletView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
     }
+    .preferredColorScheme(.dark)
 }

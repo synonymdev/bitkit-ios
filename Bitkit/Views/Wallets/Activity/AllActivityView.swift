@@ -66,4 +66,5 @@ struct AllActivityView: View {
 #Preview {
     AllActivityView()
         .environmentObject(ActivityListViewModel())
+        .preferredColorScheme(.dark)
 }

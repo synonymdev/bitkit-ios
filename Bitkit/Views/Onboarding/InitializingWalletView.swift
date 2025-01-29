@@ -56,7 +56,7 @@ struct InitializingWalletView: View {
             Text("\(Int(percentage))%")
                 .font(.largeTitle)
                 .fontWeight(.black)
-                .foregroundColor(.brand)
+                .foregroundColor(.brandAccent)
                 .onAppear {
                     timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                         if percentage < 100 {
@@ -67,11 +67,11 @@ struct InitializingWalletView: View {
                             let increment: Double
                             if !shouldFinish {
                                 if percentage >= 80 {
-                                    increment = baseIncrement * 0.125  // Halved three times (0.5 * 0.5 * 0.5)
+                                    increment = baseIncrement * 0.125 // Halved three times (0.5 * 0.5 * 0.5)
                                 } else if percentage >= 70 {
-                                    increment = baseIncrement * 0.25   // Halved twice (0.5 * 0.5)
+                                    increment = baseIncrement * 0.25 // Halved twice (0.5 * 0.5)
                                 } else if percentage >= 60 {
-                                    increment = baseIncrement * 0.5    // Halved once
+                                    increment = baseIncrement * 0.5 // Halved once
                                 } else {
                                     increment = baseIncrement
                                 }
@@ -141,16 +141,8 @@ struct InitializingWalletView: View {
                 VStack(spacing: 24) {
                     spinner
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        let parts = t.parts("loading_header")
-                        parts.reduce(Text("")) { current, part in
-                            current + Text(part.text.uppercased())
-                                .font(.system(size: 44, weight: .black))
-                                .foregroundColor(part.isAccent ? .brand : .primary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
+                    DisplayText(t("loading_header"))
+                        .padding()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -158,7 +150,14 @@ struct InitializingWalletView: View {
     }
 }
 
-#Preview {
+#Preview("Dark") {
     InitializingWalletView(shouldFinish: .constant(false)) {}
         .environmentObject(WalletViewModel())
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    InitializingWalletView(shouldFinish: .constant(false)) {}
+        .environmentObject(WalletViewModel())
+        .preferredColorScheme(.light)
 }

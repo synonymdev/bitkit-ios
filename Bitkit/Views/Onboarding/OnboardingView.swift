@@ -10,9 +10,9 @@ struct OnboardingView: View {
                 // Slide 0
                 OnboardingTab(
                     imageName: "keyring",
-                    title: t.parts("slide0_header"),
-                    text: t.parts("slide0_text"),
-                    secondLineColor: .blue
+                    title: t("slide0_header"),
+                    text: t("slide0_text"),
+                    accentColor: .blueAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -21,10 +21,10 @@ struct OnboardingView: View {
                 // Slide 1
                 OnboardingTab(
                     imageName: "lightning",
-                    title: t.parts("slide1_header"),
-                    text: t.parts("slide1_text"),
+                    title: t("slide1_header"),
+                    text: t("slide1_text"),
                     disclaimerText: t("slide1_note"),
-                    secondLineColor: .purple
+                    accentColor: .purpleAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -33,9 +33,9 @@ struct OnboardingView: View {
                 // Slide 2
                 OnboardingTab(
                     imageName: "spark",
-                    title: t.parts("slide2_header"),
-                    text: t.parts("slide2_text"),
-                    secondLineColor: .yellow
+                    title: t("slide2_header"),
+                    text: t("slide2_text"),
+                    accentColor: .yellowAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -44,9 +44,9 @@ struct OnboardingView: View {
                 // Slide 3
                 OnboardingTab(
                     imageName: "shield",
-                    title: t.parts("slide3_header"),
-                    text: t.parts("slide3_text"),
-                    secondLineColor: .green
+                    title: t("slide3_header"),
+                    text: t("slide3_text"),
+                    accentColor: .greenAccent
                 )
                 .padding(.bottom, 30)
                 .padding(.horizontal, 32)
@@ -62,7 +62,7 @@ struct OnboardingView: View {
             HStack(spacing: 8) {
                 ForEach(0 ..< 5) { index in
                     Circle()
-                        .fill(currentTab == index ? Color.primary : Color.secondary)
+                        .fill(currentTab == index ? Color.textPrimary : Color.textSecondary)
                         .frame(width: 7, height: 7)
                 }
             }
@@ -75,14 +75,20 @@ struct OnboardingView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                if currentTab == 4 {
-                    NavigationLink(t("advanced_setup")) {
-                        CreateWalletWithPassphraseView()
-                    }
-                } else {
-                    Button(t("skip")) {
-                        withAnimation {
-                            currentTab = 4
+                HStack {
+                    if currentTab == 4 {
+                        NavigationLink(destination: {
+                            CreateWalletWithPassphraseView()
+                        }) {
+                            BodyMText(t("advanced_setup"))
+                        }
+                    } else {
+                        Button {
+                            withAnimation {
+                                currentTab = 4
+                            }
+                        } label: {
+                            BodyMText(t("skip"))
                         }
                     }
                 }
@@ -92,5 +98,8 @@ struct OnboardingView: View {
 }
 
 #Preview {
-    OnboardingView()
+    NavigationView {
+        OnboardingView()
+    }
+    .preferredColorScheme(.dark)
 }

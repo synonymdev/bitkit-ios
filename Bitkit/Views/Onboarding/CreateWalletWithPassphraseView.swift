@@ -12,13 +12,13 @@ struct CreateWalletWithPassphraseView: View {
     
     var content: some View {
         VStack {
-           OnboardingTab(
-               imageName: "padlock2",
-               title: t.parts("passphrase_header"),
-               text: t.parts("passphrase_text"),
-               secondLineColor: .brand
-           )
-           .frame(maxHeight: .infinity)
+            OnboardingTab(
+                imageName: "padlock2",
+                title: t("passphrase_header"),
+                text: t("passphrase_text"),
+                accentColor: .brandAccent
+            )
+            .frame(maxHeight: .infinity)
     
             TextField(t("passphrase"), text: $bip39Passphrase)
                 .textInputAutocapitalization(.never)
@@ -28,12 +28,10 @@ struct CreateWalletWithPassphraseView: View {
                 .cornerRadius(10)
                 .padding(.bottom)
         
-            Button {
-                guard isValidPassphrase else {
-                    Haptics.notify(.error)
-                    return
-                }
-                
+            CustomButton(
+                title: t("create_new_wallet"),
+                isDisabled: !isValidPassphrase
+            ) {
                 do {
                     wallet.nodeLifecycleState = .initializing
                     _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
@@ -42,13 +40,6 @@ struct CreateWalletWithPassphraseView: View {
                     Haptics.notify(.error)
                     app.toast(error)
                 }
-            } label: {
-                Text(t("create_new_wallet"))
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(30)
             }
         }
         .padding(.horizontal, 32)
@@ -73,5 +64,6 @@ struct CreateWalletWithPassphraseView: View {
         CreateWalletWithPassphraseView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
+            .preferredColorScheme(.dark)
     }
 }

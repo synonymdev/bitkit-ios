@@ -31,36 +31,53 @@ struct HomeView: View {
                 .padding()
                 .padding(.top)
 
-                HStack {
-                    NavigationLink(destination: SavingsWalletView()) {
-                        WalletBalanceView(
-                            title: "SAVINGS",
-                            sats: UInt64(wallet.totalOnchainSats),
-                            icon: "bitcoinsign.circle",
-                            iconColor: .orange
-                        )
+                if !app.showEmptyState {
+                    HStack {
+                        NavigationLink(destination: SavingsWalletView()) {
+                            WalletBalanceView(
+                                type: .bitcoin,
+                                sats: UInt64(wallet.totalOnchainSats)
+                            )
+                        }
+
+                        Divider()
+                            .frame(height: 50)
+
+                        NavigationLink(destination: SpendingWalletView()) {
+                            WalletBalanceView(
+                                type: .lightning,
+                                sats: UInt64(wallet.totalLightningSats)
+                            )
+                        }
                     }
-
-                    Divider()
-                        .frame(height: 50)
-
-                    NavigationLink(destination: SpendingWalletView()) {
-                        WalletBalanceView(
-                            title: "SPENDING",
-                            sats: UInt64(wallet.totalLightningSats),
-                            icon: "bolt.circle",
-                            iconColor: .purple
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-
-                Text("ACTIVITY")
-                    .padding()
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .transition(.move(edge: .leading).combined(with: .opacity))
 
-                ActivityLatest(viewType: .all)
+                    Text("ACTIVITY")
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+
+                    ActivityLatest(viewType: .all)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.3), value: app.showEmptyState)
+            .overlay {
+                if wallet.totalBalanceSats == 0 && app.showEmptyState {
+                    EmptyStateView(onClose: {
+                        withAnimation(.spring(response: 0.3)) {
+                            app.showEmptyState = false
+                        }
+                    })
+                    .padding(.horizontal)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.3), value: app.showEmptyState)
+            .onChange(of: wallet.totalBalanceSats) { _ in
+                app.showEmptyState = wallet.totalBalanceSats == 0
             }
             .refreshable {
                 guard wallet.nodeLifecycleState == .running else {
@@ -93,6 +110,10 @@ struct HomeView: View {
         }
         .onAppear {
             app.showTabBar = true
+
+            if Env.isPreview {
+                app.showEmptyState = true
+            }
         }
         .overlay {
             TabBar()
@@ -190,4 +211,7 @@ struct HomeView: View {
     HomeView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(CurrencyViewModel())
+        .environmentObject(ActivityListViewModel())
+        .preferredColorScheme(.dark)
 }

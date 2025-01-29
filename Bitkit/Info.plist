@@ -2,6 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>Damion-Regular.ttf</string>
+		<string>InterTight-Black.ttf</string>
+		<string>InterTight-Bold.ttf</string>
+		<string>InterTight-ExtraBold.ttf</string>
+		<string>InterTight-Medium.ttf</string>
+		<string>InterTight-Regular.ttf</string>
+		<string>InterTight-SemiBold.ttf</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 </dict>
