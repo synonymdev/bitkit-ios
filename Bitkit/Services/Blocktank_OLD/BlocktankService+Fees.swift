@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     // estimateOrderFee
     // getMin0ConfTxFee
 }

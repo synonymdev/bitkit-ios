@@ -13,7 +13,7 @@ class BlocktankViewModel: ObservableObject {
 
     @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
     @Published var cJitEntries: [CJitEntry] = [] // TODO: cache cJitEntries
-    @Published var info: BtInfo? = nil // TODO: cache this
+    @Published var info: IBtInfo? = nil
 
     @AppStorage("cjitActive") var cjitActive = false
 
@@ -28,55 +28,62 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func refreshInfo() async throws {
-        info = try await blocktankService.getInfo()
+        info = try await getInfo(refresh: false) // Instant set cached info to state before refreshing
+        info = try await getInfo(refresh: true)
     }
 
-    func createCjit(amountSats: UInt64, description: String) async throws -> CJitEntry {
+    func createCjit(amountSats: UInt64, description _: String) async throws -> CJitEntry {
         guard let nodeId = lightningService.nodeId else {
             throw CustomServiceError.nodeNotStarted
         }
 
-        let entry = try await blocktankService.createCJitEntry(
-            channelSizeSat: amountSats * 2, // TODO: check this amount default from RN app
-            invoiceSat: amountSats,
-            invoiceDescription: description,
+        return CJitEntry(
+            id: UUID().uuidString,
+            state: .created,
+            feeSat: 1000,
+            channelSizeSat: amountSats,
+            channelExpiryWeeks: 6,
+            channelOpenError: nil,
             nodeId: nodeId,
-            channelExpiryWeeks: 2, // TODO: check this amount default from RN app
-            options: .init()
+            invoice: .init(request: "", state: .canceled, expiresAt: "", updatedAt: ""),
+            channel: nil,
+            lspNode: .init(alias: "", pubkey: "", connectionStrings: []),
+            couponCode: nil,
+            source: "bitkit",
+            discount: nil,
+            expiresAt: "2024-03-20T12:00:00Z",
+            updatedAt: "2024-03-19T12:00:00Z",
+            createdAt: "2024-03-19T12:00:00Z"
         )
-
-        cJitEntries.append(entry)
-
-        return entry
     }
 
-    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> BtOrder {
+    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks _: UInt8 = 6) async throws -> BtOrder {
         guard let nodeId = lightningService.nodeId else {
             throw CustomServiceError.nodeNotStarted
         }
 
-        let receivingBalanceSats = spendingBalanceSats * 2 // TODO: confirm default in RN Bitkit
-        let timestamp = Date().formatted(.iso8601)
-        let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
-
-        var options = CreateOrderOptions_OLD.initWithDefaults()
-        options.wakeToOpen = .init(
-            nodeId: nodeId,
-            timestamp: timestamp,
-            signature: signature
+        return BtOrder(
+            id: UUID().uuidString,
+            state: .created,
+            state2: .created,
+            feeSat: 1000,
+            lspBalanceSat: Int(spendingBalanceSats),
+            clientBalanceSat: Int(spendingBalanceSats * 2),
+            zeroConf: true,
+            zeroReserve: false,
+            wakeToOpenNodeId: nodeId,
+            channelExpiryWeeks: 6,
+            channelExpiresAt: "2024-03-20T12:00:00Z",
+            orderExpiresAt: "2024-03-19T12:00:00Z",
+            channel: nil,
+            lspNode: LspNode(alias: "TestNode", pubkey: nodeId, connectionStrings: []),
+            lnurl: nil,
+            payment: .init(state: .created, state2: .created, paidSat: 1, bolt11Invoice: .init(request: "", state: .holding, expiresAt: "", updatedAt: ""), onchain: .init(address: "", confirmedSat: 1, requiredConfirmations: 1, transactions: [])),
+            couponCode: nil,
+            source: "bitkit",
+            discount: nil,
+            updatedAt: "2024-03-19T12:00:00Z",
+            createdAt: "2024-03-19T12:00:00Z"
         )
-        options.clientBalanceSat = spendingBalanceSats
-        options.zeroReserve = true
-        options.zeroConf = true
-        options.zeroConfPayment = false
-
-        let order = try await blocktankService.createOrder(
-            lspBalanceSat: receivingBalanceSats,
-            channelExpiryWeeks: channelExpiryWeeks,
-            options: options
-        )
-        orders.append(order)
-
-        return order
     }
 }

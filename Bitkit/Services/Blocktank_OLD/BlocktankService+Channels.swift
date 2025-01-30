@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     func openChannel(orderId: String) async throws {
         guard let nodeId = LightningService.shared.nodeId else {
             throw AppError(serviceError: .nodeNotStarted)

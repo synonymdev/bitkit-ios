@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     func createOrder(lspBalanceSat: UInt64, channelExpiryWeeks: UInt8, options: CreateOrderOptions_OLD) async throws -> BtOrder {
         var params: [String: Any] = [
             "lspBalanceSat": lspBalanceSat,

@@ -70,7 +70,7 @@ class NotificationService: UNNotificationServiceExtension {
                 }
                 
                 do {
-                    try await BlocktankService.shared.openChannel(orderId: orderId)
+                    try await BlocktankService_OLD.shared.openChannel(orderId: orderId)
                     Logger.info("Open channel request for order \(orderId)")
                 } catch {
                     Logger.error(error, context: "failed to open channel")

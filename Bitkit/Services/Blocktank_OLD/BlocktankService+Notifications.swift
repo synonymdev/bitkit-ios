@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     func registerDevice(deviceToken: String) async throws {
         UserDefaults.standard.setValue(deviceToken, forKey: "deviceToken") // Token cached so we can retry registration if there are any issues
         
