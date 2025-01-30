@@ -7,8 +7,8 @@
 
 import Foundation
 
-class BlocktankService {
-    static var shared = BlocktankService()
+class BlocktankService_OLD {
+    static var shared = BlocktankService_OLD()
     private init() {}
         
     func getInfo() async throws -> BtInfo {
@@ -71,6 +71,7 @@ class BlocktankService {
         }
         
         let url = urlComponents.url!
+        print("url: \(url)")
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         

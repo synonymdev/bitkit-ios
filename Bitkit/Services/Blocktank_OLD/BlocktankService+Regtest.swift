@@ -1,6 +1,6 @@
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     /// Mines a number of blocks on the regtest network.
     /// - Parameter count: Number of blocks to mine. Default is 1.
     func regtestMine(count: Int = 1) async throws {

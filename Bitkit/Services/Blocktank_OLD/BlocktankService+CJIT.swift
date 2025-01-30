@@ -7,7 +7,7 @@
 
 import Foundation
 
-extension BlocktankService {
+extension BlocktankService_OLD {
     func createCJitEntry(
         channelSizeSat: UInt64,
         invoiceSat: UInt64,
