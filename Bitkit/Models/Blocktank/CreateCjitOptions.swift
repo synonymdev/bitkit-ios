@@ -1,6 +1,6 @@
 import Foundation
 
-struct CreateCjitOptions: Codable {
+struct CreateCjitOptions_OLD: Codable {
     /**
      * What created this order. Example: 'bitkit', 'widget'
      */

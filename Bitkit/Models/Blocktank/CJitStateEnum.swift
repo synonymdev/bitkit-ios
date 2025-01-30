@@ -1,6 +1,6 @@
 import Foundation
 
-enum CJitStateEnum: String, Codable {
+enum CJitStateEnum_OLD: String, Codable {
     case created
     case completed
     case expired
