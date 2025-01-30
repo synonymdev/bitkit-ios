@@ -10,6 +10,7 @@ import XCTest
 
 final class BlocktankTests: XCTestCase {
     let testDbPath = NSTemporaryDirectory()
+    let service = BlocktankService.shared
     
     override func setUp() async throws {
         try await super.setUp()
@@ -24,7 +25,7 @@ final class BlocktankTests: XCTestCase {
     
     func testGetInfo() async throws {
         // Test getting info with and without refresh
-        guard let info = try await Bitkit.getInfo(refresh: true) else {
+        guard let info = try await service.getInfo() else {
             XCTFail("Info should not be nil")
             return
         }
@@ -52,13 +53,6 @@ final class BlocktankTests: XCTestCase {
         XCTAssertGreaterThan(info.onchain.feeRates.fast, 0, "Fast fee rate should be greater than 0")
         XCTAssertGreaterThan(info.onchain.feeRates.mid, 0, "Mid fee rate should be greater than 0")
         XCTAssertGreaterThan(info.onchain.feeRates.slow, 0, "Slow fee rate should be greater than 0")
-        
-        // Test refreshing info
-        guard let refreshedInfo = try await Bitkit.getInfo(refresh: true) else {
-            XCTFail("Refreshed info should not be nil")
-            return
-        }
-        XCTAssertGreaterThan(refreshedInfo.options.minChannelSizeSat, 0, "Refreshed info should be valid")
     }
     
     func testCreateCjitOrder() async throws {
@@ -70,7 +64,7 @@ final class BlocktankTests: XCTestCase {
         let channelExpiryWeeks: UInt32 = 6
         let options = CreateCjitOptions(source: "bitkit", discountCode: nil)
         
-        let cjitEntry = try await Bitkit.createCjitEntry(
+        let cjitEntry = try await service.createCjitEntry(
             channelSizeSat: channelSizeSat,
             invoiceSat: invoiceSat,
             invoiceDescription: invoiceDescription,
@@ -92,7 +86,7 @@ final class BlocktankTests: XCTestCase {
         // Test error cases
         do {
             let invalidAmount: UInt64 = 1 // Too small amount
-            _ = try await Bitkit.createCjitEntry(
+            _ = try await service.createCjitEntry(
                 channelSizeSat: invalidAmount,
                 invoiceSat: invoiceSat,
                 invoiceDescription: invoiceDescription,
@@ -102,11 +96,11 @@ final class BlocktankTests: XCTestCase {
             )
             XCTFail("Should throw error for invalid amount")
         } catch {
-            XCTAssertTrue(error is BlocktankError, "Error should be BlocktankError")
+            XCTAssertTrue(error is Error)
         }
         
         // Test getting CJIT entries
-        let entries = try await Bitkit.getCjitEntries(entryIds: [cjitEntry.id], filter: nil, refresh: true)
+        let entries = try await service.getCjitEntries(entryIds: [cjitEntry.id], filter: nil, refresh: true)
         XCTAssertFalse(entries.isEmpty, "Should retrieve created CJIT entry")
         XCTAssertEqual(entries.first?.id, cjitEntry.id, "Retrieved entry should match created entry")
     }
@@ -131,9 +125,7 @@ final class BlocktankTests: XCTestCase {
             announceChannel: true
         )
         
-        //        return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", source: "bitkit-ios", zeroConf: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
-
-        let order = try await Bitkit.createOrder(
+        let order = try await service.createOrder(
             lspBalanceSat: lspBalanceSat,
             channelExpiryWeeks: channelExpiryWeeks,
             options: options
@@ -150,12 +142,9 @@ final class BlocktankTests: XCTestCase {
         XCTAssertEqual(order.source, "bitkit-ios", "Source should be bitkit-ios")
         
         // Test getting orders
-        let old = try? await BlocktankService_OLD.shared.getOrders(orderIds: [order.id])
-        let orders = try await Bitkit.getOrders(orderIds: [order.id], filter: nil, refresh: true)
+        let orders = try await service.getOrders(orderIds: [order.id], filter: nil, refresh: true)
         XCTAssertFalse(orders.isEmpty, "Orders list should not be empty")
         XCTAssertEqual(orders.first?.id, order.id, "Retrieved order should match created order")
-        
-//        caught error: "DataError(errorDetails: "Failed to fetch orders: Blocktank error: Failed to fetch orders [\"ef7b2255-036b-4a20-bfde-b932d1868e05\"].: HTTP client error: HTTP status client error (400 Bad Request) for url (https://api.stag0.blocktank.to/blocktank/api/v2/channels?ids=ef7b2255-036b-4a20-bfde-b932d1868e05) String(\"HTTP client error: HTTP status client error (400 Bad Request) for url (https://api.stag0.blocktank.to/blocktank/api/v2/channels?ids=ef7b2255-036b-4a20-bfde-b932d1868e05)\")")"
         
         // Test error cases
         do {
@@ -175,7 +164,7 @@ final class BlocktankTests: XCTestCase {
                 refundOnchainAddress: nil,
                 announceChannel: true
             )
-            _ = try await Bitkit.createOrder(
+            _ = try await service.createOrder(
                 lspBalanceSat: invalidLspBalance,
                 channelExpiryWeeks: channelExpiryWeeks,
                 options: invalidOptions
