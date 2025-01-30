@@ -1,6 +1,6 @@
 import Foundation
 
-struct CreateOrderOptions: Codable {
+struct CreateOrderOptions_OLD: Codable {
     var clientBalanceSat: UInt64
     var lspNodeId: String?
     var couponCode: String
@@ -19,7 +19,7 @@ struct CreateOrderOptions: Codable {
         var signature: String
     }
 
-    static func initWithDefaults() -> CreateOrderOptions {
+    static func initWithDefaults() -> CreateOrderOptions_OLD {
         return .init(clientBalanceSat: 0, lspNodeId: nil, couponCode: "", source: "bitkit-ios", zeroConf: false, zeroConfPayment: nil, zeroReserve: false, wakeToOpen: nil)
     }
 }

@@ -1,8 +1,8 @@
 import Foundation
 
-enum BitcoinNetworkEnum: String, Codable {
-    case mainnet = "mainnet"
-    case testnet = "testnet"
-    case signet = "signet"
-    case regtest = "regtest"
+enum BitcoinNetworkEnum_OLD: String, Codable {
+    case mainnet
+    case testnet
+    case signet
+    case regtest
 }

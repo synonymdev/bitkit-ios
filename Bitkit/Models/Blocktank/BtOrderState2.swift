@@ -1,8 +1,8 @@
 import Foundation
 
-enum BtOrderState2: String, Codable {
-    case created = "created"
-    case expired = "expired"
-    case executed = "executed"
-    case paid = "paid"
+enum BtOrderState2_OLD: String, Codable {
+    case created
+    case expired
+    case executed
+    case paid
 }

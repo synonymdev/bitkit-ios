@@ -14,7 +14,7 @@ extension BlocktankService {
         invoiceDescription: String,
         nodeId: String,
         channelExpiryWeeks: UInt8,
-        options: CreateCjitOptions
+        options: CreateCjitOptions_OLD
     ) async throws -> CJitEntry {
         var params: [String: Any] = [
             "channelSizeSat": channelSizeSat,

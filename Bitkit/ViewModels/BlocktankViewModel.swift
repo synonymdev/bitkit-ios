@@ -10,7 +10,7 @@ import SwiftUI
 @MainActor
 class BlocktankViewModel: ObservableObject {
     static let shared = BlocktankViewModel()
-    
+
     @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
     @Published var cJitEntries: [CJitEntry] = [] // TODO: cache cJitEntries
     @Published var info: BtInfo? = nil // TODO: cache this
@@ -19,9 +19,10 @@ class BlocktankViewModel: ObservableObject {
 
     private let blocktankService: BlocktankService
     private let lightningService: LightningService
-    
+
     init(blocktankService: BlocktankService = .shared,
-         lightningService: LightningService = .shared) {
+         lightningService: LightningService = .shared)
+    {
         self.blocktankService = blocktankService
         self.lightningService = lightningService
     }
@@ -58,7 +59,7 @@ class BlocktankViewModel: ObservableObject {
         let timestamp = Date().formatted(.iso8601)
         let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
 
-        var options = CreateOrderOptions.initWithDefaults()
+        var options = CreateOrderOptions_OLD.initWithDefaults()
         options.wakeToOpen = .init(
             nodeId: nodeId,
             timestamp: timestamp,

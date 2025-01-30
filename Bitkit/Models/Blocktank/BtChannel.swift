@@ -1,7 +1,7 @@
 import Foundation
 
 struct BtChannel: Codable {
-    var state: BtOpenChannelState
+    var state: BtOpenChannelState_OLD
     var lspNodePubkey: String
     var clientNodePubkey: String
     var announceChannel: Bool
@@ -9,7 +9,7 @@ struct BtChannel: Codable {
     var closingTxId: String?
     var close: BtChannelClose?
     var shortChannelId: String?
-    
+
     struct FundingTx: Codable {
         var id: String
         var vout: Int

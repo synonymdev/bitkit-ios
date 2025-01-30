@@ -25,7 +25,7 @@ struct BtInfo: Codable {
     }
 
     struct Onchain: Codable {
-        var network: BitcoinNetworkEnum
+        var network: BitcoinNetworkEnum_OLD
         var feeRates: FeeRates
 
         struct FeeRates: Codable {

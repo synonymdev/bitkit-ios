@@ -1,6 +1,6 @@
 import Foundation
 
-enum BtOpenChannelState: String, Codable {
+enum BtOpenChannelState_OLD: String, Codable {
     case opening
     case open
     case closed

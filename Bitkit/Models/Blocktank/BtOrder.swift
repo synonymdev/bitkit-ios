@@ -2,8 +2,8 @@ import Foundation
 
 struct BtOrder: Codable {
     var id: String
-    var state: BtOrderState
-    var state2: BtOrderState2
+    var state: BtOrderState_OLD
+    var state2: BtOrderState2_OLD
     var feeSat: UInt64
     var lspBalanceSat: Int
     var clientBalanceSat: Int

@@ -1,6 +1,6 @@
 import Foundation
 
-enum BtChannelOrderErrorType: String, Codable {
+enum BtChannelOrderErrorType_OLD: String, Codable {
     /**
      * Order is not in the right state to open a channel. Should be `order.state`=`created` and `order.payment.state`=`paid`.
      */

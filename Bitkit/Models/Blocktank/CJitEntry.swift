@@ -8,7 +8,7 @@ struct CJitEntry: Codable {
     /**
      * State of this entry
      */
-    var state: CJitStateEnum
+    var state: CJitStateEnum_OLD
     /**
      * Fee in satoshi to open this channel.
      */
