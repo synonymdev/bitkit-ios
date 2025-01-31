@@ -313,6 +313,22 @@ class LightningService {
             )
         }
     }
+    
+    func dumpLdkLogs() {
+        let dir = Env.ldkStorage(walletIndex: 0)
+        let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
+
+        do {
+            let text = try String(contentsOf: fileURL, encoding: .utf8)
+            let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            print("*****LDK-NODE LOG******")
+            for line in lines.suffix(20) {
+                print(line)
+            }
+        } catch {
+            Logger.error(error, context: "failed to load ldk log file")
+        }
+    }
 }
 
 // MARK: UI Helpers (Published via WalletViewModel)

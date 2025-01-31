@@ -11,8 +11,8 @@ import SwiftUI
 class BlocktankViewModel: ObservableObject {
     static let shared = BlocktankViewModel()
 
-    @Published var orders: [BtOrder] = [] // TODO: cache orders to disk
-    @Published var cJitEntries: [CJitEntry] = [] // TODO: cache cJitEntries
+    @Published var orders: [IBtOrder]? = nil
+    @Published var cJitEntries: [IcJitEntry]? = nil
     @Published var info: IBtInfo? = nil
 
     @AppStorage("cjitActive") var cjitActive = false
@@ -25,6 +25,9 @@ class BlocktankViewModel: ObservableObject {
     {
         self.coreService = coreService
         self.lightningService = lightningService
+
+        Task { try? await refreshInfo() }
+        Task { try? await refreshOrders() }
     }
 
     func refreshInfo() async throws {
@@ -32,58 +35,60 @@ class BlocktankViewModel: ObservableObject {
         info = try await getInfo(refresh: true)
     }
 
-    func createCjit(amountSats: UInt64, description _: String) async throws -> CJitEntry {
+    func refreshOrders() async throws {
+        // Sync UI instantly from cache
+        orders = try await coreService.blocktank.orders(refresh: false)
+        cJitEntries = try await coreService.blocktank.cjitOrders(refresh: false)
+
+        // The update from server
+        orders = try await coreService.blocktank.orders(refresh: true)
+        cJitEntries = try await coreService.blocktank.cjitOrders(refresh: true)
+    }
+
+    func createCjit(amountSats: UInt64, description: String) async throws -> IcJitEntry {
         guard let nodeId = lightningService.nodeId else {
             throw CustomServiceError.nodeNotStarted
         }
 
-        return CJitEntry(
-            id: UUID().uuidString,
-            state: .created,
-            feeSat: 1000,
-            channelSizeSat: amountSats,
-            channelExpiryWeeks: 6,
-            channelOpenError: nil,
+        return try await coreService.blocktank.createCjit(
+            channelSizeSat: amountSats * 2, // TODO: check this amount default from RN app
+            invoiceSat: amountSats,
+            invoiceDescription: description,
             nodeId: nodeId,
-            invoice: .init(request: "", state: .canceled, expiresAt: "", updatedAt: ""),
-            channel: nil,
-            lspNode: .init(alias: "", pubkey: "", connectionStrings: []),
-            couponCode: nil,
-            source: "bitkit",
-            discount: nil,
-            expiresAt: "2024-03-20T12:00:00Z",
-            updatedAt: "2024-03-19T12:00:00Z",
-            createdAt: "2024-03-19T12:00:00Z"
+            channelExpiryWeeks: 2, // TODO: check this amount default from RN app
+            options: .init(source: "bitkit-ios", discountCode: nil)
         )
     }
 
-    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks _: UInt8 = 6) async throws -> BtOrder {
+    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
         guard let nodeId = lightningService.nodeId else {
             throw CustomServiceError.nodeNotStarted
         }
 
-        return BtOrder(
-            id: UUID().uuidString,
-            state: .created,
-            state2: .created,
-            feeSat: 1000,
-            lspBalanceSat: Int(spendingBalanceSats),
-            clientBalanceSat: Int(spendingBalanceSats * 2),
-            zeroConf: true,
-            zeroReserve: false,
-            wakeToOpenNodeId: nodeId,
-            channelExpiryWeeks: 6,
-            channelExpiresAt: "2024-03-20T12:00:00Z",
-            orderExpiresAt: "2024-03-19T12:00:00Z",
-            channel: nil,
-            lspNode: LspNode(alias: "TestNode", pubkey: nodeId, connectionStrings: []),
-            lnurl: nil,
-            payment: .init(state: .created, state2: .created, paidSat: 1, bolt11Invoice: .init(request: "", state: .holding, expiresAt: "", updatedAt: ""), onchain: .init(address: "", confirmedSat: 1, requiredConfirmations: 1, transactions: [])),
-            couponCode: nil,
-            source: "bitkit",
-            discount: nil,
-            updatedAt: "2024-03-19T12:00:00Z",
-            createdAt: "2024-03-19T12:00:00Z"
+        let receivingBalanceSats = spendingBalanceSats * 2
+        let timestamp = Date().formatted(.iso8601)
+        let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
+
+        var options = CreateOrderOptions(
+            clientBalanceSat: spendingBalanceSats,
+            lspNodeId: nil,
+            couponCode: "",
+            source: "bitkit-ios",
+            discountCode: nil,
+            turboChannel: false,
+            zeroConfPayment: false,
+            zeroReserve: true,
+            clientNodeId: nodeId,
+            signature: signature,
+            timestamp: timestamp,
+            refundOnchainAddress: nil,
+            announceChannel: false
+        )
+
+        return try await coreService.blocktank.newOrder(
+            lspBalanceSat: receivingBalanceSats,
+            channelExpiryWeeks: UInt32(channelExpiryWeeks),
+            options: options
         )
     }
 }

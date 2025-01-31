@@ -270,7 +270,7 @@ class BlocktankService {
         }
     }
 
-    func getCjitOrders(entryIds: [String], filter: CJitStateEnum?, refresh: Bool = true) async throws -> [IcJitEntry] {
+    func cjitOrders(entryIds: [String]? = nil, filter: CJitStateEnum? = nil, refresh: Bool = true) async throws -> [IcJitEntry] {
         try await ServiceQueue.background(.core) {
             try await getCjitEntries(entryIds: entryIds, filter: filter, refresh: refresh)
         }
@@ -290,7 +290,7 @@ class BlocktankService {
         }
     }
 
-    func orders(orderIds: [String], filter: BtOrderState2?, refresh: Bool = true) async throws -> [IBtOrder] {
+    func orders(orderIds: [String]? = nil, filter: BtOrderState2? = nil, refresh: Bool = true) async throws -> [IBtOrder] {
         try await ServiceQueue.background(.core) {
             try await getOrders(orderIds: orderIds, filter: filter, refresh: refresh)
         }
@@ -299,6 +299,14 @@ class BlocktankService {
     func open(orderId: String) async throws -> IBtOrder {
         guard let nodeId = LightningService.shared.nodeId else {
             throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        let latestOrder = try await ServiceQueue.background(.core) {
+            try await getOrders(orderIds: [orderId], filter: nil, refresh: true).first
+        }
+        
+        guard latestOrder?.state2 == .paid else {
+            throw AppError(message: "Order not paid", debugMessage: "Order state: \(String(describing: latestOrder?.state2))")
         }
         
         return try await ServiceQueue.background(.core) {
@@ -313,25 +321,23 @@ class CoreService {
     private let walletIndex: Int
     
     lazy var activity: ActivityService = .init(coreService: self)
-    
     lazy var blocktank: BlocktankService = .init(coreService: self)
     
     private init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
-
-        Task {
-            do {
-                try await initializeDatabase()
-            } catch {
-                Logger.error(error)
+        
+        _ = try! initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
+        
+        // First thing ever added to the core queue so guarenteed to run first before any of above functions
+        ServiceQueue.background(.core, {
+            try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
+        }) { result in
+            switch result {
+            case .success(let value):
+                Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")
+            case .failure(let error):
+                Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
-        }
-    }
-    
-    private func initializeDatabase() async throws {
-        let dbPath = Env.bitkitCoreStorage(walletIndex: walletIndex).path
-        try await ServiceQueue.background(.core) {
-            _ = try initDb(basePath: dbPath)
         }
     }
 }
