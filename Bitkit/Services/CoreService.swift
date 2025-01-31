@@ -328,12 +328,22 @@ class CoreService {
         
         _ = try! initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
         
-        // First thing ever added to the core queue so guarenteed to run first before any of above functions
+        // First thing ever added to the core queue so guarenteed to run first before any of above functions on the same queue
+        ServiceQueue.background(.core, {
+            try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
+        }) { result in
+            switch result {
+            case .success(let value):
+                Logger.info("bitkit-core database init: \(value)", context: "CoreService")
+            case .failure(let error):
+                Logger.error("bitkit-core database init failed: \(error)", context: "CoreService")
+            }
+        }
         ServiceQueue.background(.core, {
             try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
         }) { result in
             switch result {
-            case .success(let value):
+            case .success():
                 Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")
             case .failure(let error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
