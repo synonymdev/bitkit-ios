@@ -1,40 +1,16 @@
-//
-//  ActivityListService.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/12/17.
-//
-
 import Foundation
 import LDKNode
 
-class ActivityListService {
-    static let shared = ActivityListService()
-    private let walletIndex: Int
+// MARK: - Activity Service
+class ActivityService {
+    private let coreService: CoreService
     
-    private init(walletIndex: Int = 0) {
-        self.walletIndex = walletIndex
-
-        Task {
-            do {
-                try await initializeDatabase()
-            } catch {
-                Logger.error(error)
-            }
-        }
+    init(coreService: CoreService) {
+        self.coreService = coreService
     }
-    
-    private func initializeDatabase() async throws {
-        let dbPath = Env.bitkitCoreStorage(walletIndex: walletIndex).path
-        try await ServiceQueue.background(.activity) {
-            _ = try initDb(basePath: dbPath)
-        }
-    }
-    
-    // MARK: - Database Management
     
     func removeAll() async throws {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             // Only allow removing on regtest for now
             guard Env.network == .regtest else {
                 throw AppError(message: "Regtest only", debugMessage: nil)
@@ -54,19 +30,14 @@ class ActivityListService {
         }
     }
     
-    // MARK: - Activity Methods
-    
     func insert(_ activity: Activity) async throws {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             try insertActivity(activity: activity)
         }
     }
     
-    // TODO: insert based on LDK node event
-    // TODO: insert based on LDK node payment type
-    
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             var addedCount = 0
             var updatedCount = 0
             
@@ -105,16 +76,14 @@ class ActivityListService {
                     try insertActivity(activity: .lightning(ln))
                     addedCount += 1
                 }
-
-                // TODO: handle onchain activity when it comes in ldk-node
             }
             
-            Logger.info("Synced LDK payments - Added: \(addedCount), Updated: \(updatedCount)", context: "ActivityListService")
+            Logger.info("Synced LDK payments - Added: \(addedCount), Updated: \(updatedCount)", context: "CoreService")
         }
     }
     
     func getActivity(id: String) async throws -> Activity? {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             try getActivityById(activityId: id)
         }
     }
@@ -129,7 +98,7 @@ class ActivityListService {
         limit: UInt32? = nil,
         sortDirection: SortDirection? = nil
     ) async throws -> [Activity] {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             try getActivities(
                 filter: filter,
                 txType: txType,
@@ -144,46 +113,46 @@ class ActivityListService {
     }
     
     func update(id: String, activity: Activity) async throws {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
         }
     }
     
     func delete(id: String) async throws -> Bool {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             try deleteActivityById(activityId: id)
         }
     }
     
     // MARK: - Tag Methods
     
-    func addTags(toActivity id: String, _ tags: [String]) async throws {
-        try await ServiceQueue.background(.activity) {
-            try Bitkit.addTags(activityId: id, tags: tags)
+    func appendTag(toActivity id: String, _ tags: [String]) async throws {
+        try await ServiceQueue.background(.core) {
+            try addTags(activityId: id, tags: tags)
         }
     }
     
-    func removeTags(fromActivity id: String, _ tags: [String]) async throws {
-        try await ServiceQueue.background(.activity) {
-            try Bitkit.removeTags(activityId: id, tags: tags)
+    func dropTags(fromActivity id: String, _ tags: [String]) async throws {
+        try await ServiceQueue.background(.core) {
+            try removeTags(activityId: id, tags: tags)
         }
     }
     
-    func getTags(forActivity id: String) async throws -> [String] {
-        try await ServiceQueue.background(.activity) {
-            try Bitkit.getTags(activityId: id)
+    func tags(forActivity id: String) async throws -> [String] {
+        try await ServiceQueue.background(.core) {
+            try getTags(activityId: id)
         }
     }
     
-    func getAllUniqueTags() async throws -> [String] {
-        try await ServiceQueue.background(.activity) {
-            try Bitkit.getAllUniqueTags()
+    func allPossibleTags() async throws -> [String] {
+        try await ServiceQueue.background(.core) {
+            try getAllUniqueTags()
         }
     }
     
     #if DEBUG
     func generateRandomTestData(count: Int = 100) async throws {
-        try await ServiceQueue.background(.activity) {
+        try await ServiceQueue.background(.core) {
             let timestamp = UInt64(Date().timeIntervalSince1970)
             let possibleTags = ["coffee", "food", "shopping", "transport", "entertainment", "work", "friends", "family"]
             let possibleMessages = [
@@ -259,10 +228,110 @@ class ActivityListService {
                 let numTags = Int.random(in: 0...3)
                 if numTags > 0 {
                     let tags = Array(Set((0..<numTags).map { _ in possibleTags.randomElement()! }))
-                    try await self.addTags(toActivity: id, tags)
+                    try await self.appendTag(toActivity: id, tags)
                 }
             }
         }
     }
     #endif
+}
+
+// MARK: - Blocktank Service
+class BlocktankService {
+    private let coreService: CoreService
+    
+    init(coreService: CoreService) {
+        self.coreService = coreService
+    }
+    
+    func info(refresh: Bool = true) async throws -> IBtInfo? {
+        try await ServiceQueue.background(.core) {
+            try await getInfo(refresh: refresh)
+        }
+    }
+
+    func createCjit(
+        channelSizeSat: UInt64,
+        invoiceSat: UInt64,
+        invoiceDescription: String,
+        nodeId: String,
+        channelExpiryWeeks: UInt32,
+        options: CreateCjitOptions
+    ) async throws -> IcJitEntry {
+        try await ServiceQueue.background(.core) {
+            try await createCjitEntry(
+                channelSizeSat: channelSizeSat,
+                invoiceSat: invoiceSat,
+                invoiceDescription: invoiceDescription,
+                nodeId: nodeId,
+                channelExpiryWeeks: channelExpiryWeeks,
+                options: options
+            )
+        }
+    }
+
+    func getCjitOrders(entryIds: [String], filter: CJitStateEnum?, refresh: Bool = true) async throws -> [IcJitEntry] {
+        try await ServiceQueue.background(.core) {
+            try await getCjitEntries(entryIds: entryIds, filter: filter, refresh: refresh)
+        }
+    }
+
+    func newOrder(
+        lspBalanceSat: UInt64,
+        channelExpiryWeeks: UInt32,
+        options: CreateOrderOptions
+    ) async throws -> IBtOrder {
+        try await ServiceQueue.background(.core) {
+            try await createOrder(
+                lspBalanceSat: lspBalanceSat,
+                channelExpiryWeeks: channelExpiryWeeks,
+                options: options
+            )
+        }
+    }
+
+    func orders(orderIds: [String], filter: BtOrderState2?, refresh: Bool = true) async throws -> [IBtOrder] {
+        try await ServiceQueue.background(.core) {
+            try await getOrders(orderIds: orderIds, filter: filter, refresh: refresh)
+        }
+    }
+    
+    func open(orderId: String) async throws -> IBtOrder {
+        guard let nodeId = LightningService.shared.nodeId else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        return try await ServiceQueue.background(.core) {
+            try await openChannel(orderId: orderId, connectionString: nodeId)
+        }
+    }
+}
+
+// MARK: - Core Service requires shared init for both activity and blocktank services
+class CoreService {
+    static let shared = CoreService()
+    private let walletIndex: Int
+    
+    lazy var activity: ActivityService = .init(coreService: self)
+    
+    lazy var blocktank: BlocktankService = .init(coreService: self)
+    
+    private init(walletIndex: Int = 0) {
+        self.walletIndex = walletIndex
+
+        Task {
+            do {
+                try await initializeDatabase()
+            } catch {
+                Logger.error(error)
+            }
+        }
+    }
+    
+    private func initializeDatabase() async throws {
+        let dbPath = Env.bitkitCoreStorage(walletIndex: walletIndex).path
+        try await ServiceQueue.background(.core) {
+            _ = try initDb(basePath: dbPath)
+        }
+    }
 }

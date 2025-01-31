@@ -17,13 +17,13 @@ class BlocktankViewModel: ObservableObject {
 
     @AppStorage("cjitActive") var cjitActive = false
 
-    private let blocktankService: BlocktankService
+    private let coreService: CoreService
     private let lightningService: LightningService
 
-    init(blocktankService: BlocktankService = .shared,
+    init(coreService: CoreService = .shared,
          lightningService: LightningService = .shared)
     {
-        self.blocktankService = blocktankService
+        self.coreService = coreService
         self.lightningService = lightningService
     }
 

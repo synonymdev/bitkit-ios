@@ -10,6 +10,7 @@ import XCTest
 
 final class ActivityTests: XCTestCase {
     let testDbPath = NSTemporaryDirectory()
+    let service = CoreService.shared.activity
     
     override func setUp() async throws {
         try await super.setUp()
@@ -29,7 +30,7 @@ final class ActivityTests: XCTestCase {
         }
     }
     
-    func testInsertAndRetrieveLightningActivity() throws {
+    func testInsertAndRetrieveLightningActivity() async throws {
         let testValue: UInt64 = 123456789
         let testFee: UInt64 = 421
         let timestamp = UInt64(Date().timeIntervalSince1970)
@@ -50,10 +51,10 @@ final class ActivityTests: XCTestCase {
         ))
         
         // Insert the activity
-        try insertActivity(activity: lightningActivity)
+        try await service.insert(lightningActivity)
         
         // Retrieve the activity
-        let retrieved = try getActivityById(activityId: "test-lightning-1")
+        let retrieved = try await service.getActivity(id: "test-lightning-1")
         XCTAssertNotNil(retrieved)
         
         if case let .lightning(activity) = retrieved {
@@ -66,7 +67,7 @@ final class ActivityTests: XCTestCase {
         }
     }
     
-    func testInsertAndRetrieveOnchainActivity() throws {
+    func testInsertAndRetrieveOnchainActivity() async throws {
         let testValue: UInt64 = 987654321
         let testFee: UInt64 = 1234
         let testFeeRate: UInt64 = 8
@@ -94,10 +95,10 @@ final class ActivityTests: XCTestCase {
         ))
         
         // Insert the activity
-        try insertActivity(activity: onchainActivity)
+        try await service.insert(onchainActivity)
         
         // Retrieve the activity
-        let retrieved = try getActivityById(activityId: "test-onchain-1")
+        let retrieved = try await service.getActivity(id: "test-onchain-1")
         XCTAssertNotNil(retrieved)
         
         if case let .onchain(activity) = retrieved {
@@ -110,7 +111,7 @@ final class ActivityTests: XCTestCase {
         }
     }
     
-    func testActivityTags() throws {
+    func testActivityTags() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create and insert an activity
@@ -128,23 +129,23 @@ final class ActivityTests: XCTestCase {
             updatedAt: nil
         ))
         
-        try insertActivity(activity: activity)
+        try await service.insert(activity)
         
         // Add tags
         let tags = ["test", "payment"]
-        try addTags(activityId: "test-tags-1", tags: tags)
+        try await service.appendTag(toActivity: "test-tags-1", tags)
         
         // Retrieve tags
-        let retrievedTags = try getTags(activityId: "test-tags-1")
+        let retrievedTags = try await service.tags(forActivity: "test-tags-1")
         XCTAssertEqual(Set(retrievedTags), Set(tags))
         
         // Remove a tag
-        try removeTags(activityId: "test-tags-1", tags: ["test"])
-        let updatedTags = try getTags(activityId: "test-tags-1")
+        try await service.dropTags(fromActivity: "test-tags-1", ["test"])
+        let updatedTags = try await service.tags(forActivity: "test-tags-1")
         XCTAssertEqual(updatedTags, ["payment"])
     }
     
-    func testGetActivitiesByTag() throws {
+    func testGetActivitiesByTag() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create and insert multiple activities with tags
@@ -179,24 +180,24 @@ final class ActivityTests: XCTestCase {
         
         // Insert activities and add tags
         for activity in activities {
-            try insertActivity(activity: activity)
+            try await service.insert(activity)
             if case let .lightning(lightning) = activity {
-                try addTags(activityId: lightning.id, tags: ["test-tag"])
+                try await service.appendTag(toActivity: lightning.id, ["test-tag"])
             }
         }
         
         // Add an additional tag to one activity
-        try addTags(activityId: "test-tag-filter-1", tags: ["special"])
+        try await service.appendTag(toActivity: "test-tag-filter-1", ["special"])
         
         // Test filtering by tag
-        let testTagActivities = try getActivitiesByTag(tag: "test-tag", limit: nil, sortDirection: .desc)
+        let testTagActivities = try await service.get(tags: ["test-tag"], sortDirection: .desc)
         XCTAssertEqual(testTagActivities.count, 2)
         
-        let specialTagActivities = try getActivities(filter: nil, txType: nil, tags: ["special"], search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
+        let specialTagActivities = try await service.get(tags: ["special"])
         XCTAssertEqual(specialTagActivities.count, 1)
     }
     
-    func testGetAllUniqueTags() throws {
+    func testGetAllUniqueTags() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create test activities with different tags
@@ -237,37 +238,38 @@ final class ActivityTests: XCTestCase {
         
         // Insert activities and add different combinations of tags
         for activity in activities {
-            try insertActivity(activity: activity)
+            try await service.insert(activity)
         }
         
         // Add tags to first activity
-        try addTags(activityId: "test-unique-tags-1", tags: ["payment", "important", "personal"])
+        try await service.appendTag(toActivity: "test-unique-tags-1", ["payment", "important", "personal"])
         
         // Add tags to second activity
-        try addTags(activityId: "test-unique-tags-2", tags: ["payment", "business", "onchain"])
+        try await service.appendTag(toActivity: "test-unique-tags-2", ["payment", "business", "onchain"])
         
         // Get all unique tags
-        let uniqueTags = try getAllUniqueTags()
+        let uniqueTags = try await service.allPossibleTags()
         
         // Verify the results
         XCTAssertEqual(Set(uniqueTags), Set(["payment", "important", "personal", "business", "onchain"]))
         XCTAssertEqual(uniqueTags.count, 5)
         
         // Add duplicate tags to verify they don't create duplicates in unique tags
-        try addTags(activityId: "test-unique-tags-1", tags: ["payment", "business"])
-        let uniqueTagsAfterDuplicates = try getAllUniqueTags()
+        try await service.appendTag(toActivity: "test-unique-tags-1", ["payment", "business"])
+        let uniqueTagsAfterDuplicates = try await service.allPossibleTags()
         XCTAssertEqual(Set(uniqueTagsAfterDuplicates), Set(["payment", "important", "personal", "business", "onchain"]))
         XCTAssertEqual(uniqueTagsAfterDuplicates.count, 5)
         
         // Remove some tags and verify the list updates
-        try removeTags(activityId: "test-unique-tags-1", tags: ["important", "personal"])
-        try removeTags(activityId: "test-unique-tags-2", tags: ["onchain"])
-        let uniqueTagsAfterRemoval = try getAllUniqueTags()
+        try await service.dropTags(fromActivity: "test-unique-tags-1", ["important", "personal"])
+        try await service.dropTags(fromActivity: "test-unique-tags-2", ["onchain"])
+        
+        let uniqueTagsAfterRemoval = try await service.allPossibleTags()
         XCTAssertEqual(Set(uniqueTagsAfterRemoval), Set(["payment", "business"]))
         XCTAssertEqual(uniqueTagsAfterRemoval.count, 2)
     }
     
-    func testUpdateActivity() throws {
+    func testUpdateActivity() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create and insert an activity
@@ -285,7 +287,7 @@ final class ActivityTests: XCTestCase {
             updatedAt: nil
         ))
         
-        try insertActivity(activity: initialActivity)
+        try await service.insert(initialActivity)
         
         // Create updated version
         let updatedActivity = Activity.lightning(LightningActivity(
@@ -303,10 +305,10 @@ final class ActivityTests: XCTestCase {
         ))
         
         // Update the activity
-        try updateActivity(activityId: "test-update-1", activity: updatedActivity)
+        try await service.update(id: "test-update-1", activity: updatedActivity)
         
         // Verify the update
-        let retrieved = try getActivityById(activityId: "test-update-1")
+        let retrieved = try await service.getActivity(id: "test-update-1")
         XCTAssertNotNil(retrieved)
         
         if case let .lightning(activity) = retrieved {
@@ -318,7 +320,7 @@ final class ActivityTests: XCTestCase {
         }
     }
     
-    func testDeleteActivity() throws {
+    func testDeleteActivity() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create and insert an activity
@@ -336,20 +338,22 @@ final class ActivityTests: XCTestCase {
             updatedAt: nil
         ))
         
-        try insertActivity(activity: activity)
+        try await service.insert(activity)
         
         // Verify activity exists
-        XCTAssertNotNil(try getActivityById(activityId: "test-delete-1"))
+        let activity1 = try await service.getActivity(id: "test-delete-1")
+        XCTAssertNotNil(activity1)
         
         // Delete the activity
-        let deleted = try deleteActivityById(activityId: "test-delete-1")
+        let deleted = try await service.delete(id: "test-delete-1")
         XCTAssertTrue(deleted)
         
         // Verify activity no longer exists
-        XCTAssertNil(try getActivityById(activityId: "test-delete-1"))
+        let deletedActivity = try await service.getActivity(id: "test-delete-1")
+        XCTAssertNil(deletedActivity)
     }
     
-    func testGetAllActivitiesWithLimit() throws {
+    func testGetAllActivitiesWithLimit() async throws {
         let timestamp = UInt64(Date().timeIntervalSince1970)
         
         // Create multiple activities
@@ -403,15 +407,15 @@ final class ActivityTests: XCTestCase {
         
         // Insert all activities
         for activity in activities {
-            try insertActivity(activity: activity)
+            try await service.insert(activity)
         }
         
         // Test with limit
-        let limitedActivities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: 2, sortDirection: nil)
+        let limitedActivities = try await service.get(filter: .all, limit: 2)
         XCTAssertEqual(limitedActivities.count, 2)
         
         // Test without limit
-        let allActivities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
+        let allActivities = try await service.get(filter: .all)
         XCTAssertEqual(allActivities.count, 3)
     }
 }

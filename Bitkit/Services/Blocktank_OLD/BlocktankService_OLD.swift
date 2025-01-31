@@ -11,13 +11,8 @@ class BlocktankService_OLD {
     static var shared = BlocktankService_OLD()
     private init() {}
         
-    func getInfo() async throws -> BtInfo {
-        let data = try await getRequest(Env.blocktankClientServer + "/info")
-        return try JSONDecoder().decode(BtInfo.self, from: data)
-    }
-    
     func postRequest(_ urlStr: String, _ params: [String: Any] = [:]) async throws -> Data {
-        return try await ServiceQueue.background(.blocktank) {
+        return try await ServiceQueue.background(.core) {
             let url = URL(string: urlStr)!
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
@@ -52,13 +47,10 @@ class BlocktankService_OLD {
             
             return data
         }
-        
-        // bitkitLog
     }
     
     func getRequest(_ url: String, _ params: [String: Any] = [:]) async throws -> Data {
         var urlComponents = URLComponents(string: url)!
-//        urlComponents.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         
         urlComponents.queryItems = params.flatMap { key, value -> [URLQueryItem] in
             if let array = value as? [Any] {
