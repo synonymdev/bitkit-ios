@@ -25,7 +25,7 @@ class ActivityListViewModel: ObservableObject {
     @Published var latestLightningActivities: [Activity]? = nil
     @Published var latestOnchainActivities: [Activity]? = nil
     
-    private let activityService: ActivityListService
+    private let coreService: CoreService
     private let lightningService: LightningService
     private var searchCancellable: AnyCancellable?
     private var dateRangeCancellable: AnyCancellable?
@@ -35,17 +35,17 @@ class ActivityListViewModel: ObservableObject {
     
     private func updateAvailableTags() async {
         do {
-            availableTags = try await activityService.getAllUniqueTags()
+            availableTags = try await coreService.activity.allPossibleTags()
         } catch {
             Logger.error(error, context: "Failed to get available tags")
             availableTags = []
         }
     }
     
-    init(activityService: ActivityListService = .shared,
+    init(coreService: CoreService = .shared,
          lightningService: LightningService = .shared)
     {
-        self.activityService = activityService
+        self.coreService = coreService
         self.lightningService = lightningService
         
         // Setup search text subscription with debounce
@@ -82,14 +82,14 @@ class ActivityListViewModel: ObservableObject {
         do {
             // Get latest activities first as that's displayed on the initial views
             let limitLatest: UInt32 = 3
-            latestActivities = try await activityService.get(filter: .all, limit: limitLatest)
-            latestLightningActivities = try await activityService.get(filter: .lightning, limit: limitLatest)
-            latestOnchainActivities = try await activityService.get(filter: .onchain, limit: limitLatest)
+            latestActivities = try await coreService.activity.get(filter: .all, limit: limitLatest)
+            latestLightningActivities = try await coreService.activity.get(filter: .lightning, limit: limitLatest)
+            latestOnchainActivities = try await coreService.activity.get(filter: .onchain, limit: limitLatest)
 
             // Fetch all activities
             await updateFilteredActivities()
-            lightningActivities = try await activityService.get(filter: .lightning)
-            onchainActivities = try await activityService.get(filter: .onchain)
+            lightningActivities = try await coreService.activity.get(filter: .lightning)
+            onchainActivities = try await coreService.activity.get(filter: .onchain)
             
             // Update available tags
             await updateAvailableTags()
@@ -120,7 +120,7 @@ class ActivityListViewModel: ObservableObject {
                 return UInt64(nextDay.timeIntervalSince1970 - 1)
             }
             
-            filteredActivities = try await activityService.get(
+            filteredActivities = try await coreService.activity.get(
                 filter: .all,
                 tags: selectedTags.isEmpty ? nil : Array(selectedTags),
                 search: searchText.isEmpty ? nil : searchText,
@@ -134,7 +134,7 @@ class ActivityListViewModel: ObservableObject {
     
     func syncLdkNodePayments() async throws {
         if let ldkPayments = lightningService.payments {
-            try await activityService.syncLdkNodePayments(ldkPayments)
+            try await coreService.activity.syncLdkNodePayments(ldkPayments)
             await syncState()
         }
     }
@@ -142,16 +142,16 @@ class ActivityListViewModel: ObservableObject {
     // MARK: - Tag Methods
     
     func addTags(_ tags: [String], toActivity id: String) async throws {
-        try await activityService.addTags(toActivity: id, tags)
+        try await coreService.activity.appendTag(toActivity: id, tags)
         await syncState() // Refresh UI after adding tags
     }
     
     func removeTags(_ tags: [String], fromActivity id: String) async throws {
-        try await activityService.removeTags(fromActivity: id, tags)
+        try await coreService.activity.dropTags(fromActivity: id, tags)
         await syncState() // Refresh UI after removing tags
     }
     
     func getActivities(withTag tag: String) async throws -> [Activity] {
-        try await activityService.get(tags: [tag])
+        try await coreService.activity.get(tags: [tag])
     }
 }

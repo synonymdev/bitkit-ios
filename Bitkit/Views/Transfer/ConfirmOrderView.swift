@@ -57,7 +57,7 @@ struct ConfirmOrderView: View {
                     Button("Try manual open") {
                         Task {
                             do {
-                                try await BlocktankService_OLD.shared.openChannel(orderId: self.order.id)
+                                let _ = try await CoreService.shared.blocktank.open(orderId: self.order.id)
                             } catch {
                                 self.app.toast(error)
 

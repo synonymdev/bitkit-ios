@@ -10,11 +10,13 @@
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 961058ED2C35798C00E1F1D8 /* LDKNode */; };
 		9613018C2C5022D700878183 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* SQLite */; };
+		96555F562D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
+		96555F572D4CB05F00A1EECB /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
+		96555F582D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
+		96555F592D4CB05F00A1EECB /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
 		966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 966DE66F2C51210000A7B0EF /* LightningDevKit */; };
 		96B129FD2C2EC05D00DD07B0 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96B129FC2C2EC05D00DD07B0 /* LDKNode */; };
 		96CCDC3F2CEC637000388EAD /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
-		96CCDC402CEC637000388EAD /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
-		96CCDC422CEC637700388EAD /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
 		96CCDC432CEC637700388EAD /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
 		96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */ = {isa = PBXBuildFile; productRef = 96E20CD32CB6D91A00C24149 /* CodeScanner */; };
 		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
@@ -82,6 +84,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				Extensions/PaymentDetails.swift,
 				Models/Blocktank/BitcoinNetwork.enum.swift,
 				Models/Blocktank/BlocktankNotificationType.swift,
 				Models/Blocktank/Bt0ConfMinTxFeeWindow.swift,
@@ -115,6 +118,7 @@
 				"Services/Blocktank_OLD/BlocktankService+Fees.swift",
 				"Services/Blocktank_OLD/BlocktankService+Notifications.swift",
 				"Services/Blocktank_OLD/BlocktankService+Orders.swift",
+				Services/CoreService.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
 				Services/ServiceQueue.swift,
@@ -131,6 +135,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				Extensions/PaymentDetails.swift,
 				Models/Blocktank/BitcoinNetwork.enum.swift,
 				Models/Blocktank/BlocktankNotificationType.swift,
 				Models/Blocktank/Bt0ConfMinTxFeeWindow.swift,
@@ -165,6 +170,7 @@
 				"Services/Blocktank_OLD/BlocktankService+Fees.swift",
 				"Services/Blocktank_OLD/BlocktankService+Notifications.swift",
 				"Services/Blocktank_OLD/BlocktankService+Orders.swift",
+				Services/CoreService.swift,
 				Services/LightningService.swift,
 				Services/ServiceQueue.swift,
 				Utilities/Crypto.swift,
@@ -197,7 +203,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
-				96CCDC422CEC637700388EAD /* BitkitCore.xcframework in Frameworks */,
+				96555F582D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */,
 				961058EE2C35798C00E1F1D8 /* LDKNode in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -220,6 +226,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */,
+				96555F562D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -453,7 +460,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96CCDC402CEC637000388EAD /* bitkitcore.swift in Sources */,
+				96555F592D4CB05F00A1EECB /* bitkitcore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -469,6 +476,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96555F572D4CB05F00A1EECB /* bitkitcore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
