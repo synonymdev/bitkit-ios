@@ -84,7 +84,7 @@ final class BlocktankTests: XCTestCase {
         XCTAssertEqual(cjitEntry.channelExpiryWeeks, channelExpiryWeeks, "Channel expiry weeks should match")
        
         // Test getting CJIT entries
-        let entries = try await service.getCjitOrders(entryIds: [cjitEntry.id], filter: nil, refresh: true)
+        let entries = try await service.cjitOrders(entryIds: [cjitEntry.id], filter: nil, refresh: true)
         Logger.test("CjitEntries: \(entries.count)")
         XCTAssertFalse(entries.isEmpty, "Should retrieve created CJIT entry")
         XCTAssertEqual(entries.first?.id, cjitEntry.id, "Retrieved entry should match created entry")
