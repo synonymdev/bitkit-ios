@@ -39,6 +39,14 @@ struct SettingsListView: View {
                     }
                 }
 
+                NavigationLink(destination: ChannelOrders()) {
+                    Label {
+                        Text("Channel Orders")
+                    } icon: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                }
+
                 NavigationLink(destination: LogView()) {
                     Label {
                         Text("Logs")

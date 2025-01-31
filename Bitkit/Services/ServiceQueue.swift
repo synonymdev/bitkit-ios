@@ -90,4 +90,52 @@ class ServiceQueue {
             }
         }
     }
+    
+    /// Executes a function on chosen service queue with completion handler
+    /// - Parameters:
+    ///   - service: Queue to run on
+    ///   - execute: The function to execute
+    ///   - functionName: The name of the function for logging
+    ///   - completion: Completion handler called with result or error
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () throws -> T, functionName: String = #function, completion: @escaping (Result<T, Error>) -> Void) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        service.queue.async {
+            do {
+                let result = try execute()
+                let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
+                Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+                completion(.success(result))
+            } catch {
+                let appError = AppError(error: error)
+                Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
+                completion(.failure(appError))
+            }
+        }
+    }
+    
+    /// Executes an async function on chosen service queue with completion handler
+    /// - Parameters:
+    ///   - service: Queue to run on
+    ///   - execute: The async function to execute
+    ///   - functionName: The name of the function for logging
+    ///   - completion: Completion handler called with result or error
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function, completion: @escaping (Result<T, Error>) -> Void) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        service.queue.async {
+            Task {
+                do {
+                    let result = try await execute()
+                    let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
+                    Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+                    completion(.success(result))
+                } catch {
+                    let appError = AppError(error: error)
+                    Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
+                    completion(.failure(appError))
+                }
+            }
+        }
+    }
 }

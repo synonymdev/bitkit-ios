@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct ConfirmOrderView: View {
-    let order: BtOrder
+    let order: IBtOrder
 
     @State private var isPaying = false
     @State private var txId = ""
@@ -61,7 +61,7 @@ struct ConfirmOrderView: View {
                             } catch {
                                 self.app.toast(error)
 
-                                self.dumpLdkLogs()
+                                LightningService.shared.dumpLdkLogs()
                             }
                         }
                     }
@@ -69,22 +69,6 @@ struct ConfirmOrderView: View {
             }
         }
         .navigationTitle("Confirm Order")
-    }
-
-    func dumpLdkLogs() {
-        let dir = Env.ldkStorage(walletIndex: 0)
-        let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
-
-        do {
-            let text = try String(contentsOf: fileURL, encoding: .utf8)
-            let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            print("*****LDK-NODE LOG******")
-            for line in lines.suffix(20) {
-                print(line)
-            }
-        } catch {
-            Logger.error(error, context: "failed to load ldk log file")
-        }
     }
 }
 

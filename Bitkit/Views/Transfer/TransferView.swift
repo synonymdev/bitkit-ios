@@ -10,7 +10,7 @@ import SwiftUI
 struct TransferView: View {
     @State private var sats = ""
     @State private var isCreatingOrder = false
-    @State private var newOrder: BtOrder? = nil
+    @State private var newOrder: IBtOrder? = nil
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
