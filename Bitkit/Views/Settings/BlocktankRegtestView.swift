@@ -51,7 +51,7 @@ struct BlocktankRegtestView: View {
                                 Logger.error("Invalid deposit amount: \(depositAmount)", context: "BlocktankRegtestView")
                                 throw ValidationError("Invalid amount")
                             }
-                            let txId = try await BlocktankService.shared.regtestDeposit(
+                            let txId = try await BlocktankService_OLD.shared.regtestDeposit(
                                 address: depositAddress,
                                 amountSat: amount
                             )
@@ -84,7 +84,7 @@ struct BlocktankRegtestView: View {
                                     Logger.error("Invalid block count: \(mineBlockCount)", context: "BlocktankRegtestView")
                                     throw ValidationError("Invalid block count")
                                 }
-                                try await BlocktankService.shared.regtestMine(count: count)
+                                try await BlocktankService_OLD.shared.regtestMine(count: count)
                                 Logger.debug("Successfully mined \(count) blocks", context: "BlocktankRegtestView")
                                 app.toast(type: .success, title: "Success", description: "Successfully mined \(count) blocks")
                             } catch {
@@ -122,7 +122,7 @@ struct BlocktankRegtestView: View {
                         Logger.debug("Initiating regtest payment with invoice: \(paymentInvoice), amount: \(paymentAmount)", context: "BlocktankRegtestView")
                         do {
                             let amount = paymentAmount.isEmpty ? nil : Int(paymentAmount)
-                            let paymentId = try await BlocktankService.shared.regtestPay(
+                            let paymentId = try await BlocktankService_OLD.shared.regtestPay(
                                 invoice: paymentInvoice,
                                 amountSat: amount
                             )
@@ -157,7 +157,7 @@ struct BlocktankRegtestView: View {
                                 Logger.error("Invalid channel close parameters - vout: \(vout), forceCloseAfter: \(forceCloseAfter)", context: "BlocktankRegtestView")
                                 throw ValidationError("Invalid input values")
                             }
-                            let closingTxId = try await BlocktankService.shared.regtestCloseChannel(
+                            let closingTxId = try await BlocktankService_OLD.shared.regtestCloseChannel(
                                 fundingTxId: fundingTxId,
                                 vout: voutNum,
                                 forceCloseAfterS: closeAfter
@@ -190,7 +190,7 @@ struct BlocktankRegtestView: View {
             .environmentObject(AppViewModel())
             .environmentObject(WalletViewModel())
     }
-     .preferredColorScheme(.dark)
+    .preferredColorScheme(.dark)
 }
 
 private struct ValidationError: LocalizedError {

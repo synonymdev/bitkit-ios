@@ -29,7 +29,7 @@ struct LightningSettingsView: View {
                 Button("Self test") {
                     Task {
                         do {
-                            try await BlocktankService.shared.selfTest()
+                            try await BlocktankService_OLD.shared.selfTest()
                         } catch {
                             Logger.error(error, context: "Failed to self test")
                         }

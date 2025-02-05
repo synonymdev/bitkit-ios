@@ -256,6 +256,16 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
 void uniffi_bitkitcore_fn_func_add_tags(RustBuffer activity_id, RustBuffer tags, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_CREATE_CJIT_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_CREATE_CJIT_ENTRY
+uint64_t uniffi_bitkitcore_fn_func_create_cjit_entry(uint64_t channel_size_sat, uint64_t invoice_sat, RustBuffer invoice_description, RustBuffer node_id, uint32_t channel_expiry_weeks, RustBuffer options
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_CREATE_ORDER
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_CREATE_ORDER
+uint64_t uniffi_bitkitcore_fn_func_create_order(uint64_t lsp_balance_sat, uint32_t channel_expiry_weeks, RustBuffer options
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DECODE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DECODE
 uint64_t uniffi_bitkitcore_fn_func_decode(RustBuffer invoice
@@ -264,6 +274,16 @@ uint64_t uniffi_bitkitcore_fn_func_decode(RustBuffer invoice
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DELETE_ACTIVITY_BY_ID
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_DELETE_ACTIVITY_BY_ID
 int8_t uniffi_bitkitcore_fn_func_delete_activity_by_id(RustBuffer activity_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ESTIMATE_ORDER_FEE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ESTIMATE_ORDER_FEE
+uint64_t uniffi_bitkitcore_fn_func_estimate_order_fee(uint64_t lsp_balance_sat, uint32_t channel_expiry_weeks, RustBuffer options
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ESTIMATE_ORDER_FEE_FULL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_ESTIMATE_ORDER_FEE_FULL
+uint64_t uniffi_bitkitcore_fn_func_estimate_order_fee_full(uint64_t lsp_balance_sat, uint32_t channel_expiry_weeks, RustBuffer options
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ACTIVITIES
@@ -287,9 +307,29 @@ RustBuffer uniffi_bitkitcore_fn_func_get_all_unique_tags(RustCallStatus *_Nonnul
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_CJIT_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_CJIT_ENTRIES
+uint64_t uniffi_bitkitcore_fn_func_get_cjit_entries(RustBuffer entry_ids, RustBuffer filter, int8_t refresh
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_INFO
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_INFO
+uint64_t uniffi_bitkitcore_fn_func_get_info(RustBuffer refresh
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_LNURL_INVOICE
 uint64_t uniffi_bitkitcore_fn_func_get_lnurl_invoice(RustBuffer address, uint64_t amount_satoshis
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_MIN_ZERO_CONF_TX_FEE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_MIN_ZERO_CONF_TX_FEE
+uint64_t uniffi_bitkitcore_fn_func_get_min_zero_conf_tx_fee(RustBuffer order_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ORDERS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_ORDERS
+uint64_t uniffi_bitkitcore_fn_func_get_orders(RustBuffer order_ids, RustBuffer filter, int8_t refresh
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_GET_TAGS
@@ -307,6 +347,23 @@ RustBuffer uniffi_bitkitcore_fn_func_init_db(RustBuffer base_path, RustCallStatu
 void uniffi_bitkitcore_fn_func_insert_activity(RustBuffer activity, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_OPEN_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_OPEN_CHANNEL
+uint64_t uniffi_bitkitcore_fn_func_open_channel(RustBuffer order_id, RustBuffer connection_string
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REFRESH_ACTIVE_CJIT_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REFRESH_ACTIVE_CJIT_ENTRIES
+uint64_t uniffi_bitkitcore_fn_func_refresh_active_cjit_entries(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REFRESH_ACTIVE_ORDERS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REFRESH_ACTIVE_ORDERS
+uint64_t uniffi_bitkitcore_fn_func_refresh_active_orders(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
 void uniffi_bitkitcore_fn_func_remove_tags(RustBuffer activity_id, RustBuffer tags, RustCallStatus *_Nonnull out_status
@@ -315,6 +372,11 @@ void uniffi_bitkitcore_fn_func_remove_tags(RustBuffer activity_id, RustBuffer ta
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_ACTIVITY
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_ACTIVITY
 void uniffi_bitkitcore_fn_func_update_activity(RustBuffer activity_id, RustBuffer activity, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_BLOCKTANK_URL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_BLOCKTANK_URL
+uint64_t uniffi_bitkitcore_fn_func_update_blocktank_url(RustBuffer new_url
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPSERT_ACTIVITY
@@ -613,6 +675,18 @@ uint16_t uniffi_bitkitcore_checksum_func_add_tags(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_CREATE_CJIT_ENTRY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_CREATE_CJIT_ENTRY
+uint16_t uniffi_bitkitcore_checksum_func_create_cjit_entry(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_CREATE_ORDER
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_CREATE_ORDER
+uint16_t uniffi_bitkitcore_checksum_func_create_order(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DECODE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DECODE
 uint16_t uniffi_bitkitcore_checksum_func_decode(void
@@ -622,6 +696,18 @@ uint16_t uniffi_bitkitcore_checksum_func_decode(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DELETE_ACTIVITY_BY_ID
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_DELETE_ACTIVITY_BY_ID
 uint16_t uniffi_bitkitcore_checksum_func_delete_activity_by_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ESTIMATE_ORDER_FEE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ESTIMATE_ORDER_FEE
+uint16_t uniffi_bitkitcore_checksum_func_estimate_order_fee(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ESTIMATE_ORDER_FEE_FULL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_ESTIMATE_ORDER_FEE_FULL
+uint16_t uniffi_bitkitcore_checksum_func_estimate_order_fee_full(void
     
 );
 #endif
@@ -649,9 +735,33 @@ uint16_t uniffi_bitkitcore_checksum_func_get_all_unique_tags(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_CJIT_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_CJIT_ENTRIES
+uint16_t uniffi_bitkitcore_checksum_func_get_cjit_entries(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_INFO
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_INFO
+uint16_t uniffi_bitkitcore_checksum_func_get_info(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_LNURL_INVOICE
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_LNURL_INVOICE
 uint16_t uniffi_bitkitcore_checksum_func_get_lnurl_invoice(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_MIN_ZERO_CONF_TX_FEE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_MIN_ZERO_CONF_TX_FEE
+uint16_t uniffi_bitkitcore_checksum_func_get_min_zero_conf_tx_fee(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ORDERS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_GET_ORDERS
+uint16_t uniffi_bitkitcore_checksum_func_get_orders(void
     
 );
 #endif
@@ -673,6 +783,24 @@ uint16_t uniffi_bitkitcore_checksum_func_insert_activity(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_OPEN_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_OPEN_CHANNEL
+uint16_t uniffi_bitkitcore_checksum_func_open_channel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REFRESH_ACTIVE_CJIT_ENTRIES
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REFRESH_ACTIVE_CJIT_ENTRIES
+uint16_t uniffi_bitkitcore_checksum_func_refresh_active_cjit_entries(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REFRESH_ACTIVE_ORDERS
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REFRESH_ACTIVE_ORDERS
+uint16_t uniffi_bitkitcore_checksum_func_refresh_active_orders(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
 uint16_t uniffi_bitkitcore_checksum_func_remove_tags(void
@@ -682,6 +810,12 @@ uint16_t uniffi_bitkitcore_checksum_func_remove_tags(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_ACTIVITY
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_ACTIVITY
 uint16_t uniffi_bitkitcore_checksum_func_update_activity(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_BLOCKTANK_URL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_UPDATE_BLOCKTANK_URL
+uint16_t uniffi_bitkitcore_checksum_func_update_blocktank_url(void
     
 );
 #endif
