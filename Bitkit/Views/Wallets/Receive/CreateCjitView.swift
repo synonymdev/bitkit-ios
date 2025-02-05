@@ -62,6 +62,8 @@ struct CreateCjitView: View {
 
                     // TODO: switch to USD
                 }
+            } else {
+                ProgressView()
             }
 
             Divider()

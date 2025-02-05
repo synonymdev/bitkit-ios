@@ -39,6 +39,14 @@ struct SettingsListView: View {
                     }
                 }
 
+                NavigationLink(destination: ChannelOrders()) {
+                    Label {
+                        Text("Channel Orders")
+                    } icon: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                }
+
                 NavigationLink(destination: LogView()) {
                     Label {
                         Text("Logs")
@@ -61,7 +69,7 @@ struct SettingsListView: View {
                     Button {
                         Task {
                             do {
-                                try await ActivityListService.shared.removeAll()
+                                try await CoreService.shared.activity.removeAll()
                                 await activity.syncState()
                                 app.toast(type: .success, title: "Success", description: "All activities removed")
                             } catch {
@@ -80,7 +88,7 @@ struct SettingsListView: View {
                     Button {
                         Task {
                             do {
-                                try await ActivityListService.shared.generateRandomTestData()
+                                try await CoreService.shared.activity.generateRandomTestData(count: 100)
                                 await activity.syncState()
                                 app.toast(type: .success, title: "Success", description: "Generated 100 random activities")
                             } catch {
@@ -107,7 +115,7 @@ struct SettingsListView: View {
                                 if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting || wallet.nodeLifecycleState == .stopping {
                                     try await wallet.wipeLightningWallet()
                                 }
-                                try await ActivityListService.shared.removeAll()
+                                try await CoreService.shared.activity.removeAll()
                                 try Keychain.wipeEntireKeychain()
                                 try wallet.setWalletExistsState()
                             } catch {

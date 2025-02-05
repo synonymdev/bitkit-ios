@@ -10,32 +10,28 @@ import Foundation
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
     private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .utility)
-    private static let blocktankQueue = DispatchQueue(label: "bt-queue", qos: .utility)
+    private static let coreQueue = DispatchQueue(label: "core-queue", qos: .utility)
     private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
     private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .utility)
-    private static let activityQueue = DispatchQueue(label: "activity-queue", qos: .utility)
 
     private init() {}
     
     enum ServiceTypes {
         case ldk
-        case blocktank
+        case core
         case migration
         case forex
-        case activity
         
         var queue: DispatchQueue {
             switch self {
             case .ldk:
                 return ServiceQueue.ldkQueue
-            case .blocktank:
-                return ServiceQueue.blocktankQueue
+            case .core:
+                return ServiceQueue.coreQueue
             case .migration:
                 return ServiceQueue.migrationQueue
             case .forex:
                 return ServiceQueue.forexQueue
-            case .activity:
-                return ServiceQueue.activityQueue
             }
         }
     }
@@ -90,6 +86,54 @@ class ServiceQueue {
                     
                     let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
                     Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+                }
+            }
+        }
+    }
+    
+    /// Executes a function on chosen service queue with completion handler
+    /// - Parameters:
+    ///   - service: Queue to run on
+    ///   - execute: The function to execute
+    ///   - functionName: The name of the function for logging
+    ///   - completion: Completion handler called with result or error
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () throws -> T, functionName: String = #function, completion: @escaping (Result<T, Error>) -> Void) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        service.queue.async {
+            do {
+                let result = try execute()
+                let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
+                Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+                completion(.success(result))
+            } catch {
+                let appError = AppError(error: error)
+                Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
+                completion(.failure(appError))
+            }
+        }
+    }
+    
+    /// Executes an async function on chosen service queue with completion handler
+    /// - Parameters:
+    ///   - service: Queue to run on
+    ///   - execute: The async function to execute
+    ///   - functionName: The name of the function for logging
+    ///   - completion: Completion handler called with result or error
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function, completion: @escaping (Result<T, Error>) -> Void) {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        
+        service.queue.async {
+            Task {
+                do {
+                    let result = try await execute()
+                    let timeElapsed = Double(round(100 * (CFAbsoluteTimeGetCurrent() - startTime)) / 100)
+                    Logger.performance("\(functionName) took \(timeElapsed) seconds on \(service) queue")
+                    completion(.success(result))
+                } catch {
+                    let appError = AppError(error: error)
+                    Logger.error("\(appError.message) [\(appError.debugMessage ?? "")]", context: "ServiceQueue: \(service)")
+                    completion(.failure(appError))
                 }
             }
         }
