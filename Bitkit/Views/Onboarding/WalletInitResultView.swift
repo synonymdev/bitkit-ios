@@ -8,20 +8,20 @@ enum WalletInitResult {
 
 struct WalletInitResultView: View {
     @EnvironmentObject var wallet: WalletViewModel
-    
+
     let result: WalletInitResult
-    
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            
+
             VStack(alignment: .leading, spacing: 0) {
                 Text(titleText1)
                     .font(.system(size: 44, weight: .black))
                 Text(titleText2)
                     .font(.system(size: 44, weight: .black))
                     .foregroundColor(titleColor)
-            
+
                 Text(description)
                     .font(.body)
                     .foregroundColor(.secondary)
@@ -36,9 +36,9 @@ struct WalletInitResultView: View {
                 .scaledToFit()
                 .frame(width: 256, height: 256)
                 .frame(maxWidth: .infinity, alignment: .center)
-            
+
             Spacer()
-            
+
             Button(action: {
                 Haptics.play(.light)
                 switch result {
@@ -70,7 +70,7 @@ struct WalletInitResultView: View {
         }
         .padding(.horizontal)
     }
-    
+
     private var titleText1: String {
         switch result {
         case .created, .restored:
@@ -79,7 +79,7 @@ struct WalletInitResultView: View {
             return "WALLET SETUP"
         }
     }
-    
+
     private var titleText2: String {
         switch result {
         case .created:
@@ -90,7 +90,7 @@ struct WalletInitResultView: View {
             return "ERROR"
         }
     }
-    
+
     private var titleColor: Color {
         switch result {
         case .created, .restored:
@@ -99,27 +99,27 @@ struct WalletInitResultView: View {
             return .redAccent
         }
     }
-    
+
     private var description: String {
         switch result {
         case .created:
             return "Your new wallet is ready to use."
         case .restored:
             return "You have successfully restored your wallet from backup. Enjoy Bitkit!"
-        case .failed(let error):
+        case let .failed(error):
             return "An error occurred: \(error.localizedDescription)"
         }
     }
-    
+
     private var buttonText: String {
         switch result {
         case .created, .restored:
-            return "Get Started"
+            return NSLocalizedString("onboarding__get_started", comment: "")
         case .failed:
-            return "Try Again"
+            return NSLocalizedString("common__try_again", comment: "")
         }
     }
-    
+
     private var imageName: String {
         switch result {
         case .created, .restored:
@@ -133,9 +133,9 @@ struct WalletInitResultView: View {
 #Preview {
     Group {
         WalletInitResultView(result: .created)
-        
+
         WalletInitResultView(result: .restored)
-        
+
         WalletInitResultView(result: .failed(NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Something went wrong"])))
     }
     .environmentObject(WalletViewModel())

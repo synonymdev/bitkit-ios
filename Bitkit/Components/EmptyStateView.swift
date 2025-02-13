@@ -8,8 +8,7 @@ struct EmptyStateView: View {
             Spacer()
 
             HStack(alignment: .bottom, spacing: 0) {
-                let t = useTranslation(.onboarding)
-                DisplayText(t("empty_wallet"))
+                DisplayText(NSLocalizedString("onboarding__empty_wallet", comment: ""))
                     .frame(width: 224)
 
                 Image("empty-state-arrow")

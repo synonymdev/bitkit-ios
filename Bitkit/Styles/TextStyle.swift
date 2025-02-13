@@ -162,11 +162,11 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
     while currentIndex < text.endIndex {
         if let accentStartRange = text[currentIndex...].range(of: "<accent>") {
             // Add text before the accent tag
-            let beforeAccent = String(text[currentIndex..<accentStartRange.lowerBound])
+            let beforeAccent = String(text[currentIndex ..< accentStartRange.lowerBound])
             if !beforeAccent.isEmpty {
                 let normalString = NSAttributedString(string: beforeAccent, attributes: [
                     .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15)
+                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
                 ])
                 attributedString.append(normalString)
             }
@@ -174,10 +174,10 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             // Find the end of accent tag
             if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                 // Get the accented text
-                let accentedText = String(text[accentStartRange.upperBound..<accentEndRange.lowerBound])
+                let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                 var attributes: [NSAttributedString.Key: Any] = [
                     .foregroundColor: UIColor(accentColor),
-                    .font: UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold)
+                    .font: UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold),
                 ]
 
                 if let url = url {
@@ -193,7 +193,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
                 let remainingText = String(text[accentStartRange.lowerBound...])
                 let normalString = NSAttributedString(string: remainingText, attributes: [
                     .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15)
+                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
                 ])
                 attributedString.append(normalString)
                 break
@@ -203,7 +203,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             let remainingText = String(text[currentIndex...])
             let normalString = NSAttributedString(string: remainingText, attributes: [
                 .foregroundColor: UIColor(defaultColor),
-                .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15)
+                .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
             ])
             attributedString.append(normalString)
             break
@@ -272,7 +272,7 @@ struct CustomTextWrapper: View {
         while currentIndex < text.endIndex {
             if let accentStartRange = text[currentIndex...].range(of: "<accent>") {
                 // Add text before the accent tag
-                let beforeAccent = String(text[currentIndex..<accentStartRange.lowerBound])
+                let beforeAccent = String(text[currentIndex ..< accentStartRange.lowerBound])
                 let processedText = shouldCapitalize ? beforeAccent.uppercased() : beforeAccent
                 if !beforeAccent.isEmpty {
                     let normalString = NSMutableAttributedString(string: processedText)
@@ -283,7 +283,7 @@ struct CustomTextWrapper: View {
                 // Find the end of accent tag
                 if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                     // Get the accented text
-                    let accentedText = String(text[accentStartRange.upperBound..<accentEndRange.lowerBound])
+                    let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
                     accentString.addAttribute(.foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
@@ -366,7 +366,7 @@ struct DisplayTextUIView: UIViewRepresentable {
         while currentIndex < text.endIndex {
             if let accentStartRange = text[currentIndex...].range(of: "<accent>") {
                 // Add text before the accent tag
-                let beforeAccent = String(text[currentIndex..<accentStartRange.lowerBound])
+                let beforeAccent = String(text[currentIndex ..< accentStartRange.lowerBound])
                 let processedText = shouldCapitalize ? beforeAccent.uppercased() : beforeAccent
                 if !beforeAccent.isEmpty {
                     let normalString = NSMutableAttributedString(string: processedText)
@@ -377,7 +377,7 @@ struct DisplayTextUIView: UIViewRepresentable {
                 // Find the end of accent tag
                 if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                     // Get the accented text
-                    let accentedText = String(text[accentStartRange.upperBound..<accentEndRange.lowerBound])
+                    let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
                     accentString.addAttribute(.foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
@@ -414,28 +414,26 @@ struct DisplayTextUIView: UIViewRepresentable {
         label.setContentCompressionResistancePriority(.required, for: .vertical)
     }
 
-    func makeUIView(context: Context) -> UILabel {
+    func makeUIView(context _: Context) -> UILabel {
         let label = UILabel()
         updateLabel(label)
         return label
     }
 
-    func updateUIView(_ uiView: UILabel, context: Context) {
+    func updateUIView(_ uiView: UILabel, context _: Context) {
         updateLabel(uiView)
     }
 
-    static func dismantleUIView(_ uiView: UILabel, coordinator: Coordinator) {}
+    static func dismantleUIView(_: UILabel, coordinator _: Coordinator) {}
 }
 
 #Preview {
     ScrollView {
-        let t = useTranslation(.onboarding)
-
         HStack {
-            DisplayText(t("empty_wallet"))
+            DisplayText(NSLocalizedString("onboarding__empty_wallet", comment: ""))
                 .background(Color.red.opacity(0.1))
 
-            DisplayText(t("welcome_title"))
+            DisplayText(NSLocalizedString("onboarding__welcome_title", comment: ""))
                 .background(Color.blue.opacity(0.1))
         }
         .padding(.bottom, 20)
@@ -449,7 +447,7 @@ struct DisplayTextUIView: UIViewRepresentable {
         }
         .padding(.bottom, 20)
 
-        DisplayText(t("slide0_header"))
+        DisplayText(NSLocalizedString("onboarding__slide0_header", comment: ""))
             .background(Color.orange.opacity(0.1))
             .padding(.bottom, 20)
 

@@ -1,0 +1,7 @@
+"security__cp_text" = "Você pode alterar seu código PIN para uma nova\ncombinação de 4 dígitos. Primeiro, digite seu código PIN atual.";
+"settings__addr__no_addrs_with_funds" = "Não foi encontrado nenhum endereço contendo \"{searchTxt}\" com fundos ";
+"settings__addr__no_addrs_str" = "Nenhum endereço foi encontrado ao pesquisar por \"{searchTxt}\"";
+"slashtags__contact_your_name" = "Nome público\ndo seu perfil";
+"slashtags__contact_retrieving" = "Recebimento\ninformações de contato...";
+"slashtags__profile_link_label_placeholder" = "Por exemplo, \"Website\".";
+"wallet__error_broadcast_tx_connection" = "Por favor, verifique sua conexão e tente novamente.\n{message}";

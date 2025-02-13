@@ -9,7 +9,7 @@ import SwiftUI
 
 struct TappableTextModifier: ViewModifier {
     let url: String
-    
+
     func body(content: Content) -> some View {
         Button(action: {
             if let url = URL(string: url) {
@@ -25,16 +25,14 @@ struct TermsView: View {
     @State private var termsAccepted = false
     @State private var privacyAccepted = false
     @State private var navigateToIntro = false
-    
-    private let t = useTranslation(.onboarding)
-    
+
     var body: some View {
         ZStack(alignment: .bottom) {
             // Scrolling content
             ScrollView {
                 VStack(spacing: 24) {
-                    DisplayText(t("tos_header"))
-                    
+                    DisplayText(NSLocalizedString("onboarding__tos_header", comment: ""))
+
                     TosContent()
                         .font(Fonts.regular(size: 17))
                         .foregroundColor(.textPrimary)
@@ -43,38 +41,38 @@ struct TermsView: View {
                 .padding()
             }
             .background(Color(.systemBackground))
-            
+
             // Gradient overlay
             VStack(spacing: 0) {
                 Spacer()
                 LinearGradient(
                     colors: [
                         Color(.systemBackground).opacity(0),
-                        Color(.systemBackground)
+                        Color(.systemBackground),
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
                 .frame(height: 100)
-                
+
                 Rectangle()
                     .fill(Color(.systemBackground))
                     .frame(height: 200)
             }
             .frame(maxWidth: .infinity)
-            
+
             // Footer overlay
             VStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 12) {
                     // Terms checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            SubtitleText(t("tos_checkbox"))
-                            BodySText(t("tos_checkbox_value"), url: URL(string: Env.termsOfServiceUrl))
+                            SubtitleText(NSLocalizedString("onboarding__tos_checkbox", comment: ""))
+                            BodySText(NSLocalizedString("onboarding__tos_checkbox_value", comment: ""), url: URL(string: Env.termsOfServiceUrl))
                         }
-                        
+
                         Spacer()
-                        
+
                         Image(systemName: termsAccepted ? "checkmark.square.fill" : "square")
                             .foregroundColor(termsAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
@@ -84,18 +82,18 @@ struct TermsView: View {
                         termsAccepted.toggle()
                         Haptics.play(.medium)
                     }
-                    
+
                     Divider()
-                    
+
                     // Privacy checkbox
                     HStack {
                         VStack(alignment: .leading) {
-                            SubtitleText(t("pp_checkbox"))
-                            BodySText(t("pp_checkbox_value"), url: URL(string: Env.privacyPolicyUrl))
+                            SubtitleText(NSLocalizedString("onboarding__pp_checkbox", comment: ""))
+                            BodySText(NSLocalizedString("onboarding__pp_checkbox_value", comment: ""), url: URL(string: Env.privacyPolicyUrl))
                         }
-                        
+
                         Spacer()
-                        
+
                         Image(systemName: privacyAccepted ? "checkmark.square.fill" : "square")
                             .foregroundColor(privacyAccepted ? .brandAccent : .textSecondary)
                             .font(.system(size: 32))
@@ -105,13 +103,13 @@ struct TermsView: View {
                         privacyAccepted.toggle()
                         Haptics.play(.medium)
                     }
-                    
+
                     Divider()
                 }
                 .padding(.horizontal)
-                
+
                 CustomButton(
-                    title: t("get_started"),
+                    title: NSLocalizedString("onboarding__get_started", comment: ""),
                     variant: termsAccepted && privacyAccepted ? .primary : .secondary,
                     isDisabled: !(termsAccepted && privacyAccepted)
                 ) {
@@ -130,7 +128,7 @@ struct TermsView: View {
                     .shadow(radius: 8, y: -4)
                     .edgesIgnoringSafeArea(.bottom)
             )
-            
+
             NavigationLink(isActive: $navigateToIntro) {
                 IntroView()
             } label: {

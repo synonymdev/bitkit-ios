@@ -2,71 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const glob = require('glob');
 
-// Cache for loaded translations
-const translationCache = new Map();
-
 // Collection of all errors and warnings
 const errors = [];
-const warnings = [];
-
-// Function to load translations for a specific language and section
-function loadTranslations(langCode, section) {
-    const cacheKey = `${langCode}:${section}`;
-    if (translationCache.has(cacheKey)) {
-        return translationCache.get(cacheKey);
-    }
-
-    const filePath = path.join(__dirname, '..', 'Bitkit', 'Resources', 'Localization', langCode, `${langCode}_${section}.json`);
-    try {
-        const content = fs.readFileSync(filePath, 'utf8');
-        const translations = JSON.parse(content);
-        translationCache.set(cacheKey, translations);
-        return translations;
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return null;
-        }
-        throw error;
-    }
-}
-
-// Function to get all language directories
-function getAllLanguages() {
-    const localizationPath = path.join(__dirname, '..', 'Bitkit', 'Resources', 'Localization');
-    return fs.readdirSync(localizationPath)
-        .filter(item => {
-            const itemPath = path.join(localizationPath, item);
-            return fs.statSync(itemPath).isDirectory();
-        });
-}
-
-// Function to validate a translation key
-function validateKey(key, section, filePath, lineNumber) {
-    let hasErrors = false;
-    
-    // First check if the key exists in English translations
-    const enTranslations = loadTranslations('en', section);
-    if (!enTranslations) {
-        errors.push(`Error: Missing English translation file for section '${section}' (${filePath}:${lineNumber})`);
-        return false;
-    }
-
-    if (!enTranslations[key] || !enTranslations[key].string) {
-        errors.push(`Error: Missing required English translation for key '${key}' in section '${section}' (${filePath}:${lineNumber})`);
-        return false;
-    }
-
-    // Then check other languages
-    const languages = getAllLanguages().filter(lang => lang !== 'en');
-    for (const lang of languages) {
-        const translations = loadTranslations(lang, section);
-        if (!translations || !translations[key] || !translations[key].string) {
-            warnings.push(`Warning: Missing translation for key '${key}' in language '${lang}' section '${section}' (${filePath}:${lineNumber})`);
-        }
-    }
-
-    return true;
-}
+const warningMap = new Map(); // key -> Set of languages
 
 // Function to process a Swift file
 function processSwiftFile(filePath) {
@@ -75,14 +13,10 @@ function processSwiftFile(filePath) {
     const lines = content.split('\n');
 
     // First check if the file uses translations
-    const hasTranslations = content.includes('t(') || content.includes('parts(');
+    const hasTranslations = content.includes('NSLocalizedString(');
     if (!hasTranslations) {
         return true; // Skip files without any translation calls
     }
-
-    // Find the section declaration - default to 'common' if not found
-    const sectionMatch = content.match(/useTranslation\(\.([a-zA-Z0-9_]+)\)/);
-    const section = sectionMatch ? sectionMatch[1] : 'common';
 
     // Get relative path for error reporting
     const relativePath = path.relative(path.join(__dirname, '..'), filePath);
@@ -90,29 +24,50 @@ function processSwiftFile(filePath) {
     // Find all translation keys
     lines.forEach((line, index) => {
         const lineNumber = index + 1;
+        const nsLocalizedMatches = line.match(/NSLocalizedString\(['"]([a-zA-Z0-9_]+)['"]/g);
 
-        // More precise regex patterns that require t(" or t(' at the start
-        const tMatches = line.match(/\bt\(['"]([a-zA-Z0-9_.]+)['"]\)/g);
-        const partsMatches = line.match(/\bparts\(['"]([a-zA-Z0-9_.]+)['"]\)/g);
-
-        if (tMatches) {
-            tMatches.forEach(match => {
-                const keyMatch = match.match(/['"]([a-zA-Z0-9_.]+)['"]/);
+        if (nsLocalizedMatches) {
+            nsLocalizedMatches.forEach(match => {
+                const keyMatch = match.match(/['"]([a-zA-Z0-9_]+)['"]/);
                 if (keyMatch) {
                     const key = keyMatch[1];
-                    if (!validateKey(key, section, relativePath, lineNumber)) {
-                        hasErrors = true;
-                    }
-                }
-            });
-        }
+                    // Check if the key exists in the .strings file
+                    const stringsPath = path.join(__dirname, '..', 'Bitkit', 'Resources', 'Localization', 'en.lproj', 'Localizable.strings');
+                    try {
+                        const stringsContent = fs.readFileSync(stringsPath, 'utf8');
+                        if (!stringsContent.includes(`"${key}" =`)) {
+                            errors.push(`Error: Missing required English translation for key '${key}' in Localizable.strings (${relativePath}:${lineNumber})`);
+                            hasErrors = true;
+                        } else {
+                            // Check other languages
+                            const localizationPath = path.join(__dirname, '..', 'Bitkit', 'Resources', 'Localization');
+                            const languages = fs.readdirSync(localizationPath)
+                                .filter(dir => dir.endsWith('.lproj') && dir !== 'en.lproj')
+                                .map(dir => dir.replace('.lproj', ''));
 
-        if (partsMatches) {
-            partsMatches.forEach(match => {
-                const keyMatch = match.match(/['"]([a-zA-Z0-9_.]+)['"]/);
-                if (keyMatch) {
-                    const key = keyMatch[1];
-                    if (!validateKey(key, section, relativePath, lineNumber)) {
+                            languages.forEach(lang => {
+                                const langStringsPath = path.join(localizationPath, `${lang}.lproj`, 'Localizable.strings');
+                                try {
+                                    const langStringsContent = fs.readFileSync(langStringsPath, 'utf8');
+                                    if (!langStringsContent.includes(`"${key}" =`)) {
+                                        const warningKey = `${key}:${relativePath}:${lineNumber}`;
+                                        if (!warningMap.has(warningKey)) {
+                                            warningMap.set(warningKey, new Set());
+                                        }
+                                        warningMap.get(warningKey).add(lang);
+                                    }
+                                } catch (error) {
+                                    console.log(`Error reading ${lang}:`, error.message);
+                                    const warningKey = `${key}:${relativePath}:${lineNumber}`;
+                                    if (!warningMap.has(warningKey)) {
+                                        warningMap.set(warningKey, new Set());
+                                    }
+                                    warningMap.get(warningKey).add(lang);
+                                }
+                            });
+                        }
+                    } catch (error) {
+                        errors.push(`Error: Could not read Localizable.strings file: ${error.message}`);
                         hasErrors = true;
                     }
                 }
@@ -146,50 +101,30 @@ function displayResults() {
         errors.sort(sortByLocation).forEach(error => console.error(error));
     }
 
-    // Group warnings by key, section, and location
-    if (warnings.length > 0) {
+    // Display warnings
+    if (warningMap.size > 0) {
         console.log('\nWarnings:');
-        
-        // Create a map to group warnings
-        const warningGroups = new Map();
-        
-        warnings.forEach(warning => {
-            const match = warning.match(/Warning: Missing translation for key '([^']+)' in language '([^']+)' section '([^']+)' \((.*?):(\d+)\)/);
-            if (match) {
-                const [, key, lang, section, file, line] = match;
-                const groupKey = `${key}:${section}:${file}:${line}`;
-                
-                if (!warningGroups.has(groupKey)) {
-                    warningGroups.set(groupKey, {
-                        key,
-                        section,
-                        file,
-                        line,
-                        languages: new Set()
-                    });
-                }
-                warningGroups.get(groupKey).languages.add(lang);
+        const sortedWarnings = Array.from(warningMap.entries()).sort((a, b) => {
+            const [aKey] = a;
+            const [bKey] = b;
+            const [, aPath, aLine] = aKey.split(':');
+            const [, bPath, bLine] = bKey.split(':');
+            
+            if (aPath !== bPath) {
+                return aPath.localeCompare(bPath);
             }
+            return parseInt(aLine) - parseInt(bLine);
         });
 
-        // Convert the map to array and sort by file and line
-        const groupedWarnings = Array.from(warningGroups.values())
-            .sort((a, b) => {
-                if (a.file !== b.file) {
-                    return a.file.localeCompare(b.file);
-                }
-                return parseInt(a.line) - parseInt(b.line);
-            });
-
-        // Display grouped warnings
-        groupedWarnings.forEach(group => {
-            const languages = Array.from(group.languages).sort().join("', '");
-            console.warn(`Warning: Missing translation for key '${group.key}' in languages '${languages}' section '${group.section}' (${group.file}:${group.line})`);
-        });
+        for (const [warningKey, missingLangs] of sortedWarnings) {
+            const [key, filePath, lineNumber] = warningKey.split(':');
+            const langList = Array.from(missingLangs).sort().join(', ');
+            console.warn(`Warning: Missing translation for key '${key}' in languages: ${langList} (${filePath}:${lineNumber})`);
+        }
     }
 
     // Display summary
-    console.log(`\nValidation summary: ${errors.length} errors, ${warnings.length} warnings`);
+    console.log(`\nValidation summary: ${errors.length} errors, ${warningMap.size} warnings`);
 }
 
 // Main function
