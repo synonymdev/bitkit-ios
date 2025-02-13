@@ -5,21 +5,13 @@
 
 ## Localization
 
-Localization files are synced from Transifex. Run below command to pull the latest translations:
+Localization files are synced from Transifex. Use [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync) to sync the translations.
 
-```bash
-tx pull --mode translator -f -a
-```
-
-Files are stored in `Bitkit/Resources/Localization/<lang_code>/<lang_code>_<section>.json`
-
-You can validate the translations using:
+This checks for missing translations and validates that all translation keys used in the Swift code exist in the .strings files. (This check is also automated in GitHub Actions)
 
 ```bash
 node scripts/validate-translations.js
 ```
-
-This checks for missing translations and validates that all translation keys used in the Swift code exist in the JSON files. (This check is also automated in GitHub Actions)
 
 ## Development
 
