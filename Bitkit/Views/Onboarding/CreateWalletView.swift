@@ -3,20 +3,19 @@ import SwiftUI
 struct CreateWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
-    private let t = useTranslation(.onboarding)
 
     var body: some View {
         VStack {
             OnboardingTab(
                 imageName: "wallet",
-                title: t("slide4_header"),
-                text: t("slide4_text"),
+                title: NSLocalizedString("onboarding__slide4_header", comment: ""),
+                text: NSLocalizedString("onboarding__slide4_text", comment: ""),
                 accentColor: .brandAccent
             )
 
             // Action buttons
             HStack(spacing: 16) {
-                CustomButton(title: t("new_wallet")) {
+                CustomButton(title: NSLocalizedString("onboarding__new_wallet", comment: "")) {
                     do {
                         wallet.nodeLifecycleState = .initializing
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: nil)
@@ -30,7 +29,7 @@ struct CreateWalletView: View {
                     RestoreWalletView()
                 } label: {
                     CustomButton(
-                        title: t("restore"),
+                        title: NSLocalizedString("onboarding__restore", comment: ""),
                         variant: .secondary
                     )
                 }
