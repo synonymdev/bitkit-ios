@@ -4,32 +4,31 @@ struct CreateWalletWithPassphraseView: View {
     @State private var bip39Passphrase: String = ""
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
-    private let t = useTranslation(.onboarding)
-    
+
     var isValidPassphrase: Bool {
         !bip39Passphrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
-    
+
     var content: some View {
         VStack {
             OnboardingTab(
                 imageName: "padlock2",
-                title: t("passphrase_header"),
-                text: t("passphrase_text"),
+                title: NSLocalizedString("onboarding__passphrase_header", comment: ""),
+                text: NSLocalizedString("onboarding__passphrase_text", comment: ""),
                 accentColor: .brandAccent
             )
             .frame(maxHeight: .infinity)
-    
-            TextField(t("passphrase"), text: $bip39Passphrase)
+
+            TextField(NSLocalizedString("onboarding__passphrase", comment: ""), text: $bip39Passphrase)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .padding()
                 .background(Color(.systemGray6))
                 .cornerRadius(10)
                 .padding(.bottom)
-        
+
             CustomButton(
-                title: t("create_new_wallet"),
+                title: NSLocalizedString("onboarding__create_new_wallet", comment: ""),
                 isDisabled: !isValidPassphrase
             ) {
                 do {
@@ -53,7 +52,7 @@ struct CreateWalletWithPassphraseView: View {
                 }
         )
     }
-    
+
     var body: some View {
         content
     }

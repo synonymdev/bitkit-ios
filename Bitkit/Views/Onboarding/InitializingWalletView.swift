@@ -1,5 +1,5 @@
 //
-//  LoadingView.swift
+//  InitializingWalletView.swift
 //  Bitkit
 //
 //  Created by Jason van den Berg on 2024/01/17.
@@ -14,7 +14,6 @@ struct InitializingWalletView: View {
     @State private var percentage: Double = 0
     @State private var timer: Timer?
     @State private var hapticTimer: Timer?
-    private let t = useTranslation(.onboarding)
 
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
@@ -141,7 +140,7 @@ struct InitializingWalletView: View {
                 VStack(spacing: 24) {
                     spinner
 
-                    DisplayText(t("loading_header"))
+                    DisplayText(NSLocalizedString("onboarding__loading_header", comment: ""))
                         .padding()
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
