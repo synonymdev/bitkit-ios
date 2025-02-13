@@ -74,20 +74,20 @@ struct WalletInitResultView: View {
     private var titleText1: String {
         switch result {
         case .created, .restored:
-            return NSLocalizedString("onboarding__wallet_title", comment: "")
+            return "WALLET"
         case .failed:
-            return NSLocalizedString("onboarding__wallet_setup_title", comment: "")
+            return "WALLET SETUP"
         }
     }
 
     private var titleText2: String {
         switch result {
         case .created:
-            return NSLocalizedString("onboarding__wallet_created", comment: "")
+            return "CREATED"
         case .restored:
-            return NSLocalizedString("onboarding__wallet_restored", comment: "")
+            return "RESTORED"
         case .failed:
-            return NSLocalizedString("onboarding__wallet_error", comment: "")
+            return "ERROR"
         }
     }
 
@@ -103,11 +103,11 @@ struct WalletInitResultView: View {
     private var description: String {
         switch result {
         case .created:
-            return NSLocalizedString("onboarding__wallet_created_description", comment: "")
+            return "Your new wallet is ready to use."
         case .restored:
-            return NSLocalizedString("onboarding__wallet_restored_description", comment: "")
+            return "You have successfully restored your wallet from backup. Enjoy Bitkit!"
         case let .failed(error):
-            return String(format: NSLocalizedString("onboarding__wallet_error_description", comment: ""), error.localizedDescription)
+            return "An error occurred: \(error.localizedDescription)"
         }
     }
 
