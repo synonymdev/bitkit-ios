@@ -68,7 +68,11 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             SubtitleText(NSLocalizedString("onboarding__tos_checkbox", comment: ""))
-                            BodySText(NSLocalizedString("onboarding__tos_checkbox_value", comment: ""), url: URL(string: Env.termsOfServiceUrl))
+                            BodySText(
+                                NSLocalizedString("onboarding__tos_checkbox_value", comment: ""),
+                                accentColor: .brandAccent,
+                                url: URL(string: Env.termsOfServiceUrl)
+                            )
                         }
 
                         Spacer()
@@ -89,7 +93,11 @@ struct TermsView: View {
                     HStack {
                         VStack(alignment: .leading) {
                             SubtitleText(NSLocalizedString("onboarding__pp_checkbox", comment: ""))
-                            BodySText(NSLocalizedString("onboarding__pp_checkbox_value", comment: ""), url: URL(string: Env.privacyPolicyUrl))
+                            BodySText(
+                                NSLocalizedString("onboarding__pp_checkbox_value", comment: ""),
+                                accentColor: .brandAccent,
+                                url: URL(string: Env.privacyPolicyUrl)
+                            )
                         }
 
                         Spacer()
