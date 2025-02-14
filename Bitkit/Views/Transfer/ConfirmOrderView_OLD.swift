@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct ConfirmOrderView: View {
+struct ConfirmOrderView_OLD: View {
     let order: IBtOrder
 
     @State private var isPaying = false
