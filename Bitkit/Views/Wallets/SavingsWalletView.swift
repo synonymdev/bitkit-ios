@@ -19,7 +19,11 @@ struct SavingsWalletView: View {
             Divider()
 
             NavigationLink(destination: {
-                TransferView_OLD()
+                if app.hasSeenTransferIntro {
+                    FundingOptions()
+                } else {
+                    TransferIntro()
+                }
             }) {
                 HStack {
                     Image(systemName: "arrow.up.arrow.down")

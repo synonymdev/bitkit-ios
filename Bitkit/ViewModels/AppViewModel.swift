@@ -32,6 +32,7 @@ class AppViewModel: ObservableObject {
     @Published var isGeoBlocked = false
 
     @AppStorage("showEmptyState") var showEmptyState: Bool = true
+    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
