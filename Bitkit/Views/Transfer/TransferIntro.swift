@@ -20,6 +20,9 @@ struct TransferIntro: View {
             })
         }
         .padding()
+        .onAppear {
+            app.showTabBar = false
+        }
     }
 }
 
