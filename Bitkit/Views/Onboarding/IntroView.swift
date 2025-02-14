@@ -15,7 +15,7 @@ struct IntroView: View {
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(NSLocalizedString("onboarding__welcome_title", comment: ""))
 
-                BodyMText(NSLocalizedString("onboarding__welcome_text", comment: ""))
+                BodyMText(NSLocalizedString("onboarding__welcome_text", comment: ""), accentColor: .brandAccent)
                     .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
