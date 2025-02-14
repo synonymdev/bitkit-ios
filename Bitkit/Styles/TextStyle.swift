@@ -69,17 +69,18 @@ struct SubtitleText: View {
 struct BodyMText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
+    private let fontSize: CGFloat = 17
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor)))
-            .font(.custom(Fonts.regular, size: 17))
+        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular)))
+            .font(.custom(Fonts.regular, size: fontSize))
     }
 }
 
@@ -87,6 +88,7 @@ struct BodyMBoldText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    private let fontSize: CGFloat = 17
 
     init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
         self.text = text
@@ -95,18 +97,19 @@ struct BodyMBoldText: View {
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor)))
-            .font(.custom(Fonts.bold, size: 17))
+        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.bold)))
+            .font(.custom(Fonts.bold, size: fontSize))
     }
 }
 
 struct BodySText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
     var url: URL? = nil
+    private let fontSize: CGFloat = 15
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, url: URL? = nil) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -114,48 +117,50 @@ struct BodySText: View {
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url)))
-            .font(.custom(Fonts.regular, size: 15))
-            .tint(accentColor)
+        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url, fontSize: fontSize, font: Fonts.regular)))
+            .font(.custom(Fonts.regular, size: fontSize))
+            .tint(accentColor ?? .brandAccent)
     }
 }
 
 struct CaptionText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
+    private let fontSize: CGFloat = 13
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor)))
-            .font(.custom(Fonts.regular, size: 13))
+        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular)))
+            .font(.custom(Fonts.regular, size: fontSize))
     }
 }
 
 struct FootnoteText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
+    private let fontSize: CGFloat = 12
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor)))
-            .font(.custom(Fonts.medium, size: 12))
+        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.medium)))
+            .font(.custom(Fonts.medium, size: fontSize))
     }
 }
 
 // Helper function to parse accent tags
-private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color, url: URL? = nil) -> NSAttributedString {
+private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color?, url: URL? = nil, fontSize: CGFloat = 15, font: String = Fonts.regular, accentFont: String? = nil) -> NSAttributedString {
     let attributedString = NSMutableAttributedString(string: "")
     var currentIndex = text.startIndex
 
@@ -166,7 +171,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             if !beforeAccent.isEmpty {
                 let normalString = NSAttributedString(string: beforeAccent, attributes: [
                     .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
+                    .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
                 ])
                 attributedString.append(normalString)
             }
@@ -175,10 +180,15 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                 // Get the accented text
                 let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
-                var attributes: [NSAttributedString.Key: Any] = [
-                    .foregroundColor: UIColor(accentColor),
-                    .font: UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold),
-                ]
+                var attributes: [NSAttributedString.Key: Any] = [:]
+
+                if let accentColor = accentColor {
+                    attributes[.foregroundColor] = UIColor(accentColor)
+                    attributes[.font] = UIFont(name: accentFont ?? font, size: fontSize) ?? .systemFont(ofSize: fontSize)
+                } else {
+                    attributes[.foregroundColor] = UIColor(defaultColor)
+                    attributes[.font] = UIFont(name: Fonts.bold, size: fontSize) ?? .systemFont(ofSize: fontSize, weight: .bold)
+                }
 
                 if let url = url {
                     attributes[.link] = url
@@ -193,7 +203,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
                 let remainingText = String(text[accentStartRange.lowerBound...])
                 let normalString = NSAttributedString(string: remainingText, attributes: [
                     .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
+                    .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
                 ])
                 attributedString.append(normalString)
                 break
@@ -203,7 +213,7 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             let remainingText = String(text[currentIndex...])
             let normalString = NSAttributedString(string: remainingText, attributes: [
                 .foregroundColor: UIColor(defaultColor),
-                .font: UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15),
+                .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
             ])
             attributedString.append(normalString)
             break
