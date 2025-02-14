@@ -148,6 +148,7 @@ struct RestoreWalletView: View {
         do {
             wallet.nodeLifecycleState = .initializing
             wallet.isRestoringWallet = true
+            app.showEmptyState = false
             _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
             try wallet.setWalletExistsState()
         } catch {
