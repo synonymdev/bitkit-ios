@@ -69,9 +69,9 @@ struct SubtitleText: View {
 struct BodyMText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -103,10 +103,10 @@ struct BodyMBoldText: View {
 struct BodySText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
     var url: URL? = nil
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, url: URL? = nil) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -116,16 +116,16 @@ struct BodySText: View {
     var body: some View {
         Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url)))
             .font(.custom(Fonts.regular, size: 15))
-            .tint(accentColor)
+            .tint(accentColor ?? .brandAccent)
     }
 }
 
 struct CaptionText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -140,9 +140,9 @@ struct CaptionText: View {
 struct FootnoteText: View {
     let text: String
     var textColor: Color = .textSecondary
-    var accentColor: Color = .brandAccent
+    var accentColor: Color? = nil
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -155,7 +155,7 @@ struct FootnoteText: View {
 }
 
 // Helper function to parse accent tags
-private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color, url: URL? = nil) -> NSAttributedString {
+private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color?, url: URL? = nil) -> NSAttributedString {
     let attributedString = NSMutableAttributedString(string: "")
     var currentIndex = text.startIndex
 
@@ -175,10 +175,15 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             if let accentEndRange = text[accentStartRange.upperBound...].range(of: "</accent>") {
                 // Get the accented text
                 let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
-                var attributes: [NSAttributedString.Key: Any] = [
-                    .foregroundColor: UIColor(accentColor),
-                    .font: UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold),
-                ]
+                var attributes: [NSAttributedString.Key: Any] = [:]
+
+                if let accentColor = accentColor {
+                    attributes[.foregroundColor] = UIColor(accentColor)
+                    attributes[.font] = UIFont(name: Fonts.regular, size: 15) ?? .systemFont(ofSize: 15)
+                } else {
+                    attributes[.foregroundColor] = UIColor(defaultColor)
+                    attributes[.font] = UIFont(name: Fonts.bold, size: 15) ?? .systemFont(ofSize: 15, weight: .bold)
+                }
 
                 if let url = url {
                     attributes[.link] = url
