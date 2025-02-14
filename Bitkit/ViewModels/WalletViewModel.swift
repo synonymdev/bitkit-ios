@@ -252,7 +252,7 @@ class WalletViewModel: ObservableObject {
         stopPolling()
 
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            DispatchQueue.global(qos: .utility).async {
+            Task { @MainActor in
                 guard let self = self else { return }
                 if self.nodeLifecycleState == .running {
                     self.syncState()

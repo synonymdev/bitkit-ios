@@ -18,7 +18,7 @@ struct CreateWalletView: View {
                 CustomButton(title: NSLocalizedString("onboarding__new_wallet", comment: "")) {
                     do {
                         wallet.nodeLifecycleState = .initializing
-                        app.showEmptyState = true
+                        app.showAllEmptyStates(true)
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: nil)
                         try wallet.setWalletExistsState()
                     } catch {

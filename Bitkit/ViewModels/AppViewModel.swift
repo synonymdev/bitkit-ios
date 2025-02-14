@@ -32,7 +32,18 @@ class AppViewModel: ObservableObject {
     @Published var isGeoBlocked: Bool? = nil
 
     @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
-    @AppStorage("showEmptyState") var showEmptyState: Bool = false
+
+    // When to show empty state UI
+    @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
+    @AppStorage("showSavingsViewEmptyState") var showSavingsViewEmptyState: Bool = false
+    @AppStorage("showSpendingViewEmptyState") var showSpendingViewEmptyState: Bool = false
+
+    func showAllEmptyStates(_ show: Bool) {
+        showHomeViewEmptyState = show
+        showSavingsViewEmptyState = show
+        showSpendingViewEmptyState = show
+    }
+
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
