@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct TransferIntro: View {
+    @EnvironmentObject var app: AppViewModel
+
     var body: some View {
         VStack {
             OnboardingTab(
@@ -13,6 +15,9 @@ struct TransferIntro: View {
             NavigationLink(destination: FundingOptions()) {
                 CustomButton(title: NSLocalizedString("lightning__transfer_intro__button", comment: ""))
             }
+            .simultaneousGesture(TapGesture().onEnded {
+                app.hasSeenTransferIntro = true
+            })
         }
         .padding()
     }
@@ -21,6 +26,7 @@ struct TransferIntro: View {
 #Preview {
     NavigationView {
         TransferIntro()
+            .environmentObject(AppViewModel())
             .preferredColorScheme(.dark)
     }
 }
