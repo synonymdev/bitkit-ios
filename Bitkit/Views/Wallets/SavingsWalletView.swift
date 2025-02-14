@@ -19,7 +19,7 @@ struct SavingsWalletView: View {
             Divider()
 
             NavigationLink(destination: {
-                TransferView()
+                TransferView_OLD()
             }) {
                 HStack {
                     Image(systemName: "arrow.up.arrow.down")

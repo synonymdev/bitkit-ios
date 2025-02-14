@@ -29,6 +29,7 @@ class AppViewModel: ObservableObject {
 
     // Bottom tab bar
     @Published var showTabBar = true
+    @Published var isGeoBlocked = false
 
     @AppStorage("showEmptyState") var showEmptyState: Bool = true
     @Published var currentToast: Toast?
@@ -41,6 +42,7 @@ class AppViewModel: ObservableObject {
 }
 
 // MARK: Toast notifications
+
 extension AppViewModel {
     func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 3.0) {
         switch type {
@@ -100,19 +102,20 @@ extension AppViewModel {
 }
 
 // MARK: Scanning/pasting handling
+
 extension AppViewModel {
     func handleScannedData(_ uri: String) async throws {
         let data = try await decode(invoice: uri)
 
         switch data {
-        case .onChain(invoice: let invoice):
+        case let .onChain(invoice: invoice):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
             if let lnInvoice = invoice.params?["lightning"] as? String {
                 // Lightning invoice param found, prefer lightning payment if possible
-                if case .lightning(invoice: let lightningInvoice) = try await decode(invoice: lnInvoice) {
+                if case let .lightning(invoice: lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice)
                         return
@@ -122,7 +125,7 @@ extension AppViewModel {
 
             // No LN invoice found, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
-        case .lightning(invoice: let invoice):
+        case let .lightning(invoice: invoice):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
@@ -188,6 +191,7 @@ extension AppViewModel {
 }
 
 // MARK: LDK Node Events
+
 extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {

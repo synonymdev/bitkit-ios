@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct TransferView: View {
+struct TransferView_OLD: View {
     @State private var sats = ""
     @State private var isCreatingOrder = false
     @State private var newOrder: IBtOrder? = nil
@@ -45,7 +45,7 @@ struct TransferView: View {
             }
 
             if let order = newOrder {
-                NavigationLink(destination: ConfirmOrderView(order: order), isActive: .constant(true)) {
+                NavigationLink(destination: ConfirmOrderView_OLD(order: order), isActive: .constant(true)) {
                     EmptyView()
                 }
             }
@@ -58,7 +58,7 @@ struct TransferView: View {
 }
 
 #Preview {
-    TransferView()
+    TransferView_OLD()
         .environmentObject(AppViewModel())
         .environmentObject(BlocktankViewModel())
         .preferredColorScheme(.dark)
