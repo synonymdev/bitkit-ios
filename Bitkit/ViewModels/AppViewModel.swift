@@ -36,9 +36,11 @@ class AppViewModel: ObservableObject {
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
+    private let coreService: CoreService
 
-    init(lightningService: LightningService = .shared) {
+    init(lightningService: LightningService = .shared, coreService: CoreService = .shared) {
         self.lightningService = lightningService
+        self.coreService = coreService
 
         Task {
             await checkGeoStatus()
@@ -46,28 +48,8 @@ class AppViewModel: ObservableObject {
     }
 
     func checkGeoStatus() async {
-        Logger.info("Checking geo status...", context: "GeoCheck")
-        guard let url = URL(string: Env.geoCheckUrl) else {
-            Logger.error("Invalid geocheck URL: \(Env.geoCheckUrl)", context: "GeoCheck")
-            return
-        }
-
         do {
-            let (_, response) = try await URLSession.shared.data(from: url)
-            if let httpResponse = response as? HTTPURLResponse {
-                Logger.debug("Received geo status response: \(httpResponse.statusCode)", context: "GeoCheck")
-                switch httpResponse.statusCode {
-                case 200:
-                    Logger.info("Region allowed", context: "GeoCheck")
-                    isGeoBlocked = false
-                case 403:
-                    Logger.warn("Region blocked", context: "GeoCheck")
-                    isGeoBlocked = true
-                default:
-                    Logger.warn("Unexpected status code: \(httpResponse.statusCode)", context: "GeoCheck")
-                    // Don't update for other status codes
-                }
-            }
+            isGeoBlocked = try await coreService.checkGeoStatus()
         } catch {
             Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
         }
