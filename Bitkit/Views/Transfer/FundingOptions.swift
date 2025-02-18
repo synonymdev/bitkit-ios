@@ -4,6 +4,7 @@ struct FundingOptions: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @State private var showNoFundsAlert = false
+    @State private var showFundTransfer = false
 
     var body: some View {
         VStack {
@@ -22,6 +23,8 @@ struct FundingOptions: View {
                 Button(action: {
                     if wallet.totalOnchainSats == 0 {
                         showNoFundsAlert = true
+                    } else if app.isGeoBlocked != true {
+                        showFundTransfer = true
                     }
                 }) {
                     RectangleButton(
@@ -41,7 +44,7 @@ struct FundingOptions: View {
                 .background(
                     NavigationLink(
                         destination: FundTransfer(),
-                        isActive: .constant(!(wallet.totalOnchainSats == 0 || app.isGeoBlocked == true))
+                        isActive: $showFundTransfer
                     ) { EmptyView() }
                 )
 

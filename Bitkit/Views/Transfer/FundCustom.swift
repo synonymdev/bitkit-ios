@@ -5,7 +5,7 @@ struct FundCustom: View {
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
-        Text("TODO")
+        Text("FundCustom")
             .navigationBarTitleDisplayMode(.inline)
     }
 }
