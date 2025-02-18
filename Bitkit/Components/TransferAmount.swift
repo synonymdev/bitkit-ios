@@ -73,7 +73,13 @@ struct TransferAmount: View {
                         if filtered.components(separatedBy: ".").count > 2 {
                             fiatAmount = String(filtered.prefix(filtered.count - 1))
                         } else {
-                            fiatAmount = filtered
+                            // Limit to 2 decimal places for fiat
+                            let components = filtered.components(separatedBy: ".")
+                            if components.count == 2 && components[1].count > 2 {
+                                fiatAmount = components[0] + "." + components[1].prefix(2)
+                            } else {
+                                fiatAmount = filtered
+                            }
                         }
 
                         // Only convert if we have a valid number
