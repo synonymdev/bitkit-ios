@@ -34,6 +34,13 @@ struct SpendingWalletView: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .topTrailing) {
+            Image("coin-stack-x-2")
+                .resizable()
+                .frame(width: 256, height: 256)
+                .offset(x: 128)
+                .offset(y: -80)
+        }
         .animation(.spring(response: 0.3), value: app.showSpendingViewEmptyState)
         .overlay {
             if wallet.totalLightningSats == 0 && app.showSpendingViewEmptyState {

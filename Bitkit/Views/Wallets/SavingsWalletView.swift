@@ -11,6 +11,8 @@ struct SavingsWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
 
+    @State private var hasSeenTransferIntro = true
+
     var body: some View {
         VStack {
             BalanceHeaderView(sats: wallet.totalOnchainSats)
@@ -38,6 +40,13 @@ struct SavingsWalletView: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .topTrailing) {
+            Image("piggybank")
+                .resizable()
+                .frame(width: 256, height: 256)
+                .offset(x: 110)
+                .offset(y: -68)
+        }
         .animation(.spring(response: 0.3), value: app.showSavingsViewEmptyState)
         .overlay {
             if wallet.totalOnchainSats == 0 && app.showSavingsViewEmptyState {
@@ -58,6 +67,10 @@ struct SavingsWalletView: View {
                 }
             }
         }
+        .task {
+            // Set just once so when app.hasSeenTransferIntro is set, it doesn't change this view until reloaded
+            hasSeenTransferIntro = app.hasSeenTransferIntro
+        }
         .onAppear {
             app.showTabBar = true
         }
@@ -65,7 +78,7 @@ struct SavingsWalletView: View {
 
     var fundingButton: some View {
         NavigationLink(destination: {
-            if app.hasSeenTransferIntro {
+            if hasSeenTransferIntro {
                 FundingOptions()
             } else {
                 TransferIntro()
