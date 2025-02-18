@@ -12,6 +12,37 @@ struct FundTransfer: View {
     @State private var newOrder: IBtOrder? = nil
     @State private var showConfirmation = false
 
+    // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
+    // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
+
+    struct AmountButton: View {
+        let text: String
+        var imageName: String?
+        var action: () -> Void
+
+        var body: some View {
+            Button(action: {
+                Haptics.play(.buttonTap)
+                action()
+            }) {
+                HStack(spacing: 8) {
+                    if let imageName {
+                        Image(imageName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 12)
+                    }
+
+                    CaptionText(text, textColor: .purpleAccent)
+                }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .background(Color.white10)
+                .cornerRadius(8)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
@@ -20,6 +51,7 @@ struct FundTransfer: View {
 
                 // Visible balance display that acts as a button
                 TransferAmount(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
+                    Haptics.play(.buttonTap)
                     satsAmount = newSats
                     overrideSats = nil
                     print("satsAmount: \(satsAmount)")
@@ -74,25 +106,22 @@ struct FundTransfer: View {
     }
 
     private var amountButtons: some View {
-        HStack {
-            Button(action: {
-                primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
-            }) {
-                Text(primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC")
+        HStack(spacing: 16) {
+            AmountButton(
+                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                imageName: "transfer-purple"
+            ) {
+                withAnimation {
+                    primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                }
             }
-            .padding(.trailing, 16)
 
-            Button(action: {
+            AmountButton(text: "25%") {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
-            }) {
-                Text("25%")
             }
-            .padding(.trailing, 16)
 
-            Button(action: {
-                // Handle MAX tap
-            }) {
-                Text("MAX")
+            AmountButton(text: "MAX") {
+                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }
     }
@@ -130,7 +159,7 @@ struct FundTransfer: View {
     .preferredColorScheme(.dark)
 }
 
-#Preview("Bitcoin") {
+#Preview("Bitcoin modern") {
     NavigationView {
         FundTransfer()
             .environmentObject(WalletViewModel())
@@ -140,6 +169,22 @@ struct FundTransfer: View {
                 let vm = CurrencyViewModel()
                 vm.primaryDisplay = .bitcoin
                 vm.displayUnit = .modern
+                return vm
+            }())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Bitcoin classic") {
+    NavigationView {
+        FundTransfer()
+            .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = CurrencyViewModel()
+                vm.primaryDisplay = .bitcoin
+                vm.displayUnit = .classic
                 return vm
             }())
     }
