@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct TransferIntro: View {
+struct TransferIntroView: View {
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
@@ -12,7 +12,7 @@ struct TransferIntro: View {
                 accentColor: .purpleAccent
             )
 
-            NavigationLink(destination: FundingOptions()) {
+            NavigationLink(destination: FundingOptionsView()) {
                 CustomButton(title: NSLocalizedString("lightning__transfer_intro__button", comment: ""))
             }
             .simultaneousGesture(TapGesture().onEnded {
@@ -28,7 +28,7 @@ struct TransferIntro: View {
 
 #Preview {
     NavigationView {
-        TransferIntro()
+        TransferIntroView()
             .environmentObject(AppViewModel())
             .preferredColorScheme(.dark)
     }
