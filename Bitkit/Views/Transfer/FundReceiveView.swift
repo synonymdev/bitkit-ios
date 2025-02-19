@@ -1,18 +1,18 @@
 import SwiftUI
 
-struct FundCustom: View {
+struct FundReceiveView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
-        Text("FundCustom")
+        Text("FundReceiveView")
             .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 #Preview {
     NavigationView {
-        FundCustom()
+        FundReceiveView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .preferredColorScheme(.dark)

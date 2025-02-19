@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct FundTransfer: View {
+struct FundTransferView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
@@ -63,7 +63,15 @@ struct FundTransfer: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading) {
                         BodySText(NSLocalizedString("wallet__send_available", comment: "").uppercased(), textColor: .textSecondary)
-                        BodySText("\(wallet.totalBalanceSats) sats")
+
+                        if let converted = currency.convert(sats: UInt64(wallet.totalBalanceSats)) {
+                            if primaryDisplay == .bitcoin {
+                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                                BodySText("\(btcComponents.symbol) \(btcComponents.value)")
+                            } else {
+                                BodySText("\(converted.symbol) \(converted.formatted)")
+                            }
+                        }
                     }
 
                     Spacer()
@@ -79,7 +87,7 @@ struct FundTransfer: View {
             Spacer()
 
             if let order = newOrder {
-                NavigationLink(destination: ConfirmOrderView_OLD(order: order), isActive: $showConfirmation) {
+                NavigationLink(destination: SpendingConfirmationView(order: order), isActive: $showConfirmation) {
                     EmptyView()
                 }
             }
@@ -129,7 +137,7 @@ struct FundTransfer: View {
 
 #Preview("USD") {
     NavigationView {
-        FundTransfer()
+        FundTransferView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -145,7 +153,7 @@ struct FundTransfer: View {
 
 #Preview("EUR") {
     NavigationView {
-        FundTransfer()
+        FundTransferView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -161,7 +169,7 @@ struct FundTransfer: View {
 
 #Preview("Bitcoin modern") {
     NavigationView {
-        FundTransfer()
+        FundTransferView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -177,7 +185,7 @@ struct FundTransfer: View {
 
 #Preview("Bitcoin classic") {
     NavigationView {
-        FundTransfer()
+        FundTransferView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())

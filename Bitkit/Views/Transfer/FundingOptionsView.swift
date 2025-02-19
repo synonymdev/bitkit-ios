@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct FundingOptions: View {
+struct FundingOptionsView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @State private var showNoFundsAlert = false
@@ -43,12 +43,12 @@ struct FundingOptions: View {
                 }
                 .background(
                     NavigationLink(
-                        destination: FundTransfer(),
+                        destination: FundTransferView(),
                         isActive: $showFundTransfer
                     ) { EmptyView() }
                 )
 
-                NavigationLink(destination: FundReceive()) {
+                NavigationLink(destination: FundReceiveView()) {
                     RectangleButton(
                         icon: Image("qr-purple"),
                         title: NSLocalizedString("lightning__funding__button2", comment: ""),
@@ -57,7 +57,7 @@ struct FundingOptions: View {
                 }
                 .disabled(app.isGeoBlocked == true)
 
-                NavigationLink(destination: FundCustom()) {
+                NavigationLink(destination: FundCustomView()) {
                     RectangleButton(
                         icon: Image("share-purple"),
                         title: NSLocalizedString("lightning__funding__button3", comment: "")
@@ -79,7 +79,7 @@ struct FundingOptions: View {
 
 #Preview("Default - No Balance") {
     NavigationView {
-        FundingOptions()
+        FundingOptionsView()
             .environmentObject({
                 let wallet = WalletViewModel()
                 wallet.totalOnchainSats = 0
@@ -92,7 +92,7 @@ struct FundingOptions: View {
 
 #Preview("Geoblocked") {
     NavigationView {
-        FundingOptions()
+        FundingOptionsView()
             .environmentObject({
                 let wallet = WalletViewModel()
                 wallet.totalOnchainSats = 100_000
@@ -109,7 +109,7 @@ struct FundingOptions: View {
 
 #Preview("Has Balance and not geoblocked") {
     NavigationView {
-        FundingOptions()
+        FundingOptionsView()
             .environmentObject({
                 let wallet = WalletViewModel()
                 wallet.totalOnchainSats = 100_000

@@ -79,9 +79,9 @@ struct SavingsWalletView: View {
     var fundingButton: some View {
         NavigationLink(destination: {
             if hasSeenTransferIntro {
-                FundingOptions()
+                FundingOptionsView()
             } else {
-                TransferIntro()
+                TransferIntroView()
             }
         }) {
             HStack {
