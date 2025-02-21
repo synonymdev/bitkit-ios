@@ -21,7 +21,7 @@ struct SavingsWalletView: View {
 
             Divider()
 
-            if !app.showSavingsViewEmptyState {
+            if !app.showSavingsViewEmptyState || wallet.totalOnchainSats > 0 {
                 fundingButton
                     .transition(.move(edge: .leading).combined(with: .opacity))
 

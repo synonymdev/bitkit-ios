@@ -66,57 +66,93 @@ struct ProgressSteps: View {
 }
 
 struct SettingUpView: View {
+    @State var order: IBtOrder
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var blocktank: BlocktankViewModel
 
-    @State private var currentStep = 2
+    @State private var currentStep = 0
     @State private var isRocking = false
+    private let randomOkText = LocalizedRandom("common__ok_random", comment: "")
 
-    // TODO: keep refreshing BT order until it's open
-    // Read from BlocktankViewModel. Maybe make that keep refreshing until it's open
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     let steps = [
-        NSLocalizedString("lightning__setting_up_step1", comment: ""),
-        NSLocalizedString("lightning__setting_up_step2", comment: ""),
-        NSLocalizedString("lightning__setting_up_step3", comment: ""),
-        NSLocalizedString("lightning__setting_up_step4", comment: ""),
+        NSLocalizedString("lightning__setting_up_step1", comment: ""), // Processing Payment
+        NSLocalizedString("lightning__setting_up_step2", comment: ""), // Payment Successful
+        NSLocalizedString("lightning__setting_up_step3", comment: ""), // Queued For Opening
+        NSLocalizedString("lightning__setting_up_step4", comment: ""), // Opening Connection
     ]
+
+    func updateOrder(_ order: IBtOrder) async {
+        if order.channel != nil {
+            currentStep = 4
+            return
+        }
+
+        if order.state2 == .created {
+            currentStep = 0
+        } else if order.state2 == .paid {
+            currentStep = 1
+
+            do {
+                _ = try await blocktank.openChannel(orderId: order.id)
+            } catch {
+                Logger.error("Error opening channel: \(error)")
+            }
+        } else if order.state2 == .executed {
+            currentStep = 2
+        } else if order.channel != nil {
+            currentStep = 3
+        }
+
+        print("currentStep:::::::::: \(currentStep)")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__savings_progress__title", comment: ""), accentColor: .purpleAccent)
+                DisplayText(NSLocalizedString(currentStep < 4 ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
-                BodyMText(NSLocalizedString("lightning__setting_up_text", comment: ""), textColor: .textSecondary, accentColor: .white)
+                BodyMText(NSLocalizedString(currentStep < 4 ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""), textColor: .textSecondary, accentColor: .white)
                     .padding(.bottom, 16)
 
                 Spacer()
 
-                Image("hourglass")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: .infinity, height: 256)
-                    .rotationEffect(.degrees(isRocking ? 25 : -25))
-                    .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isRocking)
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        isRocking = true
-                    }
+                if currentStep < 4 {
+                    Image("hourglass")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 256, height: 256)
+                        .rotationEffect(.degrees(isRocking ? 25 : -25))
+                        .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isRocking)
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onAppear {
+                            isRocking = true
+                        }
+                } else {
+                    Image("check")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 256, height: 256)
+                        .padding()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
 
                 Spacer()
 
-                ProgressSteps(steps: steps, currentStep: currentStep)
-
-                Spacer()
+                if currentStep < 4 {
+                    ProgressSteps(steps: steps, currentStep: currentStep)
+                    Spacer()
+                }
 
                 CustomButton(
-                    title: NSLocalizedString("lightning__setting_up_button", comment: ""),
+                    title: currentStep < 4 ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
                     size: .large
                 ) {
                     app.showFundingSheet = false
                 }
-                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
@@ -124,14 +160,72 @@ struct SettingUpView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .navigationTitle(NSLocalizedString(currentStep < 4 ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    app.showFundingSheet = false
+                }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .onAppear {
+            Logger.debug("View appeared - setting initial state and refreshing order")
+
+            // Initial refresh
+            Task {
+                await updateOrder(order)
+
+                if let refreshedOrder = try? await blocktank.refreshOrder(id: order.id) {
+                    await updateOrder(refreshedOrder)
+                }
+            }
+        }
+        .onReceive(timer) { _ in
+            Logger.debug("Timer fired - refreshing order")
+            Task {
+                if currentStep < 3, let refreshedOrder = try? await blocktank.refreshOrder(id: order.id) {
+                    await updateOrder(refreshedOrder)
+                }
+            }
+        }
     }
 }
 
-#Preview {
+#Preview("Created") {
     NavigationView {
-        SettingUpView()
+        SettingUpView(order: IBtOrder.mock(state2: .created))
             .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Paid") {
+    NavigationView {
+        SettingUpView(order: IBtOrder.mock(state2: .paid))
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Executed") {
+    NavigationView {
+        SettingUpView(order: IBtOrder.mock(state2: .executed))
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Opened") {
+    NavigationView {
+        SettingUpView(order: IBtOrder.mock(state2: .executed, channel: .mock()))
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
     }
     .preferredColorScheme(.dark)
 }
