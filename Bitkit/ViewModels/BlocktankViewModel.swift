@@ -77,6 +77,8 @@ class BlocktankViewModel: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        Logger.debug("Refreshing orders...")
+
         // Sync UI instantly from cache
         orders = try await coreService.blocktank.orders(refresh: false)
         cJitEntries = try await coreService.blocktank.cjitOrders(refresh: false)
@@ -84,6 +86,20 @@ class BlocktankViewModel: ObservableObject {
         // The update from server
         orders = try await coreService.blocktank.orders(refresh: true)
         cJitEntries = try await coreService.blocktank.cjitOrders(refresh: true)
+
+        Logger.debug("Orders refreshed")
+    }
+
+    func refreshOrder(id: String) async throws -> IBtOrder? {
+        let refreshedOrders = try await coreService.blocktank.orders(orderIds: [id], refresh: true)
+        guard let refreshedOrder = refreshedOrders.first else { return nil }
+
+        // Update the order in the published array if it exists
+        if let index = orders?.firstIndex(where: { $0.id == id }) {
+            orders?[index] = refreshedOrder
+        }
+
+        return refreshedOrder
     }
 
     func createCjit(amountSats: UInt64, description: String) async throws -> IcJitEntry {
@@ -131,5 +147,16 @@ class BlocktankViewModel: ObservableObject {
             channelExpiryWeeks: UInt32(channelExpiryWeeks),
             options: options
         )
+    }
+
+    func openChannel(orderId: String) async throws -> IBtOrder {
+        let order = try await coreService.blocktank.open(orderId: orderId)
+
+        // Update the order in the published array if it exists
+        if let index = orders?.firstIndex(where: { $0.id == orderId }) {
+            orders?[index] = order
+        }
+
+        return order
     }
 }
