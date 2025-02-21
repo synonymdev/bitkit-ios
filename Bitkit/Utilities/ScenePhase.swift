@@ -12,6 +12,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var blocktank: BlocktankViewModel
 
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
 
@@ -46,7 +47,13 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         } catch {
                             Logger.error(error, context: "Failed to start LN")
                         }
-                        await currency.refresh() // Makes sense to get latest rates when app is foregrounded
+                        Task {
+                            await currency.refresh()
+                        }
+
+                        Task {
+                            try? await blocktank.refreshOrders()
+                        }
                     }
                 }
             }

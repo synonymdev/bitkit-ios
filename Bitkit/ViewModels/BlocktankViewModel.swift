@@ -19,6 +19,8 @@ class BlocktankViewModel: ObservableObject {
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private var refreshTimer: Timer?
+    private var refreshTask: Task<Void, Never>?
 
     init(coreService: CoreService = .shared,
          lightningService: LightningService = .shared)
@@ -27,7 +29,41 @@ class BlocktankViewModel: ObservableObject {
         self.lightningService = lightningService
 
         Task { try? await refreshInfo() }
-        Task { try? await refreshOrders() }
+        startPolling()
+    }
+
+    deinit {
+        RunLoop.main.perform { [weak self] in
+            Logger.debug("Stopping poll for orders")
+            self?.stopPolling()
+        }
+    }
+
+    private func startPolling() {
+        stopPolling()
+
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.blocktankOrderRefreshInterval, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            self.refreshTask?.cancel()
+            self.refreshTask = Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                try? await self.refreshOrders()
+            }
+        }
+
+        // Initial refresh
+        refreshTask?.cancel()
+        refreshTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            try? await self.refreshOrders()
+        }
+    }
+
+    private func stopPolling() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        refreshTask?.cancel()
+        refreshTask = nil
     }
 
     func refreshInfo() async throws {

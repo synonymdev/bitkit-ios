@@ -149,6 +149,8 @@ enum Env {
     static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
     static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
 
+    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
+
     static var pushNotificationFeatures: [BlocktankNotificationType] = [
         .incomingHtlc,
         .mutualClose,
