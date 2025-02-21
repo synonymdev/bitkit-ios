@@ -16,6 +16,7 @@ class BlocktankViewModel: ObservableObject {
     @Published var info: IBtInfo? = nil
 
     @AppStorage("cjitActive") var cjitActive = false
+    @Published private(set) var isRefreshing = false
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -72,6 +73,10 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func refreshOrders() async throws {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         // Sync UI instantly from cache
         orders = try await coreService.blocktank.orders(refresh: false)
         cJitEntries = try await coreService.blocktank.cjitOrders(refresh: false)
