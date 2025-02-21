@@ -11,6 +11,7 @@ class CurrencyViewModel: ObservableObject {
     @Published private(set) var rates: [FxRate] = []
     @Published private(set) var error: Error?
     @Published private(set) var hasStaleData: Bool = false
+    @Published private(set) var isRefreshing = false
     @AppStorage("selectedCurrency") var selectedCurrency: String = "USD"
     @AppStorage("bitcoinDisplayUnit") var displayUnit: BitcoinDisplayUnit = .modern
     @AppStorage("primaryDisplay") var primaryDisplay: PrimaryDisplay = .bitcoin
@@ -39,6 +40,10 @@ class CurrencyViewModel: ObservableObject {
     }
 
     func refresh() async {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
         do {
             Logger.debug("Refreshing rates")
             rates = try await currencyService.fetchLatestRates()
