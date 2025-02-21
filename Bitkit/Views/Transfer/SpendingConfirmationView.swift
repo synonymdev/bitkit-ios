@@ -14,6 +14,8 @@ struct SpendingConfirmationView: View {
     @State private var txId = ""
     @State private var showAdvanced = false
     @State private var showLearnMore = false
+    @State private var showSettingUp = false
+    @State private var hideSwipeButton = false
 
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
@@ -68,7 +70,7 @@ struct SpendingConfirmationView: View {
 
                 Spacer()
 
-                if txId.isEmpty {
+                if !hideSwipeButton {
                     SwipeButton(
                         title: NSLocalizedString("lightning__transfer__swipe", comment: ""),
                         accentColor: .purpleAccent
@@ -79,6 +81,11 @@ struct SpendingConfirmationView: View {
                                 address: order.payment.onchain.address,
                                 sats: order.feeSat
                             )
+                            showSettingUp = true
+
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                                hideSwipeButton = true
+                            }
                         } catch {
                             app.toast(error)
                             throw error
@@ -86,28 +93,17 @@ struct SpendingConfirmationView: View {
                         isPaying = false
                     }
                     .disabled(isPaying)
-                } else {
-                    VStack(alignment: .leading, spacing: 16) {
-                        SpendingDetailRow(label: NSLocalizedString("wallet__activity_payment", comment: ""), value: txId)
-                        BodyMText(NSLocalizedString("lightning__confirm_order__close_app", comment: ""))
-
-                        CustomButton(title: NSLocalizedString("lightning__confirm_order__manual_open", comment: "")) {
-                            Task {
-                                do {
-                                    let _ = try await CoreService.shared.blocktank.open(orderId: order.id)
-                                } catch {
-                                    app.toast(error)
-                                    LightningService.shared.dumpLdkLogs()
-                                }
-                            }
-                        }
-                    }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
+
+            NavigationLink(destination: SettingUpView(), isActive: $showSettingUp) {
+                EmptyView()
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
         .background(Color.black)
     }
 }
