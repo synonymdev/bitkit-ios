@@ -11,19 +11,20 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
-    
+    @EnvironmentObject var currency: CurrencyViewModel
+
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
-    
+
     func body(content: Content) -> some View {
         content
             .onChange(of: scenePhase) { newPhase in
                 guard wallet.walletExists == true else {
                     return
                 }
-                
+
                 Task { @MainActor in
                     Logger.debug("Scene phase changed: \(newPhase)")
-                    
+
                     if newPhase == .background {
                         do {
                             try await stopNodeIfNeeded()
@@ -32,65 +33,66 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         }
                         return
                     }
-                    
+
                     if newPhase == .active {
                         if let transaction = NewTransactionSheetDetails.load() {
                             // Background extension received a transaction
                             NewTransactionSheetDetails.clear()
                             app.showNewTransactionSheet(details: transaction)
                         }
-                        
+
                         do {
                             try await startNodeIfNeeded()
                         } catch {
                             Logger.error(error, context: "Failed to start LN")
                         }
+                        await currency.refresh() // Makes sense to get latest rates when app is foregrounded
                     }
                 }
             }
     }
-    
+
     func stopNodeIfNeeded() async throws {
         if wallet.nodeLifecycleState == .stopped || wallet.nodeLifecycleState == .stopping {
             return
         }
-        
+
         while wallet.nodeLifecycleState == .starting {
             Logger.debug("Waiting for LN to start first before stopping...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
-        
+
         guard scenePhase != .active else {
             Logger.debug("Scene phase is active, abandoning node stop...")
             return
         }
-        
+
         guard wallet.nodeLifecycleState != .stopped && wallet.nodeLifecycleState != .stopping else {
             Logger.debug("LN is already stopped or stopping")
             return
         }
-        
+
         Logger.debug("App backgrounded Stopping node...")
-        
+
         try await wallet.stopLightningNode()
     }
-    
+
     func startNodeIfNeeded() async throws {
         while wallet.nodeLifecycleState == .stopping {
             Logger.debug("Node is still stopping, waiting...")
             try await Task.sleep(nanoseconds: sleepTime)
         }
-        
+
         guard wallet.nodeLifecycleState == .stopped else {
             Logger.debug("LN is already running or starting, abandoning restart...")
             return
         }
-        
+
         guard scenePhase != .background else {
             Logger.debug("Scene phase is background, abandoning node restart...")
             return
         }
-        
+
         Logger.debug("App active, starting LN service...")
 
         try await wallet.start()
