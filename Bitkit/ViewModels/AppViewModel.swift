@@ -26,6 +26,7 @@ class AppViewModel: ObservableObject {
     @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
+    @Published var showFundingSheet = false
 
     // Bottom tab bar
     @Published var showTabBar = true

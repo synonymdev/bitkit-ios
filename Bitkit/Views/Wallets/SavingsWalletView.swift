@@ -74,15 +74,20 @@ struct SavingsWalletView: View {
         .onAppear {
             app.showTabBar = true
         }
+        .fullScreenCover(isPresented: $app.showFundingSheet) {
+            NavigationView {
+                if hasSeenTransferIntro {
+                    FundingOptionsView()
+                } else {
+                    TransferIntroView()
+                }
+            }
+        }
     }
 
     var fundingButton: some View {
-        NavigationLink(destination: {
-            if hasSeenTransferIntro {
-                FundingOptionsView()
-            } else {
-                TransferIntroView()
-            }
+        Button(action: {
+            app.showFundingSheet = true
         }) {
             HStack {
                 Image(systemName: "arrow.up.arrow.down")
