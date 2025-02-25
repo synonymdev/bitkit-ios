@@ -1,0 +1,210 @@
+import SwiftUI
+
+struct FundTransferView: View {
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var blocktank: BlocktankViewModel
+    @State private var satsAmount: UInt64 = 0
+    @State private var overrideSats: UInt64?
+    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
+    @State private var isCreatingOrder = false
+    @State private var newOrder: IBtOrder? = nil
+    @State private var showConfirmation = false
+
+    // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
+    // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
+
+    struct AmountButton: View {
+        let text: String
+        var imageName: String?
+        var action: () -> Void
+
+        var body: some View {
+            Button(action: {
+                Haptics.play(.buttonTap)
+                action()
+            }) {
+                HStack(spacing: 8) {
+                    if let imageName {
+                        Image(imageName)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(height: 12)
+                    }
+
+                    CaptionText(text, textColor: .purpleAccent)
+                }
+                .padding(.vertical, 5)
+                .padding(.horizontal, 8)
+                .background(Color.white10)
+                .cornerRadius(8)
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                DisplayText(NSLocalizedString("lightning__spending_amount__title", comment: ""), accentColor: .purpleAccent)
+                    .padding(.top, 16)
+
+                // Visible balance display that acts as a button
+                TransferAmount(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
+                    Haptics.play(.buttonTap)
+                    satsAmount = newSats
+                    overrideSats = nil
+                    print("satsAmount: \(satsAmount)")
+                }
+                .padding(.vertical, 16)
+
+                Spacer()
+
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading) {
+                        BodySText(NSLocalizedString("wallet__send_available", comment: "").uppercased(), textColor: .textSecondary)
+
+                        if let converted = currency.convert(sats: UInt64(wallet.totalBalanceSats)) {
+                            if primaryDisplay == .bitcoin {
+                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                                BodySText("\(btcComponents.symbol) \(btcComponents.value)")
+                            } else {
+                                BodySText("\(converted.symbol) \(converted.formatted)")
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    amountButtons
+                }
+                .padding(.vertical, 8)
+            }
+            .padding(.horizontal, 16)
+
+            Divider()
+
+            Spacer()
+
+            if let order = newOrder {
+                NavigationLink(destination: SpendingConfirmationView(order: order), isActive: $showConfirmation) {
+                    EmptyView()
+                }
+            }
+
+            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+                do {
+                    newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
+                    // Sleep for 1 second
+                    try await Task.sleep(nanoseconds: 100_000_000)
+                    showConfirmation = true
+                } catch {
+                    app.toast(error)
+                }
+            }
+            .disabled(satsAmount == 0)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    app.showFundingSheet = false
+                }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .task {
+            primaryDisplay = currency.primaryDisplay
+        }
+    }
+
+    private var amountButtons: some View {
+        HStack(spacing: 16) {
+            AmountButton(
+                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                imageName: "transfer-purple"
+            ) {
+                withAnimation {
+                    primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                }
+            }
+
+            AmountButton(text: "25%") {
+                overrideSats = UInt64(wallet.totalBalanceSats) / 4
+            }
+
+            AmountButton(text: "MAX") {
+                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
+            }
+        }
+    }
+}
+
+#Preview("USD") {
+    NavigationView {
+        FundTransferView()
+            .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = CurrencyViewModel()
+                vm.selectedCurrency = "USD"
+                vm.primaryDisplay = .fiat
+                return vm
+            }())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("EUR") {
+    NavigationView {
+        FundTransferView()
+            .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = CurrencyViewModel()
+                vm.selectedCurrency = "EUR"
+                vm.primaryDisplay = .fiat
+                return vm
+            }())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Bitcoin modern") {
+    NavigationView {
+        FundTransferView()
+            .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = CurrencyViewModel()
+                vm.primaryDisplay = .bitcoin
+                vm.displayUnit = .modern
+                return vm
+            }())
+    }
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Bitcoin classic") {
+    NavigationView {
+        FundTransferView()
+            .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
+            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = CurrencyViewModel()
+                vm.primaryDisplay = .bitcoin
+                vm.displayUnit = .classic
+                return vm
+            }())
+    }
+    .preferredColorScheme(.dark)
+}

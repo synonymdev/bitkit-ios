@@ -27,7 +27,10 @@ struct SendConfirmationView: View {
 
             Spacer()
 
-            SwipeButton {
+            SwipeButton(
+                title: "Swipe To Send",
+                accentColor: .greenAccent
+            ) {
                 do {
                     if let _ = app.scannedLightningInvoice, let bolt11 = app.scannedLightningBolt11Invoice {
                         // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
@@ -129,7 +132,7 @@ struct SendConfirmationView: View {
     }
 
     @ViewBuilder
-    func lightningView(_ invoice: LightningInvoice) -> some View {
+    func lightningView(_: LightningInvoice) -> some View {
         VStack {
             toView(app.scannedLightningBolt11Invoice ?? "")
 

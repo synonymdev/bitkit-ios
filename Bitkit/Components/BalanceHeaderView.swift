@@ -84,7 +84,7 @@ struct BalanceHeaderView: View {
 #Preview {
     ScrollView {
         VStack(alignment: .leading, spacing: 32) {
-            BalanceHeaderView(sats: 123456)
+            BalanceHeaderView(sats: 123_456)
                 .environmentObject({
                     let vm = CurrencyViewModel()
                     vm.primaryDisplay = .bitcoin
@@ -95,7 +95,7 @@ struct BalanceHeaderView: View {
 
             Spacer()
 
-            BalanceHeaderView(sats: 123456)
+            BalanceHeaderView(sats: 123_456)
                 .environmentObject({
                     let vm = CurrencyViewModel()
                     vm.primaryDisplay = .fiat
@@ -106,7 +106,7 @@ struct BalanceHeaderView: View {
 
             Spacer()
 
-            BalanceHeaderView(sats: 123456)
+            BalanceHeaderView(sats: 123_456)
                 .environmentObject({
                     let vm = CurrencyViewModel()
                     vm.primaryDisplay = .fiat
@@ -117,7 +117,7 @@ struct BalanceHeaderView: View {
 
             Spacer()
 
-            BalanceHeaderView(sats: 123456, sign: "+")
+            BalanceHeaderView(sats: 123_456, sign: "+")
                 .environmentObject({
                     let vm = CurrencyViewModel()
                     vm.primaryDisplay = .bitcoin
@@ -128,7 +128,7 @@ struct BalanceHeaderView: View {
 
             Spacer()
 
-            BalanceHeaderView(sats: 123456, showBitcoinSymbol: false)
+            BalanceHeaderView(sats: 123_456, showBitcoinSymbol: false)
                 .environmentObject({
                     let vm = CurrencyViewModel()
                     vm.primaryDisplay = .fiat

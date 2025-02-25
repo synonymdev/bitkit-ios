@@ -33,7 +33,7 @@ struct OrderRow: View {
                     .font(.system(size: order.id.count > 20 ? 10 : 12, design: .monospaced))
                     .lineLimit(1)
                 Spacer()
-                Text(String(describing: order.state))
+                Text(String(describing: order.state2))
                     .font(.caption)
                     .padding(4)
                     .background(Color.gray.opacity(0.2))
