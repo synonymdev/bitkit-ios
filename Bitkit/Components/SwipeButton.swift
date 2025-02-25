@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct SwipeButton: View {
+    let title: String
+    let accentColor: Color
     let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
@@ -25,9 +27,9 @@ struct SwipeButton: View {
                     .fill(Color.gray)
                     .opacity(0.2)
 
-                // Green trail
+                // Colored trail
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
-                    .fill(Color.greenAccent.opacity(0.2) as Color)
+                    .fill(accentColor.opacity(0.2))
                     .frame(width: max(0, min(offset + (buttonHeight - innerPadding), geometry.size.width - innerPadding)))
                     .frame(height: buttonHeight - innerPadding)
                     .padding(.horizontal, innerPadding / 2)
@@ -37,15 +39,15 @@ struct SwipeButton: View {
                             .padding(.horizontal, innerPadding / 2)
                     }
 
-                // "Swipe To Pay" text
-                Text("Swipe To Pay")
+                // Title text
+                Text(title)
                     .bold()
                     .frame(maxWidth: .infinity, alignment: .center)
                     .opacity(Double(1.0 - (offset / (geometry.size.width - buttonHeight))))
 
                 // Sliding circle
                 Circle()
-                    .fill(Color.greenAccent)
+                    .fill(accentColor)
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
@@ -111,14 +113,34 @@ struct SwipeButton: View {
 }
 
 #Preview {
-    VStack {
+    VStack(spacing: 20) {
         Spacer()
 
-        SwipeButton {
+        SwipeButton(
+            title: "Swipe To Pay",
+            accentColor: .greenAccent
+        ) {
             try await Task.sleep(nanoseconds: 2_000_000_000)
-            // Throwing an error resets the button
             throw NSError(domain: "com.bitkit.test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
         }
+
+        SwipeButton(
+            title: "Slide To Confirm",
+            accentColor: .blueAccent
+        ) {
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            throw NSError(domain: "com.bitkit.test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
+        }
+
+        SwipeButton(
+            title: "Swipe To Transfer",
+            accentColor: .purpleAccent
+        ) {
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            throw NSError(domain: "com.bitkit.test", code: 1, userInfo: [NSLocalizedDescriptionKey: "Test error"])
+        }
+
+        Spacer()
     }
     .padding()
     .preferredColorScheme(.dark)

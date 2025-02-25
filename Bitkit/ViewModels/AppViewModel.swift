@@ -26,17 +26,45 @@ class AppViewModel: ObservableObject {
     @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
+    @Published var showFundingSheet = false
 
     // Bottom tab bar
     @Published var showTabBar = true
+    @Published var isGeoBlocked: Bool? = nil
 
-    @AppStorage("showEmptyState") var showEmptyState: Bool = false
+    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
+
+    // When to show empty state UI
+    @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
+    @AppStorage("showSavingsViewEmptyState") var showSavingsViewEmptyState: Bool = false
+    @AppStorage("showSpendingViewEmptyState") var showSpendingViewEmptyState: Bool = false
+
+    func showAllEmptyStates(_ show: Bool) {
+        showHomeViewEmptyState = show
+        showSavingsViewEmptyState = show
+        showSpendingViewEmptyState = show
+    }
+
     @Published var currentToast: Toast?
 
     private let lightningService: LightningService
+    private let coreService: CoreService
 
-    init(lightningService: LightningService = .shared) {
+    init(lightningService: LightningService = .shared, coreService: CoreService = .shared) {
         self.lightningService = lightningService
+        self.coreService = coreService
+
+        Task {
+            await checkGeoStatus()
+        }
+    }
+
+    func checkGeoStatus() async {
+        do {
+            isGeoBlocked = try await coreService.checkGeoStatus()
+        } catch {
+            Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
+        }
     }
 }
 

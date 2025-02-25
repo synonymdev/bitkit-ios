@@ -11,7 +11,7 @@ import SwiftUI
 @MainActor
 class WalletViewModel: ObservableObject {
     static let shared = WalletViewModel()
-    
+
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
@@ -33,13 +33,13 @@ class WalletViewModel: ObservableObject {
     private var syncTimer: Timer?
 
     private let lightningService: LightningService
-    
+
     @Published var isRestoringWallet = false
-    
+
     init(lightningService: LightningService = .shared) {
         self.lightningService = lightningService
     }
-    
+
     deinit {
         Task { @MainActor in
             stopPolling()
@@ -49,21 +49,21 @@ class WalletViewModel: ObservableObject {
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
-    
+
     func addOnEvent(id: String, handler: @escaping (Event) -> Void) {
         eventHandlers[id] = handler
     }
-    
+
     func removeOnEvent(id: String) {
         eventHandlers.removeValue(forKey: id)
     }
-    
+
     func start(walletIndex: Int = 0) async throws {
         if nodeLifecycleState != .initializing {
             // Initilaizing means it's a wallet restore or create so we need to show the loading view
             nodeLifecycleState = .starting
         }
-        
+
         syncState()
         do {
             try await lightningService.setup(walletIndex: walletIndex)
@@ -83,27 +83,27 @@ class WalletViewModel: ObservableObject {
         }
 
         nodeLifecycleState = .running
-        
+
         startPolling()
-        
+
         syncState()
-        
+
         do {
             try await lightningService.connectToTrustedPeers()
         } catch {
             Logger.error("Failed to connect to trusted peers")
         }
-        
+
         Task { @MainActor in
             try await refreshBip21()
         }
-        
+
         // Always sync on start but don't need to wait for this
         Task { @MainActor in
             try await sync()
         }
     }
-    
+
     func stopLightningNode() async throws {
         nodeLifecycleState = .stopping
         stopPolling()
@@ -111,33 +111,33 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .stopped
         syncState()
     }
-    
+
     func wipeLightningWallet() async throws {
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
             try await stopLightningNode()
         }
-        
+
         // Reset AppStorage display values
         totalBalanceSats = 0
         totalOnchainSats = 0
         totalLightningSats = 0
-        
+
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
-        
+
         // TODO: reset display address
-        
+
         try await lightningService.wipeStorage(walletIndex: 0)
     }
-    
+
     func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {
         try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
     }
-    
+
     func sync() async throws {
         syncState()
-        
+
         if isSyncingWallet {
             Logger.warn("Sync already in progress, waiting for existing sync.")
             while isSyncingWallet {
@@ -145,10 +145,10 @@ class WalletViewModel: ObservableObject {
             }
             return
         }
-        
+
         isSyncingWallet = true
         syncState()
-        
+
         do {
             try await lightningService.sync()
         } catch {
@@ -159,7 +159,7 @@ class WalletViewModel: ObservableObject {
         isSyncingWallet = false
         syncState()
     }
-    
+
     func send(address: String, sats: UInt64) async throws -> Txid {
         let txid = try await lightningService.send(address: address, sats: sats)
         Task {
@@ -168,10 +168,10 @@ class WalletViewModel: ObservableObject {
         }
         return txid
     }
-    
+
     func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
-        
+
         // Add event listener for this specific payment
         addOnEvent(id: hash.description) { event in
             switch event {
@@ -189,78 +189,78 @@ class WalletViewModel: ObservableObject {
                 break
             }
         }
-        
+
         syncState()
         return hash
     }
-    
+
     func closeChannel(_ channel: ChannelDetails) async throws {
         try await lightningService.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
         syncState()
     }
-    
-    internal func syncState() {
+
+    func syncState() {
         nodeStatus = lightningService.status
         nodeId = lightningService.nodeId
         balanceDetails = lightningService.balances
         peers = lightningService.peers
         channels = lightningService.channels
-        
+
         if let balanceDetails {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
             totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
         }
     }
-    
+
     var incomingLightningCapacitySats: UInt64? {
         guard let channels else {
             return nil
         }
-        
+
         var capacity: UInt64 = 0
-        channels.forEach { channel in
+        for channel in channels {
             capacity += channel.inboundCapacityMsat / 1000
         }
         return capacity
     }
-    
+
     func refreshBip21() async throws {
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
             // TODO: check if onchain has been used and generate new on if it has
         }
-        
+
         bip21 = "bitcoin:\(onchainAddress)"
-        
+
         if !bolt11.isEmpty {
             bip21 += "?lightning=\(bolt11)"
         }
-        
+
         // TODO: check current bolt11 for expiry and/or if it's been used
-        
+
         if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
             // Append lightning invoice if we have incoming capacity
             bolt11 = try await lightningService.receive(description: "Bitkit")
-            
+
             bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
         }
     }
-    
+
     private func startPolling() {
         stopPolling()
-        
+
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
             Task { @MainActor in
+                guard let self = self else { return }
                 if self.nodeLifecycleState == .running {
                     self.syncState()
                 }
             }
         }
     }
-    
+
     private func stopPolling() {
         syncTimer?.invalidate()
         syncTimer = nil

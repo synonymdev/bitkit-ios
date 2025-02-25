@@ -1,6 +1,33 @@
 import SwiftUI
 
+enum EmptyStateType {
+    case home
+    case savings
+    case spending
+
+    var localizationKey: String {
+        switch self {
+        case .home:
+            return "onboarding__empty_wallet"
+        case .savings:
+            return "wallet__savings__onboarding"
+        case .spending:
+            return "wallet__spending__onboarding"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .spending:
+            return .purpleAccent
+        case .home, .savings:
+            return .brandAccent
+        }
+    }
+}
+
 struct EmptyStateView: View {
+    let type: EmptyStateType
     var onClose: () -> Void
 
     var body: some View {
@@ -8,8 +35,11 @@ struct EmptyStateView: View {
             Spacer()
 
             HStack(alignment: .bottom, spacing: 0) {
-                DisplayText(NSLocalizedString("onboarding__empty_wallet", comment: ""))
-                    .frame(width: 224)
+                DisplayText(
+                    NSLocalizedString(type.localizationKey, comment: ""),
+                    accentColor: type.accentColor
+                )
+                .frame(width: 224)
 
                 Image("empty-state-arrow")
                     .resizable()
@@ -39,6 +69,19 @@ struct EmptyStateView: View {
 }
 
 #Preview {
-    EmptyStateView(onClose: {})
-        .preferredColorScheme(.dark)
+    VStack(spacing: 20) {
+        EmptyStateView(type: .home, onClose: {})
+            .frame(height: 300)
+            .background(Color.gray.opacity(0.1))
+
+        EmptyStateView(type: .savings, onClose: {})
+            .frame(height: 300)
+            .background(Color.gray.opacity(0.1))
+
+        EmptyStateView(type: .spending, onClose: {})
+            .frame(height: 300)
+            .background(Color.gray.opacity(0.1))
+    }
+    .padding()
+    .preferredColorScheme(.dark)
 }

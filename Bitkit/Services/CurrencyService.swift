@@ -43,7 +43,8 @@ class CurrencyService {
     
     func loadCachedRates() -> [FxRate]? {
         guard let data = cache.data(forKey: cacheKey),
-              let rates = try? JSONDecoder().decode([FxRate].self, from: data) else {
+              let rates = try? JSONDecoder().decode([FxRate].self, from: data)
+        else {
             return nil
         }
         return rates

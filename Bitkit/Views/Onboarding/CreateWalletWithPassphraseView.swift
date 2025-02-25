@@ -33,7 +33,7 @@ struct CreateWalletWithPassphraseView: View {
             ) {
                 do {
                     wallet.nodeLifecycleState = .initializing
-                    app.showEmptyState = true
+                    app.showAllEmptyStates(true)
                     _ = try StartupHandler.createNewWallet(bip39Passphrase: bip39Passphrase)
                     try wallet.setWalletExistsState()
                 } catch {

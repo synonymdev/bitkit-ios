@@ -57,7 +57,7 @@ struct ConvertedAmount {
         self.currency = currency
         self.flag = flag
         self.sats = sats
-        self.btcValue = Decimal(sats) / 100_000_000
+        btcValue = Decimal(sats) / 100_000_000
     }
 
     struct BitcoinDisplayComponents {
@@ -73,7 +73,7 @@ struct ConvertedAmount {
             formatter.groupingSeparator = " "
             let formattedValue = formatter.string(from: NSNumber(value: sats)) ?? String(sats)
             return BitcoinDisplayComponents(symbol: "₿", value: formattedValue)
-            
+
         case .classic:
             let formatter = NumberFormatter()
             formatter.numberStyle = .decimal

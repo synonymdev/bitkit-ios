@@ -31,7 +31,7 @@ struct HomeView: View {
                 .padding()
                 .padding(.top)
 
-                if !app.showEmptyState {
+                if !app.showHomeViewEmptyState {
                     HStack {
                         NavigationLink(destination: SavingsWalletView()) {
                             WalletBalanceView(
@@ -63,21 +63,25 @@ struct HomeView: View {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.3), value: app.showEmptyState)
+            .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
             .overlay {
-                if wallet.totalBalanceSats == 0 && app.showEmptyState {
-                    EmptyStateView(onClose: {
+                if wallet.totalBalanceSats == 0 && app.showHomeViewEmptyState {
+                    EmptyStateView(type: .home, onClose: {
                         withAnimation(.spring(response: 0.3)) {
-                            app.showEmptyState = false
+                            app.showHomeViewEmptyState = false
                         }
                     })
                     .padding(.horizontal)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .animation(.spring(response: 0.3), value: app.showEmptyState)
+            .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
             .onChange(of: wallet.totalBalanceSats) { _ in
-                app.showEmptyState = wallet.totalBalanceSats == 0
+                if wallet.totalBalanceSats > 0 {
+                    DispatchQueue.main.async {
+                        app.showHomeViewEmptyState = false
+                    }
+                }
             }
             .refreshable {
                 guard wallet.nodeLifecycleState == .running else {
@@ -107,12 +111,13 @@ struct HomeView: View {
                     app.showTabBar = !showScanner
                 }
             }
+            .navigationBarTitleDisplayMode(.inline)
         }
         .onAppear {
             app.showTabBar = true
 
             if Env.isPreview {
-                app.showEmptyState = true
+                app.showHomeViewEmptyState = true
             }
         }
         .overlay {
