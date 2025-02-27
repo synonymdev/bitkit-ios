@@ -104,8 +104,6 @@ struct SettingUpView: View {
         } else if order.channel != nil {
             currentStep = 3
         }
-
-        print("currentStep:::::::::: \(currentStep)")
     }
 
     var body: some View {

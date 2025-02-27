@@ -140,6 +140,9 @@ struct SettingsListView: View {
         .onAppear {
             app.showTabBar = false
         }
+        .onDisappear {
+            app.showTabBar = true
+        }
     }
 }
 
