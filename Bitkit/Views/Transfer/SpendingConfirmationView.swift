@@ -13,7 +13,6 @@ struct SpendingConfirmationView: View {
     @State private var isPaying = false
     @State private var txId = ""
     @State private var showAdvanced = false
-    @State private var showLearnMore = false
     @State private var showSettingUp = false
     @State private var hideSwipeButton = false
 
@@ -59,8 +58,8 @@ struct SpendingConfirmationView: View {
                 .padding(.vertical, 16)
 
                 HStack(spacing: 16) {
-                    CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), size: .small) {
-                        showLearnMore = true
+                    NavigationLink(destination: TransferLearnMoreView(order: order)) {
+                        CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), size: .small)
                     }
                     CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small) {
                         showAdvanced = true
