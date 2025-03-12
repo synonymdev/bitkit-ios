@@ -141,6 +141,7 @@ struct NodeStateView: View {
                         Text("Inbound htlc min: \(channel.inboundHtlcMinimumMsat / 1000) sats")
                         Text("Next outbound htlc limit: \(channel.nextOutboundHtlcLimitMsat / 1000) sats")
                         Text("Next outbound htlc min: \(channel.nextOutboundHtlcMinimumMsat / 1000) sats")
+                        Text("Confirmations: \(channel.confirmations ?? 0)/\(channel.confirmationsRequired ?? 0)")
                     }
                     .opacity(closingChannels.contains(channel.channelId) ? 0.1 : 1.0)
                     .overlay {

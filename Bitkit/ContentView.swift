@@ -13,6 +13,7 @@ struct ContentView: View {
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
     @StateObject private var activity = ActivityListViewModel()
+    @StateObject private var transfer = TransferViewModel()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -26,7 +27,7 @@ struct ContentView: View {
                 // Mnemonic found in keychain
                 if walletIsInitializing == true {
                     // New wallet is being created or restored
-                    if case .errorStarting(let error) = wallet.nodeLifecycleState {
+                    if case let .errorStarting(error) = wallet.nodeLifecycleState {
                         WalletInitResultView(result: .failed(error))
                     } else {
                         InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
@@ -143,6 +144,7 @@ struct ContentView: View {
         .environmentObject(currency)
         .environmentObject(blocktank)
         .environmentObject(activity)
+        .environmentObject(transfer)
     }
 }
 

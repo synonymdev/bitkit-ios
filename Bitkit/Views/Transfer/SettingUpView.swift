@@ -66,15 +66,15 @@ struct ProgressSteps: View {
 }
 
 struct SettingUpView: View {
-    @State var order: IBtOrder
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var transfer: TransferViewModel
 
-    @State private var currentStep = 0
     @State private var isRocking = false
-    private let randomOkText = LocalizedRandom("common__ok_random", comment: "")
+    @State private var randomOkText: String = LocalizedRandom("common__ok_random", comment: "") // Keep in state so we don't get a new random text on each render
 
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    var isTransfering: Bool {
+        return transfer.lightningSetupStep < 3
+    }
 
     let steps = [
         NSLocalizedString("lightning__setting_up_step1", comment: ""), // Processing Payment
@@ -83,41 +83,18 @@ struct SettingUpView: View {
         NSLocalizedString("lightning__setting_up_step4", comment: ""), // Opening Connection
     ]
 
-    func updateOrder(_ order: IBtOrder) async {
-        if order.channel != nil {
-            currentStep = 4
-            return
-        }
-
-        if order.state2 == .created {
-            currentStep = 0
-        } else if order.state2 == .paid {
-            currentStep = 1
-
-            do {
-                _ = try await blocktank.openChannel(orderId: order.id)
-            } catch {
-                Logger.error("Error opening channel: \(error)")
-            }
-        } else if order.state2 == .executed {
-            currentStep = 2
-        } else if order.channel != nil {
-            currentStep = 3
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString(currentStep < 4 ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""), accentColor: .purpleAccent)
+                DisplayText(NSLocalizedString(isTransfering ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
-                BodyMText(NSLocalizedString(currentStep < 4 ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""), textColor: .textSecondary, accentColor: .white)
+                BodyMText(NSLocalizedString(isTransfering ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""), textColor: .textSecondary, accentColor: .white)
                     .padding(.bottom, 16)
 
                 Spacer()
 
-                if currentStep < 4 {
+                if isTransfering {
                     Image("hourglass")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -140,13 +117,13 @@ struct SettingUpView: View {
 
                 Spacer()
 
-                if currentStep < 4 {
-                    ProgressSteps(steps: steps, currentStep: currentStep)
+                if isTransfering {
+                    ProgressSteps(steps: steps, currentStep: transfer.lightningSetupStep)
                     Spacer()
                 }
 
                 CustomButton(
-                    title: currentStep < 4 ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
+                    title: isTransfering ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
                     size: .large
                 ) {
                     app.showFundingSheet = false
@@ -158,7 +135,7 @@ struct SettingUpView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString(currentStep < 4 ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
+        .navigationTitle(NSLocalizedString(transfer.lightningSetupStep < 4 ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
@@ -170,60 +147,63 @@ struct SettingUpView: View {
             }
         }
         .onAppear {
-            Logger.debug("View appeared - setting initial state and refreshing order")
-
-            // Initial refresh
-            Task {
-                await updateOrder(order)
-
-                if let refreshedOrder = try? await blocktank.refreshOrder(id: order.id) {
-                    await updateOrder(refreshedOrder)
-                }
-            }
-        }
-        .onReceive(timer) { _ in
-            Logger.debug("Timer fired - refreshing order")
-            Task {
-                if currentStep < 3, let refreshedOrder = try? await blocktank.refreshOrder(id: order.id) {
-                    await updateOrder(refreshedOrder)
-                }
-            }
+            Logger.debug("View appeared - TransferViewModel is handling order updates")
         }
     }
 }
 
 #Preview("Created") {
     NavigationView {
-        SettingUpView(order: IBtOrder.mock(state2: .created))
+        SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = TransferViewModel()
+                vm.onOrderCreated(order: IBtOrder.mock(state2: .created))
+                vm.lightningSetupStep = 0
+                return vm
+            }())
     }
     .preferredColorScheme(.dark)
 }
 
 #Preview("Paid") {
     NavigationView {
-        SettingUpView(order: IBtOrder.mock(state2: .paid))
+        SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = TransferViewModel()
+                vm.onOrderCreated(order: IBtOrder.mock(state2: .paid))
+                vm.lightningSetupStep = 1
+                return vm
+            }())
     }
     .preferredColorScheme(.dark)
 }
 
 #Preview("Executed") {
     NavigationView {
-        SettingUpView(order: IBtOrder.mock(state2: .executed))
+        SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = TransferViewModel()
+                vm.onOrderCreated(order: IBtOrder.mock(state2: .executed))
+                vm.lightningSetupStep = 2
+                return vm
+            }())
     }
     .preferredColorScheme(.dark)
 }
 
 #Preview("Opened") {
     NavigationView {
-        SettingUpView(order: IBtOrder.mock(state2: .executed, channel: .mock()))
+        SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject(BlocktankViewModel())
+            .environmentObject({
+                let vm = TransferViewModel()
+                vm.onOrderCreated(order: IBtOrder.mock(state2: .executed, channel: .mock()))
+                vm.lightningSetupStep = 4
+                return vm
+            }())
     }
     .preferredColorScheme(.dark)
 }
