@@ -59,8 +59,19 @@ struct SpendingConfirmationView: View {
                         NavigationLink(destination: TransferLearnMoreView(order: order)) {
                             CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), size: .small)
                         }
-                        NavigationLink(destination: SpendingAdvanced(order: order)) {
-                            CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small)
+
+                        if transfer.uiState.isAdvanced {
+                            Button(action: {
+                                transfer.onDefaultClick()
+                            }) {
+                                CustomButton(title: NSLocalizedString("common__default", comment: ""), size: .small)
+                            }
+                        } else {
+                            NavigationLink(destination: SpendingAdvancedView(order: order, onOrderCreated: { newOrder in
+                                transfer.onAdvancedOrderCreated(order: newOrder)
+                            })) {
+                                CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,6 +86,8 @@ struct SpendingConfirmationView: View {
                             isPaying = true
                             do {
                                 try await transfer.payOrder(order: order)
+
+                                try await Task.sleep(nanoseconds: 1_000_000_000)
 
                                 showSettingUp = true
 

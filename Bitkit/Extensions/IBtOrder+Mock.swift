@@ -1,7 +1,12 @@
 import Foundation
 
 extension IBtOrder {
-    static func mock(state2: BtOrderState2 = .created, channel: IBtChannel? = nil) -> IBtOrder {
+    static func mock(
+        state2: BtOrderState2 = .created,
+        channel: IBtChannel? = nil,
+        lspBalanceSat: UInt64 = 50000,
+        clientBalanceSat: UInt64 = 85967
+    ) -> IBtOrder {
         return IBtOrder(
             id: "order123",
             state: .created,
@@ -9,8 +14,8 @@ extension IBtOrder {
             feeSat: 1000,
             networkFeeSat: 2483,
             serviceFeeSat: 1520,
-            lspBalanceSat: 50000,
-            clientBalanceSat: 85967,
+            lspBalanceSat: lspBalanceSat,
+            clientBalanceSat: clientBalanceSat,
             zeroConf: false,
             zeroReserve: false,
             clientNodeId: "node123",
