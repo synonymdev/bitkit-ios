@@ -15,17 +15,27 @@ struct SpendingAdvancedView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var transfer: TransferViewModel
     @Environment(\.presentationMode) var presentationMode
 
     @State private var receivingSatsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var feeEstimate: UInt64?
-    @State private var isValid: Bool = false
 
-    // Constants for min/max values - these would ideally come from a service
-    private let minLspBalance: UInt64 = 10000 // 10k sats minimum
-    private let maxLspBalanceMultiplier: Double = 5.0 // 5x the spending capacity
+    private var isValid: Bool {
+        let isAboveMin = receivingSatsAmount >= transfer.transferValues.minLspBalance
+        let isBelowMax = receivingSatsAmount <= transfer.transferValues.maxLspBalance
+
+        let result = isAboveMin && isBelowMax
+        // Logger.debug("isValid computed - receivingSatsAmount: \(receivingSatsAmount)")
+        // Logger.debug("Min LSP balance: \(transfer.transferValues.minLspBalance)")
+        // Logger.debug("Max LSP balance: \(transfer.transferValues.maxLspBalance)")
+        // Logger.debug("Is above min? \(isAboveMin), Is below max? \(isBelowMax)")
+        // Logger.debug("defaultLspBalance: \(transfer.transferValues.defaultLspBalance)")
+        // Logger.debug("isValid result: \(result)")
+
+        return result
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -33,12 +43,11 @@ struct SpendingAdvancedView: View {
                 .padding(.top, 16)
 
             // Receiving capacity input
-            TransferAmount(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
+            TransferAmount(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
                 Haptics.play(.buttonTap)
                 receivingSatsAmount = newSats
                 overrideSats = nil
                 updateFeeEstimate()
-                validateInput()
             }
             .padding(.vertical, 8)
 
@@ -51,7 +60,7 @@ struct SpendingAdvancedView: View {
 
                 if let feeEstimate = feeEstimate {
                     if let converted = currency.convert(sats: feeEstimate) {
-                        if primaryDisplay == .bitcoin {
+                        if currency.primaryDisplay == .bitcoin {
                             let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                             CaptionText("\(btcComponents.symbol) \(feeEstimate)", textColor: .white)
                         } else {
@@ -70,24 +79,30 @@ struct SpendingAdvancedView: View {
             // Action buttons
             HStack(spacing: 16) {
                 NumberPadActionButton(text: NSLocalizedString("common__min", comment: "")) {
-                    overrideSats = minLspBalance
+                    Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
+                    overrideSats = transfer.transferValues.minLspBalance
                 }
 
                 Spacer()
 
                 NumberPadActionButton(text: NSLocalizedString("common__default", comment: "")) {
-                    overrideSats = order.lspBalanceSat
+                    Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
+                    overrideSats = transfer.transferValues.defaultLspBalance
                 }
 
                 Spacer()
 
                 NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
-                    overrideSats = UInt64(Double(order.clientBalanceSat) * maxLspBalanceMultiplier)
+                    Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
+                    overrideSats = transfer.transferValues.maxLspBalance
                 }
             }
             .padding(.vertical)
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: ""), isDisabled: !isValid) {
+            CustomButton(
+                title: NSLocalizedString("common__continue", comment: ""),
+                isDisabled: !isValid
+            ) {
                 do {
                     // Create a new order with the specified receiving capacity
                     let newOrder = try await blocktank.createOrder(
@@ -95,6 +110,7 @@ struct SpendingAdvancedView: View {
                         receivingBalanceSats: receivingSatsAmount
                     )
 
+                    transfer.onAdvancedOrderCreated(order: newOrder)
                     onOrderCreated(newOrder)
                     presentationMode.wrappedValue.dismiss()
                 } catch {
@@ -108,19 +124,23 @@ struct SpendingAdvancedView: View {
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
         .background(Color.black)
         .task {
-            primaryDisplay = currency.primaryDisplay
-            // Set initial receiving capacity to match the original order
-            receivingSatsAmount = order.lspBalanceSat
+            transfer.updateTransferValues(
+                clientBalanceSat: order.clientBalanceSat,
+                blocktankInfo: blocktank.info
+            )
+
+            // Set initial receiving capacity to the default LSP balance
+            receivingSatsAmount = transfer.transferValues.defaultLspBalance
+            overrideSats = transfer.transferValues.defaultLspBalance
             updateFeeEstimate()
-            validateInput()
         }
         .onChange(of: receivingSatsAmount) { _ in
             updateFeeEstimate()
-            validateInput()
         }
     }
 
     private func updateFeeEstimate() {
+        Logger.debug("Starting fee estimate update for receivingSatsAmount: \(receivingSatsAmount)")
         Task {
             do {
                 let estimate = try await blocktank.estimateOrderFee(
@@ -128,16 +148,12 @@ struct SpendingAdvancedView: View {
                     receivingBalanceSats: receivingSatsAmount
                 )
                 feeEstimate = estimate.feeSat
+                Logger.debug("Fee estimate updated successfully: \(estimate.feeSat)")
             } catch {
                 feeEstimate = nil
                 Logger.error("Failed to estimate fee: \(error.localizedDescription)")
             }
         }
-    }
-
-    private func validateInput() {
-        isValid = receivingSatsAmount >= minLspBalance &&
-            receivingSatsAmount <= UInt64(Double(order.clientBalanceSat) * maxLspBalanceMultiplier)
     }
 }
 
