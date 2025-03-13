@@ -135,6 +135,7 @@ struct NodeStateView: View {
                             .font(.caption)
 
                         Text("Ready: \(channel.isChannelReady ? "✅" : "❌")")
+                        Text("Usable: \(channel.isUsable ? "✅" : "❌")")
                         Text("Announced: \(channel.isAnnounced ? "🌐" : "🔒")")
                         Text("Inbound capacity: \(channel.inboundCapacityMsat / 1000) sats")
                         Text("Inbound htlc max: \(channel.inboundHtlcMaximumMsat ?? 0 / 1000) sats")

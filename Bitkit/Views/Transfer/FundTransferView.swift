@@ -15,34 +15,6 @@ struct FundTransferView: View {
     // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
     // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
 
-    struct AmountButton: View {
-        let text: String
-        var imageName: String?
-        var action: () -> Void
-
-        var body: some View {
-            Button(action: {
-                Haptics.play(.buttonTap)
-                action()
-            }) {
-                HStack(spacing: 8) {
-                    if let imageName {
-                        Image(imageName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 12)
-                    }
-
-                    CaptionText(text, textColor: .purpleAccent)
-                }
-                .padding(.vertical, 5)
-                .padding(.horizontal, 8)
-                .background(Color.white10)
-                .cornerRadius(8)
-            }
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
@@ -122,7 +94,7 @@ struct FundTransferView: View {
 
     private var amountButtons: some View {
         HStack(spacing: 16) {
-            AmountButton(
+            NumberPadActionButton(
                 text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
                 imageName: "transfer-purple"
             ) {
@@ -131,11 +103,11 @@ struct FundTransferView: View {
                 }
             }
 
-            AmountButton(text: "25%") {
+            NumberPadActionButton(text: "25%") {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
             }
 
-            AmountButton(text: "MAX") {
+            NumberPadActionButton(text: "MAX") {
                 overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }
