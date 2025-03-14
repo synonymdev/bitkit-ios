@@ -70,6 +70,9 @@ struct SettingUpView: View {
     @EnvironmentObject var transfer: TransferViewModel
 
     @State private var isRocking = false
+    @State private var outerRotation: Double = 0
+    @State private var innerRotation: Double = 0
+    @State private var transferRotation: Double = 0
     @State private var randomOkText: String = LocalizedRandom("common__ok_random", comment: "") // Keep in state so we don't get a new random text on each render
 
     var isTransfering: Bool {
@@ -95,35 +98,44 @@ struct SettingUpView: View {
                 Spacer()
 
                 if isTransfering {
-                    ZStack {
+                    ZStack(alignment: .center) {
                         // Outer ellipse
                         Image("ellipse-outer-purple")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 311, height: 311)
-                            .rotationEffect(.degrees(isRocking ? -90 : 90))
-                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+                            .rotationEffect(.degrees(outerRotation))
 
                         // Inner ellipse
                         Image("ellipse-inner-purple")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 207, height: 207)
-                            .rotationEffect(.degrees(isRocking ? 120 : 0))
-                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+                            .rotationEffect(.degrees(innerRotation))
 
                         // Transfer image
                         Image("transfer")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 256, height: 256)
-                            .rotationEffect(.degrees(isRocking ? 90 : 0))
-                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+                            .rotationEffect(.degrees(transferRotation))
                     }
+                    .frame(width: 320, height: 320)
+                    .clipped()
                     .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
                     .onAppear {
-                        isRocking = true
+                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                            outerRotation = -90
+                        }
+
+                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                            innerRotation = 120
+                        }
+
+                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                            transferRotation = 90
+                        }
                     }
                 } else {
                     Image("check")
