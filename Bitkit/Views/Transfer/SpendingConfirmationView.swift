@@ -55,6 +55,23 @@ struct SpendingConfirmationView: View {
                     }
                     .padding(.vertical, 16)
 
+                    if transfer.uiState.isAdvanced {
+                        VStack(alignment: .leading, spacing: 12) {
+                            NavigationLink(destination: SpendingAdvancedView(order: order, onOrderCreated: { newOrder in
+                                transfer.onAdvancedOrderCreated(order: newOrder)
+                            })) {
+                                LightningChannel(
+                                    capacity: order.lspBalanceSat + order.clientBalanceSat,
+                                    localBalance: order.clientBalanceSat,
+                                    remoteBalance: order.lspBalanceSat,
+                                    status: .open,
+                                    showLabels: true
+                                )
+                            }
+                        }
+                        .padding(.bottom, 16)
+                    }
+
                     HStack(spacing: 16) {
                         NavigationLink(destination: TransferLearnMoreView(order: order)) {
                             CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), size: .small)
