@@ -38,66 +38,58 @@ struct SpendingAdvancedView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            DisplayText(NSLocalizedString("lightning__spending_advanced__title", comment: ""), accentColor: .purpleAccent)
-                .padding(.top, 16)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                DisplayText(NSLocalizedString("lightning__spending_advanced__title", comment: ""), accentColor: .purpleAccent)
+                    .padding(.top, 16)
 
-            // Receiving capacity input
-            TransferAmount(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
-                Haptics.play(.buttonTap)
-                receivingSatsAmount = newSats
-                overrideSats = nil
-                updateFeeEstimate()
-            }
-            .padding(.vertical, 8)
-
-            // Fee estimate
-            HStack(spacing: 4) {
-                CaptionText(
-                    NSLocalizedString("lightning__spending_advanced__fee", comment: "").uppercased(),
-                    textColor: .white64
-                )
-
-                if let feeEstimate = feeEstimate {
-                    if let converted = currency.convert(sats: feeEstimate) {
-                        if currency.primaryDisplay == .bitcoin {
-                            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                            CaptionText("\(btcComponents.symbol) \(feeEstimate)", textColor: .white)
-                        } else {
-                            CaptionText("\(converted.symbol) \(converted.formatted)", textColor: .white)
-                        }
-                    }
-                } else {
-                    CaptionText("—", textColor: .white64)
+                // Receiving capacity input
+                TransferAmount(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
+                    Haptics.play(.buttonTap)
+                    receivingSatsAmount = newSats
+                    overrideSats = nil
+                    updateFeeEstimate()
                 }
+                .padding(.vertical, 8)
+
+                // Fee estimate
+                HStack(spacing: 4) {
+                    CaptionText(
+                        NSLocalizedString("lightning__spending_advanced__fee", comment: "").uppercased(),
+                        textColor: .white64
+                    )
+
+                    if let feeEstimate = feeEstimate {
+                        if let converted = currency.convert(sats: feeEstimate) {
+                            if currency.primaryDisplay == .bitcoin {
+                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                                CaptionText("\(btcComponents.symbol) \(feeEstimate)", textColor: .white)
+                            } else {
+                                CaptionText("\(converted.symbol) \(converted.formatted)", textColor: .white)
+                            }
+                        }
+                    } else {
+                        CaptionText("—", textColor: .white64)
+                    }
+                }
+                .frame(height: 20)
+                .padding(.bottom, 8)
+
+                Spacer()
+
+                // Action buttons
+                HStack(alignment: .bottom) {
+                    Spacer()
+
+                    amountButtons
+                }
+                .padding(.vertical, 8)
             }
-            .frame(height: 20)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 16)
+
+            Divider()
 
             Spacer()
-
-            // Action buttons
-            HStack(spacing: 16) {
-                NumberPadActionButton(text: NSLocalizedString("common__min", comment: "")) {
-                    Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
-                    overrideSats = transfer.transferValues.minLspBalance
-                }
-
-                Spacer()
-
-                NumberPadActionButton(text: NSLocalizedString("common__default", comment: "")) {
-                    Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
-                    overrideSats = transfer.transferValues.defaultLspBalance
-                }
-
-                Spacer()
-
-                NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
-                    Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
-                    overrideSats = transfer.transferValues.maxLspBalance
-                }
-            }
-            .padding(.vertical)
 
             CustomButton(
                 title: NSLocalizedString("common__continue", comment: ""),
@@ -117,9 +109,9 @@ struct SpendingAdvancedView: View {
                     app.toast(error)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
         .background(Color.black)
@@ -139,10 +131,34 @@ struct SpendingAdvancedView: View {
         }
     }
 
+    private var amountButtons: some View {
+        HStack(spacing: 16) {
+            NumberPadActionButton(text: NSLocalizedString("common__min", comment: "")) {
+                Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
+                overrideSats = transfer.transferValues.minLspBalance
+            }
+
+            Spacer()
+
+            NumberPadActionButton(text: NSLocalizedString("common__default", comment: "")) {
+                Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
+                overrideSats = transfer.transferValues.defaultLspBalance
+            }
+
+            Spacer()
+
+            NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
+                Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
+                overrideSats = transfer.transferValues.maxLspBalance
+            }
+        }
+    }
+
     private func updateFeeEstimate() {
         Logger.debug("Starting fee estimate update for receivingSatsAmount: \(receivingSatsAmount)")
         Task {
             do {
+                feeEstimate = nil
                 let estimate = try await blocktank.estimateOrderFee(
                     spendingBalanceSats: order.clientBalanceSat,
                     receivingBalanceSats: receivingSatsAmount

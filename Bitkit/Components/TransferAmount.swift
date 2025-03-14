@@ -106,12 +106,12 @@ struct TransferAmount: View {
             }
         }
         .onChange(of: overrideSats) { newValue in
-            if let sats = newValue {
-                satsAmount = String(sats)
-                onSatsChange(sats)
+            if let exactSats = newValue {
+                satsAmount = String(exactSats)
+                onSatsChange(exactSats)
 
                 // Update fiat amount if needed
-                if let converted = currency.convert(sats: sats) {
+                if let converted = currency.convert(sats: exactSats) {
                     fiatAmount = converted.formatted
                 }
             }
