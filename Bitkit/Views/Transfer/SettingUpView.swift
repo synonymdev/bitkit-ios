@@ -95,17 +95,36 @@ struct SettingUpView: View {
                 Spacer()
 
                 if isTransfering {
-                    Image("hourglass")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 256, height: 256)
-                        .rotationEffect(.degrees(isRocking ? 25 : -25))
-                        .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: isRocking)
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onAppear {
-                            isRocking = true
-                        }
+                    ZStack {
+                        // Outer ellipse
+                        Image("ellipse-outer-purple")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 311, height: 311)
+                            .rotationEffect(.degrees(isRocking ? -90 : 90))
+                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+
+                        // Inner ellipse
+                        Image("ellipse-inner-purple")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 207, height: 207)
+                            .rotationEffect(.degrees(isRocking ? 120 : 0))
+                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+
+                        // Transfer image
+                        Image("transfer")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 256, height: 256)
+                            .rotationEffect(.degrees(isRocking ? 90 : 0))
+                            .animation(.easeInOut(duration: 3).repeatForever(autoreverses: true), value: isRocking)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        isRocking = true
+                    }
                 } else {
                     Image("check")
                         .resizable()
