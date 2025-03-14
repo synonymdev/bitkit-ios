@@ -148,6 +148,21 @@ struct SettingUpView: View {
         }
         .onAppear {
             Logger.debug("View appeared - TransferViewModel is handling order updates")
+
+            // Auto-mine a block in regtest mode after a 5-second delay
+            if Env.network == .regtest {
+                Task {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+
+                    do {
+                        Logger.debug("Auto-mining a block", context: "SettingUpView")
+                        try await BlocktankService_OLD.shared.regtestMine(count: 1)
+                        Logger.debug("Successfully mined a block", context: "SettingUpView")
+                    } catch {
+                        Logger.error("Failed to mine block: \(error.localizedDescription)", context: "SettingUpView")
+                    }
+                }
+            }
         }
     }
 }
