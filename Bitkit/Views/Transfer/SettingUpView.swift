@@ -93,7 +93,6 @@ struct SettingUpView: View {
                     .padding(.top, 16)
 
                 BodyMText(NSLocalizedString(isTransfering ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""), textColor: .textSecondary, accentColor: .white)
-                    .padding(.bottom, 16)
 
                 Spacer()
 
@@ -122,7 +121,6 @@ struct SettingUpView: View {
                     }
                     .frame(width: 320, height: 320)
                     .clipped()
-                    .padding()
                     .frame(maxWidth: .infinity)
                     .onAppear {
                         withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
@@ -161,7 +159,6 @@ struct SettingUpView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
