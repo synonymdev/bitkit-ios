@@ -10,8 +10,6 @@ import SwiftUI
 
 @MainActor
 class WalletViewModel: ObservableObject {
-    static let shared = WalletViewModel()
-
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
