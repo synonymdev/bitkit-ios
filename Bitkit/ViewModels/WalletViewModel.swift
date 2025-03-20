@@ -117,6 +117,8 @@ class WalletViewModel: ObservableObject {
             try await stopLightningNode()
         }
 
+        try await lightningService.wipeStorage(walletIndex: 0)
+
         // Reset AppStorage display values
         totalBalanceSats = 0
         totalOnchainSats = 0
@@ -125,10 +127,6 @@ class WalletViewModel: ObservableObject {
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
-
-        // TODO: reset display address
-
-        try await lightningService.wipeStorage(walletIndex: 0)
     }
 
     func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {

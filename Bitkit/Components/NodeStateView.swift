@@ -135,12 +135,14 @@ struct NodeStateView: View {
                             .font(.caption)
 
                         Text("Ready: \(channel.isChannelReady ? "✅" : "❌")")
+                        Text("Usable: \(channel.isUsable ? "✅" : "❌")")
                         Text("Announced: \(channel.isAnnounced ? "🌐" : "🔒")")
                         Text("Inbound capacity: \(channel.inboundCapacityMsat / 1000) sats")
                         Text("Inbound htlc max: \(channel.inboundHtlcMaximumMsat ?? 0 / 1000) sats")
                         Text("Inbound htlc min: \(channel.inboundHtlcMinimumMsat / 1000) sats")
                         Text("Next outbound htlc limit: \(channel.nextOutboundHtlcLimitMsat / 1000) sats")
                         Text("Next outbound htlc min: \(channel.nextOutboundHtlcMinimumMsat / 1000) sats")
+                        Text("Confirmations: \(channel.confirmations ?? 0)/\(channel.confirmationsRequired ?? 0)")
                     }
                     .opacity(closingChannels.contains(channel.channelId) ? 0.1 : 1.0)
                     .overlay {

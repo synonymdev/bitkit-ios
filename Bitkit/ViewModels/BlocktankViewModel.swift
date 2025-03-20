@@ -117,33 +117,14 @@ class BlocktankViewModel: ObservableObject {
         )
     }
 
-    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats _: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
-        guard let nodeId = lightningService.nodeId else {
-            throw CustomServiceError.nodeNotStarted
-        }
+    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
+        let finalReceivingBalanceSats = receivingBalanceSats ?? (spendingBalanceSats * 2)
+        let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
-        let receivingBalanceSats = spendingBalanceSats * 2
-        let timestamp = Date().formatted(.iso8601)
-        let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
-
-        var options = CreateOrderOptions(
-            clientBalanceSat: spendingBalanceSats,
-            lspNodeId: nil,
-            couponCode: "",
-            source: "bitkit-ios",
-            discountCode: nil,
-            turboChannel: false,
-            zeroConfPayment: false,
-            zeroReserve: true,
-            clientNodeId: nodeId,
-            signature: signature,
-            timestamp: timestamp,
-            refundOnchainAddress: nil,
-            announceChannel: false
-        )
+        Logger.info("Buying channel with these options: \(options)")
 
         return try await coreService.blocktank.newOrder(
-            lspBalanceSat: receivingBalanceSats,
+            lspBalanceSat: finalReceivingBalanceSats,
             channelExpiryWeeks: UInt32(channelExpiryWeeks),
             options: options
         )
@@ -158,5 +139,47 @@ class BlocktankViewModel: ObservableObject {
         }
 
         return order
+    }
+
+    func estimateOrderFee(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64) async throws -> (feeSat: UInt64, networkFeeSat: UInt64, serviceFeeSat: UInt64) {
+        let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
+
+        let estimate = try await coreService.blocktank.estimateFee(
+            lspBalanceSat: receivingBalanceSats,
+            channelExpiryWeeks: 6,
+            options: options
+        )
+
+        return (
+            feeSat: estimate.feeSat,
+            networkFeeSat: estimate.networkFeeSat,
+            serviceFeeSat: estimate.serviceFeeSat
+        )
+    }
+
+    /// Creates default options for channel creation or fee estimation
+    private func defaultCreateOrderOptions(clientBalanceSat: UInt64) async throws -> CreateOrderOptions {
+        guard let nodeId = lightningService.nodeId else {
+            throw CustomServiceError.nodeNotStarted
+        }
+
+        let timestamp = Date().formatted(.iso8601)
+        let signature = try await lightningService.sign(message: "channelOpen-\(timestamp)")
+
+        return CreateOrderOptions(
+            clientBalanceSat: clientBalanceSat,
+            lspNodeId: nil,
+            couponCode: "",
+            source: "bitkit-ios",
+            discountCode: nil,
+            turboChannel: true,
+            zeroConfPayment: false,
+            zeroReserve: true,
+            clientNodeId: nodeId,
+            signature: signature,
+            timestamp: timestamp,
+            refundOnchainAddress: nil,
+            announceChannel: false
+        )
     }
 }
