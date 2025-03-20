@@ -5,43 +5,15 @@ struct FundTransferView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var transfer: TransferViewModel
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var isCreatingOrder = false
-    @State private var newOrder: IBtOrder? = nil
     @State private var showConfirmation = false
 
     // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
     // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
-
-    struct AmountButton: View {
-        let text: String
-        var imageName: String?
-        var action: () -> Void
-
-        var body: some View {
-            Button(action: {
-                Haptics.play(.buttonTap)
-                action()
-            }) {
-                HStack(spacing: 8) {
-                    if let imageName {
-                        Image(imageName)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(height: 12)
-                    }
-
-                    CaptionText(text, textColor: .purpleAccent)
-                }
-                .padding(.vertical, 5)
-                .padding(.horizontal, 8)
-                .background(Color.white10)
-                .cornerRadius(8)
-            }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,17 +58,14 @@ struct FundTransferView: View {
 
             Spacer()
 
-            if let order = newOrder {
-                NavigationLink(destination: SpendingConfirmationView(order: order), isActive: $showConfirmation) {
-                    EmptyView()
-                }
+            NavigationLink(destination: SpendingConfirmationView(), isActive: $showConfirmation) {
+                EmptyView()
             }
 
             CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
                 do {
-                    newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
-                    // Sleep for 1 second
-                    try await Task.sleep(nanoseconds: 100_000_000)
+                    let newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
+                    transfer.onOrderCreated(order: newOrder)
                     showConfirmation = true
                 } catch {
                     app.toast(error)
@@ -125,7 +94,7 @@ struct FundTransferView: View {
 
     private var amountButtons: some View {
         HStack(spacing: 16) {
-            AmountButton(
+            NumberPadActionButton(
                 text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
                 imageName: "transfer-purple"
             ) {
@@ -134,11 +103,11 @@ struct FundTransferView: View {
                 }
             }
 
-            AmountButton(text: "25%") {
+            NumberPadActionButton(text: "25%") {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
             }
 
-            AmountButton(text: "MAX") {
+            NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
                 overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }
@@ -151,6 +120,7 @@ struct FundTransferView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
+            .environmentObject(TransferViewModel())
             .environmentObject({
                 let vm = CurrencyViewModel()
                 vm.selectedCurrency = "USD"
@@ -167,6 +137,7 @@ struct FundTransferView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
+            .environmentObject(TransferViewModel())
             .environmentObject({
                 let vm = CurrencyViewModel()
                 vm.selectedCurrency = "EUR"
@@ -183,6 +154,7 @@ struct FundTransferView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
+            .environmentObject(TransferViewModel())
             .environmentObject({
                 let vm = CurrencyViewModel()
                 vm.primaryDisplay = .bitcoin
@@ -199,6 +171,7 @@ struct FundTransferView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
+            .environmentObject(TransferViewModel())
             .environmentObject({
                 let vm = CurrencyViewModel()
                 vm.primaryDisplay = .bitcoin

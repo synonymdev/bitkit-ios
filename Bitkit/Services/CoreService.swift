@@ -171,8 +171,8 @@ class ActivityService {
 
                 for i in 0 ..< count {
                     let isLightning = Bool.random()
-                    let value = UInt64.random(in: 1000 ... 1000000) // Random sats between 1k and 1M
-                    let timestamp = timestamp - UInt64.random(in: 0 ... 2592000) // Random time in last 30 days
+                    let value = UInt64.random(in: 1000 ... 1_000_000) // Random sats between 1k and 1M
+                    let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000) // Random time in last 30 days
                     let txType: PaymentType = Bool.random() ? .sent : .received
                     let status: PaymentState = {
                         let random = Int.random(in: 0 ... 10)
@@ -285,6 +285,20 @@ class BlocktankService {
     ) async throws -> IBtOrder {
         try await ServiceQueue.background(.core) {
             try await createOrder(
+                lspBalanceSat: lspBalanceSat,
+                channelExpiryWeeks: channelExpiryWeeks,
+                options: options
+            )
+        }
+    }
+
+    func estimateFee(
+        lspBalanceSat: UInt64,
+        channelExpiryWeeks: UInt32,
+        options: CreateOrderOptions? = nil
+    ) async throws -> IBtEstimateFeeResponse2 {
+        try await ServiceQueue.background(.core) {
+            try await estimateOrderFeeFull(
                 lspBalanceSat: lspBalanceSat,
                 channelExpiryWeeks: channelExpiryWeeks,
                 options: options

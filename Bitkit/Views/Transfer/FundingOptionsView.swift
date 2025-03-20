@@ -83,9 +83,6 @@ struct FundingOptionsView: View {
         .task {
             await app.checkGeoStatus()
         }
-        .onAppear {
-            app.showTabBar = false
-        }
     }
 }
 
