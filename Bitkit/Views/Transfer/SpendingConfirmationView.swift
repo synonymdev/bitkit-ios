@@ -48,7 +48,7 @@ struct SpendingConfirmationView: View {
 
                             FeeDisplayRow(
                                 label: NSLocalizedString("lightning__spending_confirm__total", comment: ""),
-                                amount: order.feeSat + order.clientBalanceSat
+                                amount: order.feeSat
                             )
                             .frame(maxWidth: .infinity)
                         }
@@ -81,7 +81,7 @@ struct SpendingConfirmationView: View {
                             Button(action: {
                                 transfer.onDefaultClick()
                             }) {
-                                CustomButton(title: NSLocalizedString("common__default", comment: ""), size: .small)
+                                CustomButton(title: NSLocalizedString("lightning__spending_confirm__default", comment: ""), size: .small)
                             }
                         } else {
                             NavigationLink(destination: SpendingAdvancedView(order: order, onOrderCreated: { newOrder in
