@@ -171,8 +171,8 @@ class ActivityService {
 
                 for i in 0 ..< count {
                     let isLightning = Bool.random()
-                    let value = UInt64.random(in: 1000 ... 1_000_000) // Random sats between 1k and 1M
-                    let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000) // Random time in last 30 days
+                    let value = UInt64.random(in: 1000 ... 1000000) // Random sats between 1k and 1M
+                    let timestamp = timestamp - UInt64.random(in: 0 ... 2592000) // Random time in last 30 days
                     let txType: PaymentType = Bool.random() ? .sent : .received
                     let status: PaymentState = {
                         let random = Int.random(in: 0 ... 10)
@@ -327,6 +327,79 @@ class BlocktankService {
 
         return try await ServiceQueue.background(.core) {
             try await openChannel(orderId: orderId, connectionString: nodeId)
+        }
+    }
+
+    // MARK: Notifications
+
+    func registerDeviceForNotifications(deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String) async throws -> String {
+        try await ServiceQueue.background(.core) {
+            try await registerDevice(
+                deviceToken: deviceToken,
+                publicKey: publicKey,
+                features: features,
+                nodeId: nodeId,
+                isoTimestamp: isoTimestamp,
+                signature: signature,
+                customUrl: Env.blocktankPushNotificationServer
+            )
+        }
+    }
+
+    func pushNotificationTest(deviceToken: String, secretMessage: String, notificationType: String?) async throws -> String {
+        try await ServiceQueue.background(.core) {
+            try await testNotification(
+                deviceToken: deviceToken,
+                secretMessage: secretMessage,
+                notificationType: notificationType,
+                customUrl: Env.blocktankPushNotificationServer
+            )
+        }
+    }
+
+    // MARK: Regtest only methods
+
+    func regtestMineBlocks(_ count: UInt32 = 1) async throws {
+        guard Env.network == .regtest else {
+            throw AppError(serviceError: .regtestOnlyMethod)
+        }
+
+        try await ServiceQueue.background(.core) {
+            try await regtestMine(count: count)
+        }
+    }
+
+    func regtestDepositFunds(address: String, amountSat: UInt64) async throws -> String {
+        guard Env.network == .regtest else {
+            throw AppError(serviceError: .regtestOnlyMethod)
+        }
+
+        return try await ServiceQueue.background(.core) {
+            try await regtestDeposit(address: address, amountSat: amountSat)
+        }
+    }
+
+    func regtestPayInvoice(_ invoice: String, amountSat: UInt64?) async throws -> String {
+        guard Env.network == .regtest else {
+            throw AppError(serviceError: .regtestOnlyMethod)
+        }
+
+        return try await ServiceQueue.background(.core) {
+            try await regtestPay(invoice: invoice, amountSat: amountSat)
+        }
+    }
+
+    func regtestRemoteCloseChannel(channel: ChannelDetails, forceCloseAfterSeconds: UInt64?) async throws -> String {
+        guard Env.network == .regtest else {
+            throw AppError(serviceError: .regtestOnlyMethod)
+        }
+
+        guard let fundingTxo = channel.fundingTxo else {
+            throw AppError(message: "Missing channel.fundingTxo", debugMessage: nil)
+        }
+
+        return try await ServiceQueue.background(.core) {
+            try await regtestCloseChannel(fundingTxId: fundingTxo.txid, vout: fundingTxo.vout, forceCloseAfterS: forceCloseAfterSeconds)
         }
     }
 }

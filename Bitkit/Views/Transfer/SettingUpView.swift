@@ -184,7 +184,7 @@ struct SettingUpView: View {
 
                     do {
                         Logger.debug("Auto-mining a block", context: "SettingUpView")
-                        try await BlocktankService_OLD.shared.regtestMine(count: 1)
+                        try await CoreService.shared.blocktank.regtestMineBlocks(1)
                         Logger.debug("Successfully mined a block", context: "SettingUpView")
                     } catch {
                         Logger.error("Failed to mine block: \(error.localizedDescription)", context: "SettingUpView")

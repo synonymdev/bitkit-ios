@@ -35,10 +35,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
     
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Task {
-            // If this fails we can try again later as the token is cached here
-            try? await BlocktankService_OLD.shared.registerDevice(deviceToken: deviceToken.map { String(format: "%02hhx", $0) }.joined())
-        }
+        // BlocktankViewMode picks this up later to handle the registration
+        UserDefaults.standard.setValue(deviceToken.map { String(format: "%02hhx", $0) }.joined(), forKey: "deviceToken")
     }
     
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {

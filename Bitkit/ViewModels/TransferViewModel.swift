@@ -22,8 +22,6 @@ struct TransferValues {
 
 @MainActor
 class TransferViewModel: ObservableObject {
-    static let shared = TransferViewModel()
-
     @Published var uiState = TransferUiState()
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()

@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct LightningSettingsView: View {
+    @EnvironmentObject var blocktank: BlocktankViewModel
+
     var body: some View {
         List {
             Section("LDK") {
@@ -29,14 +31,15 @@ struct LightningSettingsView: View {
                 Button("Self test") {
                     Task {
                         do {
-                            try await BlocktankService_OLD.shared.selfTest()
+                            try await Task.sleep(nanoseconds: 5_000_000_000)
+                            try await blocktank.pushNotificationTest()
                         } catch {
                             Logger.error(error, context: "Failed to self test")
                         }
                     }
                 }
 
-                if let peer = Env.trustedLnPeers.first {
+                if Env.network == .regtest, let peer = Env.trustedLnPeers.first {
                     Button("Open channel to trusted peer") {
                         Task { @MainActor in
                             do {
