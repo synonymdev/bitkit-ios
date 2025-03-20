@@ -119,6 +119,17 @@ class BlocktankViewModel: ObservableObject {
 
     func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
         let finalReceivingBalanceSats = receivingBalanceSats ?? (spendingBalanceSats * 2)
+
+        if let btBOptions = info?.options {
+            // Validate they're within the limits
+            if (spendingBalanceSats + finalReceivingBalanceSats) > btBOptions.maxChannelSizeSat {
+                Logger.error("Channel size exceeds maximum: \(spendingBalanceSats + finalReceivingBalanceSats) > \(btBOptions.maxChannelSizeSat)")
+                throw CustomServiceError.channelSizeExceedsMaximum
+            }
+        } else {
+            Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
+        }
+
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
         Logger.info("Buying channel with these options: \(options)")
