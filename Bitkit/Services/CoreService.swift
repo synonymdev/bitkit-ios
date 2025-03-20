@@ -330,6 +330,22 @@ class BlocktankService {
         }
     }
 
+    // MARK: Notifications
+
+    func registerDeviceForNotifications(deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String) async throws -> String {
+        try await ServiceQueue.background(.core) {
+            try await registerDevice(
+                deviceToken: deviceToken,
+                publicKey: publicKey,
+                features: features,
+                nodeId: nodeId,
+                isoTimestamp: isoTimestamp,
+                signature: signature,
+                customUrl: Env.blocktankPushNotificationServer
+            )
+        }
+    }
+
     // MARK: Regtest only methods
 
     func regtestMineBlocks(_ count: UInt32 = 1) async throws {

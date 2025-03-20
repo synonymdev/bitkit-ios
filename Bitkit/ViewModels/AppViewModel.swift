@@ -10,8 +10,6 @@ import SwiftUI
 
 @MainActor
 class AppViewModel: ObservableObject {
-    static let shared = AppViewModel()
-
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedLightningBolt11Invoice: String? // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4

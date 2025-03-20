@@ -10,8 +10,6 @@ import SwiftUI
 
 @MainActor
 class ActivityListViewModel: ObservableObject {
-    static let shared = ActivityListViewModel()
-    
     @Published var filteredActivities: [Activity]? = nil
     @Published var lightningActivities: [Activity]? = nil
     @Published var onchainActivities: [Activity]? = nil
