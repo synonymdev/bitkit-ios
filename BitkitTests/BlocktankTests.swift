@@ -100,7 +100,7 @@ final class BlocktankTests: XCTestCase {
             couponCode: "",
             source: "bitkit-ios",
             discountCode: nil,
-            turboChannel: false,
+            zeroConf: false,
             zeroConfPayment: true,
             zeroReserve: false,
             clientNodeId: nil,

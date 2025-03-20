@@ -9,8 +9,6 @@ import SwiftUI
 
 @MainActor
 class BlocktankViewModel: ObservableObject {
-    static let shared = BlocktankViewModel()
-
     @Published var orders: [IBtOrder]? = nil
     @Published var cJitEntries: [IcJitEntry]? = nil
     @Published var info: IBtInfo? = nil
@@ -30,6 +28,7 @@ class BlocktankViewModel: ObservableObject {
         self.lightningService = lightningService
 
         Task { try? await refreshInfo() }
+        Task { try? await registerDeviceForNotifications() } // Checks if we have a device token that may need to still be registered
         startPolling()
     }
 
@@ -119,9 +118,20 @@ class BlocktankViewModel: ObservableObject {
 
     func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
         let finalReceivingBalanceSats = receivingBalanceSats ?? (spendingBalanceSats * 2)
+
+        if let btBOptions = info?.options {
+            // Validate they're within the limits
+            if (spendingBalanceSats + finalReceivingBalanceSats) > btBOptions.maxChannelSizeSat {
+                Logger.error("Channel size exceeds maximum: \(spendingBalanceSats + finalReceivingBalanceSats) > \(btBOptions.maxChannelSizeSat)")
+                throw CustomServiceError.channelSizeExceedsMaximum
+            }
+        } else {
+            Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
+        }
+
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
-        Logger.info("Buying channel with these options: \(options)")
+        Logger.debug("Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(channelExpiryWeeks) and options: \(options)")
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
@@ -172,7 +182,7 @@ class BlocktankViewModel: ObservableObject {
             couponCode: "",
             source: "bitkit-ios",
             discountCode: nil,
-            turboChannel: true,
+            zeroConf: true,
             zeroConfPayment: false,
             zeroReserve: true,
             clientNodeId: nodeId,
@@ -180,6 +190,72 @@ class BlocktankViewModel: ObservableObject {
             timestamp: timestamp,
             refundOnchainAddress: nil,
             announceChannel: false
+        )
+    }
+
+    func registerDeviceForNotifications(force: Bool = false) async throws {
+        // Token saved in AppDelegate
+        guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
+            Logger.debug("No device token found yet, skipping notification registration")
+            return
+        }
+
+        // Check if this token has already been registered (unless force flag is true)
+        if !force {
+            let lastRegisteredToken = UserDefaults.standard.string(forKey: "lastRegisteredDeviceToken")
+            if deviceToken == lastRegisteredToken {
+                Logger.debug("Device token already registered with Blocktank, skipping registration")
+                return
+            }
+        }
+
+        guard let nodeId = LightningService.shared.nodeId else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+
+        Logger.info("Registering device for notifications")
+
+        let isoTimestamp = ISO8601DateFormatter().string(from: Date())
+        let messageToSign = "bitkit-notifications\(deviceToken)\(isoTimestamp)"
+
+        let signature = try await LightningService.shared.sign(message: messageToSign)
+
+        let keypair = try Crypto.generateKeyPair()
+
+        Logger.debug("Notification encryption public key: \(keypair.publicKey.hex)")
+
+        // New keypair for each token registration
+        if try Keychain.exists(key: .pushNotificationPrivateKey) {
+            try? Keychain.delete(key: .pushNotificationPrivateKey)
+        }
+
+        try Keychain.save(key: .pushNotificationPrivateKey, data: keypair.privateKey)
+
+        let result = try await coreService.blocktank.registerDeviceForNotifications(
+            deviceToken: deviceToken,
+            publicKey: keypair.publicKey.hex,
+            features: Env.pushNotificationFeatures.map { $0.feature },
+            nodeId: nodeId,
+            isoTimestamp: isoTimestamp,
+            signature: signature
+        )
+
+        // Save this token as successfully registered
+        UserDefaults.standard.setValue(deviceToken, forKey: "lastRegisteredDeviceToken")
+        Logger.debug("Device successfully registered for notifications")
+    }
+
+    func pushNotificationTest() async throws {
+        guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
+            throw BlocktankError_deprecated.missingDeviceToken
+        }
+
+        Logger.debug("Sending test notification to self")
+
+        try await coreService.blocktank.pushNotificationTest(
+            deviceToken: deviceToken,
+            secretMessage: "hello",
+            notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue
         )
     }
 }
