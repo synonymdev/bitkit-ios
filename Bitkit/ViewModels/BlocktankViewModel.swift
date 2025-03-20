@@ -132,7 +132,7 @@ class BlocktankViewModel: ObservableObject {
 
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
-        Logger.info("Buying channel with these options: \(options)")
+        Logger.debug("Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(channelExpiryWeeks) and options: \(options)")
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
@@ -183,7 +183,7 @@ class BlocktankViewModel: ObservableObject {
             couponCode: "",
             source: "bitkit-ios",
             discountCode: nil,
-            turboChannel: true,
+            zeroConf: true,
             zeroConfPayment: false,
             zeroReserve: true,
             clientNodeId: nodeId,

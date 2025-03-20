@@ -364,9 +364,44 @@ uint64_t uniffi_bitkitcore_fn_func_refresh_active_orders(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGISTER_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGISTER_DEVICE
+uint64_t uniffi_bitkitcore_fn_func_register_device(RustBuffer device_token, RustBuffer public_key, RustBuffer features, RustBuffer node_id, RustBuffer iso_timestamp, RustBuffer signature, RustBuffer custom_url
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_CLOSE_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_CLOSE_CHANNEL
+uint64_t uniffi_bitkitcore_fn_func_regtest_close_channel(RustBuffer funding_tx_id, uint32_t vout, RustBuffer force_close_after_s
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_DEPOSIT
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_DEPOSIT
+uint64_t uniffi_bitkitcore_fn_func_regtest_deposit(RustBuffer address, RustBuffer amount_sat
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_GET_PAYMENT
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_GET_PAYMENT
+uint64_t uniffi_bitkitcore_fn_func_regtest_get_payment(RustBuffer payment_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_MINE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_MINE
+uint64_t uniffi_bitkitcore_fn_func_regtest_mine(RustBuffer count
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_PAY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REGTEST_PAY
+uint64_t uniffi_bitkitcore_fn_func_regtest_pay(RustBuffer invoice, RustBuffer amount_sat
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_REMOVE_TAGS
 void uniffi_bitkitcore_fn_func_remove_tags(RustBuffer activity_id, RustBuffer tags, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_TEST_NOTIFICATION
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_TEST_NOTIFICATION
+uint64_t uniffi_bitkitcore_fn_func_test_notification(RustBuffer device_token, RustBuffer secret_message, RustBuffer notification_type, RustBuffer custom_url
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_FN_FUNC_UPDATE_ACTIVITY
@@ -801,9 +836,51 @@ uint16_t uniffi_bitkitcore_checksum_func_refresh_active_orders(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGISTER_DEVICE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGISTER_DEVICE
+uint16_t uniffi_bitkitcore_checksum_func_register_device(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_CLOSE_CHANNEL
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_CLOSE_CHANNEL
+uint16_t uniffi_bitkitcore_checksum_func_regtest_close_channel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_DEPOSIT
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_DEPOSIT
+uint16_t uniffi_bitkitcore_checksum_func_regtest_deposit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_GET_PAYMENT
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_GET_PAYMENT
+uint16_t uniffi_bitkitcore_checksum_func_regtest_get_payment(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_MINE
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_MINE
+uint16_t uniffi_bitkitcore_checksum_func_regtest_mine(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_PAY
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REGTEST_PAY
+uint16_t uniffi_bitkitcore_checksum_func_regtest_pay(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
 #define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_REMOVE_TAGS
 uint16_t uniffi_bitkitcore_checksum_func_remove_tags(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_TEST_NOTIFICATION
+#define UNIFFI_FFIDEF_UNIFFI_BITKITCORE_CHECKSUM_FUNC_TEST_NOTIFICATION
+uint16_t uniffi_bitkitcore_checksum_func_test_notification(void
     
 );
 #endif
