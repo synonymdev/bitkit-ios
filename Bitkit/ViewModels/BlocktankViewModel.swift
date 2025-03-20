@@ -244,4 +244,18 @@ class BlocktankViewModel: ObservableObject {
         UserDefaults.standard.setValue(deviceToken, forKey: "lastRegisteredDeviceToken")
         Logger.debug("Device successfully registered for notifications")
     }
+
+    func pushNotificationTest() async throws {
+        guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
+            throw BlocktankError_deprecated.missingDeviceToken
+        }
+
+        Logger.debug("Sending test notification to self")
+
+        try await coreService.blocktank.pushNotificationTest(
+            deviceToken: deviceToken,
+            secretMessage: "hello",
+            notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue
+        )
+    }
 }
