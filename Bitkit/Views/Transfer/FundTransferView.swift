@@ -107,7 +107,7 @@ struct FundTransferView: View {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
             }
 
-            NumberPadActionButton(text: "MAX") {
+            NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
                 overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }

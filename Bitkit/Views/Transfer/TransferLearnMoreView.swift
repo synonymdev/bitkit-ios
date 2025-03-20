@@ -26,7 +26,7 @@ struct TransferLearnMoreView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 12) {
-                SubtitleText(NSLocalizedString("wallet__receive_liquidity__label_additional", comment: ""))
+                SubtitleText(NSLocalizedString("lightning__liquidity__label", comment: ""))
                 LightningChannel(
                     capacity: order.lspBalanceSat + order.clientBalanceSat,
                     localBalance: order.clientBalanceSat,

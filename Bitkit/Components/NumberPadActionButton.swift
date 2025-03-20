@@ -26,7 +26,7 @@ struct NumberPadActionButton: View {
                         .frame(height: 12)
                 }
 
-                CaptionText(text, textColor: color)
+                CaptionText(text.uppercased(), textColor: color)
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)

@@ -163,7 +163,7 @@ struct SettingUpView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString(transfer.lightningSetupStep < 4 ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
+        .navigationTitle(NSLocalizedString(isTransfering ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
