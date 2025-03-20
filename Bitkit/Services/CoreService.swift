@@ -346,6 +346,17 @@ class BlocktankService {
         }
     }
 
+    func pushNotificationTest(deviceToken: String, secretMessage: String, notificationType: String?) async throws -> String {
+        try await ServiceQueue.background(.core) {
+            try await testNotification(
+                deviceToken: deviceToken,
+                secretMessage: secretMessage,
+                notificationType: notificationType,
+                customUrl: Env.blocktankPushNotificationServer
+            )
+        }
+    }
+
     // MARK: Regtest only methods
 
     func regtestMineBlocks(_ count: UInt32 = 1) async throws {
