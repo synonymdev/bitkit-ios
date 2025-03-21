@@ -18,7 +18,12 @@ struct SpendingWalletView: View {
                 .padding()
             Divider()
 
-            if !app.showSpendingViewEmptyState {
+            if !app.showSpendingViewEmptyState || wallet.totalLightningSats > 0 {
+                if let channels = wallet.channels, !channels.isEmpty {
+                    transferButton
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+
                 ScrollView {
                     ActivityLatest(viewType: .lightning)
                 }
@@ -64,6 +69,22 @@ struct SpendingWalletView: View {
         .onAppear {
             app.showTabBar = true
         }
+        .fullScreenCover(isPresented: $app.showFundingSheet) {
+            NavigationView {
+                SavingsIntroView()
+            }
+        }
+    }
+
+    var transferButton: some View {
+        SecondaryButton(
+            title: "Transfer To Savings",
+            icon: Image(systemName: "arrow.up.arrow.down")
+                .foregroundColor(.white80)
+        ) {
+            app.showFundingSheet = true
+        }
+        .padding(.vertical)
     }
 }
 
