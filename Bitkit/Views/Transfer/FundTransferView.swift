@@ -80,7 +80,7 @@ struct FundTransferView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    app.showFundingSheet = false
+                    app.showTransferToSpendingSheet = false
                 }) {
                     Image(systemName: "xmark")
                         .foregroundColor(.white)

@@ -10,7 +10,7 @@ struct SavingsIntroView: View {
                 accentColor: .brandAccent
             )
 
-            NavigationLink(destination: Text("TODO")) {
+            NavigationLink(destination: SavingsAvailabilityView()) {
                 CustomButton(title: NSLocalizedString("lightning__savings_intro__button", comment: ""))
             }
         }

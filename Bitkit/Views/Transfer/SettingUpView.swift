@@ -155,7 +155,7 @@ struct SettingUpView: View {
                     title: isTransfering ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
                     size: .large
                 ) {
-                    app.showFundingSheet = false
+                    app.showTransferToSpendingSheet = false
                 }
             }
             .padding(.horizontal, 16)
@@ -167,7 +167,7 @@ struct SettingUpView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    app.showFundingSheet = false
+                    app.showTransferToSpendingSheet = false
                 }) {
                     Image(systemName: "xmark")
                         .foregroundColor(.white)
