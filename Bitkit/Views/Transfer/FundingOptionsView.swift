@@ -43,7 +43,7 @@ struct FundingOptionsView: View {
                 }
                 .background(
                     NavigationLink(
-                        destination: FundTransferView(),
+                        destination: SpendingIntroView(),
                         isActive: $showFundTransfer
                     ) { EmptyView() }
                 )
