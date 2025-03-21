@@ -86,20 +86,14 @@ struct SavingsWalletView: View {
     }
 
     var fundingButton: some View {
-        Button(action: {
+        SecondaryButton(
+            title: "Transfer To Spending",
+            icon: Image(systemName: "arrow.up.arrow.down")
+                .foregroundColor(.white80)
+        ) {
             app.showFundingSheet = true
-        }) {
-            HStack {
-                Image(systemName: "arrow.up.arrow.down")
-                Text("Transfer To Spending")
-            }
-            .padding()
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-            )
-            .padding(.vertical)
         }
+        .padding(.vertical)
     }
 }
 
