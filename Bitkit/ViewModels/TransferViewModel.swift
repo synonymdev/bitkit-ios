@@ -5,6 +5,7 @@
 //  Created by Jason van den Berg on 2025/03/12.
 //
 
+import LDKNode
 import SwiftUI
 
 struct TransferUiState {
@@ -25,6 +26,8 @@ class TransferViewModel: ObservableObject {
     @Published var uiState = TransferUiState()
     @Published var lightningSetupStep: Int = 0
     @Published var transferValues = TransferValues()
+    @Published var selectedChannelIds: [String] = []
+    @Published var channelsToClose: [ChannelDetails] = []
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -191,6 +194,7 @@ class TransferViewModel: ObservableObject {
     func resetState() {
         uiState = TransferUiState()
         transferValues = TransferValues()
+        selectedChannelIds = []
     }
 
     // MARK: - Balance Calculation Functions
@@ -277,5 +281,22 @@ class TransferViewModel: ObservableObject {
             maxLspBalance: maxLspBalance,
             maxClientBalance: maxClientBalance
         )
+    }
+
+    // MARK: - Savings Transfer Methods
+
+    func setSelectedChannelIds(_ ids: [String]) {
+        selectedChannelIds = ids
+    }
+
+    func onTransferToSavingsConfirm(channels: [ChannelDetails]) {
+        selectedChannelIds = []
+        channelsToClose = channels
+    }
+
+    func closeSelectedChannels() async throws {
+        for channel in channelsToClose {
+            try await lightningService.closeChannel(channel)
+        }
     }
 }
