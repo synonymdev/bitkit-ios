@@ -22,7 +22,7 @@ struct SavingsWalletView: View {
             Divider()
 
             if !app.showSavingsViewEmptyState || wallet.totalOnchainSats > 0 {
-                fundingButton
+                transferButton
                     .transition(.move(edge: .leading).combined(with: .opacity))
 
                 ScrollView {
@@ -85,7 +85,7 @@ struct SavingsWalletView: View {
         }
     }
 
-    var fundingButton: some View {
+    var transferButton: some View {
         SecondaryButton(
             title: "Transfer To Spending",
             icon: Image(systemName: "arrow.up.arrow.down")
