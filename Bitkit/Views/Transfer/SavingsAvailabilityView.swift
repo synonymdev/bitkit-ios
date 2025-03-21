@@ -41,12 +41,12 @@ struct SavingsAvailabilityView: View {
                         app.showTransferToSavingsSheet = false
                     }
 
-                    CustomButton(
-                        title: NSLocalizedString("common__continue", comment: ""),
-                        variant: .primary,
-                        size: .large
-                    ) {
-                        // Continue action
+                    NavigationLink(destination: SavingsConfirmView()) {
+                        CustomButton(
+                            title: NSLocalizedString("common__continue", comment: ""),
+                            variant: .primary,
+                            size: .large
+                        )
                     }
                 }
                 .padding(.bottom, 16)

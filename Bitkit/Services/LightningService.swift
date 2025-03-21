@@ -284,6 +284,19 @@ class LightningService {
         }
     }
     
+    func closeChannel(_ channel: ChannelDetails) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotStarted)
+        }
+        
+        return try await ServiceQueue.background(.ldk) {
+            try node.closeChannel(
+                userChannelId: channel.userChannelId,
+                counterpartyNodeId: channel.counterpartyNodeId
+            )
+        }
+    }
+    
     func sign(message: String) async throws -> String {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
