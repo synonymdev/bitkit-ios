@@ -74,7 +74,7 @@ struct SavingsWalletView: View {
         .onAppear {
             app.showTabBar = true
         }
-        .fullScreenCover(isPresented: $app.showFundingSheet) {
+        .fullScreenCover(isPresented: $app.showTransferToSpendingSheet) {
             NavigationView {
                 if hasSeenTransferIntro {
                     FundingOptionsView()
@@ -91,7 +91,7 @@ struct SavingsWalletView: View {
             icon: Image(systemName: "arrow.up.arrow.down")
                 .foregroundColor(.white80)
         ) {
-            app.showFundingSheet = true
+            app.showTransferToSpendingSheet = true
         }
         .padding(.vertical)
     }
