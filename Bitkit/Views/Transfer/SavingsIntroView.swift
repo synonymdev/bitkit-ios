@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct SavingsIntroView: View {
+    @EnvironmentObject var app: AppViewModel
+
     var body: some View {
         VStack {
             OnboardingTab(
@@ -15,6 +17,18 @@ struct SavingsIntroView: View {
             }
         }
         .padding()
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    app.showTransferToSavingsSheet = false
+                }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                }
+            }
+        }
     }
 }
 
@@ -22,6 +36,7 @@ struct SavingsIntroView: View {
     NavigationView {
         SavingsIntroView()
             .environmentObject(AppViewModel())
+            .environmentObject(TransferViewModel())
             .preferredColorScheme(.dark)
     }
 }

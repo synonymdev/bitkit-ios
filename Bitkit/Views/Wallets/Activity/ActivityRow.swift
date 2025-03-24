@@ -165,10 +165,10 @@ struct ActivityRow: View {
         case .onchain(let activity):
             timestamp = TimeInterval(activity.timestamp)
         }
-        
+
         let date = Date(timeIntervalSince1970: timestamp)
         let calendar = Calendar.current
-        
+
         // Check if the activity is from today
         if calendar.isDateInToday(date) {
             let timeFormatter = DateFormatter()

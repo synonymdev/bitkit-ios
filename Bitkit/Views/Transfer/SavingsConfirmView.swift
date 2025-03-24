@@ -11,6 +11,7 @@ import SwiftUI
 struct SavingsConfirmView: View {
     @State private var showSettingUp = false
     @State private var hideSwipeButton = false
+    @State private var showAdvancedView = false
 
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
@@ -26,7 +27,7 @@ struct SavingsConfirmView: View {
         return !transfer.selectedChannelIds.isEmpty
     }
 
-    private var channelsToDisplay: [ChannelDetails] {
+    private var channels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
         let usableChannels = channels.filter { $0.isChannelReady && $0.isUsable }
 
@@ -35,6 +36,10 @@ struct SavingsConfirmView: View {
         } else {
             return usableChannels.filter { transfer.selectedChannelIds.contains($0.channelId) }
         }
+    }
+
+    private var totalSats: UInt64 {
+        channels.reduce(0) { $0 + $1.outboundCapacityMsat / 1000 }
     }
 
     var body: some View {
@@ -46,7 +51,6 @@ struct SavingsConfirmView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     BodySText(NSLocalizedString("lightning__savings_confirm__label", comment: "").uppercased(), textColor: .textSecondary)
 
-                    let totalSats = channelsToDisplay.reduce(0) { $0 + $1.outboundCapacityMsat / 1000 }
                     TransferAmount(
                         defaultValue: UInt64(totalSats),
                         primaryDisplay: .constant(currency.primaryDisplay),
@@ -65,7 +69,9 @@ struct SavingsConfirmView: View {
                                 CustomButton(title: NSLocalizedString("lightning__savings_confirm__transfer_all", comment: ""), size: .small)
                             }
                         } else {
-                            NavigationLink(destination: SavingsAdvancedView()) {
+                            Button(action: {
+                                showAdvancedView = true
+                            }) {
                                 CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small)
                             }
                         }
@@ -91,7 +97,7 @@ struct SavingsConfirmView: View {
                     ) {
                         do {
                             // Process transfer to savings action
-                            transfer.onTransferToSavingsConfirm(channels: channelsToDisplay)
+                            transfer.onTransferToSavingsConfirm(channels: channels)
 
                             try await Task.sleep(nanoseconds: 300_000_000)
 
@@ -108,6 +114,10 @@ struct SavingsConfirmView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
+
+            NavigationLink(destination: SavingsAdvancedView(), isActive: $showAdvancedView) {
+                EmptyView()
+            }
 
             NavigationLink(destination: SavingsProgressView().environmentObject(transfer), isActive: $showSettingUp) {
                 EmptyView()
