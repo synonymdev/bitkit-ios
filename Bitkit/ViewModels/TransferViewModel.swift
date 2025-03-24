@@ -297,6 +297,7 @@ class TransferViewModel: ObservableObject {
     func closeSelectedChannels() async throws {
         for channel in channelsToClose {
             try await lightningService.closeChannel(channel)
+            // TODO: handle force close as fallback
         }
     }
 }

@@ -55,6 +55,16 @@ struct SavingsAvailabilityView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    app.showTransferToSavingsSheet = false
+                }) {
+                    Image(systemName: "xmark")
+                        .foregroundColor(.white)
+                }
+            }
+        }
     }
 }
 
