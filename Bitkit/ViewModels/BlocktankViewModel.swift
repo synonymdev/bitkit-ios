@@ -21,14 +21,15 @@ class BlocktankViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
-    init(coreService: CoreService = .shared,
-         lightningService: LightningService = .shared)
-    {
+    init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared
+    ) {
         self.coreService = coreService
         self.lightningService = lightningService
 
         Task { try? await refreshInfo() }
-        Task { try? await registerDeviceForNotifications() } // Checks if we have a device token that may need to still be registered
+        Task { try? await registerDeviceForNotifications() }  // Checks if we have a device token that may need to still be registered
         startPolling()
     }
 
@@ -67,7 +68,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func refreshInfo() async throws {
-        info = try await getInfo(refresh: false) // Instant set cached info to state before refreshing
+        info = try await getInfo(refresh: false)  // Instant set cached info to state before refreshing
         info = try await getInfo(refresh: true)
     }
 
@@ -107,11 +108,11 @@ class BlocktankViewModel: ObservableObject {
         }
 
         return try await coreService.blocktank.createCjit(
-            channelSizeSat: amountSats * 2, // TODO: check this amount default from RN app
+            channelSizeSat: amountSats * 2,  // TODO: check this amount default from RN app
             invoiceSat: amountSats,
             invoiceDescription: description,
             nodeId: nodeId,
-            channelExpiryWeeks: 2, // TODO: check this amount default from RN app
+            channelExpiryWeeks: 2,  // TODO: check this amount default from RN app
             options: .init(source: "bitkit-ios", discountCode: nil)
         )
     }
@@ -131,7 +132,8 @@ class BlocktankViewModel: ObservableObject {
 
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
-        Logger.debug("Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(channelExpiryWeeks) and options: \(options)")
+        Logger.debug(
+            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(channelExpiryWeeks) and options: \(options)")
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
@@ -151,7 +153,9 @@ class BlocktankViewModel: ObservableObject {
         return order
     }
 
-    func estimateOrderFee(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64) async throws -> (feeSat: UInt64, networkFeeSat: UInt64, serviceFeeSat: UInt64) {
+    func estimateOrderFee(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64) async throws -> (
+        feeSat: UInt64, networkFeeSat: UInt64, serviceFeeSat: UInt64
+    ) {
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
         let estimate = try await coreService.blocktank.estimateFee(

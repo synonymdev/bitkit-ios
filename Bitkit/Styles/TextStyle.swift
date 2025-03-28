@@ -14,7 +14,9 @@ struct DisplayText: View {
     }
 
     var body: some View {
-        CustomTextWrapper(text: text, fontSize: 44, lineHeight: 44, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor, kerning: -1)
+        CustomTextWrapper(
+            text: text, fontSize: 44, lineHeight: 44, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
+            kerning: -1)
     }
 }
 
@@ -30,7 +32,9 @@ struct HeadlineText: View {
     }
 
     var body: some View {
-        CustomTextWrapper(text: text, fontSize: 30, lineHeight: 30, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor, kerning: -1)
+        CustomTextWrapper(
+            text: text, fontSize: 30, lineHeight: 30, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
+            kerning: -1)
     }
 }
 
@@ -46,7 +50,9 @@ struct TitleText: View {
     }
 
     var body: some View {
-        CustomTextWrapper(text: text, fontSize: 22, lineHeight: 26, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor, kerning: 0.4)
+        CustomTextWrapper(
+            text: text, fontSize: 22, lineHeight: 26, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor,
+            kerning: 0.4)
     }
 }
 
@@ -62,7 +68,9 @@ struct SubtitleText: View {
     }
 
     var body: some View {
-        CustomTextWrapper(text: text, fontSize: 17, lineHeight: 22, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor, kerning: 0.4)
+        CustomTextWrapper(
+            text: text, fontSize: 17, lineHeight: 22, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor,
+            kerning: 0.4)
     }
 }
 
@@ -79,8 +87,10 @@ struct BodyMText: View {
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular)))
-            .font(.custom(Fonts.regular, size: fontSize))
+        Text(
+            AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
+        )
+        .font(.custom(Fonts.regular, size: fontSize))
     }
 }
 
@@ -117,9 +127,12 @@ struct BodySText: View {
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url, fontSize: fontSize, font: Fonts.regular)))
-            .font(.custom(Fonts.regular, size: fontSize))
-            .tint(accentColor ?? .brandAccent)
+        Text(
+            AttributedString(
+                parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url, fontSize: fontSize, font: Fonts.regular))
+        )
+        .font(.custom(Fonts.regular, size: fontSize))
+        .tint(accentColor ?? .brandAccent)
     }
 }
 
@@ -136,8 +149,10 @@ struct CaptionText: View {
     }
 
     var body: some View {
-        Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular)))
-            .font(.custom(Fonts.regular, size: fontSize))
+        Text(
+            AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
+        )
+        .font(.custom(Fonts.regular, size: fontSize))
     }
 }
 
@@ -160,7 +175,10 @@ struct FootnoteText: View {
 }
 
 // Helper function to parse accent tags
-private func parseAccentTags(text: String, defaultColor: Color, accentColor: Color?, url: URL? = nil, fontSize: CGFloat = 15, font: String = Fonts.regular, accentFont: String? = nil) -> NSAttributedString {
+private func parseAccentTags(
+    text: String, defaultColor: Color, accentColor: Color?, url: URL? = nil, fontSize: CGFloat = 15, font: String = Fonts.regular,
+    accentFont: String? = nil
+) -> NSAttributedString {
     let attributedString = NSMutableAttributedString(string: "")
     var currentIndex = text.startIndex
 
@@ -169,10 +187,12 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             // Add text before the accent tag
             let beforeAccent = String(text[currentIndex ..< accentStartRange.lowerBound])
             if !beforeAccent.isEmpty {
-                let normalString = NSAttributedString(string: beforeAccent, attributes: [
-                    .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
-                ])
+                let normalString = NSAttributedString(
+                    string: beforeAccent,
+                    attributes: [
+                        .foregroundColor: UIColor(defaultColor),
+                        .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
+                    ])
                 attributedString.append(normalString)
             }
 
@@ -201,20 +221,24 @@ private func parseAccentTags(text: String, defaultColor: Color, accentColor: Col
             } else {
                 // No closing tag found, treat rest as normal text
                 let remainingText = String(text[accentStartRange.lowerBound...])
-                let normalString = NSAttributedString(string: remainingText, attributes: [
-                    .foregroundColor: UIColor(defaultColor),
-                    .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
-                ])
+                let normalString = NSAttributedString(
+                    string: remainingText,
+                    attributes: [
+                        .foregroundColor: UIColor(defaultColor),
+                        .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
+                    ])
                 attributedString.append(normalString)
                 break
             }
         } else {
             // No more accent tags, add remaining text
             let remainingText = String(text[currentIndex...])
-            let normalString = NSAttributedString(string: remainingText, attributes: [
-                .foregroundColor: UIColor(defaultColor),
-                .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
-            ])
+            let normalString = NSAttributedString(
+                string: remainingText,
+                attributes: [
+                    .foregroundColor: UIColor(defaultColor),
+                    .font: UIFont(name: font, size: fontSize) ?? .systemFont(ofSize: fontSize),
+                ])
             attributedString.append(normalString)
             break
         }
@@ -241,7 +265,10 @@ struct CustomTextWrapper: View {
     let kerning: CGFloat
     @State private var viewWidth: CGFloat = 0
 
-    init(text: String, fontSize: CGFloat, lineHeight: CGFloat, shouldCapitalize: Bool, font: String, textColor: Color, accentColor: Color, kerning: CGFloat) {
+    init(
+        text: String, fontSize: CGFloat, lineHeight: CGFloat, shouldCapitalize: Bool, font: String, textColor: Color, accentColor: Color,
+        kerning: CGFloat
+    ) {
         self.text = text
         self.fontSize = fontSize
         self.lineHeight = lineHeight
@@ -254,10 +281,13 @@ struct CustomTextWrapper: View {
 
     var body: some View {
         GeometryReader { geometry in
-            DisplayTextUIView(text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width, shouldCapitalize: shouldCapitalize, font: font, textColor: textColor, accentColor: accentColor, kerning: kerning)
-                .preference(key: ViewWidthKey.self, value: geometry.size.width)
+            DisplayTextUIView(
+                text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width, shouldCapitalize: shouldCapitalize, font: font,
+                textColor: textColor, accentColor: accentColor, kerning: kerning
+            )
+            .preference(key: ViewWidthKey.self, value: geometry.size.width)
         }
-//        .frame(maxWidth: .infinity, alignment: .leading)
+        //        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: calculateHeight())
         .onPreferenceChange(ViewWidthKey.self) { width in
             viewWidth = width
@@ -296,7 +326,8 @@ struct CustomTextWrapper: View {
                     let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
-                    accentString.addAttribute(.foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
+                    accentString.addAttribute(
+                        .foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
                     attributedString.append(accentString)
 
                     currentIndex = accentEndRange.upperBound
@@ -390,7 +421,8 @@ struct DisplayTextUIView: UIViewRepresentable {
                     let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
-                    accentString.addAttribute(.foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
+                    accentString.addAttribute(
+                        .foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
                     attributedString.append(accentString)
 
                     currentIndex = accentEndRange.upperBound

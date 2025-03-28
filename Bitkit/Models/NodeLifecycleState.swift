@@ -52,10 +52,10 @@ enum NodeLifecycleState: Equatable {
     static func == (lhs: NodeLifecycleState, rhs: NodeLifecycleState) -> Bool {
         switch (lhs, rhs) {
         case (.stopped, .stopped),
-             (.starting, .starting),
-             (.running, .running),
-             (.stopping, .stopping),
-             (.initializing, .initializing):
+            (.starting, .starting),
+            (.running, .running),
+            (.stopping, .stopping),
+            (.initializing, .initializing):
             return true
         case (.errorStarting(let lhsCause), .errorStarting(let rhsCause)):
             return lhsCause.localizedDescription == rhsCause.localizedDescription

@@ -12,7 +12,7 @@ import SwiftUI
 class AppViewModel: ObservableObject {
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
-    @Published var scannedLightningBolt11Invoice: String? // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
+    @Published var scannedLightningBolt11Invoice: String?  // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
 
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var sendAmountSats: UInt64?
@@ -222,14 +222,14 @@ extension AppViewModel {
 extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case .paymentReceived(paymentId: _, paymentHash: _, amountMsat: let amountMsat):
+        case .paymentReceived(paymentId: _, paymentHash: _, let amountMsat):
             showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
 
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
 
-        case .channelReady(channelId: let channelId, userChannelId: _, counterpartyNodeId: _):
+        case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
                 showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
@@ -240,7 +240,7 @@ extension AppViewModel {
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
 
-        case .paymentSuccessful(paymentId: _, paymentHash: _, feePaidMsat: let feePaidMsat):
+        case .paymentSuccessful(paymentId: _, paymentHash: _, let feePaidMsat):
             showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
 
         case .paymentClaimable:

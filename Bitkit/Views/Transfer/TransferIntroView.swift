@@ -15,9 +15,10 @@ struct TransferIntroView: View {
             NavigationLink(destination: FundingOptionsView()) {
                 CustomButton(title: NSLocalizedString("lightning__transfer_intro__button", comment: ""))
             }
-            .simultaneousGesture(TapGesture().onEnded {
-                app.hasSeenTransferToSpendingIntro = true
-            })
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    app.hasSeenTransferToSpendingIntro = true
+                })
         }
         .padding()
         .onAppear {

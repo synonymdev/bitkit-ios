@@ -30,14 +30,15 @@ struct LogView: View {
                 scrollToBottom(proxy: proxy)
             }
         }
-        .navigationBarItems(trailing:
-            Group {
-                if logFileURL != nil {
-                    Button(action: { showShareSheet = true }) {
-                        Image(systemName: "square.and.arrow.up")
+        .navigationBarItems(
+            trailing:
+                Group {
+                    if logFileURL != nil {
+                        Button(action: { showShareSheet = true }) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
                     }
                 }
-            }
         )
         .sheet(isPresented: $showShareSheet) {
             if let sourceURL = logFileURL {
@@ -84,7 +85,7 @@ struct LogView: View {
         let tempDir = FileManager.default.temporaryDirectory
         let destURL = tempDir.appendingPathComponent("ldk_node_latest.log")
 
-        try? FileManager.default.removeItem(at: destURL) // Remove any existing file
+        try? FileManager.default.removeItem(at: destURL)  // Remove any existing file
 
         do {
             // Read the content from the symbolic link

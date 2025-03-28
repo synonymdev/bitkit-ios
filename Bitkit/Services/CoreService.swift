@@ -18,7 +18,8 @@ class ActivityService {
             }
 
             // Get all activities and delete them one by one
-            let activities = try getActivities(filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
+            let activities = try getActivities(
+                filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
             for activity in activities {
                 let id: String
                 switch activity {
@@ -61,7 +62,7 @@ class ActivityService {
                     txType: payment.direction == .outbound ? .sent : .received,
                     status: state,
                     value: UInt64(payment.amountSats ?? 0),
-                    fee: nil, // TODO:
+                    fee: nil,  // TODO:
                     invoice: "lnbc123",
                     message: "",
                     timestamp: UInt64(payment.latestUpdateTimestamp),
@@ -70,7 +71,7 @@ class ActivityService {
                     updatedAt: UInt64(payment.latestUpdateTimestamp)
                 )
 
-                if let _ = try getActivityById(activityId: payment.id) {
+                if (try getActivityById(activityId: payment.id)) != nil {
                     try updateActivity(activityId: payment.id, activity: .lightning(ln))
                     updatedCount += 1
                 } else {
@@ -171,14 +172,14 @@ class ActivityService {
 
                 for i in 0 ..< count {
                     let isLightning = Bool.random()
-                    let value = UInt64.random(in: 1000 ... 1000000) // Random sats between 1k and 1M
-                    let timestamp = timestamp - UInt64.random(in: 0 ... 2592000) // Random time in last 30 days
+                    let value = UInt64.random(in: 1000 ... 1_000_000)  // Random sats between 1k and 1M
+                    let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000)  // Random time in last 30 days
                     let txType: PaymentType = Bool.random() ? .sent : .received
                     let status: PaymentState = {
                         let random = Int.random(in: 0 ... 10)
-                        if random < 8 { return .succeeded } // 80% chance
-                        if random < 9 { return .pending } // 10% chance
-                        return .failed // 10% chance
+                        if random < 8 { return .succeeded }  // 80% chance
+                        if random < 9 { return .pending }  // 10% chance
+                        return .failed  // 10% chance
                     }()
 
                     let activity: Activity
@@ -186,40 +187,42 @@ class ActivityService {
 
                     if isLightning {
                         id = "test-lightning-\(i)"
-                        activity = .lightning(LightningActivity(
-                            id: id,
-                            txType: txType,
-                            status: status,
-                            value: value,
-                            fee: UInt64.random(in: 1 ... 1000),
-                            invoice: "lnbc\(value)",
-                            message: possibleMessages.randomElement() ?? "",
-                            timestamp: timestamp,
-                            preimage: Bool.random() ? "preimage\(i)" : nil,
-                            createdAt: timestamp,
-                            updatedAt: timestamp
-                        ))
+                        activity = .lightning(
+                            LightningActivity(
+                                id: id,
+                                txType: txType,
+                                status: status,
+                                value: value,
+                                fee: UInt64.random(in: 1 ... 1000),
+                                invoice: "lnbc\(value)",
+                                message: possibleMessages.randomElement() ?? "",
+                                timestamp: timestamp,
+                                preimage: Bool.random() ? "preimage\(i)" : nil,
+                                createdAt: timestamp,
+                                updatedAt: timestamp
+                            ))
                     } else {
                         id = "test-onchain-\(i)"
-                        activity = .onchain(OnchainActivity(
-                            id: id,
-                            txType: txType,
-                            txId: String(repeating: "a", count: 64), // Mock txid
-                            value: value,
-                            fee: UInt64.random(in: 100 ... 10000),
-                            feeRate: UInt64.random(in: 1 ... 100),
-                            address: "bc1...\(i)",
-                            confirmed: Bool.random(),
-                            timestamp: timestamp,
-                            isBoosted: Bool.random(),
-                            isTransfer: Bool.random(),
-                            doesExist: true,
-                            confirmTimestamp: Bool.random() ? timestamp + 3600 : nil, // 1 hour later if confirmed
-                            channelId: Bool.random() ? "channel\(i)" : nil,
-                            transferTxId: nil,
-                            createdAt: timestamp,
-                            updatedAt: timestamp
-                        ))
+                        activity = .onchain(
+                            OnchainActivity(
+                                id: id,
+                                txType: txType,
+                                txId: String(repeating: "a", count: 64),  // Mock txid
+                                value: value,
+                                fee: UInt64.random(in: 100 ... 10000),
+                                feeRate: UInt64.random(in: 1 ... 100),
+                                address: "bc1...\(i)",
+                                confirmed: Bool.random(),
+                                timestamp: timestamp,
+                                isBoosted: Bool.random(),
+                                isTransfer: Bool.random(),
+                                doesExist: true,
+                                confirmTimestamp: Bool.random() ? timestamp + 3600 : nil,  // 1 hour later if confirmed
+                                channelId: Bool.random() ? "channel\(i)" : nil,
+                                transferTxId: nil,
+                                createdAt: timestamp,
+                                updatedAt: timestamp
+                            ))
                     }
 
                     // Insert activity
@@ -332,7 +335,9 @@ class BlocktankService {
 
     // MARK: Notifications
 
-    func registerDeviceForNotifications(deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String) async throws -> String {
+    func registerDeviceForNotifications(
+        deviceToken: String, publicKey: String, features: [String], nodeId: String, isoTimestamp: String, signature: String
+    ) async throws -> String {
         try await ServiceQueue.background(.core) {
             try await registerDevice(
                 deviceToken: deviceToken,
@@ -419,9 +424,12 @@ class CoreService {
         _ = try! initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
 
         // First thing ever added to the core queue so guarenteed to run first before any of above functions on the same queue
-        ServiceQueue.background(.core, {
-            try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
-        }) { result in
+        ServiceQueue.background(
+            .core,
+            {
+                try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
+            }
+        ) { result in
             switch result {
             case let .success(value):
                 Logger.info("bitkit-core database init: \(value)", context: "CoreService")
@@ -429,9 +437,12 @@ class CoreService {
                 Logger.error("bitkit-core database init failed: \(error)", context: "CoreService")
             }
         }
-        ServiceQueue.background(.core, {
-            try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
-        }) { result in
+        ServiceQueue.background(
+            .core,
+            {
+                try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
+            }
+        ) { result in
             switch result {
             case .success():
                 Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")

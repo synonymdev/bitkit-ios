@@ -66,11 +66,14 @@ struct HomeView: View {
             .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
             .overlay {
                 if wallet.totalBalanceSats == 0 && app.showHomeViewEmptyState {
-                    EmptyStateView(type: .home, onClose: {
-                        withAnimation(.spring(response: 0.3)) {
-                            app.showHomeViewEmptyState = false
+                    EmptyStateView(
+                        type: .home,
+                        onClose: {
+                            withAnimation(.spring(response: 0.3)) {
+                                app.showHomeViewEmptyState = false
+                            }
                         }
-                    })
+                    )
                     .padding(.horizontal)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
@@ -124,42 +127,54 @@ struct HomeView: View {
             TabBar()
                 .padding(.bottom, 20)
         }
-        .sheet(isPresented: $app.showSendOptionsSheet, content: {
-            if #available(iOS 16.0, *) {
-                SendOptionsView()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                SendOptionsView() // Will just consume full screen on older iOS versions
-            }
-        })
-        .sheet(isPresented: $app.showReceiveSheet, content: {
-            if #available(iOS 16.0, *) {
-                ReceiveQR()
-                    .presentationDetents([.height(sheetHeight)])
-            } else {
-                ReceiveQR() // Will just consume full screen on older iOS versions
-            }
-        })
-        .sheet(isPresented: $showSendAmountView, content: {
-            NavigationView {
+        .sheet(
+            isPresented: $app.showSendOptionsSheet,
+            content: {
                 if #available(iOS 16.0, *) {
-                    SendAmountView()
+                    SendOptionsView()
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    SendAmountView() // Will just consume full screen on older iOS versions
+                    SendOptionsView()  // Will just consume full screen on older iOS versions
                 }
             }
-        })
-        .sheet(isPresented: $showSendConfirmationView, content: {
-            NavigationView {
+        )
+        .sheet(
+            isPresented: $app.showReceiveSheet,
+            content: {
                 if #available(iOS 16.0, *) {
-                    SendConfirmationView()
+                    ReceiveQR()
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    SendConfirmationView() // Will just consume full screen on older iOS versions
+                    ReceiveQR()  // Will just consume full screen on older iOS versions
                 }
             }
-        })
+        )
+        .sheet(
+            isPresented: $showSendAmountView,
+            content: {
+                NavigationView {
+                    if #available(iOS 16.0, *) {
+                        SendAmountView()
+                            .presentationDetents([.height(sheetHeight)])
+                    } else {
+                        SendAmountView()  // Will just consume full screen on older iOS versions
+                    }
+                }
+            }
+        )
+        .sheet(
+            isPresented: $showSendConfirmationView,
+            content: {
+                NavigationView {
+                    if #available(iOS 16.0, *) {
+                        SendConfirmationView()
+                            .presentationDetents([.height(sheetHeight)])
+                    } else {
+                        SendConfirmationView()  // Will just consume full screen on older iOS versions
+                    }
+                }
+            }
+        )
         .onChange(of: app.resetSendStateToggle) { _ in
             // If this is triggered it means we had a successful send and need to drop the sheet
             showSendAmountView = false
@@ -185,10 +200,10 @@ struct HomeView: View {
         .sheet(isPresented: $showProfile) {
             NavigationView {
                 if #available(iOS 16.0, *) {
-                    Text("Profile View") // Placeholder for profile view
+                    Text("Profile View")  // Placeholder for profile view
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    Text("Profile View") // Placeholder for profile view
+                    Text("Profile View")  // Placeholder for profile view
                 }
             }
         }

@@ -50,11 +50,14 @@ struct SavingsWalletView: View {
         .animation(.spring(response: 0.3), value: app.showSavingsViewEmptyState)
         .overlay {
             if wallet.totalOnchainSats == 0 && app.showSavingsViewEmptyState {
-                EmptyStateView(type: .savings, onClose: {
-                    withAnimation(.spring(response: 0.3)) {
-                        app.showSavingsViewEmptyState = false
+                EmptyStateView(
+                    type: .savings,
+                    onClose: {
+                        withAnimation(.spring(response: 0.3)) {
+                            app.showSavingsViewEmptyState = false
+                        }
                     }
-                })
+                )
                 .padding(.horizontal)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }

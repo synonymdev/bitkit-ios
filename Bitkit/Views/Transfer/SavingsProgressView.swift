@@ -24,28 +24,31 @@ struct SavingsProgressContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString(
-                    {
-                        switch progressState {
-                        case .inProgress: return "lightning__savings_progress__title"
-                        case .failed: return "lightning__savings_interrupted__title"
-                        case .success: return "lightning__transfer_success__title_savings"
-                        }
-                    }(),
-                    comment: ""
-                ), accentColor: .brandAccent)
-                    .padding(.top, 16)
+                DisplayText(
+                    NSLocalizedString(
+                        {
+                            switch progressState {
+                            case .inProgress: return "lightning__savings_progress__title"
+                            case .failed: return "lightning__savings_interrupted__title"
+                            case .success: return "lightning__transfer_success__title_savings"
+                            }
+                        }(),
+                        comment: ""
+                    ), accentColor: .brandAccent
+                )
+                .padding(.top, 16)
 
-                BodyMText(NSLocalizedString(
-                    {
-                        switch progressState {
-                        case .inProgress: return "lightning__savings_progress__text"
-                        case .failed: return "lightning__savings_interrupted__text"
-                        case .success: return "lightning__transfer_success__text_savings"
-                        }
-                    }(),
-                    comment: ""
-                ), textColor: .textSecondary, accentColor: .white)
+                BodyMText(
+                    NSLocalizedString(
+                        {
+                            switch progressState {
+                            case .inProgress: return "lightning__savings_progress__text"
+                            case .failed: return "lightning__savings_interrupted__text"
+                            case .success: return "lightning__transfer_success__text_savings"
+                            }
+                        }(),
+                        comment: ""
+                    ), textColor: .textSecondary, accentColor: .white)
 
                 Spacer()
 
@@ -114,12 +117,12 @@ struct SavingsProgressContentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString(
-            progressState == .failed ?
-                "lightning__savings_interrupted__nav_title" :
-                "lightning__transfer__nav_title",
-            comment: ""
-        ))
+        .navigationTitle(
+            NSLocalizedString(
+                progressState == .failed ? "lightning__savings_interrupted__nav_title" : "lightning__transfer__nav_title",
+                comment: ""
+            )
+        )
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {

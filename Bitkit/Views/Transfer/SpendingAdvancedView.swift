@@ -175,9 +175,12 @@ struct SpendingAdvancedView: View {
 
 #Preview {
     NavigationView {
-        SpendingAdvancedView(order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000), onOrderCreated: { _ in
+        SpendingAdvancedView(
+            order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000),
+            onOrderCreated: { _ in
 
-        })
+            }
+        )
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())

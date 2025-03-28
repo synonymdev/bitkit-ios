@@ -51,11 +51,14 @@ struct SpendingWalletView: View {
         .animation(.spring(response: 0.3), value: app.showSpendingViewEmptyState)
         .overlay {
             if wallet.totalLightningSats == 0 && app.showSpendingViewEmptyState {
-                EmptyStateView(type: .spending, onClose: {
-                    withAnimation(.spring(response: 0.3)) {
-                        app.showSpendingViewEmptyState = false
+                EmptyStateView(
+                    type: .spending,
+                    onClose: {
+                        withAnimation(.spring(response: 0.3)) {
+                            app.showSpendingViewEmptyState = false
+                        }
                     }
-                })
+                )
                 .padding(.horizontal)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
