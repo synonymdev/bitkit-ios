@@ -11,6 +11,8 @@ struct SpendingWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
 
+    @State private var hasSeenTransferIntro = true
+
     var body: some View {
         VStack {
             BalanceHeaderView(sats: wallet.totalLightningSats)
@@ -66,12 +68,20 @@ struct SpendingWalletView: View {
                 }
             }
         }
+        .task {
+            // Set just once so when app.hasSeenTransferToSavingsIntro is set, it doesn't change this view until reloaded
+            hasSeenTransferIntro = app.hasSeenTransferToSavingsIntro
+        }
         .onAppear {
             app.showTabBar = true
         }
         .fullScreenCover(isPresented: $app.showTransferToSavingsSheet) {
             NavigationView {
-                SavingsIntroView()
+                if hasSeenTransferIntro {
+                    SavingsAvailabilityView()
+                } else {
+                    SavingsIntroView()
+                }
             }
         }
     }

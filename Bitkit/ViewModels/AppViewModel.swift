@@ -31,7 +31,8 @@ class AppViewModel: ObservableObject {
     @Published var showTabBar = true
     @Published var isGeoBlocked: Bool? = nil
 
-    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
+    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
+    @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
 
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false

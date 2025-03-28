@@ -68,8 +68,8 @@ struct SavingsWalletView: View {
             }
         }
         .task {
-            // Set just once so when app.hasSeenTransferIntro is set, it doesn't change this view until reloaded
-            hasSeenTransferIntro = app.hasSeenTransferIntro
+            // Set just once so when app.hasSeenTransferToSpendingIntro is set, it doesn't change this view until reloaded
+            hasSeenTransferIntro = app.hasSeenTransferToSpendingIntro
         }
         .onAppear {
             app.showTabBar = true
