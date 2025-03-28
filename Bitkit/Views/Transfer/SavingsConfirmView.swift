@@ -20,7 +20,7 @@ struct SavingsConfirmView: View {
 
     private var hasMultipleChannels: Bool {
         guard let channels = wallet.channels else { return false }
-        return channels.filter { $0.isChannelReady && $0.isUsable }.count > 1
+        return channels.filter { $0.isChannelReady }.count > 1
     }
 
     private var hasSelectedChannels: Bool {
@@ -29,7 +29,7 @@ struct SavingsConfirmView: View {
 
     private var channels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
-        let usableChannels = channels.filter { $0.isChannelReady && $0.isUsable }
+        let usableChannels = channels.filter { $0.isChannelReady }
 
         if transfer.selectedChannelIds.isEmpty {
             return usableChannels
@@ -39,7 +39,7 @@ struct SavingsConfirmView: View {
     }
 
     private var totalSats: UInt64 {
-        channels.reduce(0) { $0 + $1.outboundCapacityMsat / 1000 }
+        channels.reduce(0) { $0 + $1.outboundCapacityMsat / 1000 + ($1.unspendablePunishmentReserve ?? 0) }
     }
 
     var body: some View {

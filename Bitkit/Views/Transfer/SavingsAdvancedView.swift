@@ -79,7 +79,7 @@ struct SavingsAdvancedView: View {
             }
 
             HStack {
-                if let converted = currency.convert(sats: UInt64(channel.outboundCapacityMsat / 1000)) {
+                if let converted = currency.convert(sats: channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)) {
                     VStack(alignment: .trailing, spacing: 2) {
                         if currency.primaryDisplay == .bitcoin {
                             let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
