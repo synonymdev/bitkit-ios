@@ -94,7 +94,8 @@ struct SwipeButton: View {
                                                     offset = 0
                                                 }
 
-                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {  // Adjust the delay to match animation duration
+                                                // Adjust the delay to match animation duration
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                                     isLoading = false
                                                 }
                                             }

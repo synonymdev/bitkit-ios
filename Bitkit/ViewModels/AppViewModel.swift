@@ -12,7 +12,8 @@ import SwiftUI
 class AppViewModel: ObservableObject {
     // Decoded from bitkit-core
     @Published var scannedLightningInvoice: LightningInvoice?
-    @Published var scannedLightningBolt11Invoice: String?  // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
+    // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
+    @Published var scannedLightningBolt11Invoice: String?
 
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var sendAmountSats: UInt64?
@@ -135,14 +136,14 @@ extension AppViewModel {
         let data = try await decode(invoice: uri)
 
         switch data {
-        case let .onChain(invoice: invoice):
+        case .onChain(let invoice):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
             if let lnInvoice = invoice.params?["lightning"] as? String {
                 // Lightning invoice param found, prefer lightning payment if possible
-                if case let .lightning(invoice: lightningInvoice) = try await decode(invoice: lnInvoice) {
+                if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice)
                         return
@@ -152,7 +153,7 @@ extension AppViewModel {
 
             // No LN invoice found, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
-        case let .lightning(invoice: invoice):
+        case .lightning(let invoice):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
