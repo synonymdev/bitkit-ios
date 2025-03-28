@@ -22,7 +22,7 @@ struct SavingsWalletView: View {
             Divider()
 
             if !app.showSavingsViewEmptyState || wallet.totalOnchainSats > 0 {
-                fundingButton
+                transferButton
                     .transition(.move(edge: .leading).combined(with: .opacity))
 
                 ScrollView {
@@ -68,13 +68,13 @@ struct SavingsWalletView: View {
             }
         }
         .task {
-            // Set just once so when app.hasSeenTransferIntro is set, it doesn't change this view until reloaded
-            hasSeenTransferIntro = app.hasSeenTransferIntro
+            // Set just once so when app.hasSeenTransferToSpendingIntro is set, it doesn't change this view until reloaded
+            hasSeenTransferIntro = app.hasSeenTransferToSpendingIntro
         }
         .onAppear {
             app.showTabBar = true
         }
-        .fullScreenCover(isPresented: $app.showFundingSheet) {
+        .fullScreenCover(isPresented: $app.showTransferToSpendingSheet) {
             NavigationView {
                 if hasSeenTransferIntro {
                     FundingOptionsView()
@@ -85,21 +85,15 @@ struct SavingsWalletView: View {
         }
     }
 
-    var fundingButton: some View {
-        Button(action: {
-            app.showFundingSheet = true
-        }) {
-            HStack {
-                Image(systemName: "arrow.up.arrow.down")
-                Text("Transfer To Spending")
-            }
-            .padding()
-            .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-            )
-            .padding(.vertical)
+    var transferButton: some View {
+        SecondaryButton(
+            title: "Transfer To Spending",
+            icon: Image(systemName: "arrow.up.arrow.down")
+                .foregroundColor(.white80)
+        ) {
+            app.showTransferToSpendingSheet = true
         }
+        .padding(.vertical)
     }
 }
 

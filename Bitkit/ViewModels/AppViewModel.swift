@@ -24,13 +24,15 @@ class AppViewModel: ObservableObject {
     @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
-    @Published var showFundingSheet = false
+    @Published var showTransferToSpendingSheet = false
+    @Published var showTransferToSavingsSheet = false
 
     // Bottom tab bar
     @Published var showTabBar = true
     @Published var isGeoBlocked: Bool? = nil
 
-    @AppStorage("hasSeenTransferIntro") var hasSeenTransferIntro: Bool = false
+    @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
+    @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
 
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
