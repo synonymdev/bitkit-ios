@@ -19,7 +19,7 @@ struct LnPeer {
     init(connection: String) throws {
         let parts = connection.split(separator: "@")
         guard parts.count == 2 else {
-//            throw LnPeerError.invalidConnection
+            //            throw LnPeerError.invalidConnection
             // TODO: throw custom error
             fatalError("Invalid connection")
         }

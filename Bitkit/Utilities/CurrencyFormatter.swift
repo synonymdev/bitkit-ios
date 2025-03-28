@@ -6,7 +6,7 @@ struct CurrencyFormatter {
         formatter.numberStyle = .currency
         formatter.currencyCode = currency
         formatter.maximumFractionDigits = 2
-        
+
         return formatter.string(from: amount as NSDecimalNumber) ?? ""
     }
-} 
+}

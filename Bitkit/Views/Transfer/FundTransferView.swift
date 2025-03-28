@@ -108,7 +108,7 @@ struct FundTransferView: View {
             }
 
             NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
-                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
+                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9)  // TODO: can't actually use max, need to estimate fees
             }
         }
     }
@@ -121,12 +121,13 @@ struct FundTransferView: View {
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
             .environmentObject(TransferViewModel())
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.selectedCurrency = "USD"
-                vm.primaryDisplay = .fiat
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.selectedCurrency = "USD"
+                    vm.primaryDisplay = .fiat
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -138,12 +139,13 @@ struct FundTransferView: View {
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
             .environmentObject(TransferViewModel())
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.selectedCurrency = "EUR"
-                vm.primaryDisplay = .fiat
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.selectedCurrency = "EUR"
+                    vm.primaryDisplay = .fiat
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -155,12 +157,13 @@ struct FundTransferView: View {
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
             .environmentObject(TransferViewModel())
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.primaryDisplay = .bitcoin
-                vm.displayUnit = .modern
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    vm.displayUnit = .modern
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -172,12 +175,13 @@ struct FundTransferView: View {
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
             .environmentObject(TransferViewModel())
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.primaryDisplay = .bitcoin
-                vm.displayUnit = .classic
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    vm.displayUnit = .classic
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }

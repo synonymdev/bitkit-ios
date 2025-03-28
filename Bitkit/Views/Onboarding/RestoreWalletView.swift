@@ -157,7 +157,8 @@ struct RestoreWalletView: View {
     }
 
     private func handlePastedWords(_ pastedText: String) {
-        let pastedWords = pastedText
+        let pastedWords =
+            pastedText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .components(separatedBy: .whitespaces)
             .filter { !$0.isEmpty }

@@ -3,7 +3,7 @@ import SwiftUI
 struct TagSelector: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: ActivityListViewModel
-    
+
     var body: some View {
         NavigationView {
             VStack {
@@ -33,7 +33,7 @@ struct TagSelector: View {
                         }
                     }
                 }
-                
+
                 Spacer()
                 // Bottom buttons
                 HStack {
@@ -61,4 +61,4 @@ struct TagSelector: View {
             }
         }
     }
-} 
+}

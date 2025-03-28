@@ -91,20 +91,23 @@ struct SavingsAdvancedView: View {
                 }
                 Spacer()
 
-                Toggle("", isOn: Binding(
-                    get: {
-                        transfer.selectedChannelIds.contains(channel.channelId)
-                    },
-                    set: { isSelected in
-                        if isSelected {
-                            if !transfer.selectedChannelIds.contains(channel.channelId) {
-                                transfer.selectedChannelIds.append(channel.channelId)
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: {
+                            transfer.selectedChannelIds.contains(channel.channelId)
+                        },
+                        set: { isSelected in
+                            if isSelected {
+                                if !transfer.selectedChannelIds.contains(channel.channelId) {
+                                    transfer.selectedChannelIds.append(channel.channelId)
+                                }
+                            } else {
+                                transfer.selectedChannelIds.removeAll { $0 == channel.channelId }
                             }
-                        } else {
-                            transfer.selectedChannelIds.removeAll { $0 == channel.channelId }
                         }
-                    }
-                ))
+                    )
+                )
                 .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
             }
         }

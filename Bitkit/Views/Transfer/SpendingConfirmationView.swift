@@ -57,9 +57,13 @@ struct SpendingConfirmationView: View {
 
                     if transfer.uiState.isAdvanced {
                         VStack(alignment: .leading, spacing: 12) {
-                            NavigationLink(destination: SpendingAdvancedView(order: order, onOrderCreated: { newOrder in
-                                transfer.onAdvancedOrderCreated(order: newOrder)
-                            })) {
+                            NavigationLink(
+                                destination: SpendingAdvancedView(
+                                    order: order,
+                                    onOrderCreated: { newOrder in
+                                        transfer.onAdvancedOrderCreated(order: newOrder)
+                                    })
+                            ) {
                                 LightningChannel(
                                     capacity: order.lspBalanceSat + order.clientBalanceSat,
                                     localBalance: order.clientBalanceSat,
@@ -84,9 +88,13 @@ struct SpendingConfirmationView: View {
                                 CustomButton(title: NSLocalizedString("lightning__spending_confirm__default", comment: ""), size: .small)
                             }
                         } else {
-                            NavigationLink(destination: SpendingAdvancedView(order: order, onOrderCreated: { newOrder in
-                                transfer.onAdvancedOrderCreated(order: newOrder)
-                            })) {
+                            NavigationLink(
+                                destination: SpendingAdvancedView(
+                                    order: order,
+                                    onOrderCreated: { newOrder in
+                                        transfer.onAdvancedOrderCreated(order: newOrder)
+                                    })
+                            ) {
                                 CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small)
                             }
                         }
@@ -193,11 +201,12 @@ private struct SpendingDetailRow: View {
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
             .environmentObject(CurrencyViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                vm.onOrderCreated(order: IBtOrder.mock())
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    vm.onOrderCreated(order: IBtOrder.mock())
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }

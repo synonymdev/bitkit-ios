@@ -33,7 +33,7 @@ struct SendAmountView: View {
                     VStack(alignment: .leading) {
                         Text("Available")
                             .foregroundColor(.gray)
-                        if let _ = app.scannedLightningInvoice {
+                        if app.scannedLightningInvoice != nil {
                             Text("\(wallet.totalLightningSats) sats")
                         } else {
                             Text("\(wallet.totalOnchainSats) sats")
@@ -43,7 +43,7 @@ struct SendAmountView: View {
 
                     Spacer()
 
-                    if let _ = app.scannedLightningInvoice {
+                    if app.scannedLightningInvoice != nil {
                         Text("Spending")
                     } else {
                         Text("Savings")

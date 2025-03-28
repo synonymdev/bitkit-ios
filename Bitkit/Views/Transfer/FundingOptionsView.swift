@@ -89,11 +89,13 @@ struct FundingOptionsView: View {
 #Preview("Default - No Balance") {
     NavigationView {
         FundingOptionsView()
-            .environmentObject({
-                let wallet = WalletViewModel()
-                wallet.totalOnchainSats = 0
-                return wallet
-            }())
+            .environmentObject(
+                {
+                    let wallet = WalletViewModel()
+                    wallet.totalOnchainSats = 0
+                    return wallet
+                }()
+            )
             .environmentObject(AppViewModel())
             .preferredColorScheme(.dark)
     }
@@ -102,16 +104,20 @@ struct FundingOptionsView: View {
 #Preview("Geoblocked") {
     NavigationView {
         FundingOptionsView()
-            .environmentObject({
-                let wallet = WalletViewModel()
-                wallet.totalOnchainSats = 100_000
-                return wallet
-            }())
-            .environmentObject({
-                let app = AppViewModel()
-                app.isGeoBlocked = true
-                return app
-            }())
+            .environmentObject(
+                {
+                    let wallet = WalletViewModel()
+                    wallet.totalOnchainSats = 100_000
+                    return wallet
+                }()
+            )
+            .environmentObject(
+                {
+                    let app = AppViewModel()
+                    app.isGeoBlocked = true
+                    return app
+                }()
+            )
             .preferredColorScheme(.dark)
     }
 }
@@ -119,11 +125,13 @@ struct FundingOptionsView: View {
 #Preview("Has Balance and not geoblocked") {
     NavigationView {
         FundingOptionsView()
-            .environmentObject({
-                let wallet = WalletViewModel()
-                wallet.totalOnchainSats = 100_000
-                return wallet
-            }())
+            .environmentObject(
+                {
+                    let wallet = WalletViewModel()
+                    wallet.totalOnchainSats = 100_000
+                    return wallet
+                }()
+            )
             .environmentObject(AppViewModel())
             .preferredColorScheme(.dark)
     }

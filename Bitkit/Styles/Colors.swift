@@ -8,17 +8,17 @@ extension Color {
     static let purpleAccent = Color(hex: 0xB95CE8)
     static let redAccent = Color(hex: 0xE95164)
     static let yellowAccent = Color(hex: 0xFFD200)
-    
+
     // MARK: - Base
     static let customBlack = Color.black
     static let customWhite = Color.white
-    
+
     // MARK: - Gray Base
     static let gray6 = Color(hex: 0x151515)
     static let gray5 = Color(hex: 0x1C1C1D)
     static let gray3 = Color(hex: 0x48484A)
     static let gray2 = Color(hex: 0x636366)
-    
+
     // MARK: - Alpha Colors
     static let black50 = Color.black.opacity(0.5)
     static let black92 = Color.black.opacity(0.92)
@@ -30,7 +30,7 @@ extension Color {
     static let white50 = Color.white.opacity(0.50)
     static let white64 = Color.white.opacity(0.64)
     static let white80 = Color.white.opacity(0.80)
-    
+
     static let blue24 = Color.blueAccent.opacity(0.24)
     static let brand08 = Color.brandAccent.opacity(0.08)
     static let brand16 = Color.brandAccent.opacity(0.16)
@@ -52,23 +52,25 @@ extension Color {
 
 // MARK: - Text Colors
 extension Color {
-    static let textPrimary = Color(uiColor: UIColor { traitCollection in
-        switch traitCollection.userInterfaceStyle {
-        case .dark:
-            return UIColor(Color.customWhite)
-        default:
-            return UIColor(Color.black92)
-        }
-    })
-    
-    static let textSecondary = Color(uiColor: UIColor { traitCollection in
-        switch traitCollection.userInterfaceStyle {
-        case .dark:
-            return UIColor(Color.white64)
-        default:
-            return UIColor(Color.black50)
-        }
-    })
+    static let textPrimary = Color(
+        uiColor: UIColor { traitCollection in
+            switch traitCollection.userInterfaceStyle {
+            case .dark:
+                return UIColor(Color.customWhite)
+            default:
+                return UIColor(Color.black92)
+            }
+        })
+
+    static let textSecondary = Color(
+        uiColor: UIColor { traitCollection in
+            switch traitCollection.userInterfaceStyle {
+            case .dark:
+                return UIColor(Color.white64)
+            default:
+                return UIColor(Color.black50)
+            }
+        })
 }
 
 // MARK: - Hex Initializer

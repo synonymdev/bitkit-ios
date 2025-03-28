@@ -152,42 +152,48 @@ struct ActivityItemView_Previews: PreviewProvider {
     static var previews: some View {
         Group {
             // Lightning Activity Preview
-            ActivityItemView(item: .lightning(LightningActivity(
-                id: "test-lightning-1",
-                txType: .sent,
-                status: .succeeded,
-                value: 50000,
-                fee: 1,
-                invoice: "lnbc...",
-                message: "Test payment",
-                timestamp: UInt64(Date().timeIntervalSince1970),
-                preimage: nil,
-                createdAt: nil,
-                updatedAt: nil
-            )))
+            ActivityItemView(
+                item: .lightning(
+                    LightningActivity(
+                        id: "test-lightning-1",
+                        txType: .sent,
+                        status: .succeeded,
+                        value: 50000,
+                        fee: 1,
+                        invoice: "lnbc...",
+                        message: "Test payment",
+                        timestamp: UInt64(Date().timeIntervalSince1970),
+                        preimage: nil,
+                        createdAt: nil,
+                        updatedAt: nil
+                    ))
+            )
             .environmentObject(CurrencyViewModel())
             .previewDisplayName("Lightning Payment")
 
             // Onchain Activity Preview
-            ActivityItemView(item: .onchain(OnchainActivity(
-                id: "test-onchain-1",
-                txType: .received,
-                txId: "abc123",
-                value: 100000,
-                fee: 500,
-                feeRate: 8,
-                address: "bc1...",
-                confirmed: true,
-                timestamp: UInt64(Date().timeIntervalSince1970),
-                isBoosted: false,
-                isTransfer: false,
-                doesExist: true,
-                confirmTimestamp: nil,
-                channelId: nil,
-                transferTxId: nil,
-                createdAt: nil,
-                updatedAt: nil
-            )))
+            ActivityItemView(
+                item: .onchain(
+                    OnchainActivity(
+                        id: "test-onchain-1",
+                        txType: .received,
+                        txId: "abc123",
+                        value: 100000,
+                        fee: 500,
+                        feeRate: 8,
+                        address: "bc1...",
+                        confirmed: true,
+                        timestamp: UInt64(Date().timeIntervalSince1970),
+                        isBoosted: false,
+                        isTransfer: false,
+                        doesExist: true,
+                        confirmTimestamp: nil,
+                        channelId: nil,
+                        transferTxId: nil,
+                        createdAt: nil,
+                        updatedAt: nil
+                    ))
+            )
             .environmentObject(CurrencyViewModel())
             .previewDisplayName("Onchain Payment")
         }

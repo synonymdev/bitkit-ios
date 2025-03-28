@@ -41,7 +41,8 @@ struct StyleGuideView: View {
 
                 BodySText("Body s style with <accent>bold accent</accent> over here")
                 BodySText("Body s style with <accent>colored accent</accent> over here", accentColor: .redAccent)
-                BodySText("Click here to visit <accent>Google</accent> website", accentColor: .brandAccent, url: URL(string: "https://www.google.com"))
+                BodySText(
+                    "Click here to visit <accent>Google</accent> website", accentColor: .brandAccent, url: URL(string: "https://www.google.com"))
 
                 Divider()
 
@@ -60,26 +61,32 @@ struct StyleGuideView: View {
     private var colorSection: some View {
         VStack(alignment: .leading, spacing: 24) {
             Group {
-                colorGroup(title: "Accent Colors", colors: [
-                    ("Brand Accent", Color.brandAccent),
-                    ("Blue Accent", Color.blueAccent),
-                    ("Green Accent", Color.greenAccent),
-                    ("Purple Accent", Color.purpleAccent),
-                    ("Red Accent", Color.redAccent),
-                    ("Yellow Accent", Color.yellowAccent),
-                ])
+                colorGroup(
+                    title: "Accent Colors",
+                    colors: [
+                        ("Brand Accent", Color.brandAccent),
+                        ("Blue Accent", Color.blueAccent),
+                        ("Green Accent", Color.greenAccent),
+                        ("Purple Accent", Color.purpleAccent),
+                        ("Red Accent", Color.redAccent),
+                        ("Yellow Accent", Color.yellowAccent),
+                    ])
 
-                colorGroup(title: "Text Colors", colors: [
-                    ("Text Primary", Color.textPrimary),
-                    ("Text Secondary", Color.textSecondary),
-                ])
+                colorGroup(
+                    title: "Text Colors",
+                    colors: [
+                        ("Text Primary", Color.textPrimary),
+                        ("Text Secondary", Color.textSecondary),
+                    ])
 
-                colorGroup(title: "Gray Scale", colors: [
-                    ("Gray 6", Color.gray6),
-                    ("Gray 5", Color.gray5),
-                    ("Gray 3", Color.gray3),
-                    ("Gray 2", Color.gray2),
-                ])
+                colorGroup(
+                    title: "Gray Scale",
+                    colors: [
+                        ("Gray 6", Color.gray6),
+                        ("Gray 5", Color.gray5),
+                        ("Gray 3", Color.gray3),
+                        ("Gray 2", Color.gray2),
+                    ])
             }
         }
     }
@@ -88,10 +95,12 @@ struct StyleGuideView: View {
         VStack(alignment: .leading, spacing: 16) {
             SubtitleText(title)
 
-            LazyVGrid(columns: [
-                GridItem(.flexible(), spacing: 16),
-                GridItem(.flexible(), spacing: 16),
-            ], spacing: 16) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16),
+                ], spacing: 16
+            ) {
                 ForEach(colors, id: \.0) { name, color in
                     colorCard(name: name, color: color)
                 }
