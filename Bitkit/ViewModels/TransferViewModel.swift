@@ -35,6 +35,10 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
+    private let retryInterval: TimeInterval = 60 // 1 min
+    private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
+    private var coopCloseRetryTask: Task<Void, Never>?
+
     init(coreService: CoreService = .shared,
          lightningService: LightningService = .shared,
          currencyService: CurrencyService = .shared)
@@ -208,9 +212,9 @@ class TransferViewModel: ObservableObject {
             return 0
         }
         // Calculate thresholds in sats
-        let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate) ?? 0
-        let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate) ?? 0
-        let defaultLspBalanceSats = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate) ?? 0
+        let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
+        let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
+        let defaultLspBalanceSats = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
 
         Logger.debug("getDefaultLspBalance - clientBalanceSat: \(clientBalanceSat)")
         Logger.debug("getDefaultLspBalance - maxLspBalance: \(maxLspBalance)")
@@ -294,10 +298,68 @@ class TransferViewModel: ObservableObject {
         channelsToClose = channels
     }
 
-    func closeSelectedChannels() async throws {
-        for channel in channelsToClose {
-            try await lightningService.closeChannel(channel)
-            // TODO: handle force close as fallback
+    func closeSelectedChannels() async throws -> [ChannelDetails] {
+        return try await closeChannels(channels: channelsToClose)
+    }
+
+    private func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
+        var failedChannels: [ChannelDetails] = []
+
+        try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in
+            for channel in channels {
+                group.addTask {
+                    do {
+                        Logger.info("Closing channel: \(channel.channelId)")
+                        try await self.lightningService.closeChannel(channel)
+                        return nil
+                    } catch {
+                        Logger.error("Error closing channel: \(channel.channelId)", context: error.localizedDescription)
+                        return channel
+                    }
+                }
+            }
+
+            for try await result in group {
+                if let failedChannel = result {
+                    failedChannels.append(failedChannel)
+                }
+            }
+        }
+
+        return failedChannels
+    }
+
+    func startCoopCloseRetries(channels: [ChannelDetails], startTime: Date = Date()) {
+        channelsToClose = channels
+        coopCloseRetryTask?.cancel()
+
+        coopCloseRetryTask = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            let giveUpTime = startTime.addingTimeInterval(giveUpInterval)
+
+            while !Task.isCancelled && Date() < giveUpTime {
+                Logger.info("Trying coop close...")
+                do {
+                    let channelsFailedToCoopClose = try await closeChannels(channels: self.channelsToClose)
+
+                    if channelsFailedToCoopClose.isEmpty {
+                        self.channelsToClose = []
+                        Logger.info("Coop close success.")
+                        return
+                    } else {
+                        self.channelsToClose = channelsFailedToCoopClose
+                        Logger.info("Coop close failed: \(channelsFailedToCoopClose.map { $0.channelId })")
+                    }
+                } catch {
+                    Logger.error("Error during coop close retry", context: error.localizedDescription)
+                }
+
+                try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1000000000))
+            }
+
+            Logger.info("Giving up on coop close.")
+            // TODO: Show force transfer UI
         }
     }
 }
