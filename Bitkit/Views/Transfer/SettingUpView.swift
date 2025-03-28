@@ -75,7 +75,8 @@ struct SettingUpView: View {
     @State private var outerRotation: Double = 0
     @State private var innerRotation: Double = 0
     @State private var transferRotation: Double = 0
-    @State private var randomOkText: String = LocalizedRandom("common__ok_random", comment: "")  // Keep in state so we don't get a new random text on each render
+    // Keep in state so we don't get a new random text on each render
+    @State private var randomOkText: String = localizedRandom("common__ok_random", comment: "")
 
     var isTransfering: Bool {
         return transfer.lightningSetupStep < 3

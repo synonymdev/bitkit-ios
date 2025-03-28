@@ -23,8 +23,8 @@ class ActivityService {
             for activity in activities {
                 let id: String
                 switch activity {
-                case let .lightning(ln): id = ln.id
-                case let .onchain(on): id = on.id
+                case .lightning(let ln): id = ln.id
+                case .onchain(let on): id = on.id
                 }
 
                 _ = try deleteActivityById(activityId: id)
@@ -424,29 +424,24 @@ class CoreService {
         _ = try! initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
 
         // First thing ever added to the core queue so guarenteed to run first before any of above functions on the same queue
-        ServiceQueue.background(
-            .core,
-            {
-                try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
-            }
-        ) { result in
+        ServiceQueue.background(.core) {
+            try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
+        } completion: { result in
             switch result {
-            case let .success(value):
+            case .success(let value):
                 Logger.info("bitkit-core database init: \(value)", context: "CoreService")
-            case let .failure(error):
+            case .failure(let error):
                 Logger.error("bitkit-core database init failed: \(error)", context: "CoreService")
             }
         }
-        ServiceQueue.background(
-            .core,
-            {
-                try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
-            }
-        ) { result in
+
+        ServiceQueue.background(.core) {
+            try await updateBlocktankUrl(newUrl: Env.blocktankClientServer)
+        } completion: { result in
             switch result {
             case .success():
                 Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")
-            case let .failure(error):
+            case .failure(let error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
         }
