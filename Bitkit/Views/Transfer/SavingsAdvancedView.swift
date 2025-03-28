@@ -61,6 +61,11 @@ struct SavingsAdvancedView: View {
                 }
             }
         }
+        .task {
+            if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {
+                transfer.selectedChannelIds = channels.map { $0.channelId }
+            }
+        }
     }
 
     @ViewBuilder
