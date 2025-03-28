@@ -141,12 +141,18 @@ struct SavingsProgressView: View {
     var body: some View {
         SavingsProgressContentView(progressState: progressState)
             .task {
+                // Disable screen timeout while this view is active
+                UIApplication.shared.isIdleTimerDisabled = true
+
                 do {
                     try await Task.sleep(nanoseconds: 2_000_000_000)
 
                     let channelsFailedToCoopClose = try await transfer.closeSelectedChannels()
 
                     if channelsFailedToCoopClose.isEmpty {
+                        // Re-enable screen timeout when we're done
+                        UIApplication.shared.isIdleTimerDisabled = false
+
                         withAnimation {
                             progressState = .success
                         }
@@ -162,6 +168,10 @@ struct SavingsProgressView: View {
                 } catch {
                     app.toast(error)
                 }
+            }
+            .onDisappear {
+                // Ensure we re-enable screen timeout when view disappears
+                UIApplication.shared.isIdleTimerDisabled = false
             }
     }
 }
