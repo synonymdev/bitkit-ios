@@ -11,6 +11,8 @@ struct SpendingWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
 
+    @State private var hasSeenTransferIntro = true
+
     var body: some View {
         VStack {
             BalanceHeaderView(sats: wallet.totalLightningSats)
@@ -18,7 +20,12 @@ struct SpendingWalletView: View {
                 .padding()
             Divider()
 
-            if !app.showSpendingViewEmptyState {
+            if !app.showSpendingViewEmptyState || wallet.totalLightningSats > 0 {
+                if let channels = wallet.channels, !channels.isEmpty {
+                    transferButton
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+
                 ScrollView {
                     ActivityLatest(viewType: .lightning)
                 }
@@ -61,9 +68,33 @@ struct SpendingWalletView: View {
                 }
             }
         }
+        .task {
+            // Set just once so when app.hasSeenTransferToSavingsIntro is set, it doesn't change this view until reloaded
+            hasSeenTransferIntro = app.hasSeenTransferToSavingsIntro
+        }
         .onAppear {
             app.showTabBar = true
         }
+        .fullScreenCover(isPresented: $app.showTransferToSavingsSheet) {
+            NavigationView {
+                if hasSeenTransferIntro {
+                    SavingsAvailabilityView()
+                } else {
+                    SavingsIntroView()
+                }
+            }
+        }
+    }
+
+    var transferButton: some View {
+        SecondaryButton(
+            title: "Transfer To Savings",
+            icon: Image(systemName: "arrow.up.arrow.down")
+                .foregroundColor(.white80)
+        ) {
+            app.showTransferToSavingsSheet = true
+        }
+        .padding(.vertical)
     }
 }
 

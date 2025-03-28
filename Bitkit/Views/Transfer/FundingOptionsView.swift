@@ -43,7 +43,7 @@ struct FundingOptionsView: View {
                 }
                 .background(
                     NavigationLink(
-                        destination: FundTransferView(),
+                        destination: SpendingIntroView(),
                         isActive: $showFundTransfer
                     ) { EmptyView() }
                 )
@@ -73,7 +73,7 @@ struct FundingOptionsView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button(action: {
-                    app.showFundingSheet = false
+                    app.showTransferToSpendingSheet = false
                 }) {
                     Image(systemName: "xmark")
                         .foregroundColor(.white)
