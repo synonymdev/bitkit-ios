@@ -242,7 +242,8 @@ extension AppViewModel {
             toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
 
         case .paymentSuccessful(paymentId: _, paymentHash: _, let feePaidMsat):
-            showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: feePaidMsat ?? 0 / 1000))
+            // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.
+            showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: (feePaidMsat ?? 0) / 1000))
 
         case .paymentClaimable:
             break
