@@ -87,7 +87,7 @@ struct ContentView: View {
 
             guard wallet.walletExists == true else { return }
 
-            wallet.addOnEvent(id: "toasts") { [weak app] lightningEvent in
+            wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
                 app?.handleLdkNodeEvent(lightningEvent)
             }
 

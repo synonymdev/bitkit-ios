@@ -79,8 +79,10 @@ struct CustomButton: View {
         switch variant {
         case .primary:
             return .gray2
-        case .secondary, .tertiary:
+        case .secondary:
             return .clear
+        case .tertiary:
+            return .white10
         }
     }
 
@@ -152,7 +154,20 @@ struct CustomButton: View {
         .frame(maxWidth: size == .large ? .infinity : nil)
         .frame(height: size.height)
         .padding(.horizontal, size.horizontalPadding)
-        .background(backgroundColor)
+        .background(
+            Group {
+                if variant == .tertiary {
+                    RoundedRectangle(cornerRadius: size.cornerRadius)
+                        .fill(Color.white10)
+                        .background(
+                            BackdropBlurView(radius: 16)
+                                .cornerRadius(size.cornerRadius)
+                        )
+                } else {
+                    backgroundColor
+                }
+            }
+        )
         .cornerRadius(size.cornerRadius)
         .overlay(
             Group {
@@ -163,6 +178,19 @@ struct CustomButton: View {
             }
         )
         .contentShape(Rectangle())
+    }
+}
+
+// UIViewRepresentable for UIKit blur effect
+struct BackdropBlurView: UIViewRepresentable {
+    let radius: CGFloat
+    
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        return UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+    }
+    
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
+        uiView.effect = UIBlurEffect(style: .systemUltraThinMaterial)
     }
 }
 

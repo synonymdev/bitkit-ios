@@ -25,8 +25,10 @@ struct ReceiveViewContent: View {
         VStack {
             TabView(selection: $selectedTab) {
                 receiveQR
+                    .padding(.horizontal)
                     .tag(0)
                 copyValues
+                    .padding(.horizontal)
                     .tag(1)
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
@@ -35,11 +37,19 @@ struct ReceiveViewContent: View {
             Spacer()
             
             if (nodeLifecycleState == .running || nodeLifecycleState == .starting) && channelsCount == 0 {
+                //CJIT option
                 receiveLightningFunds
-                    .padding(.top, 16)
+                    .padding()
             }
         }
-        .padding()
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [Color.white64.opacity(0.15), Color.black]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .background(Color.black)
         .onAppear {
             // Set cjitActive based on cjitInvoice when the view appears
             cjitActive = cjitInvoice != nil
@@ -69,20 +79,34 @@ struct ReceiveViewContent: View {
                 QR(content: uri, imageAsset: imageAsset)
                 
                 HStack {
-                    Button("Edit") {}
-                        .padding(.horizontal)
+                    CustomButton(
+                        title: "Edit",
+                        variant: .tertiary,
+                        size: .small,
+                        icon: Image("pencil-brand")
+                    ) {
+                        // Edit action
+                    }
                     
-                    Button("Copy") {
+                    CustomButton(
+                        title: "Copy",
+                        variant: .tertiary,
+                        size: .small,
+                        icon: Image("copy-brand")
+                    ) {
                         UIPasteboard.general.string = uri
                         Haptics.play(.copiedToClipboard)
                     }
-                    .padding(.horizontal)
                     
                     if #available(iOS 16.0, *) {
                         ShareLink(item: URL(string: uri)!) {
-                            Text("Share")
+                            CustomButton(
+                                title: "Share",
+                                variant: .tertiary,
+                                size: .small,
+                                icon: Image("share-brand")
+                            )
                         }
-                        .padding(.horizontal)
                     }
                 }
                 .padding(.vertical)
@@ -124,6 +148,7 @@ struct ReceiveViewContent: View {
             Toggle(isOn: $cjitActive) {
                 EmptyView()
             }
+            .tint(Color.purpleAccent)
             .frame(maxWidth: 50)
         }
         .onChange(of: cjitActive) { newValue in
@@ -154,7 +179,7 @@ struct ReceiveView: View {
                 onchainAddress: wallet.onchainAddress,
                 bolt11: wallet.bolt11,
                 nodeLifecycleState: wallet.nodeLifecycleState,
-                channelsCount: wallet.channels?.count ?? 0,
+                channelsCount: wallet.channelCount,
                 cjitInvoice: cjitInvoice,
                 onCjitToggle: { active in
                     if !active {
@@ -182,7 +207,7 @@ struct ReceiveView: View {
         .task {
             do {                
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { try await refreshBip21() }
+                    group.addTask { await refreshBip21() }
                     group.addTask { try await blocktank.refreshInfo() }
                     try await group.waitForAll()
                 }
@@ -191,6 +216,7 @@ struct ReceiveView: View {
             }
         }
         .onChange(of: wallet.nodeLifecycleState) { newState in
+            //They may open this view before node has started
             if newState == .running {
                 Task {
                     await refreshBip21()
@@ -212,7 +238,7 @@ struct ReceiveView: View {
 // Previews
 @available(iOS 16.0, *)
 #Preview("Onchain Only") {
-        VStack { }
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -238,7 +264,7 @@ struct ReceiveView: View {
 
 @available(iOS 16.0, *)
 #Preview("With Lightning") {
-        VStack { }
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -264,7 +290,7 @@ struct ReceiveView: View {
 
 @available(iOS 16.0, *)
 #Preview("With CJIT") {
-        VStack { }
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
