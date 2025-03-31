@@ -13,11 +13,11 @@ extension LightningBalance {
     var channelIdString: String {
         switch self {
         case .contentiousClaimable(let channelId, _, _, _, _, _),
-             .maybePreimageClaimableHtlc(let channelId, _, _, _, _),
-             .counterpartyRevokedOutputClaimable(let channelId, _, _),
-             .claimableOnChannelClose(channelId: let channelId, _, _, _, _, _, _, _),
-             .claimableAwaitingConfirmations(channelId: let channelId, _, _, _, _),
-             .maybeTimeoutClaimableHtlc(channelId: let channelId, _, _, _, _, _):
+            .maybePreimageClaimableHtlc(let channelId, _, _, _, _),
+            .counterpartyRevokedOutputClaimable(let channelId, _, _),
+            .claimableOnChannelClose(let channelId, _, _, _, _, _, _, _),
+            .claimableAwaitingConfirmations(let channelId, _, _, _, _),
+            .maybeTimeoutClaimableHtlc(let channelId, _, _, _, _, _):
             return channelId
         }
     }
@@ -225,7 +225,8 @@ struct LightningBalanceRow: View {
     private var balanceTypeString: String {
         switch balance {
         case .claimableOnChannelClose: return "Claimable on Channel Close"
-        case .claimableAwaitingConfirmations(_, _, _, let confirmationHeight, _): return "Claimable Awaiting Confirmations (Height: \(confirmationHeight))"
+        case .claimableAwaitingConfirmations(_, _, _, let confirmationHeight, _):
+            return "Claimable Awaiting Confirmations (Height: \(confirmationHeight))"
         case .contentiousClaimable: return "Contentious Claimable"
         case .maybeTimeoutClaimableHtlc: return "Maybe Timeout Claimable HTLC"
         case .maybePreimageClaimableHtlc: return "Maybe Preimage Claimable HTLC"
@@ -236,11 +237,11 @@ struct LightningBalanceRow: View {
     private var amountString: String {
         switch balance {
         case .claimableOnChannelClose(_, _, let amount, _, _, _, _, _),
-             .claimableAwaitingConfirmations(_, _, let amount, _, _),
-             .contentiousClaimable(_, _, let amount, _, _, _),
-             .maybeTimeoutClaimableHtlc(_, _, let amount, _, _, _),
-             .maybePreimageClaimableHtlc(_, _, let amount, _, _),
-             .counterpartyRevokedOutputClaimable(_, _, let amount):
+            .claimableAwaitingConfirmations(_, _, let amount, _, _),
+            .contentiousClaimable(_, _, let amount, _, _, _),
+            .maybeTimeoutClaimableHtlc(_, _, let amount, _, _, _),
+            .maybePreimageClaimableHtlc(_, _, let amount, _, _),
+            .counterpartyRevokedOutputClaimable(_, _, let amount):
             return "\(amount)"
         }
     }

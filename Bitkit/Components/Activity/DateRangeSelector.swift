@@ -5,21 +5,21 @@ struct DateRangeSelector: View {
     @ObservedObject var viewModel: ActivityListViewModel
     @State private var startDate: Date
     @State private var endDate: Date
-    
+
     init(viewModel: ActivityListViewModel) {
         self.viewModel = viewModel
         // Initialize with current dates or default to today
         _startDate = State(initialValue: viewModel.startDate ?? Calendar.current.startOfDay(for: Date()))
         _endDate = State(initialValue: viewModel.endDate ?? Date())
     }
-    
+
     private func setDateRange(daysBack: Int) {
         let today = Date()
         let calendar = Calendar.current
-        
+
         // Set end date to today
         endDate = today
-        
+
         // Set start date to X days back at start of day
         if let daysBackDate = calendar.date(byAdding: .day, value: -daysBack, to: today) {
             startDate = calendar.startOfDay(for: daysBackDate)
@@ -106,4 +106,4 @@ struct DateRangeSelector: View {
             }
         }
     }
-} 
+}

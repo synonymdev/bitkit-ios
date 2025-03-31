@@ -14,8 +14,10 @@ struct BalanceHeaderView: View {
                         if let sign {
                             BodySText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
                         }
-                        BodySText("<accent>\(converted.symbol)</accent> \(converted.formatted)", textColor: .textSecondary, accentColor: .textSecondary)
-                            .padding(.bottom, 4)
+                        BodySText(
+                            "<accent>\(converted.symbol)</accent> \(converted.formatted)", textColor: .textSecondary, accentColor: .textSecondary
+                        )
+                        .padding(.bottom, 4)
                     }
                     .transition(
                         .move(edge: .bottom)
@@ -29,7 +31,9 @@ struct BalanceHeaderView: View {
                         if let sign {
                             DisplayText("<accent>\(sign)</accent> \(btcComponents.value)", accentColor: .textSecondary)
                         } else {
-                            DisplayText("\(showBitcoinSymbol ? "<accent>\(btcComponents.symbol)</accent> " : "")\(btcComponents.value)", accentColor: .textSecondary)
+                            DisplayText(
+                                "\(showBitcoinSymbol ? "<accent>\(btcComponents.symbol)</accent> " : "")\(btcComponents.value)",
+                                accentColor: .textSecondary)
                         }
                     }
                     .transition(
@@ -44,8 +48,10 @@ struct BalanceHeaderView: View {
                         if let sign {
                             BodySText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
                         }
-                        BodySText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", textColor: .textSecondary, accentColor: .textSecondary)
-                            .padding(.bottom, 4)
+                        BodySText(
+                            "<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", textColor: .textSecondary, accentColor: .textSecondary
+                        )
+                        .padding(.bottom, 4)
                     }
                     .transition(
                         .move(edge: .bottom)
@@ -85,57 +91,62 @@ struct BalanceHeaderView: View {
     ScrollView {
         VStack(alignment: .leading, spacing: 32) {
             BalanceHeaderView(sats: 123_456)
-                .environmentObject({
-                    let vm = CurrencyViewModel()
-                    vm.primaryDisplay = .bitcoin
-                    vm.displayUnit = .modern
-                    vm.selectedCurrency = "ZAR"
-                    return vm
-                }())
+                .environmentObject(
+                    {
+                        let vm = CurrencyViewModel()
+                        vm.primaryDisplay = .bitcoin
+                        vm.displayUnit = .modern
+                        vm.selectedCurrency = "ZAR"
+                        return vm
+                    }())
 
             Spacer()
 
             BalanceHeaderView(sats: 123_456)
-                .environmentObject({
-                    let vm = CurrencyViewModel()
-                    vm.primaryDisplay = .fiat
-                    vm.selectedCurrency = "USD"
-                    vm.displayUnit = .modern
-                    return vm
-                }())
+                .environmentObject(
+                    {
+                        let vm = CurrencyViewModel()
+                        vm.primaryDisplay = .fiat
+                        vm.selectedCurrency = "USD"
+                        vm.displayUnit = .modern
+                        return vm
+                    }())
 
             Spacer()
 
             BalanceHeaderView(sats: 123_456)
-                .environmentObject({
-                    let vm = CurrencyViewModel()
-                    vm.primaryDisplay = .fiat
-                    vm.selectedCurrency = "EUR"
-                    vm.displayUnit = .modern
-                    return vm
-                }())
+                .environmentObject(
+                    {
+                        let vm = CurrencyViewModel()
+                        vm.primaryDisplay = .fiat
+                        vm.selectedCurrency = "EUR"
+                        vm.displayUnit = .modern
+                        return vm
+                    }())
 
             Spacer()
 
             BalanceHeaderView(sats: 123_456, sign: "+")
-                .environmentObject({
-                    let vm = CurrencyViewModel()
-                    vm.primaryDisplay = .bitcoin
-                    vm.displayUnit = .modern
-                    vm.selectedCurrency = "CHF"
-                    return vm
-                }())
+                .environmentObject(
+                    {
+                        let vm = CurrencyViewModel()
+                        vm.primaryDisplay = .bitcoin
+                        vm.displayUnit = .modern
+                        vm.selectedCurrency = "CHF"
+                        return vm
+                    }())
 
             Spacer()
 
             BalanceHeaderView(sats: 123_456, showBitcoinSymbol: false)
-                .environmentObject({
-                    let vm = CurrencyViewModel()
-                    vm.primaryDisplay = .fiat
-                    vm.displayUnit = .classic
-                    vm.selectedCurrency = "BHD"
-                    return vm
-                }())
+                .environmentObject(
+                    {
+                        let vm = CurrencyViewModel()
+                        vm.primaryDisplay = .fiat
+                        vm.displayUnit = .classic
+                        vm.selectedCurrency = "BHD"
+                        return vm
+                    }())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()

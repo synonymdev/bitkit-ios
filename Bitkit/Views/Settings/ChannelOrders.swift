@@ -3,7 +3,7 @@ import SwiftUI
 struct CopyableText: View {
     let text: String
     @State private var isPressed = false
-    
+
     var body: some View {
         Text(text)
             .font(.system(size: text.count > 20 ? 10 : 12, design: .monospaced))
@@ -25,7 +25,7 @@ struct CopyableText: View {
 
 struct OrderRow: View {
     let order: IBtOrder
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -39,7 +39,7 @@ struct OrderRow: View {
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(4)
             }
-            
+
             HStack {
                 VStack(alignment: .leading) {
                     Text("LSP Balance")
@@ -57,7 +57,7 @@ struct OrderRow: View {
                         .font(.subheadline)
                 }
             }
-            
+
             HStack {
                 VStack(alignment: .leading) {
                     Text("Fees")
@@ -82,7 +82,7 @@ struct OrderRow: View {
 
 struct CJitRow: View {
     let entry: IcJitEntry
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -96,7 +96,7 @@ struct CJitRow: View {
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(4)
             }
-            
+
             HStack {
                 VStack(alignment: .leading) {
                     Text("Channel Size")
@@ -114,14 +114,14 @@ struct CJitRow: View {
                         .font(.subheadline)
                 }
             }
-            
+
             if let error = entry.channelOpenError {
                 Text(error)
                     .font(.system(size: error.count > 50 ? 10 : 12))
                     .foregroundColor(.red)
                     .lineLimit(2)
             }
-            
+
             HStack {
                 Text("Expires: \(entry.expiresAt.prefix(10))")
                     .font(.caption)
@@ -137,7 +137,7 @@ struct DetailRow: View {
     let value: String
     var isError: Bool = false
     @State private var isPressed = false
-    
+
     private var fontSize: CGFloat {
         if value.count > 40 {
             return 11
@@ -146,7 +146,7 @@ struct DetailRow: View {
         }
         return 14
     }
-    
+
     var body: some View {
         HStack {
             Text(label)
@@ -174,7 +174,7 @@ struct DetailRow: View {
 
 struct OrderDetailView: View {
     let order: IBtOrder
-    
+
     var body: some View {
         List {
             Section("Order Details") {
@@ -188,7 +188,7 @@ struct OrderDetailView: View {
                 DetailRow(label: "Network Fee", value: "\(order.networkFeeSat) sats")
                 DetailRow(label: "Service Fee", value: "\(order.serviceFeeSat) sats")
             }
-            
+
             Section("Channel Settings") {
                 DetailRow(label: "Zero Conf", value: order.zeroConf ? "Yes" : "No")
                 DetailRow(label: "Zero Reserve", value: order.zeroReserve ? "Yes" : "No")
@@ -199,7 +199,7 @@ struct OrderDetailView: View {
                 DetailRow(label: "Channel Expires", value: order.channelExpiresAt)
                 DetailRow(label: "Order Expires", value: order.orderExpiresAt)
             }
-            
+
             Section("LSP Information") {
                 DetailRow(label: "Alias", value: order.lspNode.alias)
                 DetailRow(label: "Node ID", value: order.lspNode.pubkey)
@@ -207,7 +207,7 @@ struct OrderDetailView: View {
                     DetailRow(label: "LNURL", value: lnurl)
                 }
             }
-            
+
             if let couponCode = order.couponCode {
                 Section("Discount") {
                     DetailRow(label: "Coupon Code", value: couponCode)
@@ -217,17 +217,17 @@ struct OrderDetailView: View {
                     }
                 }
             }
-            
+
             Section("Timestamps") {
                 DetailRow(label: "Created", value: order.createdAt)
                 DetailRow(label: "Updated", value: order.updatedAt)
             }
-            
+
             if order.state2 == .paid {
                 Button("Open Channel") {
                     Task {
                         Logger.info("Opening channel for order \(order.id)")
-                        
+
                         do {
                             try await CoreService.shared.blocktank.open(orderId: order.id)
                             Logger.info("Channel opened for order \(order.id)")
@@ -245,7 +245,7 @@ struct OrderDetailView: View {
 
 struct CJitDetailView: View {
     let entry: IcJitEntry
-    
+
     var body: some View {
         List {
             Section("Entry Details") {
@@ -256,23 +256,23 @@ struct CJitDetailView: View {
                     DetailRow(label: "Error", value: error, isError: true)
                 }
             }
-            
+
             Section("Fees") {
                 DetailRow(label: "Total Fee", value: "\(entry.feeSat) sats")
                 DetailRow(label: "Network Fee", value: "\(entry.networkFeeSat) sats")
                 DetailRow(label: "Service Fee", value: "\(entry.serviceFeeSat) sats")
             }
-            
+
             Section("Channel Settings") {
                 DetailRow(label: "Node ID", value: entry.nodeId)
                 DetailRow(label: "Expiry Weeks", value: "\(entry.channelExpiryWeeks)")
             }
-            
+
             Section("LSP Information") {
                 DetailRow(label: "Alias", value: entry.lspNode.alias)
                 DetailRow(label: "Node ID", value: entry.lspNode.pubkey)
             }
-            
+
             if !entry.couponCode.isEmpty {
                 Section("Discount") {
                     DetailRow(label: "Coupon Code", value: entry.couponCode)
@@ -282,7 +282,7 @@ struct CJitDetailView: View {
                     }
                 }
             }
-            
+
             Section("Timestamps") {
                 DetailRow(label: "Created", value: entry.createdAt)
                 DetailRow(label: "Updated", value: entry.updatedAt)
@@ -296,7 +296,7 @@ struct CJitDetailView: View {
 struct ChannelOrders: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @State private var isRefreshing = false
-    
+
     var body: some View {
         List {
             Section("Orders") {
@@ -315,7 +315,7 @@ struct ChannelOrders: View {
                     ProgressView()
                 }
             }
-            
+
             Section("cJIT Entries") {
                 if let entries = blocktank.cJitEntries {
                     if entries.isEmpty {

@@ -56,7 +56,7 @@ struct SavingsConfirmView: View {
                         primaryDisplay: .constant(currency.primaryDisplay),
                         overrideSats: .constant(UInt64(totalSats))
                     ) { _ in }
-                        .disabled(true)
+                    .disabled(true)
                 }
                 .padding(.vertical, 16)
 
@@ -144,10 +144,11 @@ struct SavingsConfirmView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(CurrencyViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }

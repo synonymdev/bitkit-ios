@@ -112,7 +112,9 @@ struct SettingsListView: View {
                                 return
                             }
                             do {
-                                if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting || wallet.nodeLifecycleState == .stopping {
+                                if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
+                                    || wallet.nodeLifecycleState == .stopping
+                                {
                                     try await wallet.wipeLightningWallet()
                                 }
                                 try await CoreService.shared.activity.removeAll()

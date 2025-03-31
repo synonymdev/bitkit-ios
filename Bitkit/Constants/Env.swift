@@ -64,7 +64,8 @@ enum Env {
     static func ldkStorage(walletIndex: Int) -> URL {
         switch network {
         case .regtest:
-            return appStorageUrl
+            return
+                appStorageUrl
                 .appendingPathComponent("regtest")
                 .appendingPathComponent("wallet\(walletIndex)/ldk")
         case .bitcoin:
@@ -79,7 +80,8 @@ enum Env {
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
         switch network {
         case .regtest:
-            return appStorageUrl
+            return
+                appStorageUrl
                 .appendingPathComponent("regtest")
                 .appendingPathComponent("wallet\(walletIndex)/core")
         case .bitcoin:
@@ -110,7 +112,7 @@ enum Env {
         case .regtest:
             return [
                 // Staging Blocktank node
-                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", address: "34.65.86.104:9400"),
+                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", address: "34.65.86.104:9400")
             ]
         case .bitcoin:
             return []
@@ -143,13 +145,13 @@ enum Env {
     }
 
     static var btcRatesServer: String {
-        "https://bitkit.stag0.blocktank.to/fx/rates/btc" // TODO: switch to prod when available
+        "https://bitkit.stag0.blocktank.to/fx/rates/btc"  // TODO: switch to prod when available
     }
 
-    static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
-    static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
+    static let fxRateRefreshInterval: TimeInterval = 2 * 60  // 2 minutes
+    static let fxRateStaleThreshold: TimeInterval = 10 * 60  // After this we notify the user that the rates are stale due to a failed refresh
 
-    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
+    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60  // 2 minutes
 
     static var pushNotificationFeatures: [BlocktankNotificationType] = [
         .incomingHtlc,

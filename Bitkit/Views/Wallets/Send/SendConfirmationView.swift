@@ -32,7 +32,7 @@ struct SendConfirmationView: View {
                 accentColor: .greenAccent
             ) {
                 do {
-                    if let _ = app.scannedLightningInvoice, let bolt11 = app.scannedLightningBolt11Invoice {
+                    if app.scannedLightningInvoice != nil, let bolt11 = app.scannedLightningBolt11Invoice {
                         // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
                         // So we need to handle all these cases here.
                         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -49,7 +49,8 @@ struct SendConfirmationView: View {
                                         onFail: { reason in
                                             Logger.error("Lightning payment failed: \(reason)")
                                             app.toast(type: .error, title: "Payment failed", description: reason)
-                                            continuation.resume(throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                            continuation.resume(
+                                                throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
                                         }
                                     )
                                     Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
@@ -73,7 +74,7 @@ struct SendConfirmationView: View {
                 } catch {
                     app.toast(error)
                     Logger.error("Error sending: \(error)")
-                    throw error // Passing error up to SwipeButton so it knows to reset state
+                    throw error  // Passing error up to SwipeButton so it knows to reset state
                 }
             }
         }

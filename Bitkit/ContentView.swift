@@ -140,7 +140,7 @@ struct ContentView: View {
                 app.toast(error)
             }
         }
-        .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
+        .handleLightningStateOnScenePhaseChange()  // Will stop and start LDK-node in foreground app as needed
         .onChange(of: wallet.nodeLifecycleState) { state in
             if state == .initializing {
                 walletIsInitializing = true

@@ -35,14 +35,15 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
-    private let retryInterval: TimeInterval = 60 // 1 min
-    private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
+    private let retryInterval: TimeInterval = 60  // 1 min
+    private let giveUpInterval: TimeInterval = 30 * 60  // 30 min
     private var coopCloseRetryTask: Task<Void, Never>?
 
-    init(coreService: CoreService = .shared,
-         lightningService: LightningService = .shared,
-         currencyService: CurrencyService = .shared)
-    {
+    init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        currencyService: CurrencyService = .shared
+    ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
@@ -206,7 +207,7 @@ class TransferViewModel: ObservableObject {
     func getDefaultLspBalance(clientBalanceSat: UInt64, maxLspBalance: UInt64) -> UInt64 {
         // Get current rates
         guard let rates = currencyService.loadCachedRates(),
-              let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
+            let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
         else {
             Logger.error("Failed to get rates for getDefaultLspBalance", context: "TransferViewModel")
             return 0
@@ -355,7 +356,7 @@ class TransferViewModel: ObservableObject {
                     Logger.error("Error during coop close retry", context: error.localizedDescription)
                 }
 
-                try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1000000000))
+                try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1_000_000_000))
             }
 
             Logger.info("Giving up on coop close.")
