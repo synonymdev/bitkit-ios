@@ -20,6 +20,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
+    @AppStorage("channelCount") var channelCount: Int = 0 //Keeping a cached version of this so we can better aniticipate the receive flow UI
 
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
@@ -71,7 +72,18 @@ class WalletViewModel: ObservableObject {
                     self.syncState()
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
-                        handler(event)
+                        handler(event)          
+                    }
+                    
+                    // If payment received or new channel events, refresh BIP21 for instantly usable QR in receive view
+                    switch event {
+                    case .paymentReceived, .channelReady, .channelClosed:
+                        self.bolt11 = ""
+                        Task {
+                            try? await self.refreshBip21()
+                        }
+                    default:
+                        break
                     }
                 }
             })
@@ -168,18 +180,19 @@ class WalletViewModel: ObservableObject {
 
     func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let eventId = String(hash)
 
         // Add event listener for this specific payment
-        addOnEvent(id: hash.description) { event in
+        addOnEvent(id: eventId) { event in
             switch event {
             case .paymentSuccessful(paymentId: _, let paymentHash, feePaidMsat: _):
                 if paymentHash == hash {
-                    self.removeOnEvent(id: hash.description)
+                    self.removeOnEvent(id: eventId)
                     onSuccess()
                 }
             case .paymentFailed(paymentId: _, let paymentHash, let reason):
                 if paymentHash == hash {
-                    self.removeOnEvent(id: hash.description)
+                    self.removeOnEvent(id: eventId)
                     onFail(reason.debugDescription)
                 }
             default:
@@ -202,6 +215,10 @@ class WalletViewModel: ObservableObject {
         balanceDetails = lightningService.balances
         peers = lightningService.peers
         channels = lightningService.channels
+        
+        if let channels {
+            channelCount = channels.count
+        }
 
         if let balanceDetails {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
@@ -236,7 +253,7 @@ class WalletViewModel: ObservableObject {
             }
         }
 
-        bip21 = "bitcoin:\(onchainAddress)"
+        var newBip21 = "bitcoin:\(onchainAddress)"
 
         if channels?.count ?? 0 > 0 {
             if bolt11.isEmpty {
@@ -254,8 +271,10 @@ class WalletViewModel: ObservableObject {
         }
 
         if !bolt11.isEmpty {
-            bip21 += "?lightning=\(bolt11)"
+            newBip21 += "?lightning=\(bolt11)"
         }
+        
+        bip21 = newBip21
     }
 
     private func startPolling() {
