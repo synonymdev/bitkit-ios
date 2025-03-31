@@ -67,23 +67,36 @@ struct CreateCjitView: View {
             }
 
             Divider()
-            Button("Continue") {
-                Task { @MainActor in
-                    if let amount = UInt64(amount), let nodeId = wallet.nodeId {
-                        isCreatingInvoice = true
-                        do {
-                            let entry = try await blocktank.createCjit(amountSats: amount, description: "Bitkit")
-                            onCjitCreated(entry.invoice.request)
-                        } catch {
-                            app.toast(error)
-                            Logger.error(error)
+            CustomButton(title: "Continue") {
+                guard let amount = UInt64(amount) else { return }
+                
+                // Wait until node is running if it's in starting state
+                if wallet.nodeLifecycleState == .starting {
+                    // Wait for the node to be fully running
+                    while wallet.nodeLifecycleState == .starting {
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+                        // Break if task cancelled or app state changes
+                        if Task.isCancelled {
+                            break
                         }
-                        isCreatingInvoice = false
                     }
+                }
+                
+                // Only proceed if node is running
+                if wallet.nodeLifecycleState == .running {
+                    do {
+                        let entry = try await blocktank.createCjit(amountSats: amount, description: "Bitkit")
+                        onCjitCreated(entry.invoice.request)
+                    } catch {
+                        app.toast(error)
+                        Logger.error(error)
+                    }
+                } else {
+                    // Show error if node is not running
+                    app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }
             .disabled(isCreatingInvoice)
-            .padding()
         }
         .padding()
         .navigationTitle("Receive Bitcoin")
