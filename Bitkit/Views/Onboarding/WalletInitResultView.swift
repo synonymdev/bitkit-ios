@@ -106,7 +106,7 @@ struct WalletInitResultView: View {
             return "Your new wallet is ready to use."
         case .restored:
             return "You have successfully restored your wallet from backup. Enjoy Bitkit!"
-        case let .failed(error):
+        case .failed(let error):
             return "An error occurred: \(error.localizedDescription)"
         }
     }

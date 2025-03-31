@@ -11,11 +11,11 @@ struct TappableTextModifier: ViewModifier {
     let url: String
 
     func body(content: Content) -> some View {
-        Button(action: {
+        Button {
             if let url = URL(string: url) {
                 UIApplication.shared.open(url)
             }
-        }) {
+        } label: {
             content
         }
     }

@@ -27,7 +27,7 @@ struct ContentView: View {
                 // Mnemonic found in keychain
                 if walletIsInitializing == true {
                     // New wallet is being created or restored
-                    if case let .errorStarting(error) = wallet.nodeLifecycleState {
+                    if case .errorStarting(let error) = wallet.nodeLifecycleState {
                         WalletInitResultView(result: .failed(error))
                     } else {
                         InitializingWalletView(shouldFinish: $walletInitShouldFinish) {

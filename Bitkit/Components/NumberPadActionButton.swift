@@ -14,10 +14,10 @@ struct NumberPadActionButton: View {
     var action: () -> Void
 
     var body: some View {
-        Button(action: {
+        Button {
             Haptics.play(.buttonTap)
             action()
-        }) {
+        } label: {
             HStack(spacing: 8) {
                 if let imageName {
                     Image(imageName)
