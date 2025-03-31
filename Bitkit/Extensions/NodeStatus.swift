@@ -11,9 +11,9 @@ import LDKNode
 extension NodeStatus {
     var debugState: String {
         var debug = """
-        Running: \(isRunning ? "✅" : "❌")
-        Current best block \(currentBestBlock.height)
-        """
+            Running: \(isRunning ? "✅" : "❌")
+            Current best block \(currentBestBlock.height)
+            """
 
         if let latestLightningWalletSyncTimestamp {
             debug += "\nLightning synced \(Date(timeIntervalSince1970: TimeInterval(latestLightningWalletSyncTimestamp)).description)\n"

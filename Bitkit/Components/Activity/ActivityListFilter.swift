@@ -35,4 +35,4 @@ struct ActivityListFilter: View {
             TagSelector(viewModel: viewModel)
         }
     }
-} 
+}

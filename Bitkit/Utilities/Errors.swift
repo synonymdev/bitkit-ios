@@ -114,14 +114,14 @@ struct AppError: LocalizedError {
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "service error")
     }
 
-//    private init(bdkError: Error) {
-//        message = "Onchain wallet error"
-//        debugMessage = bdkError.localizedDescription
-//
-//
-//
-//        Logger.error("\(message) [\(debugMessage ?? "")]", context: "BdkError")
-//    }
+    //    private init(bdkError: Error) {
+    //        message = "Onchain wallet error"
+    //        debugMessage = bdkError.localizedDescription
+    //
+    //
+    //
+    //        Logger.error("\(message) [\(debugMessage ?? "")]", context: "BdkError")
+    //    }
 
     private init(ldkBuildError: BuildError) {
         switch ldkBuildError as BuildError {
@@ -191,7 +191,7 @@ struct AppError: LocalizedError {
             message = "Failed to create refund"
             debugMessage = ldkMessage
         case let .PaymentSendingFailed(message: ldkMessage):
-//            message = "Failed to send payment. \(ldkMessage)"
+            //            message = "Failed to send payment. \(ldkMessage)"
             message = ldkMessage
             debugMessage = ldkMessage
         case let .ProbeSendingFailed(message: ldkMessage):

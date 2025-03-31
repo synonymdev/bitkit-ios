@@ -12,14 +12,16 @@ struct ProgressSteps: View {
                     // Dashed line background
                     Path { path in
                         let y = geometry.size.height / 2
-                        let padding = 36.0 * 2.5 // Account for circle radius (16) + horizontal padding (20)
+                        let padding = 36.0 * 2.5  // Account for circle radius (16) + horizontal padding (20)
                         path.move(to: CGPoint(x: padding, y: y))
                         path.addLine(to: CGPoint(x: geometry.size.width - padding, y: y))
                     }
-                    .stroke(style: StrokeStyle(
-                        lineWidth: 1,
-                        dash: [4, 4]
-                    ))
+                    .stroke(
+                        style: StrokeStyle(
+                            lineWidth: 1,
+                            dash: [4, 4]
+                        )
+                    )
                     .foregroundColor(Color.gray)
 
                     // Circles with numbers
@@ -73,26 +75,32 @@ struct SettingUpView: View {
     @State private var outerRotation: Double = 0
     @State private var innerRotation: Double = 0
     @State private var transferRotation: Double = 0
-    @State private var randomOkText: String = LocalizedRandom("common__ok_random", comment: "") // Keep in state so we don't get a new random text on each render
+    @State private var randomOkText: String = LocalizedRandom("common__ok_random", comment: "")  // Keep in state so we don't get a new random text on each render
 
     var isTransfering: Bool {
         return transfer.lightningSetupStep < 3
     }
 
     let steps = [
-        NSLocalizedString("lightning__setting_up_step1", comment: ""), // Processing Payment
-        NSLocalizedString("lightning__setting_up_step2", comment: ""), // Payment Successful
-        NSLocalizedString("lightning__setting_up_step3", comment: ""), // Queued For Opening
-        NSLocalizedString("lightning__setting_up_step4", comment: ""), // Opening Connection
+        NSLocalizedString("lightning__setting_up_step1", comment: ""),  // Processing Payment
+        NSLocalizedString("lightning__setting_up_step2", comment: ""),  // Payment Successful
+        NSLocalizedString("lightning__setting_up_step3", comment: ""),  // Queued For Opening
+        NSLocalizedString("lightning__setting_up_step4", comment: ""),  // Opening Connection
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString(isTransfering ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""), accentColor: .purpleAccent)
-                    .padding(.top, 16)
+                DisplayText(
+                    NSLocalizedString(
+                        isTransfering ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""),
+                    accentColor: .purpleAccent
+                )
+                .padding(.top, 16)
 
-                BodyMText(NSLocalizedString(isTransfering ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""), textColor: .textSecondary, accentColor: .white)
+                BodyMText(
+                    NSLocalizedString(isTransfering ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""),
+                    textColor: .textSecondary, accentColor: .white)
 
                 Spacer()
 
@@ -199,12 +207,13 @@ struct SettingUpView: View {
     NavigationView {
         SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                vm.onOrderCreated(order: IBtOrder.mock(state2: .created))
-                vm.lightningSetupStep = 0
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    vm.onOrderCreated(order: IBtOrder.mock(state2: .created))
+                    vm.lightningSetupStep = 0
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -213,12 +222,13 @@ struct SettingUpView: View {
     NavigationView {
         SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                vm.onOrderCreated(order: IBtOrder.mock(state2: .paid))
-                vm.lightningSetupStep = 1
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    vm.onOrderCreated(order: IBtOrder.mock(state2: .paid))
+                    vm.lightningSetupStep = 1
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -227,12 +237,13 @@ struct SettingUpView: View {
     NavigationView {
         SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                vm.onOrderCreated(order: IBtOrder.mock(state2: .executed))
-                vm.lightningSetupStep = 2
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    vm.onOrderCreated(order: IBtOrder.mock(state2: .executed))
+                    vm.lightningSetupStep = 2
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }
@@ -241,12 +252,13 @@ struct SettingUpView: View {
     NavigationView {
         SettingUpView()
             .environmentObject(AppViewModel())
-            .environmentObject({
-                let vm = TransferViewModel()
-                vm.onOrderCreated(order: IBtOrder.mock(state2: .executed, channel: .mock()))
-                vm.lightningSetupStep = 4
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = TransferViewModel()
+                    vm.onOrderCreated(order: IBtOrder.mock(state2: .executed, channel: .mock()))
+                    vm.lightningSetupStep = 4
+                    return vm
+                }())
     }
     .preferredColorScheme(.dark)
 }

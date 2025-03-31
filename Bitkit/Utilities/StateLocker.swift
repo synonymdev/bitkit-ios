@@ -34,17 +34,18 @@ class StateLocker {
         var expiryTime: TimeInterval {
             switch self {
             case .pushNotificationExtension:
-                return 35 // Should never run over 30s
+                return 35  // Should never run over 30s
             case .foregroundApp:
-                return 5 * 60 // TODO: test this out
+                return 5 * 60  // TODO: test this out
             }
         }
 
         static var current: Environment {
             #if UNIT_TESTING
-            return StateLocker.unitTestCustomEnvironment ?? (Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp)
+                return StateLocker.unitTestCustomEnvironment
+                    ?? (Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp)
             #else
-            return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
+                return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
             #endif
         }
     }
@@ -56,15 +57,15 @@ class StateLocker {
     }
 
     #if UNIT_TESTING
-    static var unitTestCustomDate = Date()
-    static func injectTestDate(_ date: Date) {
-        unitTestCustomDate = date
-    }
+        static var unitTestCustomDate = Date()
+        static func injectTestDate(_ date: Date) {
+            unitTestCustomDate = date
+        }
 
-    static var unitTestCustomEnvironment: Environment?
-    static func injectTestEnvironment(_ environment: Environment?) {
-        unitTestCustomEnvironment = environment ?? Environment.current
-    }
+        static var unitTestCustomEnvironment: Environment?
+        static func injectTestEnvironment(_ environment: Environment?) {
+            unitTestCustomEnvironment = environment ?? Environment.current
+        }
     #endif
 
     private struct LockFileContent: Codable {
@@ -77,9 +78,9 @@ class StateLocker {
         init() {
             self.environment = Environment.current
             #if UNIT_TESTING
-            self.date = StateLocker.unitTestCustomDate
+                self.date = StateLocker.unitTestCustomDate
             #else
-            self.date = Date()
+                self.date = Date()
             #endif
         }
     }

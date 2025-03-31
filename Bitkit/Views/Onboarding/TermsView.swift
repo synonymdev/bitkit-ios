@@ -36,7 +36,7 @@ struct TermsView: View {
                     TosContent()
                         .font(Fonts.regular(size: 17))
                         .foregroundColor(.textPrimary)
-                        .padding(.bottom, 300) // Extra padding for keeping it scrollable past footer
+                        .padding(.bottom, 300)  // Extra padding for keeping it scrollable past footer
                 }
                 .padding()
             }

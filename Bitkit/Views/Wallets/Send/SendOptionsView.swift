@@ -36,11 +36,13 @@ struct SendOptionsView: View {
                 }
 
                 HStack {
-                    NavigationLink(destination: ScannerView(
-                        showSendAmountView: $showSendAmountView,
-                        showSendConfirmationView: $showSendConfirmationView,
-                        onResultDelay: 0.65 // Slight delay so this view can dismiss before the next view appears
-                    )) {
+                    NavigationLink(
+                        destination: ScannerView(
+                            showSendAmountView: $showSendAmountView,
+                            showSendConfirmationView: $showSendConfirmationView,
+                            onResultDelay: 0.65  // Slight delay so this view can dismiss before the next view appears
+                        )
+                    ) {
                         Text("Scan QR Code")
                     }
                 }

@@ -10,7 +10,10 @@ struct TransferAmount: View {
     @EnvironmentObject var currency: CurrencyViewModel
     var onSatsChange: (UInt64) -> Void
 
-    init(defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil), onSatsChange: @escaping (UInt64) -> Void) {
+    init(
+        defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil),
+        onSatsChange: @escaping (UInt64) -> Void
+    ) {
         _satsAmount = State(initialValue: defaultValue > 0 ? String(defaultValue) : "")
         _fiatAmount = State(initialValue: primaryDisplay.wrappedValue == .fiat ? "0" : "")
         _primaryDisplay = primaryDisplay
@@ -84,7 +87,7 @@ struct TransferAmount: View {
 
                         // Only convert if we have a valid number
                         if !fiatAmount.isEmpty, let fiatDouble = Double(fiatAmount),
-                           let convertedSats = currency.convert(fiatAmount: fiatDouble)
+                            let convertedSats = currency.convert(fiatAmount: fiatDouble)
                         {
                             satsAmount = String(convertedSats)
                             onSatsChange(convertedSats)
@@ -151,20 +154,22 @@ struct TransferAmount: View {
 #Preview {
     VStack(spacing: 32) {
         TransferAmount(primaryDisplay: .constant(.bitcoin)) { _ in }
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.primaryDisplay = .bitcoin
-                vm.displayUnit = .modern
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    vm.displayUnit = .modern
+                    return vm
+                }())
 
         TransferAmount(primaryDisplay: .constant(.fiat)) { _ in }
-            .environmentObject({
-                let vm = CurrencyViewModel()
-                vm.primaryDisplay = .fiat
-                vm.selectedCurrency = "USD"
-                return vm
-            }())
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .fiat
+                    vm.selectedCurrency = "USD"
+                    return vm
+                }())
     }
     .padding()
     .preferredColorScheme(.dark)

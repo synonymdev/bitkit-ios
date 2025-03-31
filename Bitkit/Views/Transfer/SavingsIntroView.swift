@@ -15,9 +15,10 @@ struct SavingsIntroView: View {
             NavigationLink(destination: SavingsAvailabilityView()) {
                 CustomButton(title: NSLocalizedString("lightning__savings_intro__button", comment: ""))
             }
-            .simultaneousGesture(TapGesture().onEnded {
-                app.hasSeenTransferToSavingsIntro = true
-            })
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    app.hasSeenTransferToSavingsIntro = true
+                })
         }
         .padding()
         .navigationBarTitleDisplayMode(.inline)

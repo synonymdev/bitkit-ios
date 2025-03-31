@@ -38,7 +38,7 @@ struct CreateCjitView: View {
                         Text("\(info.options.minChannelSizeSat / 2)")
                     }
                     .padding(.trailing)
-                    .contentShape(Rectangle()) // Makes entire area tappable
+                    .contentShape(Rectangle())  // Makes entire area tappable
                     .onTapGesture {
                         amount = String(info.options.minChannelSizeSat / 2)
                     }
@@ -50,7 +50,7 @@ struct CreateCjitView: View {
                             .foregroundColor(.gray)
                         Text("\(info.options.maxChannelSizeSat / 2)")
                     }
-                    .contentShape(Rectangle()) // Makes entire area tappable
+                    .contentShape(Rectangle())  // Makes entire area tappable
                     .onTapGesture {
                         amount = String(info.options.maxChannelSizeSat / 2)
                     }

@@ -5,16 +5,16 @@ struct BackupWalletView: View {
     @State private var showMnemonic: Bool = false
     @State private var copiedToClipboard: Bool = false
     @EnvironmentObject var app: AppViewModel
-    
+
     private var mnemonicWords: [String] {
         mnemonic.split(separator: " ").map(String.init)
     }
-    
+
     private var columnLength: Int {
         let totalWords = mnemonicWords.count
         return totalWords / 2
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -22,12 +22,12 @@ struct BackupWalletView: View {
                     Text("Write down these \(mnemonicWords.count) words in the right order and store them in a safe place.")
                         .padding()
                         .multilineTextAlignment(.center)
-                    
+
                     VStack(alignment: .leading) {
                         HStack(alignment: .top) {
                             // First column
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(0..<columnLength) { index in
+                                ForEach(0 ..< columnLength) { index in
                                     HStack(spacing: 8) {
                                         Text("\(index + 1).")
                                             .foregroundColor(.secondary)
@@ -36,12 +36,12 @@ struct BackupWalletView: View {
                                 }
                             }
                             .padding()
-                            
+
                             Spacer(minLength: 24)
-                            
+
                             // Second column
                             VStack(alignment: .leading, spacing: 8) {
-                                ForEach(columnLength..<mnemonicWords.count) { index in
+                                ForEach(columnLength ..< mnemonicWords.count) { index in
                                     HStack(spacing: 8) {
                                         Text("\(index + 1).")
                                             .foregroundColor(.secondary)
@@ -63,11 +63,11 @@ struct BackupWalletView: View {
                         .onTapGesture {
                             UIPasteboard.general.string = mnemonic
                             Haptics.play(.copiedToClipboard)
-                            
+
                             withAnimation {
                                 copiedToClipboard = true
                             }
-                            
+
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                 withAnimation {
                                     copiedToClipboard = false

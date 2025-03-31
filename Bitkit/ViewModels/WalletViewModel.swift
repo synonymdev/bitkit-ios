@@ -11,10 +11,10 @@ import SwiftUI
 @MainActor
 class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
-    @Published var isSyncingWallet = false // Syncing both LN and on chain
-    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
-    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
-    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
+    @Published var isSyncingWallet = false  // Syncing both LN and on chain
+    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0  // Combined onchain and LN
+    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0  // Combined onchain
+    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0  // Combined LN
 
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -171,12 +171,12 @@ class WalletViewModel: ObservableObject {
         // Add event listener for this specific payment
         addOnEvent(id: hash.description) { event in
             switch event {
-            case .paymentSuccessful(paymentId: _, paymentHash: let paymentHash, feePaidMsat: _):
+            case .paymentSuccessful(paymentId: _, let paymentHash, feePaidMsat: _):
                 if paymentHash == hash {
                     self.removeOnEvent(id: hash.description)
                     onSuccess()
                 }
-            case .paymentFailed(paymentId: _, paymentHash: let paymentHash, reason: let reason):
+            case .paymentFailed(paymentId: _, let paymentHash, let reason):
                 if paymentHash == hash {
                     self.removeOnEvent(id: hash.description)
                     onFail(reason.debugDescription)

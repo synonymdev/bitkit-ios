@@ -14,7 +14,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
 
-    let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
+    let sleepTime: UInt64 = 500_000_000  // 0.5 seconds
 
     func body(content: Content) -> some View {
         content
