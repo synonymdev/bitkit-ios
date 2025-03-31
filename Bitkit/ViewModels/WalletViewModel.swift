@@ -127,8 +127,9 @@ class WalletViewModel: ObservableObject {
         bip21 = ""
     }
 
-    func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {
-        try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+    func createInvoice(amountSats: UInt64? = nil, description: String, expirySecs: UInt32? = nil) async throws -> String {
+        let finalExpirySecs = expirySecs ?? 60 * 60 * 24
+        return try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: finalExpirySecs)
     }
 
     func sync() async throws {
@@ -225,22 +226,35 @@ class WalletViewModel: ObservableObject {
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
-            // TODO: check if onchain has been used and generate new on if it has
+            // Check if current address has been used
+            let addressInfo = try await AddressChecker.getAddressInfo(address: onchainAddress)
+            let hasTransactions = addressInfo.chain_stats.tx_count > 0 || addressInfo.mempool_stats.tx_count > 0
+            
+            if hasTransactions {
+                // Address has been used, generate a new one
+                onchainAddress = try await lightningService.newAddress()
+            }
         }
 
         bip21 = "bitcoin:\(onchainAddress)"
 
-        if !bolt11.isEmpty {
-            bip21 += "?lightning=\(bolt11)"
+        if channels?.count ?? 0 > 0 {
+            if bolt11.isEmpty {
+                bolt11 = try await self.createInvoice(description: "Bitkit")
+            } else {
+                //Existing invoice needs to be checked for expiry
+                if case .lightning(let lightningInvoice) = try await decode(invoice: bolt11) {
+                    if lightningInvoice.isExpired {
+                        bolt11 = try await self.createInvoice(description: "Bitkit")
+                    }
+                }
+            }
+        } else {
+            bolt11 = ""
         }
 
-        // TODO: check current bolt11 for expiry and/or if it's been used
-
-        if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
-            // Append lightning invoice if we have incoming capacity
-            bolt11 = try await lightningService.receive(description: "Bitkit")
-
-            bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
+        if !bolt11.isEmpty {
+            bip21 += "?lightning=\(bolt11)"
         }
     }
 
