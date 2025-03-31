@@ -151,7 +151,7 @@ struct SendConfirmationView: View {
                     Text("Confirming in")
                         .foregroundColor(.secondary)
                         .font(.caption)
-                    Text("TODO")
+                    Text("1 second")
                 }
             }
             .padding(.vertical)
