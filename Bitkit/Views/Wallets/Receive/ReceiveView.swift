@@ -23,9 +23,6 @@ struct ReceiveViewContent: View {
     
     var body: some View {
         VStack {
-            Text("Receive Bitcoin")
-                .padding()
-            
             TabView(selection: $selectedTab) {
                 receiveQR
                     .tag(0)
@@ -39,6 +36,7 @@ struct ReceiveViewContent: View {
             
             if (nodeLifecycleState == .running || nodeLifecycleState == .starting) && channelsCount == 0 {
                 receiveLightningFunds
+                    .padding(.top, 16)
             }
         }
         .padding()
@@ -46,15 +44,29 @@ struct ReceiveViewContent: View {
             // Set cjitActive based on cjitInvoice when the view appears
             cjitActive = cjitInvoice != nil
         }
+        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
+        .navigationBarTitleDisplayMode(.inline)
     }
     
     @ViewBuilder
     var receiveQR: some View {
         let uri = cjitInvoice ?? bip21
         
+        // Determine the appropriate image asset based on available content
+        let imageAsset: String? = {
+            if let cjitInvoice = cjitInvoice, !cjitInvoice.isEmpty {
+                return "ln"
+            } else if !bolt11.isEmpty && !onchainAddress.isEmpty {
+                return "btc-and-ln"
+            } else if !onchainAddress.isEmpty {
+                return "btc"
+            }
+            return nil
+        }()
+        
         VStack {
             if !uri.isEmpty {
-                QR(content: uri)
+                QR(content: uri, imageAsset: imageAsset)
                 
                 HStack {
                     Button("Edit") {}
@@ -102,13 +114,10 @@ struct ReceiveViewContent: View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading) {
                 if cjitInvoice == nil {
-                    Text("Want to receive lightning funds?")
-                        .font(.title2)
-                        .multilineTextAlignment(.leading)
+                    HeadlineText(NSLocalizedString("wallet__receive_text_lnfunds", comment: ""), accentColor: .purpleAccent)
                 }
                 
-                Text("Receive on Spending Balance")
-                    .multilineTextAlignment(.leading)
+                BodyMText(NSLocalizedString("wallet__receive_spending", comment: ""))
                     .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -171,9 +180,9 @@ struct ReceiveView: View {
             )
         }
         .task {
-            do {
+            do {                
                 try await withThrowingTaskGroup(of: Void.self) { group in
-                    group.addTask { try await wallet.refreshBip21() }
+                    group.addTask { try await refreshBip21() }
                     group.addTask { try await blocktank.refreshInfo() }
                     try await group.waitForAll()
                 }
@@ -181,57 +190,103 @@ struct ReceiveView: View {
                 app.toast(error)
             }
         }
+        .onChange(of: wallet.nodeLifecycleState) { newState in
+            if newState == .running {
+                Task {
+                    await refreshBip21()
+                }
+            }
+        }
+    }
+
+    func refreshBip21() async {
+        guard wallet.nodeLifecycleState == .running else { return }
+        do {
+            try await wallet.refreshBip21()
+        } catch {
+            app.toast(error)
+        }
     }
 }
 
 // Previews
+@available(iOS 16.0, *)
 #Preview("Onchain Only") {
-    NavigationView {
-        ReceiveViewContent(
-            bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            bolt11: "",
-            nodeLifecycleState: .running,
-            channelsCount: 0,
-            cjitInvoice: nil,
-            onCjitToggle: { _ in },
-            onCreateCjit: { _ in }
+        VStack { }
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    ReceiveViewContent(
+                        bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                        onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                        bolt11: "",
+                        nodeLifecycleState: .running,
+                        channelsCount: 0,
+                        cjitInvoice: nil,
+                        onCjitToggle: { _ in },
+                        onCreateCjit: { _ in }
+                    )
+                    .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
         )
-    }
     .preferredColorScheme(.dark)
 }
 
+@available(iOS 16.0, *)
 #Preview("With Lightning") {
-    NavigationView {
-        ReceiveViewContent(
-            bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
-            onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            bolt11: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
-            nodeLifecycleState: .running,
-            channelsCount: 1,
-            cjitInvoice: nil,
-            onCjitToggle: { _ in },
-            onCreateCjit: { _ in }
+        VStack { }
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    ReceiveViewContent(
+                        bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                        bolt11: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        nodeLifecycleState: .running,
+                        channelsCount: 1,
+                        cjitInvoice: nil,
+                        onCjitToggle: { _ in },
+                        onCreateCjit: { _ in }
+                    )
+                    .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
         )
-    }
     .preferredColorScheme(.dark)
 }
 
+@available(iOS 16.0, *)
 #Preview("With CJIT") {
-    NavigationView {
-        ReceiveViewContent(
-            bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-            bolt11: "",
-            nodeLifecycleState: .running,
-            channelsCount: 0,
-            cjitInvoice: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
-            onCjitToggle: { _ in },
-            onCreateCjit: { _ in }
+        VStack { }
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    ReceiveViewContent(
+                        bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                        onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+                        bolt11: "",
+                        nodeLifecycleState: .running,
+                        channelsCount: 0,
+                        cjitInvoice: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        onCjitToggle: { _ in },
+                        onCreateCjit: { _ in }
+                    )
+                    .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
+                    .navigationBarTitleDisplayMode(.inline)
+                }
+                .environmentObject(WalletViewModel())
+                .environmentObject(AppViewModel())
+                .environmentObject(BlocktankViewModel())
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
         )
-    }
     .preferredColorScheme(.dark)
-    .environmentObject(WalletViewModel())
-    .environmentObject(AppViewModel())
-    .environmentObject(BlocktankViewModel())
 }
