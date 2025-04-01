@@ -15,7 +15,7 @@ struct CreateCjitView: View {
     @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
 
-    @State private var satsAmount: UInt64 = 0
+    @State private var amountSats: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var createdEntry: IcJitEntry?
@@ -26,7 +26,7 @@ struct CreateCjitView: View {
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
                     Haptics.play(.buttonTap)
-                    satsAmount = newSats
+                    amountSats = newSats
                     overrideSats = nil
                 }
                 .padding(.vertical, 16)
@@ -35,10 +35,17 @@ struct CreateCjitView: View {
 
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading) {
-                        BodySText("Minimum", textColor: .textSecondary)
+                        BodySText(NSLocalizedString("fee__minimum__title", comment: ""), textColor: .textSecondary)
                         if let minSats = blocktank.minCjitSats {
-                            BodySText("\(minSats)") //TODO: handle conversion to fiat if needed
-                        }  else {
+                            if let converted = currency.convert(sats: minSats) {
+                                if primaryDisplay == .bitcoin {
+                                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                                    BodySText("\(btcComponents.symbol) \(btcComponents.value)")
+                                } else {
+                                    BodySText("\(converted.symbol) \(converted.formatted)")
+                                }
+                            }
+                        } else {
                             ProgressView()
                         }
                     }
@@ -61,7 +68,7 @@ struct CreateCjitView: View {
             Spacer()
 
             CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
-                guard satsAmount > 0 else { return }
+                guard amountSats > 0 else { return }
                 
                 // Wait until node is running if it's in starting state
                 if wallet.nodeLifecycleState == .starting {
@@ -78,7 +85,7 @@ struct CreateCjitView: View {
                 // Only proceed if node is running
                 if wallet.nodeLifecycleState == .running {
                     do {
-                        let entry = try await blocktank.createCjit(amountSats: satsAmount, description: "Bitkit")
+                        let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
                         createdEntry = entry
                         navigateToConfirmation = true
                     } catch {
@@ -90,7 +97,7 @@ struct CreateCjitView: View {
                     app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }
-            .disabled(satsAmount == 0)
+            .disabled(amountSats == 0)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
@@ -105,7 +112,7 @@ struct CreateCjitView: View {
             NavigationLink(
                 destination: Group {
                     if let entry = createdEntry {
-                        CjitConfirmationView(entry: entry, onCjitCreated: onCjitCreated)
+                        CjitConfirmationView(entry: entry, onCjitCreated: onCjitCreated, receiveAmountSats: amountSats)
                     }
                 },
                 isActive: $navigateToConfirmation

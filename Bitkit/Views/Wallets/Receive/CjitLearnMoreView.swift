@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CjitLearnMoreView: View {
     let entry: IcJitEntry
+    let receiveAmountSats: UInt64
     
     @EnvironmentObject var currency: CurrencyViewModel
     @Environment(\.presentationMode) var presentationMode
@@ -17,7 +18,7 @@ struct CjitLearnMoreView: View {
                 SubtitleText(NSLocalizedString("wallet__receive_liquidity__label_additional", comment: ""))
                 LightningChannel(
                     capacity: entry.channelSizeSat,
-                    localBalance: entry.channelSizeSat - entry.feeSat,
+                    localBalance: receiveAmountSats - entry.feeSat,
                     remoteBalance: entry.feeSat,
                     status: .open,
                     showLabels: true
@@ -46,7 +47,7 @@ struct CjitLearnMoreView: View {
             isPresented: .constant(true),
             content: {
                 NavigationView {
-                    CjitLearnMoreView(entry: IcJitEntry.mock())
+                    CjitLearnMoreView(entry: IcJitEntry.mock(), receiveAmountSats: 100_000)
                         .environmentObject(CurrencyViewModel())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
