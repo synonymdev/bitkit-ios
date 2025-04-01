@@ -18,7 +18,8 @@ struct CreateCjitView: View {
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
-    @State private var isCreatingInvoice = false
+    @State private var createdEntry: IcJitEntry?
+    @State private var navigateToConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -78,7 +79,8 @@ struct CreateCjitView: View {
                 if wallet.nodeLifecycleState == .running {
                     do {
                         let entry = try await blocktank.createCjit(amountSats: satsAmount, description: "Bitkit")
-                        onCjitCreated(entry.invoice.request)
+                        createdEntry = entry
+                        navigateToConfirmation = true
                     } catch {
                         app.toast(error)
                         Logger.error(error)
@@ -88,16 +90,29 @@ struct CreateCjitView: View {
                     app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }
-            .disabled(isCreatingInvoice || satsAmount == 0)
+            .disabled(satsAmount == 0)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
+        .sheetBackground()
         .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             primaryDisplay = currency.primaryDisplay
             try? await blocktank.refreshMinCjitSats()
         }
+        .background(
+            NavigationLink(
+                destination: Group {
+                    if let entry = createdEntry {
+                        CjitConfirmationView(entry: entry, onCjitCreated: onCjitCreated)
+                    }
+                },
+                isActive: $navigateToConfirmation
+            ) {
+                EmptyView()
+            }
+        )
     }
     
     private var amountButtons: some View {

@@ -42,14 +42,7 @@ struct ReceiveViewContent: View {
                     .padding()
             }
         }
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [Color.white64.opacity(0.15), Color.black]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .background(Color.black)
+        .sheetBackground()
         .onAppear {
             // Set cjitActive based on cjitInvoice when the view appears
             cjitActive = cjitInvoice != nil
