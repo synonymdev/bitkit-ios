@@ -256,7 +256,7 @@ struct CustomButton: View {
             Group {
                 if variant == .tertiary {
                     RoundedRectangle(cornerRadius: size.cornerRadius)
-                        .fill(Color.white10)
+                        .fill(isPressed ? Color.white32 : Color.white10)
                         .background(
                             BackdropBlurView(radius: 16)
                                 .cornerRadius(size.cornerRadius)

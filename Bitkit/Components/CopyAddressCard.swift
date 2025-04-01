@@ -7,35 +7,61 @@
 
 import SwiftUI
 
-struct CopyAddressCard: View {
+struct CopyAddressPair {
+    enum AddressType {
+        case onchain
+        case lightning
+    }
+    
     let title: String
     let address: String
+    let type: AddressType
+}
+
+struct CopyAddressCard: View {
+    let addresses: [CopyAddressPair]
 
     var body: some View {
-        VStack(alignment: .leading) {
-            Text(title)
-                .font(.title2)
-                .padding(.bottom)
+        VStack(alignment: .leading, spacing: 24) {
+            ForEach(0..<addresses.count, id: \.self) { index in
+                let pair = addresses[index]
+                
+                VStack(alignment: .leading) {
+                    CaptionText(pair.title.uppercased())
+                        .padding(.bottom)
 
-            // Ellipse the address if it's too long
-            Text(address.count > 40 ? address.prefix(35) + "..." : address)
-                .font(.caption)
-                .padding(.bottom)
+                    // Ellipse the address if it's too long
+                    BodySSBText((pair.address.count > 35 ? pair.address.prefix(30) + "..." : pair.address).uppercased())
+                        .padding(.bottom)
 
-            HStack {
-                Button("Copy") {
-                    UIPasteboard.general.string = address
-                    Haptics.play(.copiedToClipboard)
-                }
-                .padding(.horizontal)
+                    HStack {
+                        CustomButton(
+                            title: NSLocalizedString("common__copy", comment: ""),
+                            variant: .tertiary,
+                            size: .small,
+                            icon: Image(pair.type == .lightning ? "copy-purple" : "copy-brand")
+                        ) {
+                            UIPasteboard.general.string = pair.address
+                            Haptics.play(.copiedToClipboard)
+                        }
 
-                if #available(iOS 16.0, *) {
-                    ShareLink(item: URL(string: address)!) {
-                        Text("Share")
+                        if #available(iOS 16.0, *) {
+                            ShareLink(item: URL(string: pair.address)!) {
+                                CustomButton(
+                                    title: NSLocalizedString("common__share", comment: ""),
+                                    variant: .tertiary,
+                                    size: .small,
+                                    icon: Image(pair.type == .lightning ? "share-purple" : "share-brand")
+                                )
+                            }
+                        } else {
+                            // TODO: Add share sheet for iOS 15
+                        }
                     }
-                    .padding(.horizontal)
-                } else {
-                    // TODO: Add share sheet for iOS 15
+                }
+                
+                if index < addresses.count - 1 {
+                    VStack {}.frame(height: 12)
                 }
             }
         }
@@ -47,6 +73,9 @@ struct CopyAddressCard: View {
 }
 
 #Preview {
-    CopyAddressCard(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")
-        .preferredColorScheme(.dark)
+    CopyAddressCard(addresses: [
+        CopyAddressPair(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", type: .onchain),
+        CopyAddressPair(title: "Lightning Invoice", address: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5", type: .lightning)
+    ])
+    .preferredColorScheme(.dark)
 }
