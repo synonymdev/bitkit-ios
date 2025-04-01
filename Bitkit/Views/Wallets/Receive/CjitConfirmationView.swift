@@ -10,6 +10,7 @@ import SwiftUI
 struct CjitConfirmationView: View {
     let entry: IcJitEntry
     let onCjitCreated: (String) -> Void
+    let receiveAmountSats: UInt64
     
     @EnvironmentObject private var currency: CurrencyViewModel
     
@@ -32,7 +33,7 @@ struct CjitConfirmationView: View {
     
     
     private func formattedAmountReceive() -> String {
-        let sats = entry.channelSizeSat - entry.feeSat
+        let sats = receiveAmountSats - entry.feeSat
         if let converted = currency.convert(sats: sats) {
             if primaryDisplay == .bitcoin {
                 let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
@@ -91,7 +92,7 @@ struct CjitConfirmationView: View {
             Spacer()
             
             HStack(spacing: 16) {
-                NavigationLink(destination: CjitLearnMoreView(entry: entry)) {
+                NavigationLink(destination: CjitLearnMoreView(entry: entry, receiveAmountSats: receiveAmountSats)) {
                     CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), variant: .secondary)
                 }
                 
@@ -122,7 +123,8 @@ struct CjitConfirmationView: View {
                 NavigationView {
                     CjitConfirmationView(
                         entry: IcJitEntry.mock(),
-                        onCjitCreated: { _ in }
+                        onCjitCreated: { _ in },
+                        receiveAmountSats: 12500
                     )
                     .environmentObject(CurrencyViewModel())
                 }
