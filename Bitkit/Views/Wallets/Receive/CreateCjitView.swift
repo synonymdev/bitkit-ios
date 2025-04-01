@@ -13,62 +13,49 @@ struct CreateCjitView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
 
-    @State private var amount: String = ""
-    @FocusState private var isAmountFocused: Bool
+    @State private var satsAmount: UInt64 = 0
+    @State private var overrideSats: UInt64?
+    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var isCreatingInvoice = false
 
     var body: some View {
-        VStack {
-            TextField("Amount in sats", text: $amount)
-                .keyboardType(.numberPad)
-                .font(.title)
-                .padding()
-                .focused($isAmountFocused)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 16) {
+                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
+                    Haptics.play(.buttonTap)
+                    satsAmount = newSats
+                    overrideSats = nil
+                }
+                .padding(.vertical, 16)
 
-            Spacer()
+                Spacer()
 
-            if let info = blocktank.info {
-                HStack {
-                    // Min amount view
-                    VStack {
-                        Text("Minimum")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text("\(info.options.minChannelSizeSat / 2)")
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading) {
+                        BodySText("Minimum", textColor: .textSecondary)
+                        if let minSats = blocktank.minCjitSats {
+                            BodySText("\(minSats)") //TODO: handle conversion to fiat if needed
+                        }  else {
+                            ProgressView()
+                        }
                     }
-                    .padding(.trailing)
-                    .contentShape(Rectangle())  // Makes entire area tappable
-                    .onTapGesture {
-                        amount = String(info.options.minChannelSizeSat / 2)
-                    }
-
-                    // Max amount view
-                    VStack {
-                        Text("Maximum")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                        Text("\(info.options.maxChannelSizeSat / 2)")
-                    }
-                    .contentShape(Rectangle())  // Makes entire area tappable
-                    .onTapGesture {
-                        amount = String(info.options.maxChannelSizeSat / 2)
-                    }
-
-                    // TODO: get from API
-                    // FROM BT model
 
                     Spacer()
 
-                    // TODO: switch to USD
+                    amountButtons
                 }
-            } else {
-                ProgressView()
+                .padding(.vertical, 8)
             }
+            .padding(.horizontal, 16)
 
             Divider()
+
+            Spacer()
+
             CustomButton(title: "Continue") {
-                guard let amount = UInt64(amount) else { return }
+                guard satsAmount > 0 else { return }
                 
                 // Wait until node is running if it's in starting state
                 if wallet.nodeLifecycleState == .starting {
@@ -85,7 +72,7 @@ struct CreateCjitView: View {
                 // Only proceed if node is running
                 if wallet.nodeLifecycleState == .running {
                     do {
-                        let entry = try await blocktank.createCjit(amountSats: amount, description: "Bitkit")
+                        let entry = try await blocktank.createCjit(amountSats: satsAmount, description: "Bitkit")
                         onCjitCreated(entry.invoice.request)
                     } catch {
                         app.toast(error)
@@ -96,21 +83,53 @@ struct CreateCjitView: View {
                     app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }
-            .disabled(isCreatingInvoice)
+            .disabled(isCreatingInvoice || satsAmount == 0)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
         }
-        .padding()
         .navigationTitle("Receive Bitcoin")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            isAmountFocused = true
+        .task {
+            primaryDisplay = currency.primaryDisplay
+            try? await blocktank.refreshMinCjitSats()
+        }
+    }
+    
+    private var amountButtons: some View {
+        HStack(spacing: 16) {
+            NumberPadActionButton(
+                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                imageName: "transfer-purple"
+            ) {
+                withAnimation {
+                    primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                }
+            }
+            
+            if let minSats = blocktank.minCjitSats {
+                NumberPadActionButton(text: "Min") {
+                    overrideSats = UInt64(minSats)
+                }
+            }
         }
     }
 }
 
+@available(iOS 16.0, *)
 #Preview {
-    CreateCjitView { _ in }
-        .environmentObject(WalletViewModel())
-        .environmentObject(AppViewModel())
-        .environmentObject(BlocktankViewModel())
-        .preferredColorScheme(.dark)
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    CreateCjitView { _ in }
+                        .environmentObject(WalletViewModel())
+                        .environmentObject(AppViewModel())
+                        .environmentObject(BlocktankViewModel())
+                        .environmentObject(CurrencyViewModel())
+                }
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
+        )
+    .preferredColorScheme(.dark)
 }
