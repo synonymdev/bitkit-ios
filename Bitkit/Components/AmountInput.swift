@@ -9,15 +9,18 @@ struct AmountInput: View {
     @FocusState private var isFiatFocused: Bool
     @EnvironmentObject var currency: CurrencyViewModel
     var onSatsChange: (UInt64) -> Void
+    var showConversion: Bool
 
     init(
         defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil),
+        showConversion: Bool = false,
         onSatsChange: @escaping (UInt64) -> Void
     ) {
         _satsAmount = State(initialValue: defaultValue > 0 ? String(defaultValue) : "")
         _fiatAmount = State(initialValue: primaryDisplay.wrappedValue == .fiat ? "0" : "")
         _primaryDisplay = primaryDisplay
         _overrideSats = overrideSats
+        self.showConversion = showConversion
         self.onSatsChange = onSatsChange
     }
 
@@ -99,12 +102,27 @@ struct AmountInput: View {
                 }
 
             // Visible balance display
-            if let converted = currency.convert(sats: sats) {
-                if primaryDisplay == .bitcoin {
-                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                    DisplayText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", accentColor: .textSecondary)
-                } else {
-                    DisplayText("<accent>\(converted.symbol)</accent> \(fiatAmount.isEmpty ? "0" : fiatAmount)", accentColor: .textSecondary)
+            VStack(spacing: 6) {
+                if showConversion, let converted = currency.convert(sats: sats) {
+                    VStack {
+                        if primaryDisplay == .bitcoin {
+                            CaptionText("\(converted.symbol) \(converted.formatted)")
+                        } else {
+                            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                            CaptionText("\(btcComponents.symbol) \(btcComponents.value)")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 4)
+                }
+                
+                if let converted = currency.convert(sats: sats) {
+                    if primaryDisplay == .bitcoin {
+                        let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
+                        DisplayText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", accentColor: .textSecondary)
+                    } else {
+                        DisplayText("<accent>\(converted.symbol)</accent> \(fiatAmount.isEmpty ? "0" : fiatAmount)", accentColor: .textSecondary)
+                    }
                 }
             }
         }
@@ -161,8 +179,26 @@ struct AmountInput: View {
                     vm.displayUnit = .modern
                     return vm
                 }())
+        
+        AmountInput(primaryDisplay: .constant(.bitcoin), showConversion: true) { _ in }
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .bitcoin
+                    vm.displayUnit = .modern
+                    return vm
+                }())
 
         AmountInput(primaryDisplay: .constant(.fiat)) { _ in }
+            .environmentObject(
+                {
+                    let vm = CurrencyViewModel()
+                    vm.primaryDisplay = .fiat
+                    vm.selectedCurrency = "USD"
+                    return vm
+                }())
+        
+        AmountInput(primaryDisplay: .constant(.fiat), showConversion: true) { _ in }
             .environmentObject(
                 {
                     let vm = CurrencyViewModel()

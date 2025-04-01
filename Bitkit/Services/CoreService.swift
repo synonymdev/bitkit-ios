@@ -263,7 +263,9 @@ class BlocktankService {
         channelExpiryWeeks: UInt32,
         options: CreateCjitOptions
     ) async throws -> IcJitEntry {
-        try await ServiceQueue.background(.core) {
+        Logger.info("Creating CJIT invoice with channel size: \(channelSizeSat) and invoice amount: \(invoiceSat)", context: "BlocktankService")
+        
+        return try await ServiceQueue.background(.core) {
             try await createCjitEntry(
                 channelSizeSat: channelSizeSat,
                 invoiceSat: invoiceSat,

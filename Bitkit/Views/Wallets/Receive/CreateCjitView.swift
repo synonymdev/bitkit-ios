@@ -23,7 +23,7 @@ struct CreateCjitView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
+                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
                     Haptics.play(.buttonTap)
                     satsAmount = newSats
                     overrideSats = nil
@@ -41,6 +41,11 @@ struct CreateCjitView: View {
                             ProgressView()
                         }
                     }
+                    .onTapGesture {
+                        if let minSats = blocktank.minCjitSats {
+                            overrideSats = minSats
+                        }
+                    }
 
                     Spacer()
 
@@ -54,7 +59,7 @@ struct CreateCjitView: View {
 
             Spacer()
 
-            CustomButton(title: "Continue") {
+            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
                 guard satsAmount > 0 else { return }
                 
                 // Wait until node is running if it's in starting state
@@ -87,7 +92,7 @@ struct CreateCjitView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
-        .navigationTitle("Receive Bitcoin")
+        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             primaryDisplay = currency.primaryDisplay
@@ -99,7 +104,8 @@ struct CreateCjitView: View {
         HStack(spacing: 16) {
             NumberPadActionButton(
                 text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
-                imageName: "transfer-purple"
+                imageName: "transfer-brand",
+                color: Color.brandAccent
             ) {
                 withAnimation {
                     primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
@@ -107,7 +113,7 @@ struct CreateCjitView: View {
             }
             
             if let minSats = blocktank.minCjitSats {
-                NumberPadActionButton(text: "Min") {
+                NumberPadActionButton(text: "Min", color: Color.brandAccent) {
                     overrideSats = UInt64(minSats)
                 }
             }

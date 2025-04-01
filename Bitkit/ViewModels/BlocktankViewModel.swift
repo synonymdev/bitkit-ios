@@ -16,9 +16,9 @@ class BlocktankViewModel: ObservableObject {
     // Use -1 as a sentinel value to represent nil
     @AppStorage("minCjitSats") private var minCjitSatsStorage: Int = -1
     
-    var minCjitSats: Int? {
-        get { minCjitSatsStorage == -1 ? nil : minCjitSatsStorage }
-        set { minCjitSatsStorage = newValue ?? -1 }
+    var minCjitSats: UInt64? {
+        get { minCjitSatsStorage == -1 ? nil : UInt64(minCjitSatsStorage) }
+        set { minCjitSatsStorage = newValue == nil ? -1 : Int(newValue!) }
     }
 
     private let defaultChannelExpiryWeeks: UInt32 = 6
@@ -120,8 +120,11 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.nodeNotStarted
         }
 
+        let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        let channelSizeSat = amountSats + lspBalance
+
         return try await coreService.blocktank.createCjit(
-            channelSizeSat: amountSats * 2,  // TODO: check this amount default from RN app
+            channelSizeSat: channelSizeSat,
             invoiceSat: amountSats,
             invoiceDescription: description,
             nodeId: nodeId,
@@ -322,7 +325,7 @@ class BlocktankViewModel: ObservableObject {
             
             // Get fees and calculate minimum
             let fees = try await estimateOrderFee(spendingBalanceSats: 0, receivingBalanceSats: lspBalance)
-            let minimum = Int(ceil(Double(fees.feeSat) * 1.1 / 1000) * 1000)
+            let minimum = UInt64(ceil(Double(fees.feeSat) * 1.1 / 1000) * 1000)
             minCjitSats = minimum
             Logger.debug("Updated minCjitSats to \(minimum)")
         } catch {
