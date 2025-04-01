@@ -8,7 +8,7 @@ struct OnboardingTab: View {
     let accentColor: Color
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             Spacer()
 
             Image(imageName)
@@ -17,24 +17,23 @@ struct OnboardingTab: View {
                 .frame(maxWidth: 311, maxHeight: 311)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            Spacer()
-
-            DisplayText(title, accentColor: accentColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 4)
-
-            BodyMText(text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 4)
-
-            if let disclaimer = disclaimerText {
-                CaptionText(disclaimer)
-                    .multilineTextAlignment(.leading)
+            VStack(spacing: 0) {
+                DisplayText(title, accentColor: accentColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 4)
+
+                BodyMText(text)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let disclaimer = disclaimerText {
+                    CaptionText(disclaimer)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                }
             }
+            .frame(maxWidth: .infinity, minHeight: 255, alignment: .top)
+            .padding(.top, 48)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 30)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

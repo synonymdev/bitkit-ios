@@ -5,7 +5,7 @@ struct TransferIntroView: View {
 
     var body: some View {
         VStack {
-            OnboardingTab(
+            OnboardingContent(
                 imageName: "lightning",
                 title: NSLocalizedString("lightning__transfer_intro__title", comment: ""),
                 text: NSLocalizedString("lightning__transfer_intro__text", comment: ""),
