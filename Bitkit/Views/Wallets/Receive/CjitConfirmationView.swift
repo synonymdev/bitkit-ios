@@ -71,7 +71,6 @@ struct CjitConfirmationView: View {
                     accentColor: .white
                 )
 
-
                  VStack(alignment: .leading) {
                     BodyMText(NSLocalizedString("wallet__receive_will", comment: "").uppercased(), textColor: .textSecondary)
                     TitleText(formattedAmountReceive(), textColor: .textPrimary)
@@ -91,14 +90,21 @@ struct CjitConfirmationView: View {
 
             Spacer()
             
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
-                onCjitCreated(entry.invoice.request)
+            HStack(spacing: 16) {
+                NavigationLink(destination: CjitLearnMoreView(entry: entry)) {
+                    CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), variant: .secondary)
+                }
+                
+                CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+                    onCjitCreated(entry.invoice.request)
+                }
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
         .sheetBackground()
-        .navigationTitle(NSLocalizedString("Confirm CJIT", comment: ""))
+        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             primaryDisplay = currency.primaryDisplay
