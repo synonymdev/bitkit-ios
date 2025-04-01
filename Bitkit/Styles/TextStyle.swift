@@ -91,6 +91,28 @@ struct BodyMText: View {
             AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
         )
         .font(.custom(Fonts.regular, size: fontSize))
+        .kerning(0.4)
+    }
+}
+
+struct BodyMSBText: View {
+    let text: String
+    var textColor: Color = .textSecondary
+    var accentColor: Color? = nil
+    private let fontSize: CGFloat = 17
+
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
+        self.text = text
+        self.textColor = textColor
+        self.accentColor = accentColor
+    }
+
+    var body: some View {
+        Text(
+            AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.semiBold))
+        )
+        .font(.custom(Fonts.semiBold, size: fontSize))
+        .kerning(0.4)
     }
 }
 
@@ -109,6 +131,7 @@ struct BodyMBoldText: View {
     var body: some View {
         Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.bold)))
             .font(.custom(Fonts.bold, size: fontSize))
+            .kerning(0.4)
     }
 }
 
@@ -132,6 +155,33 @@ struct BodySText: View {
                 parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url, fontSize: fontSize, font: Fonts.regular))
         )
         .font(.custom(Fonts.regular, size: fontSize))
+        .kerning(0.4)
+        .tint(accentColor ?? .brandAccent)
+    }
+}
+
+struct BodySSBText: View {
+    let text: String
+    var textColor: Color = .textSecondary
+    var accentColor: Color? = nil
+    var url: URL? = nil
+    private let fontSize: CGFloat = 15
+
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
+        self.text = text
+        self.textColor = textColor
+        self.accentColor = accentColor
+        self.url = url
+    }
+
+    var body: some View {
+        Text(
+            AttributedString(
+                parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, url: url, fontSize: fontSize, font: Fonts.semiBold))
+        )
+        .font(.custom(Fonts.semiBold, size: fontSize))
+        .kerning(0.4)
+        .lineSpacing(1)
         .tint(accentColor ?? .brandAccent)
     }
 }
@@ -153,6 +203,7 @@ struct CaptionText: View {
             AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
         )
         .font(.custom(Fonts.regular, size: fontSize))
+        .kerning(0.4)
     }
 }
 
@@ -171,6 +222,7 @@ struct FootnoteText: View {
     var body: some View {
         Text(AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.medium)))
             .font(.custom(Fonts.medium, size: fontSize))
+            .kerning(0.4)
     }
 }
 

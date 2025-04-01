@@ -21,16 +21,12 @@ struct IntroView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 16) {
-                NavigationLink(destination: OnboardingView()) {
-                    CustomButton(title: NSLocalizedString("onboarding__get_started", comment: ""))
-                }
-
-                NavigationLink(destination: OnboardingView(currentTab: 4)) {
-                    CustomButton(
-                        title: NSLocalizedString("onboarding__skip_intro", comment: ""),
-                        variant: .secondary
-                    )
-                }
+                CustomButton(title: NSLocalizedString("onboarding__get_started", comment: ""), destination: OnboardingView())
+                CustomButton(
+                    title: NSLocalizedString("onboarding__skip_intro", comment: ""),
+                    variant: .secondary,
+                    destination: OnboardingView(currentTab: 4)
+                )
             }
         }
         .padding()
