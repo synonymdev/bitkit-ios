@@ -20,6 +20,7 @@ enum CustomServiceError: Error {
     case invalidNodeSigningMessage
     case regtestOnlyMethod
     case channelSizeExceedsMaximum
+    case currencyRateUnavailable
 }
 
 enum KeychainError: Error {
@@ -108,6 +109,9 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .channelSizeExceedsMaximum:
             message = "Channel size exceeds maximum allowed size"
+            debugMessage = nil
+        case .currencyRateUnavailable:
+            message = "Currency rate unavailable"
             debugMessage = nil
         }
 

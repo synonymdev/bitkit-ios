@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct TransferAmount: View {
+struct AmountInput: View {
     @State private var satsAmount: String
     @State private var fiatAmount: String
     @Binding var primaryDisplay: PrimaryDisplay
@@ -153,7 +153,7 @@ struct TransferAmount: View {
 
 #Preview {
     VStack(spacing: 32) {
-        TransferAmount(primaryDisplay: .constant(.bitcoin)) { _ in }
+        AmountInput(primaryDisplay: .constant(.bitcoin)) { _ in }
             .environmentObject(
                 {
                     let vm = CurrencyViewModel()
@@ -162,7 +162,7 @@ struct TransferAmount: View {
                     return vm
                 }())
 
-        TransferAmount(primaryDisplay: .constant(.fiat)) { _ in }
+        AmountInput(primaryDisplay: .constant(.fiat)) { _ in }
             .environmentObject(
                 {
                     let vm = CurrencyViewModel()
