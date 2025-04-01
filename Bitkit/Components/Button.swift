@@ -1,5 +1,43 @@
 import SwiftUI
 
+struct PressEventsModifier: ViewModifier {
+    var onPress: () -> Void
+    var onRelease: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        onPress()
+                    }
+                    .onEnded { _ in
+                        onRelease()
+                    }
+            )
+    }
+}
+
+extension View {
+    func pressEvents(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) -> some View {
+        modifier(PressEventsModifier(onPress: onPress, onRelease: onRelease))
+    }
+}
+
+struct CustomButtonStyle: ButtonStyle {
+    let variant: CustomButton.Variant
+    let isDisabled: Bool
+    let isLoading: Bool
+    @Binding var isPressed: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { pressed in
+                isPressed = pressed
+            }
+    }
+}
+
 struct CustomButton: View {
     enum Size {
         case small
@@ -39,8 +77,10 @@ struct CustomButton: View {
     let icon: AnyView?
     let isDisabled: Bool
     let action: (() async -> Void)?
+    let destination: AnyView?
 
     @State private var isLoading = false
+    @State private var isPressed = false
 
     // Base initializer for optional action
     init(
@@ -55,7 +95,8 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
-        action = nil
+        self.action = nil
+        self.destination = nil
     }
 
     // Trailing closure initializer
@@ -73,16 +114,46 @@ struct CustomButton: View {
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
         self.action = action
+        self.destination = nil
+    }
+
+    // Navigation link initializer
+    init<D: View>(
+        title: String,
+        variant: Variant = .primary,
+        size: Size = .large,
+        icon: (any View)? = nil,
+        isDisabled: Bool = false,
+        destination: D
+    ) {
+        self.title = title
+        self.variant = variant
+        self.size = size
+        self.icon = icon.map { AnyView($0) }
+        self.isDisabled = isDisabled
+        self.action = nil
+        self.destination = AnyView(destination)
     }
 
     private var backgroundColor: Color {
+        if isPressed {
+            switch variant {
+            case .primary:
+                return .white32
+            case .secondary, .tertiary:
+                return .white08
+            }
+        }
+
+        if isDisabled {
+            return .clear
+        }
+
         switch variant {
         case .primary:
-            return .gray2
-        case .secondary:
+            return .white16
+        case .secondary, .tertiary:
             return .clear
-        case .tertiary:
-            return .white10
         }
     }
 
@@ -99,6 +170,9 @@ struct CustomButton: View {
     }
 
     private var borderColor: Color? {
+        if isDisabled {
+            return nil
+        }
         switch variant {
         case .primary:
             return nil
@@ -110,26 +184,50 @@ struct CustomButton: View {
     }
 
     var body: some View {
-        if let action = action {
-            Button {
-                guard !isLoading, !isDisabled else { return }
-
-                // Play haptic feedback
-                Haptics.play(.medium)
-
-                Task { @MainActor in
-                    isLoading = true
-                    await action()
-                    isLoading = false
+        Group {
+            if let destination = destination {
+                NavigationLink(destination: destination) {
+                    buttonContent
                 }
-            } label: {
+                .buttonStyle(
+                    CustomButtonStyle(
+                        variant: variant,
+                        isDisabled: isDisabled,
+                        isLoading: isLoading,
+                        isPressed: $isPressed
+                    )
+                )
+                .disabled(isDisabled)
+                // .opacity(isDisabled ? 0.5 : 1)
+            } else if let action = action {
+                Button {
+                    guard !isLoading, !isDisabled else { return }
+
+                    // Play haptic feedback
+                    Haptics.play(.medium)
+
+                    Task { @MainActor in
+                        isLoading = true
+                        await action()
+                        isLoading = false
+                    }
+                } label: {
+                    buttonContent
+                }
+                .buttonStyle(
+                    CustomButtonStyle(
+                        variant: variant,
+                        isDisabled: isDisabled,
+                        isLoading: isLoading,
+                        isPressed: $isPressed
+                    )
+                )
+                .disabled(isDisabled || isLoading)
+                .opacity(isDisabled || isLoading ? 0.5 : 1)
+            } else {
                 buttonContent
+                    .opacity(isDisabled ? 0.5 : 1)
             }
-            .disabled(isDisabled || isLoading)
-            .opacity(isDisabled || isLoading ? 0.5 : 1)
-        } else {
-            buttonContent
-                .opacity(isDisabled ? 0.5 : 1)
         }
     }
 
@@ -145,7 +243,7 @@ struct CustomButton: View {
                     .frame(width: 20, height: 20)
             } else {
                 Text(title)
-                    .font(Fonts.bold(size: 17))
+                    .font(Fonts.bold(size: 15))
                     .foregroundColor(foregroundColor)
                     .lineLimit(1)
                     .frame(maxWidth: size == .large && icon == nil ? .infinity : nil)
@@ -196,9 +294,10 @@ struct BackdropBlurView: UIViewRepresentable {
 
 #Preview {
     VStack(spacing: 20) {
-        NavigationLink(destination: Text("Navigation Example")) {
-            CustomButton(title: "Primary Button (Navigation)")
-        }
+        CustomButton(
+            title: "Primary Button (Navigation)",
+            destination: Text("Navigation Example")
+        )
 
         CustomButton(title: "Secondary Button", variant: .secondary) {
             print("Button tapped")
