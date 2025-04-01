@@ -80,7 +80,7 @@ struct ReceiveViewContent: View {
                 
                 HStack {
                     CustomButton(
-                        title: "Edit",
+                        title: NSLocalizedString("common__edit", comment: ""),
                         variant: .tertiary,
                         size: .small,
                         icon: Image("pencil-brand")
@@ -89,7 +89,7 @@ struct ReceiveViewContent: View {
                     }
                     
                     CustomButton(
-                        title: "Copy",
+                        title: NSLocalizedString("common__copy", comment: ""),
                         variant: .tertiary,
                         size: .small,
                         icon: Image("copy-brand")
@@ -101,7 +101,7 @@ struct ReceiveViewContent: View {
                     if #available(iOS 16.0, *) {
                         ShareLink(item: URL(string: uri)!) {
                             CustomButton(
-                                title: "Share",
+                                title: NSLocalizedString("common__share", comment: ""),
                                 variant: .tertiary,
                                 size: .small,
                                 icon: Image("share-brand")
@@ -119,14 +119,36 @@ struct ReceiveViewContent: View {
     @ViewBuilder
     var copyValues: some View {
         VStack {
-            if !onchainAddress.isEmpty {
-                CopyAddressCard(title: "On-chain Address", address: onchainAddress)
-            }
+            let addressPairs: [CopyAddressPair] = {
+                var pairs: [CopyAddressPair] = []
+                
+                if !onchainAddress.isEmpty {
+                    pairs.append(CopyAddressPair(
+                        title: NSLocalizedString("wallet__receive_bitcoin_invoice", comment: ""),
+                        address: onchainAddress,
+                        type: .onchain
+                    ))
+                }
+                
+                if !bolt11.isEmpty {
+                    pairs.append(CopyAddressPair(
+                        title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
+                        address: bolt11,
+                        type: .lightning
+                    ))
+                } else if let cjitInvoice = cjitInvoice {
+                    pairs.append(CopyAddressPair(
+                        title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
+                        address: cjitInvoice,
+                        type: .lightning
+                    ))
+                }
+                
+                return pairs
+            }()
             
-            if !bolt11.isEmpty {
-                CopyAddressCard(title: "Lightning Invoice", address: bolt11)
-            } else if let cjitInvoice {
-                CopyAddressCard(title: "Lightning Invoice", address: cjitInvoice)
+            if !addressPairs.isEmpty {
+                CopyAddressCard(addresses: addressPairs)
             }
             
             Spacer()
