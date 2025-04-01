@@ -6,12 +6,23 @@ struct CreateWalletView: View {
 
     var body: some View {
         VStack {
-            OnboardingTab(
-                imageName: "wallet",
-                title: NSLocalizedString("onboarding__slide4_header", comment: ""),
-                text: NSLocalizedString("onboarding__slide4_text", comment: ""),
-                accentColor: .brandAccent
-            )
+            VStack(spacing: 0) {
+                Spacer()
+
+                Image("wallet")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 311, maxHeight: 311)
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                VStack(spacing: 0) {
+                    DisplayText(NSLocalizedString("onboarding__slide4_header", comment: ""), accentColor: .brandAccent)
+
+                    BodyMText(NSLocalizedString("onboarding__slide4_text", comment: ""), accentFont: Fonts.bold)
+                }
+                .padding(.top, 48)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // Action buttons
             HStack(spacing: 16) {
@@ -26,15 +37,15 @@ struct CreateWalletView: View {
                     }
                 }
 
-                NavigationLink {
-                    RestoreWalletView()
-                } label: {
-                    CustomButton(
-                        title: NSLocalizedString("onboarding__restore", comment: ""),
-                        variant: .secondary
-                    )
-                }
+                CustomButton(
+                    title: NSLocalizedString("onboarding__restore", comment: ""),
+                    variant: .secondary,
+                    destination: RestoreWalletView()
+                )
             }
+            .padding(.top, 32)
+            // TODO: check why secondary button is cut off
+            .padding(.bottom, 1)
         }
     }
 }

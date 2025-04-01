@@ -11,7 +11,7 @@ struct CreateWalletWithPassphraseView: View {
 
     var content: some View {
         VStack {
-            OnboardingTab(
+            OnboardingContent(
                 imageName: "padlock2",
                 title: NSLocalizedString("onboarding__passphrase_header", comment: ""),
                 text: NSLocalizedString("onboarding__passphrase_text", comment: ""),
