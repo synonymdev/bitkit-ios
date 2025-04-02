@@ -20,6 +20,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
+    @AppStorage("channelCount") var channelCount: Int = 0 //Keeping a cached version of this so we can better aniticipate the receive flow UI
 
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
@@ -71,7 +72,18 @@ class WalletViewModel: ObservableObject {
                     self.syncState()
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
-                        handler(event)
+                        handler(event)          
+                    }
+                    
+                    // If payment received or new channel events, refresh BIP21 for instantly usable QR in receive view
+                    switch event {
+                    case .paymentReceived, .channelReady, .channelClosed:
+                        self.bolt11 = ""
+                        Task {
+                            try? await self.refreshBip21()
+                        }
+                    default:
+                        break
                     }
                 }
             })
@@ -127,8 +139,9 @@ class WalletViewModel: ObservableObject {
         bip21 = ""
     }
 
-    func createInvoice(amountSats: UInt64, description: String, expirySecs: UInt32) async throws -> String {
-        try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: expirySecs)
+    func createInvoice(amountSats: UInt64? = nil, description: String, expirySecs: UInt32? = nil) async throws -> String {
+        let finalExpirySecs = expirySecs ?? 60 * 60 * 24
+        return try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: finalExpirySecs)
     }
 
     func sync() async throws {
@@ -167,18 +180,19 @@ class WalletViewModel: ObservableObject {
 
     func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+        let eventId = String(hash)
 
         // Add event listener for this specific payment
-        addOnEvent(id: hash.description) { event in
+        addOnEvent(id: eventId) { event in
             switch event {
             case .paymentSuccessful(paymentId: _, let paymentHash, feePaidMsat: _):
                 if paymentHash == hash {
-                    self.removeOnEvent(id: hash.description)
+                    self.removeOnEvent(id: eventId)
                     onSuccess()
                 }
             case .paymentFailed(paymentId: _, let paymentHash, let reason):
                 if paymentHash == hash {
-                    self.removeOnEvent(id: hash.description)
+                    self.removeOnEvent(id: eventId)
                     onFail(reason.debugDescription)
                 }
             default:
@@ -201,6 +215,10 @@ class WalletViewModel: ObservableObject {
         balanceDetails = lightningService.balances
         peers = lightningService.peers
         channels = lightningService.channels
+        
+        if let channels {
+            channelCount = channels.count
+        }
 
         if let balanceDetails {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
@@ -225,23 +243,38 @@ class WalletViewModel: ObservableObject {
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
-            // TODO: check if onchain has been used and generate new on if it has
+            // Check if current address has been used
+            let addressInfo = try await AddressChecker.getAddressInfo(address: onchainAddress)
+            let hasTransactions = addressInfo.chain_stats.tx_count > 0 || addressInfo.mempool_stats.tx_count > 0
+            
+            if hasTransactions {
+                // Address has been used, generate a new one
+                onchainAddress = try await lightningService.newAddress()
+            }
         }
 
-        bip21 = "bitcoin:\(onchainAddress)"
+        var newBip21 = "bitcoin:\(onchainAddress)"
+
+        if channels?.count ?? 0 > 0 {
+            if bolt11.isEmpty {
+                bolt11 = try await self.createInvoice(description: "Bitkit")
+            } else {
+                //Existing invoice needs to be checked for expiry
+                if case .lightning(let lightningInvoice) = try await decode(invoice: bolt11) {
+                    if lightningInvoice.isExpired {
+                        bolt11 = try await self.createInvoice(description: "Bitkit")
+                    }
+                }
+            }
+        } else {
+            bolt11 = ""
+        }
 
         if !bolt11.isEmpty {
-            bip21 += "?lightning=\(bolt11)"
+            newBip21 += "?lightning=\(bolt11)"
         }
-
-        // TODO: check current bolt11 for expiry and/or if it's been used
-
-        if channels?.count ?? 0 > 0 && incomingLightningCapacitySats ?? 0 > 0 {
-            // Append lightning invoice if we have incoming capacity
-            bolt11 = try await lightningService.receive(description: "Bitkit")
-
-            bip21 = "bitcoin:\(onchainAddress)?lightning=\(bolt11)"
-        }
+        
+        bip21 = newBip21
     }
 
     private func startPolling() {

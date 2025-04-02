@@ -51,7 +51,7 @@ struct SavingsConfirmView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     BodySText(NSLocalizedString("lightning__savings_confirm__label", comment: "").uppercased(), textColor: .textSecondary)
 
-                    TransferAmount(
+                    AmountInput(
                         defaultValue: UInt64(totalSats),
                         primaryDisplay: .constant(currency.primaryDisplay),
                         overrideSats: .constant(UInt64(totalSats))

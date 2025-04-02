@@ -12,21 +12,34 @@ class BlocktankViewModel: ObservableObject {
     @Published var orders: [IBtOrder]? = nil
     @Published var cJitEntries: [IcJitEntry]? = nil
     @Published var info: IBtInfo? = nil
+    
+    // Use -1 as a sentinel value to represent nil
+    @AppStorage("minCjitSats") private var minCjitSatsStorage: Int = -1
+    
+    var minCjitSats: UInt64? {
+        get { minCjitSatsStorage == -1 ? nil : UInt64(minCjitSatsStorage) }
+        set { minCjitSatsStorage = newValue == nil ? -1 : Int(newValue!) }
+    }
 
-    @AppStorage("cjitActive") var cjitActive = false
+    private let defaultChannelExpiryWeeks: UInt32 = 6
+    private let defaultSource = "bitkit-ios"
+
     @Published private(set) var isRefreshing = false
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private let currencyService: CurrencyService
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
     init(
         coreService: CoreService = .shared,
-        lightningService: LightningService = .shared
+        lightningService: LightningService = .shared,
+        currencyService: CurrencyService = .shared
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
+        self.currencyService = currencyService
 
         Task { try? await refreshInfo() }
         Task { try? await registerDeviceForNotifications() }  // Checks if we have a device token that may need to still be registered
@@ -107,18 +120,22 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.nodeNotStarted
         }
 
+        let lspBalance = try await getDefaultLspBalance(clientBalance: amountSats)
+        let channelSizeSat = amountSats + lspBalance
+
         return try await coreService.blocktank.createCjit(
-            channelSizeSat: amountSats * 2,  // TODO: check this amount default from RN app
+            channelSizeSat: channelSizeSat,
             invoiceSat: amountSats,
             invoiceDescription: description,
             nodeId: nodeId,
-            channelExpiryWeeks: 2,  // TODO: check this amount default from RN app
-            options: .init(source: "bitkit-ios", discountCode: nil)
+            channelExpiryWeeks: defaultChannelExpiryWeeks,
+            options: .init(source: defaultSource, discountCode: nil)
         )
     }
 
-    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt8 = 6) async throws -> IBtOrder {
+    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt32? = nil) async throws -> IBtOrder {
         let finalReceivingBalanceSats = receivingBalanceSats ?? (spendingBalanceSats * 2)
+        let finalChannelExpiryWeeks = channelExpiryWeeks ?? defaultChannelExpiryWeeks
 
         if let btBOptions = info?.options {
             // Validate they're within the limits
@@ -133,11 +150,11 @@ class BlocktankViewModel: ObservableObject {
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
         Logger.debug(
-            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(channelExpiryWeeks) and options: \(options)")
+            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(finalChannelExpiryWeeks) and options: \(options)")
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
-            channelExpiryWeeks: UInt32(channelExpiryWeeks),
+            channelExpiryWeeks: finalChannelExpiryWeeks,
             options: options
         )
     }
@@ -160,7 +177,7 @@ class BlocktankViewModel: ObservableObject {
 
         let estimate = try await coreService.blocktank.estimateFee(
             lspBalanceSat: receivingBalanceSats,
-            channelExpiryWeeks: 6,
+            channelExpiryWeeks: defaultChannelExpiryWeeks,
             options: options
         )
 
@@ -184,7 +201,7 @@ class BlocktankViewModel: ObservableObject {
             clientBalanceSat: clientBalanceSat,
             lspNodeId: nil,
             couponCode: "",
-            source: "bitkit-ios",
+            source: defaultSource,
             discountCode: nil,
             zeroConf: true,
             zeroConfPayment: false,
@@ -261,5 +278,59 @@ class BlocktankViewModel: ObservableObject {
             secretMessage: "hello",
             notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue
         )
+    }
+
+    private func getDefaultLspBalance(clientBalance: UInt64) async throws -> UInt64 {
+        if info == nil {
+            try await refreshInfo()
+        }
+        let maxLspBalance = info?.options.maxChannelSizeSat ?? 0
+        
+        // Get current rates
+        guard let rates = currencyService.loadCachedRates(),
+              let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates) else {
+            Logger.error("Failed to get EUR rate for lspBalance calculation")
+            throw CustomServiceError.currencyRateUnavailable
+        }
+        
+        // Calculate thresholds in sats
+        let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
+        let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
+        let defaultLspBalance = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
+        
+        Logger.debug("getDefaultLspBalance - clientBalance: \(clientBalance)")
+        Logger.debug("getDefaultLspBalance - maxLspBalance: \(maxLspBalance)")
+        Logger.debug("getDefaultLspBalance - defaultLspBalance: \(defaultLspBalance)")
+        
+        // Safely calculate lspBalance to avoid arithmetic overflow
+        var lspBalance: UInt64 = 0
+        if defaultLspBalance > clientBalance {
+            lspBalance = defaultLspBalance - clientBalance
+        }
+        
+        if clientBalance > threshold1 {
+            lspBalance = clientBalance
+        }
+        
+        if clientBalance > threshold2 {
+            lspBalance = maxLspBalance
+        }
+        
+        return min(lspBalance, maxLspBalance)
+    }
+
+    func refreshMinCjitSats() async throws {
+        do {            
+            let lspBalance = try await getDefaultLspBalance(clientBalance: 0)
+            
+            // Get fees and calculate minimum
+            let fees = try await estimateOrderFee(spendingBalanceSats: 0, receivingBalanceSats: lspBalance)
+            let minimum = UInt64(ceil(Double(fees.feeSat) * 1.1 / 1000) * 1000)
+            minCjitSats = minimum
+            Logger.debug("Updated minCjitSats to \(minimum)")
+        } catch {
+            Logger.error("Failed to refresh minCjitSats: \(error)")
+            throw error
+        }
     }
 }
