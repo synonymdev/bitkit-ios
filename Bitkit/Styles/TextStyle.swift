@@ -13,9 +13,11 @@ struct DisplayText: View {
         self.accentColor = accentColor
     }
 
+    // TODO: lineHeight should be 44, but glyphs are cut off
+
     var body: some View {
         CustomTextWrapper(
-            text: text, fontSize: 44, lineHeight: 44, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
+            text: text, fontSize: 44, lineHeight: 47, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
             kerning: -1)
     }
 }
@@ -76,22 +78,22 @@ struct SubtitleText: View {
 
 struct BodyMText: View {
     let text: String
+    let font = Fonts.regular
     var textColor: Color = .textSecondary
-    var accentColor: Color? = nil
-    private let fontSize: CGFloat = 17
+    var accentColor: Color = .white
+    var accentFont: String? = nil
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .white, accentFont: String? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.accentFont = accentFont
     }
 
     var body: some View {
-        Text(
-            AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
-        )
-        .font(.custom(Fonts.regular, size: fontSize))
-        .kerning(0.4)
+        CustomTextWrapper(
+            text: text, fontSize: 17, lineHeight: 22, shouldCapitalize: false, font: font, textColor: textColor,
+            accentColor: accentColor, accentFont: accentFont, kerning: 0.4)
     }
 }
 
@@ -101,7 +103,7 @@ struct BodyMSBText: View {
     var accentColor: Color? = nil
     private let fontSize: CGFloat = 17
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -118,11 +120,11 @@ struct BodyMSBText: View {
 
 struct BodyMBoldText: View {
     let text: String
-    var textColor: Color = .textPrimary
+    var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
     private let fontSize: CGFloat = 17
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .brandAccent) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -142,7 +144,7 @@ struct BodySText: View {
     var url: URL? = nil
     private let fontSize: CGFloat = 15
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil, url: URL? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -167,7 +169,7 @@ struct BodySSBText: View {
     var url: URL? = nil
     private let fontSize: CGFloat = 15
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil, url: URL? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -213,7 +215,7 @@ struct FootnoteText: View {
     var accentColor: Color? = nil
     private let fontSize: CGFloat = 12
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -314,11 +316,13 @@ struct CustomTextWrapper: View {
     let font: String
     let textColor: Color
     let accentColor: Color
+    let accentFont: String?
     let kerning: CGFloat
     @State private var viewWidth: CGFloat = 0
 
     init(
         text: String, fontSize: CGFloat, lineHeight: CGFloat, shouldCapitalize: Bool, font: String, textColor: Color, accentColor: Color,
+        accentFont: String? = nil,
         kerning: CGFloat
     ) {
         self.text = text
@@ -328,6 +332,7 @@ struct CustomTextWrapper: View {
         self.font = font
         self.textColor = textColor
         self.accentColor = accentColor
+        self.accentFont = accentFont
         self.kerning = kerning
     }
 
@@ -335,11 +340,11 @@ struct CustomTextWrapper: View {
         GeometryReader { geometry in
             DisplayTextUIView(
                 text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width, shouldCapitalize: shouldCapitalize, font: font,
-                textColor: textColor, accentColor: accentColor, kerning: kerning
+                textColor: textColor, accentColor: accentColor, accentFont: accentFont ?? font, kerning: kerning
             )
             .preference(key: ViewWidthKey.self, value: geometry.size.width)
         }
-        //        .frame(maxWidth: .infinity, alignment: .leading)
+        // .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: calculateHeight())
         .onPreferenceChange(ViewWidthKey.self) { width in
             viewWidth = width
@@ -378,8 +383,13 @@ struct CustomTextWrapper: View {
                     let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
-                    accentString.addAttribute(
-                        .foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
+                    if let font = UIFont(name: accentFont ?? font, size: fontSize) {
+                        accentString.addAttributes(
+                            [
+                                .foregroundColor: UIColor(accentColor),
+                                .font: font
+                            ], range: NSRange(location: 0, length: processedAccentText.count))
+                    }
                     attributedString.append(accentString)
 
                     currentIndex = accentEndRange.upperBound
@@ -426,6 +436,7 @@ struct DisplayTextUIView: UIViewRepresentable {
     let font: String
     let textColor: Color
     let accentColor: Color
+    let accentFont: String
     let kerning: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -473,8 +484,13 @@ struct DisplayTextUIView: UIViewRepresentable {
                     let accentedText = String(text[accentStartRange.upperBound ..< accentEndRange.lowerBound])
                     let processedAccentText = shouldCapitalize ? accentedText.uppercased() : accentedText
                     let accentString = NSMutableAttributedString(string: processedAccentText)
-                    accentString.addAttribute(
-                        .foregroundColor, value: UIColor(accentColor), range: NSRange(location: 0, length: processedAccentText.count))
+                    if let font = UIFont(name: accentFont, size: fontSize) {
+                        accentString.addAttributes(
+                            [
+                                .foregroundColor: UIColor(accentColor),
+                                .font: font
+                            ], range: NSRange(location: 0, length: processedAccentText.count))
+                    }
                     attributedString.append(accentString)
 
                     currentIndex = accentEndRange.upperBound

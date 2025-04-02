@@ -136,22 +136,17 @@ struct CustomButton: View {
     }
 
     private var backgroundColor: Color {
-        if isPressed {
-            switch variant {
-            case .primary:
-                return .white32
-            case .secondary, .tertiary:
-                return .white08
-            }
-        }
-
         if isDisabled {
             return .clear
         }
 
         switch variant {
         case .primary:
-            return .white16
+            if isPressed {
+                return .white32
+            } else {
+                return .white16
+            }
         case .secondary, .tertiary:
             return .clear
         }
@@ -161,11 +156,12 @@ struct CustomButton: View {
         if isDisabled {
             return .white32
         }
+
         switch variant {
         case .primary:
             return .textPrimary
         case .secondary, .tertiary:
-            return .white64
+            return .white80
         }
     }
 
@@ -173,11 +169,16 @@ struct CustomButton: View {
         if isDisabled {
             return nil
         }
+
         switch variant {
         case .primary:
             return nil
         case .secondary:
-            return .gray2
+            if isPressed {
+                return .white32
+            } else {
+                return .white16
+            }
         case .tertiary:
             return nil
         }
@@ -198,13 +199,9 @@ struct CustomButton: View {
                     )
                 )
                 .disabled(isDisabled)
-                // .opacity(isDisabled ? 0.5 : 1)
             } else if let action = action {
                 Button {
                     guard !isLoading, !isDisabled else { return }
-
-                    // Play haptic feedback
-                    Haptics.play(.medium)
 
                     Task { @MainActor in
                         isLoading = true
@@ -242,11 +239,7 @@ struct CustomButton: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: foregroundColor))
                     .frame(width: 20, height: 20)
             } else {
-                Text(title)
-                    .font(Fonts.bold(size: 15))
-                    .foregroundColor(foregroundColor)
-                    .lineLimit(1)
-                    .frame(maxWidth: size == .large && icon == nil ? .infinity : nil)
+                BodySSBText(title, textColor: foregroundColor)
             }
         }
         .frame(maxWidth: size == .large ? .infinity : nil)
@@ -258,7 +251,7 @@ struct CustomButton: View {
             Group {
                 if let borderColor = borderColor {
                     RoundedRectangle(cornerRadius: size.cornerRadius)
-                        .stroke(borderColor, lineWidth: 1)
+                        .stroke(borderColor, lineWidth: 2)
                 }
             }
         )
@@ -267,37 +260,39 @@ struct CustomButton: View {
 }
 
 #Preview {
-    VStack(spacing: 20) {
-        CustomButton(
-            title: "Primary Button (Navigation)",
-            destination: Text("Navigation Example")
-        )
+    NavigationView {
+        VStack(spacing: 20) {
+            CustomButton(
+                title: "Primary Button (Navigation)",
+                destination: Text("Navigation Example")
+            )
 
-        CustomButton(title: "Secondary Button", variant: .secondary) {
-            print("Button tapped")
-        }
+            CustomButton(title: "Secondary Button", variant: .secondary) {
+                print("Button tapped")
+            }
 
-        CustomButton(title: "Tertiary Button", variant: .tertiary) {
-            print("Button tapped")
-        }
+            CustomButton(title: "Tertiary Button", variant: .tertiary) {
+                print("Button tapped")
+            }
 
-        CustomButton(title: "Disabled Button", isDisabled: true) {
-            print("Button tapped")
-        }
+            CustomButton(title: "Disabled Button", isDisabled: true) {
+                print("Button tapped")
+            }
 
-        CustomButton(title: "Small Button", size: .small) {
-            print("Button tapped")
-        }
+            CustomButton(title: "Small Button", size: .small) {
+                print("Button tapped")
+            }
 
-        CustomButton(
-            title: "With Icon",
-            icon: Image(systemName: "lock.shield")
-                .foregroundColor(.textPrimary)
-        ) {
-            print("Button tapped")
+            CustomButton(
+                title: "With Icon",
+                icon: Image(systemName: "lock.shield")
+                    .foregroundColor(.textPrimary)
+            ) {
+                print("Button tapped")
+            }
         }
+        .padding()
+        .background(Color.gray6)
+        .preferredColorScheme(.dark)
     }
-    .padding()
-    .background(Color.gray6)
-    .preferredColorScheme(.dark)
 }

@@ -5,7 +5,7 @@ struct SavingsIntroView: View {
 
     var body: some View {
         VStack {
-            OnboardingTab(
+            OnboardingContent(
                 imageName: "piggybank-right",
                 title: NSLocalizedString("lightning__savings_intro__title", comment: ""),
                 text: NSLocalizedString("lightning__savings_intro__text", comment: ""),
