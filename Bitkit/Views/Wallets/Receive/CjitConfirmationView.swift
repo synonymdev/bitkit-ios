@@ -13,10 +13,7 @@ struct CjitConfirmationView: View {
     let receiveAmountSats: UInt64
     
     @EnvironmentObject private var currency: CurrencyViewModel
-    
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
-    @State private var overrideSats: UInt64?
-    
+        
     private func formattedNetworkFee() -> String {
         guard let converted = currency.convert(sats: entry.networkFeeSat) else {
             return String(entry.networkFeeSat)
@@ -35,7 +32,7 @@ struct CjitConfirmationView: View {
     private func formattedAmountReceive() -> String {
         let sats = receiveAmountSats - entry.feeSat
         if let converted = currency.convert(sats: sats) {
-            if primaryDisplay == .bitcoin {
+            if currency.primaryDisplay == .bitcoin {
                 let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                 return "\(btcComponents.symbol) \(btcComponents.value)"
             } else {
@@ -49,9 +46,9 @@ struct CjitConfirmationView: View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(
-                    defaultValue: entry.invoice.request.isEmpty ? 0 : entry.channelSizeSat, 
-                    primaryDisplay: $primaryDisplay, 
-                    overrideSats: $overrideSats, 
+                    defaultValue: receiveAmountSats,
+                    primaryDisplay: $currency.primaryDisplay,
+                    overrideSats: .constant(receiveAmountSats),
                     showConversion: true
                 ) { _ in
                     // Read-only, so no action needed
@@ -107,10 +104,6 @@ struct CjitConfirmationView: View {
         .sheetBackground()
         .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            primaryDisplay = currency.primaryDisplay
-            overrideSats = entry.channelSizeSat
-        }
     }
 }
 
