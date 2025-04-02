@@ -89,14 +89,15 @@ struct SavingsWalletView: View {
     }
 
     var transferButton: some View {
-        SecondaryButton(
-            title: "Transfer To Spending",
+        CustomButton(
+            title: "Transfer To Spending", //TODO: add missing translation //lightning__spending_confirm__label
+            variant: .secondary,
             icon: Image(systemName: "arrow.up.arrow.down")
                 .foregroundColor(.white80)
         ) {
             app.showTransferToSpendingSheet = true
         }
-        .padding(.vertical)
+        .padding()
     }
 }
 

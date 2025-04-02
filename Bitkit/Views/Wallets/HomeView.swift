@@ -142,10 +142,10 @@ struct HomeView: View {
             isPresented: $app.showReceiveSheet,
             content: {
                 if #available(iOS 16.0, *) {
-                    ReceiveQR()
+                    ReceiveView()
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    ReceiveQR()  // Will just consume full screen on older iOS versions
+                    ReceiveView()  // Will just consume full screen on older iOS versions
                 }
             }
         )

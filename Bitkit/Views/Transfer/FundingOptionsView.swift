@@ -59,7 +59,7 @@ struct FundingOptionsView: View {
 
                 NavigationLink(destination: FundCustomView()) {
                     RectangleButton(
-                        icon: Image("share-purple"),
+                        icon: Image("external-purple"),
                         title: NSLocalizedString("lightning__funding__button3", comment: "")
                     )
                 }

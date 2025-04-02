@@ -44,7 +44,7 @@ struct SpendingAdvancedView: View {
                     .padding(.top, 16)
 
                 // Receiving capacity input
-                TransferAmount(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
+                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
                     Haptics.play(.buttonTap)
                     receivingSatsAmount = newSats
                     overrideSats = nil
