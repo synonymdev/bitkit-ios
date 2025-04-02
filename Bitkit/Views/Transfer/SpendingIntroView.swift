@@ -3,7 +3,7 @@ import SwiftUI
 struct SpendingIntroView: View {
     var body: some View {
         VStack {
-            OnboardingTab(
+            OnboardingContent(
                 imageName: "coin-stack-x",
                 title: NSLocalizedString("lightning__spending_intro__title", comment: ""),
                 text: NSLocalizedString("lightning__spending_intro__text", comment: ""),
