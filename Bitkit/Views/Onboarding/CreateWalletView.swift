@@ -40,7 +40,7 @@ struct CreateWalletView: View {
                 CustomButton(
                     title: NSLocalizedString("onboarding__restore", comment: ""),
                     variant: .secondary,
-                    destination: RestoreWalletView()
+                    destination: MultipleWalletsView()
                 )
             }
             .padding(.top, 32)
