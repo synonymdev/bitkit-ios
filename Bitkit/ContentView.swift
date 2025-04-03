@@ -47,9 +47,9 @@ struct ContentView: View {
             } else if wallet.walletExists == false {
                 NavigationView {
                     TermsView()
-                        .navigationBarHidden(true)
                 }
                 .navigationViewStyle(.stack)
+                .accentColor(.white)
                 .onAppear {
                     // Reset these values if the wallet is wiped
                     walletIsInitializing = nil

@@ -10,7 +10,7 @@ struct CheckboxRow: View {
     var body: some View {
         HStack(spacing: 24) {
             VStack(alignment: .leading) {
-                BodyMSBText(title)
+                BodyMSBText(title, textColor: .textPrimary)
                 BodySSBText(
                     subtitle,
                     textColor: .textSecondary,
