@@ -38,7 +38,6 @@ struct IntroView: View {
                 .ignoresSafeArea()
         )
         .navigationBarBackButtonHidden(true)
-        .navigationBarHidden(true)
     }
 }
 

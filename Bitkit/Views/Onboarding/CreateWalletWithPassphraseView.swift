@@ -9,8 +9,17 @@ struct CreateWalletWithPassphraseView: View {
         !bip39Passphrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var content: some View {
-        VStack {
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+
+                Image("advanced-label")
+                    .resizable()
+                    .frame(width: 106, height: 42)
+                    .padding(.trailing, -32)
+            }
+
             OnboardingContent(
                 imageName: "padlock2",
                 title: NSLocalizedString("onboarding__passphrase_header", comment: ""),
@@ -19,13 +28,11 @@ struct CreateWalletWithPassphraseView: View {
             )
             .frame(maxHeight: .infinity)
 
-            TextField(NSLocalizedString("onboarding__passphrase", comment: ""), text: $bip39Passphrase)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .padding()
-                .background(Color(.systemGray6))
-                .cornerRadius(10)
-                .padding(.bottom)
+            TextField(
+                NSLocalizedString("onboarding__passphrase", comment: ""),
+                text: $bip39Passphrase
+            )
+            .padding(.bottom, 28)
 
             CustomButton(
                 title: NSLocalizedString("onboarding__create_new_wallet", comment: ""),
@@ -53,10 +60,6 @@ struct CreateWalletWithPassphraseView: View {
                         for: nil)
                 }
         )
-    }
-
-    var body: some View {
-        content
     }
 }
 
