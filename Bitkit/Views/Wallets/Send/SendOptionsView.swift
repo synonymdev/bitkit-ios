@@ -61,9 +61,7 @@ struct SendOptionsView: View {
     var sendOptionsContent: some View {
         VStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("To")
-                    .font(.headline)
-                    .foregroundColor(.gray)
+                CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
                     .padding(.horizontal)
                 
                 VStack(spacing: 12) {
