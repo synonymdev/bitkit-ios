@@ -18,7 +18,6 @@ struct TextField: View {
             }
 
             SwiftUI.TextField("", text: $text)
-                .submitLabel(.done)
                 .accentColor(.brandAccent)
                 .font(.custom(Fonts.semiBold, size: 15))
         }
