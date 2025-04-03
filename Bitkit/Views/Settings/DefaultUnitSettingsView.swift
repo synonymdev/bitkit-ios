@@ -21,7 +21,7 @@ struct DefaultUnitSettingsView: View {
 
                 if let rate = currency.convert(sats: 1)?.currency {
                     HStack {
-                        Label(rate, systemImage: "globe")
+                        Label(rate, systemImage: "globe-sphere")
                         Spacer()
                         if currency.primaryDisplay == .fiat {
                             Image(systemName: "checkmark")
