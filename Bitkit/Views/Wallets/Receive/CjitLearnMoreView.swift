@@ -19,7 +19,7 @@ struct CjitLearnMoreView: View {
                 LightningChannel(
                     capacity: entry.channelSizeSat,
                     localBalance: receiveAmountSats - entry.feeSat,
-                    remoteBalance: entry.feeSat,
+                    remoteBalance: entry.channelSizeSat - (receiveAmountSats - entry.feeSat),
                     status: .open,
                     showLabels: true
                 )
