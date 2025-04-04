@@ -103,7 +103,7 @@ struct SendOptionsView: View {
                 .padding(.bottom, 8)
         }
         .sheetBackground()
-        .navigationTitle("Send Bitcoin")
+        .navigationTitle(NSLocalizedString("wallet__send_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.all, edges: .bottom)
         .onAppear {

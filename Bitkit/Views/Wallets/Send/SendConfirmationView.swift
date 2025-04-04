@@ -32,7 +32,7 @@ struct SendConfirmationView: View {
                 accentColor: .greenAccent
             ) {
                 do {
-                    if app.scannedLightningInvoice != nil, let bolt11 = app.scannedLightningBolt11Invoice {
+                    if app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningBolt11Invoice {
                         // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
                         // So we need to handle all these cases here.
                         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
@@ -59,7 +59,7 @@ struct SendConfirmationView: View {
                                 }
                             }
                         }
-                    } else if let invoice = app.scannedOnchainInvoice {
+                    } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                         let sats = app.sendAmountSats ?? invoice.amountSatoshis
                         let txid = try await wallet.send(address: invoice.address, sats: sats)
 
@@ -70,6 +70,8 @@ struct SendConfirmationView: View {
                         app.resetSendState()
                         // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
                         app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
+                    } else {
+                        throw NSError(domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
                     }
                 } catch {
                     app.toast(error)

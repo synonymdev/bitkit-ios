@@ -7,10 +7,16 @@
 
 import SwiftUI
 
+enum NumberPadActionButtonVariant {
+    case primary
+    case secondary
+}
+
 struct NumberPadActionButton: View {
     let text: String
     var imageName: String?
     var color: Color = .purpleAccent
+    var variant: NumberPadActionButtonVariant = .primary
     var action: () -> Void
 
     var body: some View {
@@ -30,31 +36,47 @@ struct NumberPadActionButton: View {
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
-            .background(Color.white10)
+            .background(variant == .primary ? Color.white10 : Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(variant == .secondary ? color : Color.clear, lineWidth: 1)
+            )
             .cornerRadius(8)
         }
     }
 }
 
 #Preview {
-    HStack(spacing: 16) {
-        NumberPadActionButton(text: "MIN") {
-            print("MIN tapped")
+    VStack(spacing: 20) {
+        HStack(spacing: 16) {
+            NumberPadActionButton(text: "PRIMARY", variant: .primary) {
+                print("PRIMARY tapped")
+            }
+            
+            NumberPadActionButton(text: "SECONDARY", variant: .secondary) {
+                print("SECONDARY tapped")
+            }
         }
+        
+        HStack(spacing: 16) {
+            NumberPadActionButton(text: "MIN") {
+                print("MIN tapped")
+            }
 
-        NumberPadActionButton(text: "DEFAULT") {
-            print("DEFAULT tapped")
-        }
+            NumberPadActionButton(text: "DEFAULT") {
+                print("DEFAULT tapped")
+            }
 
-        NumberPadActionButton(text: "MAX") {
-            print("MAX tapped")
-        }
+            NumberPadActionButton(text: "MAX") {
+                print("MAX tapped")
+            }
 
-        NumberPadActionButton(
-            text: "BTC",
-            imageName: "transfer-purple"
-        ) {
-            print("Currency toggle tapped")
+            NumberPadActionButton(
+                text: "BTC",
+                imageName: "transfer-purple"
+            ) {
+                print("Currency toggle tapped")
+            }
         }
     }
     .padding()

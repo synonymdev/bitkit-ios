@@ -23,7 +23,6 @@ struct FundTransferView: View {
 
                 // Visible balance display that acts as a button
                 AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
-                    Haptics.play(.buttonTap)
                     satsAmount = newSats
                     overrideSats = nil
                     print("satsAmount: \(satsAmount)")

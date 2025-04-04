@@ -17,6 +17,7 @@ class AppViewModel: ObservableObject {
 
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var sendAmountSats: UInt64?
+    @Published var selectedWalletToPayFrom: WalletType = .onchain
 
     // Bottom sheets
     @Published var showReceiveSheet = false
@@ -145,13 +146,15 @@ extension AppViewModel {
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
-                        handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice)
+                        selectedWalletToPayFrom = .lightning
+                        handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
                 }
             }
 
             // No LN invoice found, proceed with onchain payment
+            selectedWalletToPayFrom = .onchain
             handleScannedOnchainInvoice(invoice)
         case .lightning(let invoice):
             guard lightningService.status?.isRunning == true else {
@@ -161,6 +164,7 @@ extension AppViewModel {
 
             Logger.debug("Lightning: \(invoice)")
             if lightningService.canSend(amountSats: invoice.amountSatoshis) {
+                selectedWalletToPayFrom = .lightning
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
@@ -171,26 +175,28 @@ extension AppViewModel {
         }
     }
 
-    private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String) {
+    private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String, onchainInvoice: OnChainInvoice? = nil) {
         scannedLightningInvoice = invoice
         scannedLightningBolt11Invoice = bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
-        scannedOnchainInvoice = nil
+        scannedOnchainInvoice = onchainInvoice // Keep onchain invoice if provided
+        selectedWalletToPayFrom = .lightning
 
         if invoice.amountSatoshis > 0 {
-            Logger.info("Found amount in invoice, proceeding with payment")
+            Logger.debug("Found amount in invoice, proceeding with payment")
         } else {
-            Logger.info("No amount found in invoice, proceeding entering amount manually")
+            Logger.debug("No amount found in invoice, proceeding entering amount manually")
         }
     }
 
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {
         scannedOnchainInvoice = invoice
         scannedLightningInvoice = nil
+        selectedWalletToPayFrom = .onchain
 
         if invoice.amountSatoshis > 0 {
-            Logger.info("Found amount in invoice, proceeding with payment")
+            Logger.debug("Found amount in invoice, proceeding with payment")
         } else {
-            Logger.info("No amount found in invoice, proceeding entering amount manually")
+            Logger.debug("No amount found in invoice, proceeding entering amount manually")
         }
     }
 
@@ -214,6 +220,7 @@ extension AppViewModel {
             self.scannedLightningInvoice = nil
             self.scannedOnchainInvoice = nil
             self.sendAmountSats = nil
+            self.selectedWalletToPayFrom = .onchain // Reset to default
         }
     }
 }

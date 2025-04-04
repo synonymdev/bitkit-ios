@@ -35,7 +35,7 @@ struct HomeView: View {
                     HStack {
                         NavigationLink(destination: SavingsWalletView()) {
                             WalletBalanceView(
-                                type: .bitcoin,
+                                type: .onchain,
                                 sats: UInt64(wallet.totalOnchainSats)
                             )
                         }
