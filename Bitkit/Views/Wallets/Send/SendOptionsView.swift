@@ -7,6 +7,44 @@
 
 import SwiftUI
 
+struct SendOptionCard<Destination: View>: View {
+    var title: String
+    var destination: Destination
+    var isButton: Bool = false
+    var action: (() -> Void)? = nil
+    var iconName: String
+    
+    var body: some View {
+        Group {
+            if isButton {
+                Button(action: { action?() }) {
+                    cardContent
+                }
+            } else {
+                NavigationLink(destination: destination) {
+                    cardContent
+                }
+            }
+        }
+    }
+    
+    private var cardContent: some View {
+        HStack {
+            Image(iconName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 32, height: 32)
+                .padding(.trailing, 8)
+            SubtitleText(title)
+            Spacer()
+        }
+        .frame(height: 80)
+        .padding(.horizontal, 24)
+        .background(Color.white06)
+        .cornerRadius(8)
+    }
+}
+
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -21,35 +59,53 @@ struct SendOptionsView: View {
     }
 
     var sendOptionsContent: some View {
-        List {
-            Section("To") {
-                HStack {
-                    Button("Paste Invoice") {
-                        handlePaste()
-                    }
-                }
-
-                HStack {
-                    NavigationLink(destination: SendEnterManuallyView()) {
-                        Text("Enter Manually")
-                    }
-                }
-
-                HStack {
-                    NavigationLink(
+        VStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
+                    .padding(.horizontal)
+                
+                VStack(spacing: 12) {
+                    SendOptionCard(
+                        title: "Paste Invoice", 
+                        destination: EmptyView(),
+                        isButton: true,
+                        action: handlePaste,
+                        iconName: "clipboard-brand"
+                    )
+                    
+                    SendOptionCard(
+                        title: "Enter Manually", 
+                        destination: SendEnterManuallyView(),
+                        iconName: "pencil-brand"
+                    )
+                    
+                    SendOptionCard(
+                        title: "Scan QR Code", 
                         destination: ScannerView(
                             showSendAmountView: $showSendAmountView,
                             showSendConfirmationView: $showSendConfirmationView,
-                            onResultDelay: 0.65  // Slight delay so this view can dismiss before the next view appears
-                        )
-                    ) {
-                        Text("Scan QR Code")
-                    }
+                            onResultDelay: 0.65
+                        ),
+                        iconName: "scan-brand"
+                    )
                 }
+                .padding(.horizontal)
+                
+                Spacer()
             }
+
+            Spacer()
+            
+            Image("coin-stack-logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(alignment: .bottom)
+                .padding(.bottom, 8)
         }
-        .navigationTitle("Send Bitcoin")
+        .sheetBackground()
+        .navigationTitle(NSLocalizedString("wallet__send_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
+        .ignoresSafeArea(.all, edges: .bottom)
         .onAppear {
             wallet.syncState()
         }
@@ -94,9 +150,19 @@ struct SendOptionsView: View {
     }
 }
 
+@available(iOS 16.0, *)
 #Preview {
-    SendOptionsView()
-        .environmentObject(AppViewModel())
-        .environmentObject(WalletViewModel())
-        .preferredColorScheme(.dark)
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    SendOptionsView()
+                        .environmentObject(AppViewModel())
+                        .environmentObject(WalletViewModel())
+                }
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
+        )
+    .preferredColorScheme(.dark)
 }

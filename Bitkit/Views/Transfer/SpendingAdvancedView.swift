@@ -45,7 +45,6 @@ struct SpendingAdvancedView: View {
 
                 // Receiving capacity input
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
-                    Haptics.play(.buttonTap)
                     receivingSatsAmount = newSats
                     overrideSats = nil
                     updateFeeEstimate()

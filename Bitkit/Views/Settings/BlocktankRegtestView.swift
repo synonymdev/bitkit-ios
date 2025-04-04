@@ -95,6 +95,11 @@ struct BlocktankRegtestView: View {
                 )
                 Logger.debug("Deposit successful with txId: \(txId)", context: "BlocktankRegtestView")
                 app.toast(type: .success, title: "Success", description: "Deposit successful. TxID: \(txId)")
+                
+                // Sync wallet after deposit without waiting
+                Task {
+                    try? await wallet.sync()
+                }
             }
             .disabled(depositAddress.isEmpty && wallet.onchainAddress.isEmpty)
             .tint(.orange)
@@ -118,6 +123,11 @@ struct BlocktankRegtestView: View {
                     try await CoreService.shared.blocktank.regtestMineBlocks(count)
                     Logger.debug("Successfully mined \(count) blocks", context: "BlocktankRegtestView")
                     app.toast(type: .success, title: "Success", description: "Successfully mined \(count) blocks")
+                    
+                    // Sync wallet after mining blocks without waiting
+                    Task {
+                        try? await wallet.sync()
+                    }
                 }
                 .tint(.orange)
             }

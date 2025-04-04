@@ -82,6 +82,11 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         Logger.debug("App backgrounded Stopping node...")
 
         try await wallet.stopLightningNode()
+
+        //If we're stopped and we're not in the background, we need to start again
+        if scenePhase == .active {
+            try await startNodeIfNeeded()
+        }
     }
 
     func startNodeIfNeeded() async throws {

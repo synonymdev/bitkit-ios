@@ -21,18 +21,35 @@ struct SendEnterManuallyView: View {
 
     var body: some View {
         VStack {
-            TextEditor(text: $text)
-                .focused($isTextEditorFocused)
-                .frame(height: 200)
-                .transparentScrolling()
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(8)
+            CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal)
+
+            ZStack(alignment: .topLeading) {
+                if text.isEmpty {
+                    TitleText(NSLocalizedString("wallet__send_address_placeholder", comment: ""), textColor: .textSecondary)
+                        .padding(20)
+                }
+                
+                TextEditor(text: $text)
+                    .focused($isTextEditorFocused)
+                    .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
+                    .padding(20)
+                    .frame(minHeight: 200, maxHeight: .infinity)
+                    .transparentScrolling()
+                    .font(.custom(Fonts.bold, size: 22))
+                    .foregroundColor(.textPrimary)
+                    .accentColor(.brandAccent)
+            }
+            .background(Color.gray.opacity(0.2))
+            .cornerRadius(8)
 
             Spacer()
 
-            Button("Continue") {
-                handleContinue()
+            CustomButton(title: "Continue", isDisabled: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+                await handleContinue()    
             }
+            .padding(.top)
         }
         .padding()
         .navigationTitle("Send Bitcoin")
@@ -54,30 +71,21 @@ struct SendEnterManuallyView: View {
         )
     }
 
-    func handleContinue() {
+    func handleContinue() async {
         let uri = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !uri.isEmpty else {
-            Haptics.notify(.error)
-            Logger.error("Empty text field")
-            return
-        }
 
-        Haptics.play(.medium)
+        do {
+            try await app.handleScannedData(uri)
 
-        Task { @MainActor in
-            do {
-                try await app.handleScannedData(uri)
-
-                // If nil then it's not an invoice we're dealing with
-                if app.invoiceRequiresCustomAmount == true {
-                    showSendAmountView = true
-                } else if app.invoiceRequiresCustomAmount == false {
-                    showSendConfirmationView = true
-                }
-            } catch {
-                Logger.error(error, context: "Failed to read data from clipboard")
-                app.toast(error)
+            // If nil then it's not an invoice we're dealing with
+            if app.invoiceRequiresCustomAmount == true {
+                showSendAmountView = true
+            } else if app.invoiceRequiresCustomAmount == false {
+                showSendConfirmationView = true
             }
+        } catch {
+            Logger.error(error, context: "Failed to read data from clipboard")
+            app.toast(error)
         }
     }
 }
