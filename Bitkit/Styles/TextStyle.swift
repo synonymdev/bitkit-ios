@@ -6,11 +6,13 @@ struct DisplayText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, textAlignment: NSTextAlignment = .left) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.textAlignment = textAlignment
     }
 
     // TODO: lineHeight should be 44, but glyphs are cut off
@@ -18,7 +20,7 @@ struct DisplayText: View {
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 44, lineHeight: 47, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
-            kerning: -1)
+            kerning: -1, textAlignment: textAlignment)
     }
 }
 
@@ -26,17 +28,19 @@ struct HeadlineText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, textAlignment: NSTextAlignment = .left) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.textAlignment = textAlignment
     }
 
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 30, lineHeight: 30, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
-            kerning: -1)
+            kerning: -1, textAlignment: textAlignment)
     }
 }
 
@@ -44,17 +48,19 @@ struct TitleText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, textAlignment: NSTextAlignment = .left) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.textAlignment = textAlignment
     }
 
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 22, lineHeight: 26, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor,
-            kerning: 0.4)
+            kerning: 0.4, textAlignment: textAlignment)
     }
 }
 
@@ -62,17 +68,19 @@ struct SubtitleText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, textAlignment: NSTextAlignment = .left) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.textAlignment = textAlignment
     }
 
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 17, lineHeight: 22, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: accentColor,
-            kerning: 0.4)
+            kerning: 0.4, textAlignment: textAlignment)
     }
 }
 
@@ -82,18 +90,20 @@ struct BodyMText: View {
     var textColor: Color = .textSecondary
     var accentColor: Color = .white
     var accentFont: String? = nil
+    var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .white, accentFont: String? = nil) {
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .white, accentFont: String? = nil, textAlignment: NSTextAlignment = .left) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
         self.accentFont = accentFont
+        self.textAlignment = textAlignment
     }
 
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 17, lineHeight: 22, shouldCapitalize: false, font: font, textColor: textColor,
-            accentColor: accentColor, accentFont: accentFont, kerning: 0.4)
+            accentColor: accentColor, accentFont: accentFont, kerning: 0.4, textAlignment: textAlignment)
     }
 }
 
@@ -318,12 +328,12 @@ struct CustomTextWrapper: View {
     let accentColor: Color
     let accentFont: String?
     let kerning: CGFloat
+    let textAlignment: NSTextAlignment
     @State private var viewWidth: CGFloat = 0
 
     init(
         text: String, fontSize: CGFloat, lineHeight: CGFloat, shouldCapitalize: Bool, font: String, textColor: Color, accentColor: Color,
-        accentFont: String? = nil,
-        kerning: CGFloat
+        accentFont: String? = nil, kerning: CGFloat, textAlignment: NSTextAlignment = .left
     ) {
         self.text = text
         self.fontSize = fontSize
@@ -334,13 +344,14 @@ struct CustomTextWrapper: View {
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.kerning = kerning
+        self.textAlignment = textAlignment
     }
 
     var body: some View {
         GeometryReader { geometry in
             DisplayTextUIView(
                 text: text, fontSize: fontSize, lineHeight: lineHeight, width: geometry.size.width, shouldCapitalize: shouldCapitalize, font: font,
-                textColor: textColor, accentColor: accentColor, accentFont: accentFont ?? font, kerning: kerning
+                textColor: textColor, accentColor: accentColor, accentFont: accentFont ?? font, kerning: kerning, textAlignment: textAlignment
             )
             .preference(key: ViewWidthKey.self, value: geometry.size.width)
         }
@@ -360,7 +371,7 @@ struct CustomTextWrapper: View {
         paragraphStyle.minimumLineHeight = lineHeight
         paragraphStyle.maximumLineHeight = lineHeight
         paragraphStyle.lineSpacing = 0
-        paragraphStyle.alignment = .left
+        paragraphStyle.alignment = textAlignment
 
         // Parse text for accent tags and create attributed string
         let attributedString = NSMutableAttributedString(string: "")
@@ -438,6 +449,7 @@ struct DisplayTextUIView: UIViewRepresentable {
     let accentColor: Color
     let accentFont: String
     let kerning: CGFloat
+    let textAlignment: NSTextAlignment
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -456,12 +468,13 @@ struct DisplayTextUIView: UIViewRepresentable {
         label.textColor = UIColor(textColor)
         label.numberOfLines = 0
         label.preferredMaxLayoutWidth = width
+        label.textAlignment = textAlignment
 
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.minimumLineHeight = lineHeight
         paragraphStyle.maximumLineHeight = lineHeight
         paragraphStyle.lineSpacing = 0
-        paragraphStyle.alignment = .left
+        paragraphStyle.alignment = textAlignment
 
         // Parse text for accent tags and create attributed string
         let attributedString = NSMutableAttributedString(string: "")

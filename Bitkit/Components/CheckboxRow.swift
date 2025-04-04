@@ -48,6 +48,7 @@ struct CheckboxRow: View {
                         isPressed = false
                     }
                     isChecked.toggle()
+                    Haptics.play(.buttonTap)
                 }
         )
     }

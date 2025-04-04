@@ -5,7 +5,7 @@ struct ProgressSteps: View {
     let currentStep: Int
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
             // Steps with circles and separators
             GeometryReader { geometry in
                 ZStack(alignment: .center) {
@@ -62,7 +62,7 @@ struct ProgressSteps: View {
                 }
             }
 
-            BodyMText(steps[currentStep], textColor: .textSecondary)
+            BodyMText(steps[currentStep], textColor: .textSecondary, textAlignment: .center)
         }
     }
 }

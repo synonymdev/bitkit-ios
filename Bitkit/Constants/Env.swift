@@ -32,8 +32,7 @@ enum Env {
 
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
-    static let onchainWalletStopGap: UInt64 = 20
-    static let walletSyncIntervalSecs: UInt64 = 60
+    static let walletSyncIntervalSecs: UInt64 = 10 //TODO: play arond with this
     static let esploraParallelRequests: UInt64 = 6
     static var esploraServerUrl: String {
         switch network {

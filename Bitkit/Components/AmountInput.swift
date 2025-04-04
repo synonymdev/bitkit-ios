@@ -27,6 +27,11 @@ struct AmountInput: View {
     private var sats: UInt64 {
         return !satsAmount.isEmpty ? UInt64(satsAmount) ?? 0 : 0
     }
+    
+    private func triggerOnSatsChange(_ value: UInt64) {
+        Haptics.play(.buttonTap)
+        onSatsChange(value)
+    }
 
     var body: some View {
         ZStack {
@@ -58,7 +63,7 @@ struct AmountInput: View {
                         }
 
                         satsAmount = filtered
-                        onSatsChange(sats)
+                        triggerOnSatsChange(sats)
 
                         // Update fiat amount
                         if let converted = currency.convert(sats: sats) {
@@ -93,10 +98,10 @@ struct AmountInput: View {
                             let convertedSats = currency.convert(fiatAmount: fiatDouble)
                         {
                             satsAmount = String(convertedSats)
-                            onSatsChange(convertedSats)
+                            triggerOnSatsChange(convertedSats)
                         } else {
                             satsAmount = ""
-                            onSatsChange(0)
+                            triggerOnSatsChange(0)
                         }
                     }
                 }
@@ -129,7 +134,7 @@ struct AmountInput: View {
         .onChange(of: overrideSats) { newValue in
             if let exactSats = newValue {
                 satsAmount = String(exactSats)
-                onSatsChange(exactSats)
+                triggerOnSatsChange(exactSats)
 
                 // Update fiat amount if needed
                 if let converted = currency.convert(sats: exactSats) {
