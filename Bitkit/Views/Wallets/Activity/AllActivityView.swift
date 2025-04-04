@@ -52,6 +52,7 @@ struct AllActivityView: View {
 
                         VStack {}.frame(height: 120)
                     }
+                    .padding(.horizontal)
                 } else {
                     Text("No activity")
                         .padding()

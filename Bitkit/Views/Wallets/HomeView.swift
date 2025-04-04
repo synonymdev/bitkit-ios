@@ -52,15 +52,18 @@ struct HomeView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+                    .padding(.bottom, 16)
                     .transition(.move(edge: .leading).combined(with: .opacity))
 
-                    Text("ACTIVITY")
-                        .padding()
+                    CaptionText(localizedString("wallet__activity"))
+                        .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.horizontal)
 
                     ActivityLatest(viewType: .all)
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.horizontal)
                 }
             }
             .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
@@ -116,6 +119,7 @@ struct HomeView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
         }
+        .accentColor(.white)
         .onAppear {
             app.showTabBar = true
 
