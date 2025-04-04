@@ -7,7 +7,7 @@ func localizedRandom(_ key: String, comment: String) -> String {
     return components.randomElement() ?? localizedString
 }
 
-func localizedString(_ key: String, comment: String, variables: [String: String] = [:]) -> String {
+func localizedString(_ key: String, comment: String = "", variables: [String: String] = [:]) -> String {
     var localizedString = NSLocalizedString(key, comment: comment)
     
     for (name, value) in variables {

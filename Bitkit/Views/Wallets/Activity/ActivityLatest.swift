@@ -44,13 +44,10 @@ struct ActivityLatest: View {
                 }
 
                 if items.count == 0 {
-                    Text("No activity")
+                    Text(localizedString("wallet__activity_no"))
                         .padding()
                 } else {
-                    NavigationLink(destination: AllActivityView()) {
-                        Text("Show All Activity")
-                            .padding()
-                    }
+                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary, destination: AllActivityView())
                 }
             }
         } else {
