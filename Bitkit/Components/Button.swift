@@ -199,10 +199,17 @@ struct CustomButton: View {
                     )
                 )
                 .disabled(isDisabled)
+                .simultaneousGesture(TapGesture().onEnded {
+                    if !isDisabled {
+                        Haptics.play(.buttonTap)
+                    }
+                })
             } else if let action = action {
                 Button {
                     guard !isLoading, !isDisabled else { return }
-
+                    
+                    Haptics.play(.buttonTap)
+                    
                     Task { @MainActor in
                         isLoading = true
                         await action()
