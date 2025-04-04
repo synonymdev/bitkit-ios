@@ -168,7 +168,7 @@ class Keychain {
 
     class func wipeEntireKeychain() throws {
         // TODO: remove check in the future when safe to do so or required by the UI
-        guard Env.isDebug || Env.isUnitTest, Env.network == .regtest else {
+        guard Env.isDebug || Env.isTestFlight || Env.isUnitTest, Env.network == .regtest else {
             Logger.error("Wiping keychain is only allowed in debug mode for regtest", context: "Keychain")
             throw KeychainError.keychainWipeNotAllowed
         }
