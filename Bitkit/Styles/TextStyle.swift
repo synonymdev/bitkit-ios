@@ -109,11 +109,11 @@ struct BodyMText: View {
 
 struct BodyMSBText: View {
     let text: String
-    var textColor: Color = .textSecondary
+    var textColor: Color = .textPrimary
     var accentColor: Color? = nil
     private let fontSize: CGFloat = 17
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -213,6 +213,27 @@ struct CaptionText: View {
     var body: some View {
         Text(
             AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.regular))
+        )
+        .font(.custom(Fonts.regular, size: fontSize))
+        .kerning(0.4)
+    }
+}
+
+struct CaptionBText: View {
+    let text: String
+    var textColor: Color = .textSecondary
+    var accentColor: Color? = nil
+    private let fontSize: CGFloat = 13
+
+    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil) {
+        self.text = text
+        self.textColor = textColor
+        self.accentColor = accentColor
+    }
+
+    var body: some View {
+        Text(
+            AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.semiBold))
         )
         .font(.custom(Fonts.regular, size: fontSize))
         .kerning(0.4)

@@ -37,7 +37,6 @@ struct CopyAddressCard: View {
                     HStack {
                         CustomButton(
                             title: NSLocalizedString("common__copy", comment: ""),
-                            variant: .tertiary,
                             size: .small,
                             icon: Image(pair.type == .lightning ? "copy-purple" : "copy-brand")
                         ) {
@@ -49,7 +48,6 @@ struct CopyAddressCard: View {
                             ShareLink(item: URL(string: pair.address)!) {
                                 CustomButton(
                                     title: NSLocalizedString("common__share", comment: ""),
-                                    variant: .tertiary,
                                     size: .small,
                                     icon: Image(pair.type == .lightning ? "share-purple" : "share-brand")
                                 )
