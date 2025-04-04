@@ -9,64 +9,60 @@ import SwiftUI
 
 struct NewTransactionSheet: View {
     @Binding var details: NewTransactionSheetDetails
-
+    
     @EnvironmentObject private var app: AppViewModel
-
-    @State private var offsetY: CGFloat = 0
-    @State private var rotate: CGFloat = 0
-
+    
     var body: some View {
-        VStack {
+        NavigationView {
             VStack {
-                if details.type == .lightning {
-                    if details.direction == .sent {
-                        Text("Sent Instant Bitcoin")
-                    } else {
-                        Text("Received Instant Bitcoin")
-                    }
-                } else {
-                    if details.direction == .sent {
-                        Text("Sent Bitcoin")
-                    } else {
-                        Text("Received Bitcoin")
-                    }
+                //Values are currently all wrong
+                // VStack(alignment: .leading) {
+                //     Text("\(details.sats) sats")
+                //         .font(.title)
+                // }
+                // .frame(maxWidth: .infinity, alignment: .leading)
+                // .padding(.top)
+                
+                Spacer()
+                
+                Image("check")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 300, height: 300)
+                
+                Spacer()
+                
+                CustomButton(title: "Close") {
+                    app.showNewTransaction = false
                 }
-
-                VStack(alignment: .leading) {
-                    Text("\(details.sats) sats")
-                        .font(.title)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top)
+                .padding()
             }
-            .padding()
-
-            Spacer()
-
-            Text("confetti")
-                .rotationEffect(.degrees(rotate))
-                .offset(y: offsetY)
-
-            Spacer()
-
-            Button("Close") {
-                app.showNewTransaction = false
-            }
+            .sheetBackground()
+            .navigationTitle(getTitle())
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .onAppear {
-            withAnimation(Animation.easeInOut(duration: 10).repeatForever(autoreverses: true)) {
-                offsetY = 100
-            }
-
-            withAnimation(Animation.easeInOut(duration: 3.2).repeatForever(autoreverses: true)) {
-                rotate = 360
-            }
+    }
+    
+    private func getTitle() -> String {
+        if details.type == .lightning {
+            return details.direction == .sent ? "Sent Instant Bitcoin" : "Received Instant Bitcoin"
+        } else {
+            return details.direction == .sent ? "Sent Bitcoin" : "Received Bitcoin"
         }
     }
 }
 
+
+@available(iOS 16.0, *)
 #Preview {
-    NewTransactionSheet(details: .constant(NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000)))
-        .environmentObject(AppViewModel())
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NewTransactionSheet(details: .constant(NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000)))
+                    .environmentObject(AppViewModel())
+            }
+        )
+        .presentationDetents([.height(UIScreen.screenHeight - 120)])
         .preferredColorScheme(.dark)
 }
