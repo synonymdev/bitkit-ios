@@ -54,7 +54,7 @@ struct SendAmountView: View {
                         text: app.selectedWalletToPayFrom == .lightning ? 
                                 NSLocalizedString("wallet__spending__title", comment: "").uppercased() : 
                                 NSLocalizedString("wallet__savings__title", comment: "").uppercased(),
-                        color: .brandAccent,
+                        color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
                         variant: .secondary
                     ) {
                         //Allow switching to savings if we have an onchain invoice
@@ -81,21 +81,6 @@ struct SendAmountView: View {
 
             Divider()
 
-            // Debug information
-            // VStack(alignment: .leading, spacing: 8) {
-            //     Text("Lightning Balance: \(wallet.totalLightningSats) sats")
-            //         .foregroundColor(.yellow)
-            //     Text("Onchain Balance: \(wallet.totalOnchainSats) sats")
-            //         .foregroundColor(.yellow)
-            //     Text("Selected Wallet: \(app.selectedWalletToPayFrom == .lightning ? "Lightning (Spending)" : "Onchain (Savings)")")
-            //         .foregroundColor(.green)
-            //     Text("Lightning Invoice Available: \(app.scannedLightningInvoice != nil ? "Yes" : "No")")
-            //         .foregroundColor(.blue)
-            //     Text("Onchain Invoice Available: \(app.scannedOnchainInvoice != nil ? "Yes" : "No")")
-            //         .foregroundColor(.blue)
-            // }
-            // .font(.caption)
-            
             Spacer()
 
             // Navigation link and Continue button

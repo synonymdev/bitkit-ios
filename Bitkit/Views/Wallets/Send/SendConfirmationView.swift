@@ -10,14 +10,16 @@ import SwiftUI
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
 
     var body: some View {
         VStack {
             VStack(alignment: .leading) {
-                if let invoice = app.scannedLightningInvoice {
+                if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     amountView(app.sendAmountSats ?? invoice.amountSatoshis)
                     lightningView(invoice)
-                } else if let invoice = app.scannedOnchainInvoice {
+                } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     amountView(app.sendAmountSats ?? invoice.amountSatoshis)
                     onchainView(invoice)
                 }
@@ -28,7 +30,7 @@ struct SendConfirmationView: View {
             Spacer()
 
             SwipeButton(
-                title: "Swipe To Send",
+                title: NSLocalizedString("wallet__send_swipe", comment: ""),
                 accentColor: .greenAccent
             ) {
                 do {
@@ -81,21 +83,30 @@ struct SendConfirmationView: View {
             }
         }
         .padding()
-        .navigationTitle("Review and Send")
+        .sheetBackground()
+        .navigationTitle(NSLocalizedString("wallet__send_review", comment: ""))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder
     func amountView(_ sats: UInt64) -> some View {
         VStack {
-            Text("\(sats) sats")
-                .font(.title)
+            AmountInput(
+                defaultValue: sats,
+                primaryDisplay: $primaryDisplay,
+                showConversion: true
+            ) { _ in
+                // This is a read-only view, so we don't need to handle changes
+            }
+            .padding(.vertical)
+            .disabled(true) // Disable interaction since this is just for display
         }
     }
 
     @ViewBuilder
     func toView(_ address: String) -> some View {
         VStack(alignment: .leading) {
-            Text("To")
+            Text(NSLocalizedString("wallet__send_to", comment: ""))
                 .foregroundColor(.secondary)
                 .font(.caption)
             Text(address)
@@ -111,24 +122,24 @@ struct SendConfirmationView: View {
         VStack {
             toView(invoice.address)
 
-            Divider()
+            // Divider()
 
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("Speed and fee")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                    Text("TODO")
-                }
-                Spacer()
-                VStack(alignment: .leading) {
-                    Text("Confirming in")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                    Text("TODO")
-                }
-            }
-            .padding(.vertical)
+            // HStack {
+            //     VStack(alignment: .leading) {
+            //         Text("Speed and fee")
+            //             .foregroundColor(.secondary)
+            //             .font(.caption)
+            //         Text("TODO")
+            //     }
+            //     Spacer()
+            //     VStack(alignment: .leading) {
+            //         Text("Confirming in")
+            //             .foregroundColor(.secondary)
+            //             .font(.caption)
+            //         Text("TODO")
+            //     }
+            // }
+            // .padding(.vertical)
 
             Divider()
         }
@@ -143,14 +154,14 @@ struct SendConfirmationView: View {
 
             HStack {
                 VStack(alignment: .leading) {
-                    Text("Speed and fee")
+                    Text(NSLocalizedString("wallet__send_fee_and_speed", comment: ""))
                         .foregroundColor(.secondary)
                         .font(.caption)
-                    Text("TODO")
+                    Text("1")
                 }
                 Spacer()
                 VStack(alignment: .leading) {
-                    Text("Confirming in")
+                    Text("Confirms in")
                         .foregroundColor(.secondary)
                         .font(.caption)
                     Text("1 second")
@@ -163,7 +174,24 @@ struct SendConfirmationView: View {
     }
 }
 
+@available(iOS 16.0, *)
 #Preview {
-    SendConfirmationView()
-        .preferredColorScheme(.dark)
+    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+        .sheet(
+            isPresented: .constant(true),
+            content: {
+                NavigationView {
+                    SendConfirmationView()
+                        .environmentObject(AppViewModel())
+                        .environmentObject(WalletViewModel())
+                        .environmentObject({
+                            let vm = CurrencyViewModel()
+                            vm.primaryDisplay = .bitcoin
+                            return vm
+                        }())
+                }
+                .presentationDetents([.height(UIScreen.screenHeight - 120)])
+            }
+        )
+    .preferredColorScheme(.dark)
 }
