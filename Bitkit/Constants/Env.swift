@@ -14,7 +14,7 @@ enum Env {
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     // {Team ID}.{Keychain Group}
-    static let keychainGroup = "KYH47R284B.to.bitkit"
+    static let keychainGroup = "KYH47R284B.to.bitkit" //TODO: needs to change for regtest/mainnet so we don't use same group
 
     #if targetEnvironment(simulator)
         static let isSim = true
