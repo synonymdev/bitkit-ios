@@ -7,12 +7,31 @@ struct RestoreWalletView: View {
     @State private var tempPassphrase = ""
     @State private var firstFieldText: String = ""
     @State private var is24Words = false
+    @FocusState private var focusedField: Int?
 
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
 
     private var wordsPerColumn: Int {
         is24Words ? 12 : 6
+    }
+
+    private var isValidMnemonic: Bool {
+        let wordCount = is24Words ? 24 : 12
+        let currentWords = words[..<wordCount]
+
+        // Check if any words are empty
+        guard !currentWords.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) else {
+            return false
+        }
+
+        // Check if we have the correct number of words
+        let mnemonic =
+            currentWords
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: " ")
+
+        return mnemonic.split(separator: " ").count == wordCount
     }
 
     private var bip39Mnemonic: String {
@@ -35,67 +54,69 @@ struct RestoreWalletView: View {
     private var mainBody: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack {
+                VStack(spacing: 0) {
                     DisplayText(NSLocalizedString("onboarding__restore_header", comment: ""), accentColor: .blueAccent)
+                        .padding(.top, 40)
 
                     BodyMText(NSLocalizedString("onboarding__restore_phrase", comment: ""))
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     HStack(alignment: .top, spacing: 4) {
                         // First column (1-6 or 1-12)
-                        VStack(spacing: 8) {
+                        VStack(spacing: 4) {
                             ForEach(0 ..< wordsPerColumn) { index in
                                 HStack(spacing: 4) {
-                                    Text("\(index + 1).")
-                                        .foregroundColor(.gray)
-                                        .padding(.horizontal, 8)
+                                    BodyMSBText("\(index + 1).")
+                                        .padding(.leading, 16)
 
-                                    TextField("", text: index == 0 ? $firstFieldText : $words[index])
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                        .frame(maxWidth: .infinity)
-                                        .onChange(of: firstFieldText) { newValue in
-                                            if index == 0 && newValue.contains(" ") {
-                                                handlePastedWords(newValue)
-                                            } else if index == 0 {
-                                                words[index] = newValue
-                                            }
+                                    SeedTextField(
+                                        index: index,
+                                        text: index == 0 ? $firstFieldText : $words[index],
+                                        isLastField: index == (wordsPerColumn * 2 - 1),
+                                        focusedField: $focusedField
+                                    )
+                                    .onChange(of: firstFieldText) { newValue in
+                                        if index == 0 && newValue.contains(" ") {
+                                            handlePastedWords(newValue)
+                                        } else if index == 0 {
+                                            words[index] = newValue
                                         }
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 46)
-                                .background(Color(UIColor.systemGray6))
+                                .background(Color.white10)
                                 .cornerRadius(8)
                             }
                         }
 
                         // Second column (7-12 or 13-24)
-                        VStack(spacing: 8) {
+                        VStack(spacing: 4) {
                             ForEach(wordsPerColumn ..< (wordsPerColumn * 2)) { index in
                                 HStack(spacing: 4) {
-                                    Text("\(index + 1).")
-                                        .foregroundColor(.gray)
-                                        .padding(.horizontal, 8)
+                                    BodyMSBText("\(index + 1).")
+                                        .padding(.leading, 16)
 
-                                    TextField("", text: $words[index])
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                        .frame(maxWidth: .infinity)
+                                    SeedTextField(
+                                        index: index,
+                                        text: $words[index],
+                                        isLastField: index == (wordsPerColumn * 2 - 1),
+                                        focusedField: $focusedField
+                                    )
                                 }
                                 .frame(maxWidth: .infinity, minHeight: 46)
-                                .background(Color(UIColor.systemGray6))
+                                .background(Color.white10)
                                 .cornerRadius(8)
                             }
                         }
                     }
                     .id(is24Words)
                     .animation(.easeInOut, value: is24Words)
-                    .padding(.vertical)
+                    .padding(.top, 44)
 
                     // Add some padding at the bottom to ensure content doesn't hide behind buttons
                     Spacer()
                         .frame(height: 100)
                 }
-                .padding(.horizontal, 24)
             }
 
             // Footer with buttons
@@ -103,16 +124,16 @@ struct RestoreWalletView: View {
                 HStack(spacing: 16) {
                     CustomButton(
                         title: NSLocalizedString("onboarding__advanced", comment: ""),
-                        variant: .secondary
+                        variant: .secondary,
+                        isDisabled: !isValidMnemonic
                     ) {
                         showingPassphraseAlert = true
                     }
 
-                    CustomButton(title: NSLocalizedString("onboarding__restore", comment: "")) {
+                    CustomButton(title: NSLocalizedString("onboarding__restore", comment: ""), isDisabled: !isValidMnemonic) {
                         restoreWallet()
                     }
                 }
-                .padding(24)
                 .background(
                     Color(UIColor.systemBackground)
                         .shadow(radius: 8, y: -4)
@@ -121,6 +142,7 @@ struct RestoreWalletView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .padding(.horizontal, 32)
         .alert(NSLocalizedString("onboarding__passphrase", comment: ""), isPresented: $showingPassphraseAlert) {
             TextField(NSLocalizedString("onboarding__restore_passphrase_placeholder", comment: ""), text: $tempPassphrase)
                 .autocapitalization(.none)
