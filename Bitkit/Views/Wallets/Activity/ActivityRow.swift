@@ -17,25 +17,21 @@ private struct AmountDisplayView: View {
             if currency.primaryDisplay == .bitcoin {
                 let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                 HStack(spacing: 1) {
-                    Text(prefix)
-                        .foregroundColor(.primary.opacity(0.8))
-                    Text(btcComponents.value)
+                    BodyMSBText(prefix, textColor: .textSecondary)
+                    BodyMSBText(btcComponents.value)
                 }
 
-                Text("\(converted.symbol) \(converted.formatted)")
+                CaptionBText("\(converted.symbol) \(converted.formatted)")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
                 HStack(spacing: 1) {
-                    Text(prefix)
-                        .foregroundColor(.primary.opacity(0.8))
-                    Text("\(converted.symbol) \(converted.formatted)")
+                    BodyMSBText(prefix)
+                    BodyMSBText("\(converted.symbol) \(converted.formatted)")
                 }
 
                 let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                Text(btcComponents.value)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                CaptionBText(btcComponents.value)
             }
         }
     }
@@ -74,22 +70,22 @@ private struct TransactionStatusText: View {
         if txType == .sent {
             switch status {
             case .failed:
-                Text("Sending Failed")
+                BodyMSBText(localizedString("wallet__activity_failed"), textColor: .textPrimary)
             case .pending:
-                Text("Sending...")
+                BodyMSBText(localizedString("wallet__activity_pending"), textColor: .textPrimary)
             case .succeeded:
-                Text("Sent")
+                BodyMSBText(localizedString("wallet__activity_sent"), textColor: .textPrimary)
             case .none:
                 EmptyView()
             }
         } else {
             switch status {
             case .failed:
-                Text("Receive Failed")
+                BodyMSBText(localizedString("wallet__activity_failed"), textColor: .textPrimary)
             case .pending:
-                Text("Receiving...")
+                BodyMSBText(localizedString("wallet__activity_pending"), textColor: .textPrimary)
             case .succeeded:
-                Text("Received")
+                BodyMSBText(localizedString("wallet__activity_received"), textColor: .textPrimary)
             case .none:
                 EmptyView()
             }
@@ -99,18 +95,33 @@ private struct TransactionStatusText: View {
     @ViewBuilder
     private var onchainStatus: some View {
         if txType == .sent {
-            if confirmed == true {
-                Text("Sent")
-            } else {
-                Text("Sending...")
-            }
+            BodyMSBText(localizedString("wallet__activity_sent"), textColor: .textPrimary)
         } else {
-            if confirmed == true {
-                Text("Received")
-            } else {
-                Text("Receiving...")
-            }
+            BodyMSBText(localizedString("wallet__activity_received"), textColor: .textPrimary)
         }
+    }
+}
+
+private struct CircularIcon: View {
+    let icon: Image
+    let iconColor: Color
+    let backgroundColor: Color
+
+    init(systemName: String, iconColor: Color, backgroundColor: Color) {
+        self.icon = Image(systemName: systemName).resizable()
+        self.iconColor = iconColor
+        self.backgroundColor = backgroundColor
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(backgroundColor)
+            icon
+                .foregroundColor(iconColor)
+                .frame(width: 10, height: 13)
+        }
+        .frame(width: 32, height: 32)
     }
 }
 
@@ -138,17 +149,24 @@ private struct TransactionIcon: View {
     var body: some View {
         if isLightning {
             if status == .failed {
-                Image(systemName: "xmark")
-                    .foregroundColor(.redAccent)
+                CircularIcon(
+                    systemName: "xmark",
+                    iconColor: .redAccent,
+                    backgroundColor: .red16
+                )
             } else {
-                let systemName = txType == .sent ? "arrow.up" : "arrow.down"
-                Image(systemName: systemName)
-                    .foregroundColor(.purpleAccent)
+                CircularIcon(
+                    systemName: txType == .sent ? "arrow.up" : "arrow.down",
+                    iconColor: .purpleAccent,
+                    backgroundColor: .purple16
+                )
             }
         } else {
-            let systemName = txType == .sent ? "arrow.up" : "arrow.down"
-            Image(systemName: systemName)
-                .foregroundColor(confirmed == true ? .brandAccent : .brandAccent.opacity(0.5))
+            CircularIcon(
+                systemName: txType == .sent ? "arrow.up" : "arrow.down",
+                iconColor: .brandAccent,
+                backgroundColor: .brand16
+            )
         }
     }
 }
@@ -206,9 +224,8 @@ struct ActivityRow: View {
     }
 
     var body: some View {
-        HStack {
+        HStack(spacing: 16) {
             icon
-                .padding(.trailing, 4)
 
             VStack(alignment: .leading, spacing: 4) {
                 switch item {
@@ -222,25 +239,18 @@ struct ActivityRow: View {
                 switch item {
                 case .lightning(let activity):
                     if !activity.message.isEmpty {
-                        Text(activity.message)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        CaptionBText(activity.message)
                     } else {
-                        Text(formattedTime)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        CaptionBText(formattedTime)
                     }
                 case .onchain(let activity):
-                    Text(formattedTime)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    CaptionBText(formattedTime)
                 }
             }
 
             Spacer()
             amountView
         }
-        .padding(.horizontal)
         .padding(.vertical, 8)
     }
 

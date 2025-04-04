@@ -74,7 +74,6 @@ struct ReceiveViewContent: View {
                 HStack {
                     CustomButton(
                         title: NSLocalizedString("common__edit", comment: ""),
-                        variant: .tertiary,
                         size: .small,
                         icon: Image("pencil-brand")
                     ) {
@@ -83,7 +82,6 @@ struct ReceiveViewContent: View {
                     
                     CustomButton(
                         title: NSLocalizedString("common__copy", comment: ""),
-                        variant: .tertiary,
                         size: .small,
                         icon: Image("copy-brand")
                     ) {
@@ -95,7 +93,6 @@ struct ReceiveViewContent: View {
                         ShareLink(item: URL(string: uri)!) {
                             CustomButton(
                                 title: NSLocalizedString("common__share", comment: ""),
-                                variant: .tertiary,
                                 size: .small,
                                 icon: Image("share-brand")
                             )
