@@ -14,9 +14,9 @@ enum WalletType {
     var title: String {
         switch self {
         case .onchain:
-            return NSLocalizedString("lightning__savings", comment: "")
+            return NSLocalizedString("lightning__savings", comment: "").uppercased()
         case .lightning:
-            return NSLocalizedString("lightning__spending", comment: "")
+            return NSLocalizedString("lightning__spending", comment: "").uppercased()
         }
     }
 
