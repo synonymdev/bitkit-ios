@@ -1,28 +1,5 @@
 import SwiftUI
 
-enum WalletType {
-    case bitcoin
-    case lightning
-
-    var title: String {
-        switch self {
-        case .bitcoin:
-            return "SAVINGS"
-        case .lightning:
-            return "SPENDING"
-        }
-    }
-
-    var imageAsset: String {
-        switch self {
-        case .bitcoin:
-            return "btc"
-        case .lightning:
-            return "ln"
-        }
-    }
-}
-
 struct WalletBalanceView: View {
     let type: WalletType
     let sats: UInt64
@@ -68,7 +45,7 @@ struct WalletBalanceView: View {
         // Bitcoin display (modern)
         HStack {
             WalletBalanceView(
-                type: .bitcoin,
+                type: .onchain,
                 sats: 123456
             )
 
@@ -93,7 +70,7 @@ struct WalletBalanceView: View {
         // USD display
         HStack {
             WalletBalanceView(
-                type: .bitcoin,
+                type: .onchain,
                 sats: 123456
             )
 
@@ -119,7 +96,7 @@ struct WalletBalanceView: View {
         // EUR display
         HStack {
             WalletBalanceView(
-                type: .bitcoin,
+                type: .onchain,
                 sats: 123456
             )
 
@@ -145,7 +122,7 @@ struct WalletBalanceView: View {
         // Bitcoin display with classic unit
         HStack {
             WalletBalanceView(
-                type: .bitcoin,
+                type: .onchain,
                 sats: 123456
             )
 
