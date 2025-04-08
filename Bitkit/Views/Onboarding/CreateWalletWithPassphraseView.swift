@@ -50,6 +50,7 @@ struct CreateWalletWithPassphraseView: View {
             }
         }
         .padding(.horizontal, 32)
+        .bottomSafeAreaPadding()
         .gesture(
             DragGesture()
                 .onChanged { _ in

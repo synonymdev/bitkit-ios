@@ -69,6 +69,7 @@ struct WalletInitResultView: View {
             .padding(.bottom, 40)
         }
         .padding(.horizontal)
+        .bottomSafeAreaPadding()
     }
 
     private var titleText1: String {

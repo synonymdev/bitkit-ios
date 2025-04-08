@@ -31,6 +31,7 @@ struct IntroView: View {
             }
         }
         .padding(.horizontal, 32)
+        .bottomSafeAreaPadding()
         .background(
             Image("figures")
                 .resizable()

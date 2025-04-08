@@ -90,7 +90,7 @@ struct TermsView: View {
             TermsFooter()
         }
         .padding(.horizontal, 32)
-        .navigationBarBackButtonHidden(true)
+        .bottomSafeAreaPadding()
     }
 }
 

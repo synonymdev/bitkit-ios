@@ -3,7 +3,7 @@ import SwiftUI
 struct OnboardingToolbar: View {
     let currentTab: Int
     let onSkip: () -> Void
-  
+
     // TODO: use Button .tertiary
 
     var body: some View {
@@ -13,7 +13,7 @@ struct OnboardingToolbar: View {
             }) {
                 HStack {
                     Spacer()
-                    BodyMSBText(NSLocalizedString("onboarding__advanced_setup", comment: ""))
+                    BodyMSBText(NSLocalizedString("onboarding__advanced_setup", comment: ""), textColor: .secondary)
                 }
             }
             .opacity(currentTab == 4 ? 1 : 0)
@@ -23,7 +23,7 @@ struct OnboardingToolbar: View {
             } label: {
                 HStack {
                     Spacer()
-                    BodyMSBText(NSLocalizedString("onboarding__skip", comment: ""))
+                    BodyMSBText(NSLocalizedString("onboarding__skip", comment: ""), textColor: .secondary)
                 }
             }
             .opacity(currentTab == 4 ? 0 : 1)
@@ -46,7 +46,7 @@ struct Dots: View {
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: currentTab)
-            .padding(.bottom)
+            .padding(.bottom, 26)
         }
     }
 }
@@ -65,7 +65,6 @@ struct OnboardingView: View {
                         text: NSLocalizedString("onboarding__slide0_text", comment: ""),
                         accentColor: .blueAccent
                     )
-                    .padding(.horizontal, 32)
                     .tag(0)
 
                     // Slide 1
@@ -76,7 +75,6 @@ struct OnboardingView: View {
                         disclaimerText: NSLocalizedString("onboarding__slide1_note", comment: ""),
                         accentColor: .purpleAccent
                     )
-                    .padding(.horizontal, 32)
                     .tag(1)
 
                     // Slide 2
@@ -86,7 +84,6 @@ struct OnboardingView: View {
                         text: NSLocalizedString("onboarding__slide2_text", comment: ""),
                         accentColor: .yellowAccent
                     )
-                    .padding(.horizontal, 32)
                     .tag(2)
 
                     // Slide 3
@@ -96,12 +93,10 @@ struct OnboardingView: View {
                         text: NSLocalizedString("onboarding__slide3_text", comment: ""),
                         accentColor: .greenAccent
                     )
-                    .padding(.horizontal, 32)
                     .tag(3)
 
                     // Slide 4
                     CreateWalletView()
-                        .padding(.horizontal, 32)
                         .tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
@@ -113,6 +108,7 @@ struct OnboardingView: View {
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        .bottomSafeAreaPadding()
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 OnboardingToolbar(currentTab: currentTab) {

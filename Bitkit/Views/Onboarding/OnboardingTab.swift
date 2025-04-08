@@ -25,7 +25,7 @@ struct OnboardingTab: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let disclaimer = disclaimerText {
-                    CaptionText(disclaimer)
+                    CaptionText(disclaimer, textColor: .white32)
                         .multilineTextAlignment(.leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.top, 4)
@@ -33,6 +33,7 @@ struct OnboardingTab: View {
             }
             .frame(maxWidth: .infinity, minHeight: 255, alignment: .top)
             .padding(.top, 48)
+            .padding(.horizontal, 32)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
