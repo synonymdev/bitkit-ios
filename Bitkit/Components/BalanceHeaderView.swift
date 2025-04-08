@@ -12,9 +12,9 @@ struct BalanceHeaderView: View {
                 if currency.primaryDisplay == .bitcoin {
                     HStack {
                         if let sign {
-                            BodySText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
+                            CaptionBText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
                         }
-                        BodySText(
+                        CaptionBText(
                             "<accent>\(converted.symbol)</accent> \(converted.formatted)", textColor: .textSecondary, accentColor: .textSecondary
                         )
                         .padding(.bottom, 4)
@@ -46,9 +46,9 @@ struct BalanceHeaderView: View {
                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                     HStack {
                         if let sign {
-                            BodySText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
+                            CaptionBText("<accent>\(sign)</accent>", textColor: .textSecondary, accentColor: .textSecondary)
                         }
-                        BodySText(
+                        CaptionBText(
                             "<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", textColor: .textSecondary, accentColor: .textSecondary
                         )
                         .padding(.bottom, 4)

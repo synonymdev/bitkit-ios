@@ -13,6 +13,7 @@ struct MultipleWalletsView: View {
             CustomButton(title: NSLocalizedString("common__understood", comment: ""), destination: RestoreWalletView())
         }
         .padding(.horizontal, 32)
+        .bottomSafeAreaPadding()
     }
 }
 

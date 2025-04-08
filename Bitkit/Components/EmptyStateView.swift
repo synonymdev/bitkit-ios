@@ -49,7 +49,7 @@ struct EmptyStateView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 130)
+            .padding(.bottom, 100)
             .overlay {
                 VStack {
                     Button(action: {
@@ -57,8 +57,9 @@ struct EmptyStateView: View {
                         onClose()
                     }) {
                         Image(systemName: "xmark")
-                            .foregroundColor(.textPrimary.opacity(0.8))
-                            .frame(width: 44, height: 44, alignment: .topTrailing)
+                            .resizable()
+                            .foregroundColor(.white64)
+                            .frame(width: 10, height: 10, alignment: .topTrailing)
                     }
                     .frame(maxWidth: .infinity, alignment: .topTrailing)
                     Spacer()
