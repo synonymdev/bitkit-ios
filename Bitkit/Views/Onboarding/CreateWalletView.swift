@@ -47,6 +47,8 @@ struct CreateWalletView: View {
             // TODO: check why secondary button is cut off
             .padding(.bottom, 1)
         }
+        .padding(.horizontal, 32)
+        .bottomSafeAreaPadding()
     }
 }
 

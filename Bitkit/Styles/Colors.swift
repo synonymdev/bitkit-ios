@@ -14,7 +14,7 @@ extension Color {
     static let customWhite = Color.white
 
     // MARK: - Gray Base
-    static let gray6 = Color(hex: 0x151515)
+    static let gray6 = Color(hex: 0x101010)
     static let gray5 = Color(hex: 0x1C1C1D)
     static let gray3 = Color(hex: 0x48484A)
     static let gray2 = Color(hex: 0x636366)

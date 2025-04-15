@@ -34,7 +34,8 @@ struct TabBar: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(height: 16)
-                                BodySText("Send")
+                                    .rotationEffect(.degrees(180))
+                                BodySSBText("Send")
                             }
                             .foregroundColor(.white)
                         })
@@ -52,8 +53,7 @@ struct TabBar: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(height: 16)
-                                    .rotationEffect(.degrees(180))
-                                BodySText("Receive")
+                                BodySSBText("Receive")
                             }
                             .foregroundColor(.white)
                         })
@@ -82,7 +82,6 @@ struct TabBar: View {
                             Image("scan")
                                 .resizable()
                                 .frame(width: 32, height: 32)
-                                .foregroundColor(Color.gray2)
                                 .padding(24)
                                 .frame(width: 80, height: 80)
                                 .background(Circle().fill(Color.gray6))
@@ -95,7 +94,8 @@ struct TabBar: View {
                     )
                     .buttonStyle(NoAnimationButtonStyle())
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom, 12)
                 .transition(.move(edge: .bottom))
             }
         }

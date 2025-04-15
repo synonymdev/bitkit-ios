@@ -66,7 +66,7 @@ struct RestoreWalletView: View {
                         VStack(spacing: 4) {
                             ForEach(0 ..< wordsPerColumn) { index in
                                 HStack(spacing: 4) {
-                                    BodyMSBText("\(index + 1).")
+                                    BodyMSBText("\(index + 1).", textColor: .secondary)
                                         .padding(.leading, 16)
 
                                     SeedTextField(
@@ -93,7 +93,7 @@ struct RestoreWalletView: View {
                         VStack(spacing: 4) {
                             ForEach(wordsPerColumn ..< (wordsPerColumn * 2)) { index in
                                 HStack(spacing: 4) {
-                                    BodyMSBText("\(index + 1).")
+                                    BodyMSBText("\(index + 1).", textColor: .secondary)
                                         .padding(.leading, 16)
 
                                     SeedTextField(
@@ -143,6 +143,7 @@ struct RestoreWalletView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 32)
+        .bottomSafeAreaPadding()
         .alert(NSLocalizedString("onboarding__passphrase", comment: ""), isPresented: $showingPassphraseAlert) {
             TextField(NSLocalizedString("onboarding__restore_passphrase_placeholder", comment: ""), text: $tempPassphrase)
                 .autocapitalization(.none)
