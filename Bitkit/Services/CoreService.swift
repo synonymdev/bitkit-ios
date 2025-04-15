@@ -152,92 +152,91 @@ class ActivityService {
         }
     }
 
-    #if DEBUG
-        func generateRandomTestData(count: Int = 100) async throws {
-            try await ServiceQueue.background(.core) {
-                let timestamp = UInt64(Date().timeIntervalSince1970)
-                let possibleTags = ["coffee", "food", "shopping", "transport", "entertainment", "work", "friends", "family"]
-                let possibleMessages = [
-                    "Coffee at Starbucks",
-                    "Lunch with friends",
-                    "Uber ride",
-                    "Movie tickets",
-                    "Groceries",
-                    "Work payment",
-                    "Gift for mom",
-                    "Split dinner bill",
-                    "Monthly rent",
-                    "Gym membership",
-                ]
 
-                for i in 0 ..< count {
-                    let isLightning = Bool.random()
-                    let value = UInt64.random(in: 1000 ... 1_000_000)  // Random sats between 1k and 1M
-                    let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000)  // Random time in last 30 days
-                    let txType: PaymentType = Bool.random() ? .sent : .received
-                    let status: PaymentState = {
-                        let random = Int.random(in: 0 ... 10)
-                        if random < 8 { return .succeeded }  // 80% chance
-                        if random < 9 { return .pending }  // 10% chance
-                        return .failed  // 10% chance
-                    }()
+    func generateRandomTestData(count: Int = 100) async throws {
+        try await ServiceQueue.background(.core) {
+            let timestamp = UInt64(Date().timeIntervalSince1970)
+            let possibleTags = ["coffee", "food", "shopping", "transport", "entertainment", "work", "friends", "family"]
+            let possibleMessages = [
+                "Coffee at Starbucks",
+                "Lunch with friends",
+                "Uber ride",
+                "Movie tickets",
+                "Groceries",
+                "Work payment",
+                "Gift for mom",
+                "Split dinner bill",
+                "Monthly rent",
+                "Gym membership",
+            ]
 
-                    let activity: Activity
-                    let id: String
+            for i in 0 ..< count {
+                let isLightning = Bool.random()
+                let value = UInt64.random(in: 1000 ... 1_000_000)  // Random sats between 1k and 1M
+                let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000)  // Random time in last 30 days
+                let txType: PaymentType = Bool.random() ? .sent : .received
+                let status: PaymentState = {
+                    let random = Int.random(in: 0 ... 10)
+                    if random < 8 { return .succeeded }  // 80% chance
+                    if random < 9 { return .pending }  // 10% chance
+                    return .failed  // 10% chance
+                }()
 
-                    if isLightning {
-                        id = "test-lightning-\(i)"
-                        activity = .lightning(
-                            LightningActivity(
-                                id: id,
-                                txType: txType,
-                                status: status,
-                                value: value,
-                                fee: UInt64.random(in: 1 ... 1000),
-                                invoice: "lnbc\(value)",
-                                message: possibleMessages.randomElement() ?? "",
-                                timestamp: timestamp,
-                                preimage: Bool.random() ? "preimage\(i)" : nil,
-                                createdAt: timestamp,
-                                updatedAt: timestamp
-                            ))
-                    } else {
-                        id = "test-onchain-\(i)"
-                        activity = .onchain(
-                            OnchainActivity(
-                                id: id,
-                                txType: txType,
-                                txId: String(repeating: "a", count: 64),  // Mock txid
-                                value: value,
-                                fee: UInt64.random(in: 100 ... 10000),
-                                feeRate: UInt64.random(in: 1 ... 100),
-                                address: "bc1...\(i)",
-                                confirmed: Bool.random(),
-                                timestamp: timestamp,
-                                isBoosted: Bool.random(),
-                                isTransfer: Bool.random(),
-                                doesExist: true,
-                                confirmTimestamp: Bool.random() ? timestamp + 3600 : nil,  // 1 hour later if confirmed
-                                channelId: Bool.random() ? "channel\(i)" : nil,
-                                transferTxId: nil,
-                                createdAt: timestamp,
-                                updatedAt: timestamp
-                            ))
-                    }
+                let activity: Activity
+                let id: String
 
-                    // Insert activity
-                    try insertActivity(activity: activity)
+                if isLightning {
+                    id = "test-lightning-\(i)"
+                    activity = .lightning(
+                        LightningActivity(
+                            id: id,
+                            txType: txType,
+                            status: status,
+                            value: value,
+                            fee: UInt64.random(in: 1 ... 1000),
+                            invoice: "lnbc\(value)",
+                            message: possibleMessages.randomElement() ?? "",
+                            timestamp: timestamp,
+                            preimage: Bool.random() ? "preimage\(i)" : nil,
+                            createdAt: timestamp,
+                            updatedAt: timestamp
+                        ))
+                } else {
+                    id = "test-onchain-\(i)"
+                    activity = .onchain(
+                        OnchainActivity(
+                            id: id,
+                            txType: txType,
+                            txId: String(repeating: "a", count: 64),  // Mock txid
+                            value: value,
+                            fee: UInt64.random(in: 100 ... 10000),
+                            feeRate: UInt64.random(in: 1 ... 100),
+                            address: "bc1...\(i)",
+                            confirmed: Bool.random(),
+                            timestamp: timestamp,
+                            isBoosted: Bool.random(),
+                            isTransfer: Bool.random(),
+                            doesExist: true,
+                            confirmTimestamp: Bool.random() ? timestamp + 3600 : nil,  // 1 hour later if confirmed
+                            channelId: Bool.random() ? "channel\(i)" : nil,
+                            transferTxId: nil,
+                            createdAt: timestamp,
+                            updatedAt: timestamp
+                        ))
+                }
 
-                    // Add random tags (0-3 tags)
-                    let numTags = Int.random(in: 0 ... 3)
-                    if numTags > 0 {
-                        let tags = Array(Set((0 ..< numTags).map { _ in possibleTags.randomElement()! }))
-                        try await self.appendTag(toActivity: id, tags)
-                    }
+                // Insert activity
+                try insertActivity(activity: activity)
+
+                // Add random tags (0-3 tags)
+                let numTags = Int.random(in: 0 ... 3)
+                if numTags > 0 {
+                    let tags = Array(Set((0 ..< numTags).map { _ in possibleTags.randomElement()! }))
+                    try await self.appendTag(toActivity: id, tags)
                 }
             }
         }
-    #endif
+    }
 }
 
 // MARK: - Blocktank Service
