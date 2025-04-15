@@ -92,7 +92,10 @@ struct BodyMText: View {
     var accentFont: String? = nil
     var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color = .white, accentFont: String? = nil, textAlignment: NSTextAlignment = .left) {
+    init(
+        _ text: String, textColor: Color = .textSecondary, accentColor: Color = .white, accentFont: String? = nil,
+        textAlignment: NSTextAlignment = .left
+    ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -174,12 +177,12 @@ struct BodySText: View {
 
 struct BodySSBText: View {
     let text: String
-    var textColor: Color = .textSecondary
+    var textColor: Color = .textPrimary
     var accentColor: Color? = nil
     var url: URL? = nil
     private let fontSize: CGFloat = 15
 
-    init(_ text: String, textColor: Color = .textSecondary, accentColor: Color? = nil, url: URL? = nil) {
+    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color? = nil, url: URL? = nil) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
@@ -419,7 +422,7 @@ struct CustomTextWrapper: View {
                         accentString.addAttributes(
                             [
                                 .foregroundColor: UIColor(accentColor),
-                                .font: font
+                                .font: font,
                             ], range: NSRange(location: 0, length: processedAccentText.count))
                     }
                     attributedString.append(accentString)
@@ -522,7 +525,7 @@ struct DisplayTextUIView: UIViewRepresentable {
                         accentString.addAttributes(
                             [
                                 .foregroundColor: UIColor(accentColor),
-                                .font: font
+                                .font: font,
                             ], range: NSRange(location: 0, length: processedAccentText.count))
                     }
                     attributedString.append(accentString)

@@ -129,7 +129,7 @@ struct HomeView: View {
         }
         .overlay {
             TabBar()
-                .padding(.bottom, 20)
+                .bottomSafeAreaPadding()
         }
         .sheet(
             isPresented: $app.showSendOptionsSheet,
@@ -138,7 +138,7 @@ struct HomeView: View {
                     SendOptionsView()
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    SendOptionsView()  // Will just consume full screen on older iOS versions
+                    SendOptionsView() // Will just consume full screen on older iOS versions
                 }
             }
         )
@@ -149,7 +149,7 @@ struct HomeView: View {
                     ReceiveView()
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    ReceiveView()  // Will just consume full screen on older iOS versions
+                    ReceiveView() // Will just consume full screen on older iOS versions
                 }
             }
         )
@@ -161,7 +161,7 @@ struct HomeView: View {
                         SendAmountView()
                             .presentationDetents([.height(sheetHeight)])
                     } else {
-                        SendAmountView()  // Will just consume full screen on older iOS versions
+                        SendAmountView() // Will just consume full screen on older iOS versions
                     }
                 }
             }
@@ -174,7 +174,7 @@ struct HomeView: View {
                         SendConfirmationView()
                             .presentationDetents([.height(sheetHeight)])
                     } else {
-                        SendConfirmationView()  // Will just consume full screen on older iOS versions
+                        SendConfirmationView() // Will just consume full screen on older iOS versions
                     }
                 }
             }
@@ -204,10 +204,10 @@ struct HomeView: View {
         .sheet(isPresented: $showProfile) {
             NavigationView {
                 if #available(iOS 16.0, *) {
-                    Text("Profile View")  // Placeholder for profile view
+                    Text("Profile View") // Placeholder for profile view
                         .presentationDetents([.height(sheetHeight)])
                 } else {
-                    Text("Profile View")  // Placeholder for profile view
+                    Text("Profile View") // Placeholder for profile view
                 }
             }
         }
