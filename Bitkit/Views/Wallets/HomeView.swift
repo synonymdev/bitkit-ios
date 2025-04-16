@@ -28,8 +28,8 @@ struct HomeView: View {
                     BalanceHeaderView(sats: wallet.totalBalanceSats)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .padding(.top)
+                .padding(.horizontal)
+                .padding(.top, 32)
 
                 if !app.showHomeViewEmptyState {
                     HStack {
@@ -60,6 +60,7 @@ struct HomeView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .transition(.move(edge: .leading).combined(with: .opacity))
                         .padding(.horizontal)
+                        .padding(.bottom, 16)
 
                     ActivityLatest(viewType: .all)
                         .transition(.move(edge: .leading).combined(with: .opacity))

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct ActivityLatest: View {
+    @EnvironmentObject var app: AppViewModel
     let viewType: LatestActivityViewType
 
     enum LatestActivityViewType {
@@ -44,8 +45,14 @@ struct ActivityLatest: View {
                 }
 
                 if items.count == 0 {
-                    Text(localizedString("wallet__activity_no"))
-                        .padding()
+                    Button(
+                        action: {
+                            app.showReceiveSheet = true
+                            Haptics.play(.openSheet)
+                        },
+                        label: {
+                            EmptyActivityRow()
+                        })
                 } else {
                     CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary, destination: AllActivityView())
                 }
