@@ -26,8 +26,9 @@ private struct AmountDisplayView: View {
                     .foregroundColor(.secondary)
             } else {
                 HStack(spacing: 1) {
-                    BodyMSBText(prefix)
-                    BodyMSBText("\(converted.symbol) \(converted.formatted)")
+                    BodyMSBText(prefix, textColor: .textSecondary)
+                    BodyMSBText(converted.symbol, textColor: .textSecondary)
+                    BodyMSBText(" \(converted.formatted)")
                 }
 
                 let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
@@ -102,29 +103,6 @@ private struct TransactionStatusText: View {
     }
 }
 
-private struct CircularIcon: View {
-    let icon: Image
-    let iconColor: Color
-    let backgroundColor: Color
-
-    init(systemName: String, iconColor: Color, backgroundColor: Color) {
-        self.icon = Image(systemName: systemName).resizable()
-        self.iconColor = iconColor
-        self.backgroundColor = backgroundColor
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(backgroundColor)
-            icon
-                .foregroundColor(iconColor)
-                .frame(width: 10, height: 13)
-        }
-        .frame(width: 32, height: 32)
-    }
-}
-
 private struct TransactionIcon: View {
     let isLightning: Bool
     let status: PaymentState?
@@ -150,20 +128,26 @@ private struct TransactionIcon: View {
         if isLightning {
             if status == .failed {
                 CircularIcon(
-                    systemName: "xmark",
-                    iconColor: .redAccent,
-                    backgroundColor: .red16
+                    icon: "x-circle",
+                    iconColor: .purpleAccent,
+                    backgroundColor: .purple16
+                )
+            } else if status == .pending {
+                CircularIcon(
+                    icon: "hourglass-simple",
+                    iconColor: .purpleAccent,
+                    backgroundColor: .purple16
                 )
             } else {
                 CircularIcon(
-                    systemName: txType == .sent ? "arrow.up" : "arrow.down",
+                    icon: txType == .sent ? "arrow-up" : "arrow-down",
                     iconColor: .purpleAccent,
                     backgroundColor: .purple16
                 )
             }
         } else {
             CircularIcon(
-                systemName: txType == .sent ? "arrow.up" : "arrow.down",
+                icon: txType == .sent ? "arrow-up" : "arrow-down",
                 iconColor: .brandAccent,
                 backgroundColor: .brand16
             )

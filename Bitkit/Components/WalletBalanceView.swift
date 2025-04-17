@@ -28,7 +28,6 @@ struct WalletBalanceView: View {
                             .padding(.trailing, 4)
 
                         SubtitleText(converted.symbol)
-                            .opacity(0.6)
                             .frame(maxWidth: 12)
                         SubtitleText(converted.formatted)
                     }
