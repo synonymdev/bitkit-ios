@@ -10,10 +10,12 @@ struct AmountInput: View {
     @EnvironmentObject var currency: CurrencyViewModel
     var onSatsChange: (UInt64) -> Void
     var showConversion: Bool
+    var shouldAutoFocus: Bool
 
     init(
         defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil),
-        showConversion: Bool = false,
+        showConversion: Bool = false, 
+        shouldAutoFocus: Bool = true,
         onSatsChange: @escaping (UInt64) -> Void
     ) {
         _satsAmount = State(initialValue: defaultValue > 0 ? String(defaultValue) : "")
@@ -21,6 +23,7 @@ struct AmountInput: View {
         _primaryDisplay = primaryDisplay
         _overrideSats = overrideSats
         self.showConversion = showConversion
+        self.shouldAutoFocus = shouldAutoFocus
         self.onSatsChange = onSatsChange
     }
 
@@ -154,11 +157,15 @@ struct AmountInput: View {
             }
         }
         .onAppear {
-            if primaryDisplay == .bitcoin {
-                isSatsFocused = true
-            } else {
-                isFiatFocused = true
+            // Only auto-focus if explicitly requested
+            if shouldAutoFocus {
+                if primaryDisplay == .bitcoin {
+                    isSatsFocused = true
+                } else {
+                    isFiatFocused = true
+                }
             }
+            
             // Initialize fiat amount if we have a default sats value
             if sats > 0, let converted = currency.convert(sats: sats) {
                 fiatAmount = converted.formatted
