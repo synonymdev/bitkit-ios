@@ -68,7 +68,7 @@ struct BitkitApp: App {
     var body: some Scene {
         WindowGroup {
             if Env.isUnitTest {
-                Text("Running unit tests...")
+                Text("Running tests...")
             } else {
                 ContentView()
                     .preferredColorScheme(.dark)
