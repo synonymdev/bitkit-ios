@@ -230,13 +230,12 @@ extension AppViewModel {
 extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case .paymentReceived(paymentId: _, paymentHash: _, let amountMsat):
+        case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let customRecords):
             showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
-
+            break
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
-
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
@@ -244,18 +243,19 @@ extension AppViewModel {
             } else {
                 toast(type: .error, title: "Channel opened", description: "Ready to send")
             }
-
+            break
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
-
-        case .paymentSuccessful(paymentId: _, paymentHash: _, let feePaidMsat):
+            break
+        case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
             // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.
             showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: (feePaidMsat ?? 0) / 1000))
-
+            break
         case .paymentClaimable:
             break
-
         case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
+            break
+        case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
             break
         }
     }

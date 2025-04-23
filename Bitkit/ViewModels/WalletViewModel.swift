@@ -185,7 +185,7 @@ class WalletViewModel: ObservableObject {
         // Add event listener for this specific payment
         addOnEvent(id: eventId) { event in
             switch event {
-            case .paymentSuccessful(paymentId: _, let paymentHash, feePaidMsat: _):
+            case .paymentSuccessful(let paymentId, let paymentHash, _, _):
                 if paymentHash == hash {
                     self.removeOnEvent(id: eventId)
                     onSuccess()
