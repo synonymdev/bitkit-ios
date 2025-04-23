@@ -165,6 +165,12 @@ struct AppError: LocalizedError {
         case .InvalidNodeAlias(message: let ldkMessage):
             message = ldkMessage
             debugMessage = nil
+        case .InvalidAnnouncementAddresses(message: let ldkMessage):
+            message = ldkMessage
+            debugMessage = nil
+        case .NetworkMismatch(message: let ldkMessage):
+            message = ldkMessage
+            debugMessage = nil
         }
     }
 
@@ -318,8 +324,16 @@ struct AppError: LocalizedError {
         case .InvalidNodeAlias(message: let ldkMessage):
             message = "Invalid node alias"
             debugMessage = ldkMessage
+        case .InvalidCustomTlvs(message: let ldkMessage):
+            message = "Invalid custom TLVs"
+            debugMessage = ldkMessage
+        case .InvalidDateTime(message: let ldkMessage):
+            message = "Invalid date time"
+            debugMessage = ldkMessage
+        case .InvalidFeeRate(message: let ldkMessage):
+            message = "Invalid fee rate"
+            debugMessage = ldkMessage
         }
-
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }
 }

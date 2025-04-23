@@ -34,9 +34,7 @@ class LightningService {
         var config = defaultConfig()
         let ldkStoragePath = Env.ldkStorage(walletIndex: walletIndex).path
         config.storageDirPath = ldkStoragePath
-        config.logDirPath = ldkStoragePath
         config.network = Env.network
-        config.logLevel = .trace
 
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
 
@@ -48,11 +46,13 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
 
-        let esploraConfig = EsploraSyncConfig(
-            onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-            lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-            feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+        let esploraConfig = EsploraSyncConfig(backgroundSyncConfig: .init(
+                onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+            )
         )
+        
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
 
         if let rgsServerUrl = Env.ldkRgsServerUrl {
@@ -210,13 +210,13 @@ class LightningService {
                     .bolt11Payment()
                     .receive(
                         amountMsat: amountSats * 1000,
-                        description: description,
+                        description: .direct(description: description),
                         expirySecs: expirySecs
                     )
             } else {
                 try node
                     .bolt11Payment()
-                    .receiveVariableAmount(description: description, expirySecs: expirySecs)
+                    .receiveVariableAmount(description: .direct(description: description), expirySecs: expirySecs)
             }
         }
     }
@@ -244,7 +244,8 @@ class LightningService {
         return true
     }
 
-    func send(address: String, sats: UInt64) async throws -> Txid {
+    //TODO: get fee from real source
+    func send(address: String, sats: UInt64, satKwu: UInt64 = 1) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -252,7 +253,7 @@ class LightningService {
         Logger.info("Sending \(sats) sats to \(address)")
 
         return try await ServiceQueue.background(.ldk) {
-            try node.onchainPayment().sendToAddress(address: address, amountSats: sats)
+            try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
         }
     }
 
@@ -374,14 +375,14 @@ extension LightningService {
 
                 // TODO: actual event handler
                 switch event {
-                case .paymentSuccessful(let paymentId, let paymentHash, let feePaidMsat):
+                case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
                 case .paymentFailed(let paymentId, let paymentHash, let reason):
                     Logger.info(
                         "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
-                case .paymentReceived(let paymentId, let paymentHash, let amountMsat):
+                case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
-                case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline):
+                case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline, let customRecords):
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
                 case .channelPending(let channelId, let userChannelId, let formerTemporaryChannelId, let counterpartyNodeId, let fundingTxo):
@@ -395,9 +396,15 @@ extension LightningService {
                     Logger.info(
                         "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)"
                     )
+                case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
+                    break
                 }
 
-                node.eventHandled()
+                do {
+                    try node.eventHandled()
+                } catch {
+                    Logger.error(error, context: "node.eventHandled()")
+                }
             }
         }
     }
