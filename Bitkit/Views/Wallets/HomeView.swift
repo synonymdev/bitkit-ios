@@ -11,7 +11,9 @@ struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var activity: ActivityListViewModel
 
+    
     @State private var showNodeState = false
     private let sheetHeight = UIScreen.screenHeight - 120
 
@@ -96,6 +98,7 @@ struct HomeView: View {
                 }
                 do {
                     try await wallet.sync()
+                    try await activity.syncLdkNodePayments()
                 } catch {
                     app.toast(error)
                 }

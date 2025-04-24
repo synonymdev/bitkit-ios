@@ -150,6 +150,10 @@ struct ContentView: View {
                 walletInitShouldFinish = true
             }
         }
+        .onChange(of: wallet.totalBalanceSats) { _ in
+            //Anytime we receive a balance update, we should sync the payments to activity list
+            Task { try? await activity.syncLdkNodePayments() }
+        }
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(wallet)
