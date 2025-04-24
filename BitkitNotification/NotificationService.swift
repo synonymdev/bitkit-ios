@@ -146,7 +146,7 @@ class NotificationService: UNNotificationServiceExtension {
     /// - Parameter event
     func handleLdkEvent(event: Event) {
         switch event {
-        case .paymentReceived(let paymentId, let paymentHash, let amountMsat):
+        case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat, customRecords: let customRecords):
             self.bestAttemptContent?.title = "Payment Received"
             let sats = amountMsat / 1000
             self.bestAttemptContent?.body = "⚡ \(sats)"
@@ -195,6 +195,8 @@ class NotificationService: UNNotificationServiceExtension {
             if self.notificationType == .wakeToTimeout {
                 self.deliver()
             }
+        case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
+            break
         }
     }
 
