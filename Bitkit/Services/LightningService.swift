@@ -53,8 +53,11 @@ class LightningService {
             )
         )
         
+        Logger.info("LDK-node log path: \(ldkStoragePath)")
+        
+        builder.setFilesystemLogger(logFilePath: Env.ldkLogFile(walletIndex: walletIndex), maxLogLevel: Env.ldkLogLevel)
+        
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
-
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
         } else {
@@ -245,7 +248,7 @@ class LightningService {
     }
 
     //TODO: get fee from real source
-    func send(address: String, sats: UInt64, satKwu: UInt64 = 1) async throws -> Txid {
+    func send(address: String, sats: UInt64, satKwu: UInt64 = 250 * 5) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -332,8 +335,7 @@ class LightningService {
     }
 
     func dumpLdkLogs() {
-        let dir = Env.ldkStorage(walletIndex: 0)
-        let fileURL = dir.appendingPathComponent("ldk_node_latest.log")
+        let fileURL = URL(fileURLWithPath: Env.ldkLogFile(walletIndex: currentWalletIndex))
 
         do {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
