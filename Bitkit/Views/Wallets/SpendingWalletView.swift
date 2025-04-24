@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SpendingWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
 
     @State private var hasSeenTransferIntro = true
@@ -32,6 +33,7 @@ struct SpendingWalletView: View {
                 .refreshable {
                     do {
                         try await wallet.sync()
+                        try await activity.syncLdkNodePayments()
                     } catch {
                         app.toast(error)
                     }

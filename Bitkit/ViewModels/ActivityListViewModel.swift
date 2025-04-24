@@ -133,10 +133,23 @@ class ActivityListViewModel: ObservableObject {
         }
     }
 
+    private var isSyncingLdkNodePayments: Bool = false
     func syncLdkNodePayments() async throws {
+        guard !isSyncingLdkNodePayments else {
+            Logger.warn("LDK node payments are already being synced, skipping")
+            return
+        }
+
         if let ldkPayments = lightningService.payments {
-            try await coreService.activity.syncLdkNodePayments(ldkPayments)
-            await syncState()
+            isSyncingLdkNodePayments = true
+            do {
+                try await coreService.activity.syncLdkNodePayments(ldkPayments)
+                await syncState()
+                isSyncingLdkNodePayments = false
+            } catch {
+                isSyncingLdkNodePayments = false
+                throw error
+            }
         }
     }
 

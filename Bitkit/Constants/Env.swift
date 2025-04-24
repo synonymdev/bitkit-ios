@@ -33,7 +33,6 @@ enum Env {
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
     static let walletSyncIntervalSecs: UInt64 = 10 //TODO: play arond with this
-    static let esploraParallelRequests: UInt64 = 6
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
@@ -184,6 +183,14 @@ enum Env {
         case .signet:
             fatalError("Signet network not implemented")
         }
+    }
+
+    static func ldkLogFile(walletIndex: Int) -> String {
+        return ldkStorage(walletIndex: walletIndex).path + "/ldk_node_latest.log"
+    }
+
+    static var ldkLogLevel: LDKNode.LogLevel {
+        return .trace
     }
 
     static var termsOfServiceUrl: String {
