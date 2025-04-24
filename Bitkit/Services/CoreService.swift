@@ -40,75 +40,104 @@ class ActivityService {
 
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
         try await ServiceQueue.background(.core) {
+            var addedCount = 0
             var updatedCount = 0
+            var latestCaughtError: Error?
 
             for payment in payments {
-                let state: PaymentState
-                switch payment.status {
-                case .failed:
-                    state = .failed
-                case .pending:
-                    state = .pending
-                case .succeeded:
-                    state = .succeeded
-                }
-                
-                if case .onchain(let txid, let txStatus) = payment.kind {
-                    var isConfirmed = false
-                    var confirmedTimestamp: UInt64?
-                    if case .confirmed(let blockHash, let height, let timestamp) = txStatus {
-                        isConfirmed = true
-                        confirmedTimestamp = timestamp
+                do {
+                    let state: PaymentState
+                    switch payment.status {
+                    case .failed:
+                        state = .failed
+                    case .pending:
+                        state = .pending
+                    case .succeeded:
+                        state = .succeeded
                     }
-                                        
-                    let onchain = OnchainActivity(
-                        id: payment.id,
-                        txType: payment.direction == .outbound ? .sent : .received,
-                        txId: txid,
-                        value: payment.amountSats ?? 0,
-                        fee: (payment.feePaidMsat ?? 0) / 1000,
-                        feeRate: 1, //TODO: get from somewhere
-                        address: "todo_find_address",
-                        confirmed: isConfirmed,
-                        timestamp: payment.latestUpdateTimestamp,
-                        isBoosted: false, //TODO:
-                        isTransfer: false, //TODO: handle when paying for order
-                        doesExist: true,
-                        confirmTimestamp: confirmedTimestamp,
-                        channelId: nil, //TODO: get from linked order
-                        transferTxId: nil, //TODO: get from linked order
-                        createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
-                        updatedAt: payment.latestUpdateTimestamp
-                    )
                     
-                    try upsertActivity(activity: .onchain(onchain))
-                    updatedCount += 1
-                } else if case .bolt11(let hash, let preimage, let secret) = payment.kind {
-                    // Skip pending inbound payments, just means they created an invoice
-                    guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
+                    if case .onchain(let txid, let txStatus) = payment.kind {
+                        var isConfirmed = false
+                        var confirmedTimestamp: UInt64?
+                        if case .confirmed(let blockHash, let height, let timestamp) = txStatus {
+                            isConfirmed = true
+                            confirmedTimestamp = timestamp
+                        }
+                        
+                        // Ensure confirmTimestamp is at least equal to timestamp when confirmed
+                        let timestamp = payment.latestUpdateTimestamp
+                        
+                        if isConfirmed && confirmedTimestamp != nil && confirmedTimestamp! < timestamp {
+                            confirmedTimestamp = timestamp
+                        }
+                        
+                        let onchain = OnchainActivity(
+                            id: payment.id,
+                            txType: payment.direction == .outbound ? .sent : .received,
+                            txId: txid,
+                            value: payment.amountSats ?? 0,
+                            fee: (payment.feePaidMsat ?? 0) / 1000,
+                            feeRate: 1, //TODO: get from somewhere
+                            address: "todo_find_address",
+                            confirmed: isConfirmed,
+                            timestamp: timestamp,
+                            isBoosted: false, //TODO:
+                            isTransfer: false, //TODO: handle when paying for order
+                            doesExist: true,
+                            confirmTimestamp: confirmedTimestamp,
+                            channelId: nil, //TODO: get from linked order
+                            transferTxId: nil, //TODO: get from linked order
+                            createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
+                            updatedAt: timestamp
+                        )
+                                            
+                        if (try getActivityById(activityId: payment.id)) != nil {
+                            try updateActivity(activityId: payment.id, activity: .onchain(onchain))
+                            updatedCount += 1
+                        } else {
+                            try upsertActivity(activity: .onchain(onchain))
+                            addedCount += 1
+                        }
+                    } else if case .bolt11(let hash, let preimage, let secret) = payment.kind {
+                        // Skip pending inbound payments, just means they created an invoice
+                        guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
 
-                    let ln = LightningActivity(
-                        id: payment.id,
-                        txType: payment.direction == .outbound ? .sent : .received,
-                        status: state,
-                        value: UInt64(payment.amountSats ?? 0),
-                        fee: nil,  // TODO:
-                        invoice: "lnbc123",
-                        message: "",
-                        timestamp: UInt64(payment.latestUpdateTimestamp),
-                        preimage: nil,
-                        createdAt: UInt64(payment.latestUpdateTimestamp),
-                        updatedAt: UInt64(payment.latestUpdateTimestamp)
-                    )
+                        let ln = LightningActivity(
+                            id: payment.id,
+                            txType: payment.direction == .outbound ? .sent : .received,
+                            status: state,
+                            value: UInt64(payment.amountSats ?? 0),
+                            fee: nil,  // TODO:
+                            invoice: "lnbc123",
+                            message: "",
+                            timestamp: UInt64(payment.latestUpdateTimestamp),
+                            preimage: nil,
+                            createdAt: UInt64(payment.latestUpdateTimestamp),
+                            updatedAt: UInt64(payment.latestUpdateTimestamp)
+                        )
 
-                    try upsertActivity(activity: .lightning(ln))
-                    updatedCount += 1
+                        if (try getActivityById(activityId: payment.id)) != nil {
+                            try updateActivity(activityId: payment.id, activity: .lightning(ln))
+                            updatedCount += 1
+                        } else {
+                            try upsertActivity(activity: .lightning(ln))
+                            addedCount += 1
+                        }
+                    }
+                } catch {
+                    Logger.error("Error syncing LDK payment: \(error)", context: "CoreService")
+                    latestCaughtError = error
                 }
                 
                 //case spontaneous(hash: PaymentHash, preimage: PaymentPreimage?)
             }
 
-            Logger.info("Synced LDK payments - Updated: \(updatedCount)", context: "CoreService")
+            //If any of the inserts failed, we want to throw the error up
+            if let error = latestCaughtError {
+                throw error
+            }
+
+            Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
         }
     }
 
