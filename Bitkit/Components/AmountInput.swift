@@ -10,10 +10,12 @@ struct AmountInput: View {
     @EnvironmentObject var currency: CurrencyViewModel
     var onSatsChange: (UInt64) -> Void
     var showConversion: Bool
+    var shouldAutoFocus: Bool
 
     init(
         defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil),
-        showConversion: Bool = false,
+        showConversion: Bool = false, 
+        shouldAutoFocus: Bool = true,
         onSatsChange: @escaping (UInt64) -> Void
     ) {
         _satsAmount = State(initialValue: defaultValue > 0 ? String(defaultValue) : "")
@@ -21,6 +23,7 @@ struct AmountInput: View {
         _primaryDisplay = primaryDisplay
         _overrideSats = overrideSats
         self.showConversion = showConversion
+        self.shouldAutoFocus = shouldAutoFocus
         self.onSatsChange = onSatsChange
     }
 
@@ -31,6 +34,14 @@ struct AmountInput: View {
     private func triggerOnSatsChange(_ value: UInt64) {
         Haptics.play(.buttonTap)
         onSatsChange(value)
+    }
+    
+    private func focusTextField() {
+        if primaryDisplay == .bitcoin {
+            isSatsFocused = true
+        } else {
+            isFiatFocused = true
+        }
     }
 
     var body: some View {
@@ -119,18 +130,35 @@ struct AmountInput: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        focusTextField()
+                    }
                 }
                 
                 if let converted = currency.convert(sats: sats) {
                     if primaryDisplay == .bitcoin {
                         let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                         DisplayText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", accentColor: .textSecondary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                focusTextField()
+                            }
                     } else {
                         DisplayText("<accent>\(converted.symbol)</accent> \(fiatAmount.isEmpty ? "0" : fiatAmount)", accentColor: .textSecondary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                focusTextField()
+                            }
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                focusTextField()
+            }
         }
+        .contentShape(Rectangle())
         .onChange(of: overrideSats) { newValue in
             if let exactSats = newValue {
                 satsAmount = String(exactSats)
@@ -154,22 +182,22 @@ struct AmountInput: View {
             }
         }
         .onAppear {
-            if primaryDisplay == .bitcoin {
-                isSatsFocused = true
-            } else {
-                isFiatFocused = true
+            // Only auto-focus if explicitly requested
+            if shouldAutoFocus {
+                if primaryDisplay == .bitcoin {
+                    isSatsFocused = true
+                } else {
+                    isFiatFocused = true
+                }
             }
+            
             // Initialize fiat amount if we have a default sats value
             if sats > 0, let converted = currency.convert(sats: sats) {
                 fiatAmount = converted.formatted
             }
         }
         .onTapGesture {
-            if primaryDisplay == .bitcoin {
-                isSatsFocused = true
-            } else {
-                isFiatFocused = true
-            }
+            focusTextField()
         }
     }
 }

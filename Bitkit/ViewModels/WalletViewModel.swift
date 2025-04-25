@@ -21,6 +21,10 @@ class WalletViewModel: ObservableObject {
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
     @AppStorage("channelCount") var channelCount: Int = 0 //Keeping a cached version of this so we can better aniticipate the receive flow UI
+    
+    // For bolt11 details and bip21 params
+    var invoiceAmountSats: UInt64 = 0
+    var invoiceNote: String = ""
 
     @Published var nodeLifecycleState: NodeLifecycleState = .stopped
     @Published var nodeStatus: NodeStatus?
@@ -139,9 +143,35 @@ class WalletViewModel: ObservableObject {
         bip21 = ""
     }
 
-    func createInvoice(amountSats: UInt64? = nil, description: String, expirySecs: UInt32? = nil) async throws -> String {
+    func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
-        return try await lightningService.receive(amountSats: amountSats, description: description, expirySecs: finalExpirySecs)
+        return try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+    }
+
+    func waitForNodeToRun(timeoutSeconds: Double = 10.0) async -> Bool {
+        guard nodeLifecycleState != .running else { return true }
+        
+        if nodeLifecycleState != .starting {
+            return false
+        }
+        
+        let startTime = Date()
+        
+        while nodeLifecycleState == .starting {
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
+            
+            // Check for timeout
+            if Date().timeIntervalSince(startTime) > timeoutSeconds {
+                return false
+            }
+            
+            // Break if task cancelled
+            if Task.isCancelled {
+                break
+            }
+        }
+        
+        return nodeLifecycleState == .running
     }
 
     func sync() async throws {
@@ -239,7 +269,7 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
-    func refreshBip21() async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
@@ -255,14 +285,17 @@ class WalletViewModel: ObservableObject {
 
         var newBip21 = "bitcoin:\(onchainAddress)"
 
+        let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
+        let note = invoiceNote.isEmpty ? "Bitkit" : invoiceNote
+       
         if channels?.count ?? 0 > 0 {
-            if bolt11.isEmpty {
-                bolt11 = try await self.createInvoice(description: "Bitkit")
+            if forceRefreshBolt11 || bolt11.isEmpty {
+                bolt11 = try await self.createInvoice(amountSats: amountSats, note: note)
             } else {
                 //Existing invoice needs to be checked for expiry
                 if case .lightning(let lightningInvoice) = try await decode(invoice: bolt11) {
                     if lightningInvoice.isExpired {
-                        bolt11 = try await self.createInvoice(description: "Bitkit")
+                        bolt11 = try await self.createInvoice(amountSats: amountSats, note: note)
                     }
                 }
             }
@@ -272,6 +305,19 @@ class WalletViewModel: ObservableObject {
 
         if !bolt11.isEmpty {
             newBip21 += "?lightning=\(bolt11)"
+        }
+        
+        // Add amount and note if available
+        if invoiceAmountSats > 0 {
+            let separator = newBip21.contains("?") ? "&" : "?"
+            newBip21 += "\(separator)amount=\(Double(invoiceAmountSats) / 100_000_000.0)"
+        }
+        
+        if !invoiceNote.isEmpty {
+            let separator = newBip21.contains("?") ? "&" : "?"
+            if let encodedNote = invoiceNote.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                newBip21 += "\(separator)message=\(encodedNote)"
+            }
         }
         
         bip21 = newBip21
