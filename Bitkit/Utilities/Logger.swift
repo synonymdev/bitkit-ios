@@ -17,7 +17,7 @@ class Logger {
         dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
         let timestamp = dateFormatter.string(from: Date())
         
-        let baseDir = Env.bitkitLogFileDirectory
+        let baseDir = Env.logDirectory
         let sessionLogPath = "\(baseDir)/bitkit_\(timestamp).log"
         
         // Create directory if it doesn't exist
@@ -102,9 +102,10 @@ class Logger {
         }
     }
     
+    //Cleans up both bitkit and ldk log files
     static func cleanUpOldLogFiles(maxTotalSizeMB: Int = 20) {
         queue.async {
-            let baseDir = Env.bitkitLogFileDirectory
+            let baseDir = Env.logDirectory
             
             let fileManager = FileManager.default
             guard let fileURLs = try? fileManager.contentsOfDirectory(at: URL(fileURLWithPath: baseDir), 
@@ -118,7 +119,7 @@ class Logger {
             var totalSize: UInt64 = 0
             
             for fileURL in fileURLs {
-                if fileURL.lastPathComponent.hasPrefix("bitkit_") && fileURL.pathExtension == "log" {
+                if fileURL.pathExtension == "log" {
                     guard let attributes = try? fileManager.attributesOfItem(atPath: fileURL.path),
                           let creationDate = attributes[.creationDate] as? Date,
                           let fileSize = attributes[.size] as? UInt64 else {
