@@ -26,30 +26,31 @@ extension StateLockerError: LocalizedError {
     }
 }
 
-class StateLocker {
-    enum Environment: String, Codable {
-        case foregroundApp
-        case pushNotificationExtension
-
-        var expiryTime: TimeInterval {
-            switch self {
-            case .pushNotificationExtension:
-                return 35  // Should never run over 30s
-            case .foregroundApp:
-                return 5 * 60  // TODO: test this out
-            }
-        }
-
-        static var current: Environment {
-            #if UNIT_TESTING
-                return StateLocker.unitTestCustomEnvironment
-                    ?? (Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp)
-            #else
-                return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
-            #endif
+public enum ExecutionContext: String, Codable {
+    case foregroundApp
+    case pushNotificationExtension
+    
+    var expiryTime: TimeInterval {
+        switch self {
+        case .pushNotificationExtension:
+            return 35  // Should never run over 30s
+        case .foregroundApp:
+            return 5 * 60  // TODO: test this out
         }
     }
+    
+    //For log file names
+    var filenamePrefix: String {
+        switch self {
+        case .foregroundApp:
+            return "foreground"
+        case .pushNotificationExtension:
+            return "background"
+        }
+    }
+}
 
+class StateLocker {
     enum ProcessType: String {
         case lightning
         case onchain
@@ -62,21 +63,24 @@ class StateLocker {
             unitTestCustomDate = date
         }
 
-        static var unitTestCustomEnvironment: Environment?
-        static func injectTestEnvironment(_ environment: Environment?) {
-            unitTestCustomEnvironment = environment ?? Environment.current
+        static var unitTestCustomExecutionContext: ExecutionContext?
+        
+        /// Allows unit tests to override the execution context returned by Env.currentExecutionContext
+        /// When used in unit tests, this value will be checked and used if set
+        static func injectTestEnvironment(_ environment: ExecutionContext?) {
+            unitTestCustomExecutionContext = environment
         }
     #endif
 
     private struct LockFileContent: Codable {
-        let environment: Environment
+        let environment: ExecutionContext
         let date: Date
         var isExpired: Bool {
             return Date().timeIntervalSince(date) > environment.expiryTime
         }
 
         init() {
-            self.environment = Environment.current
+            self.environment = Env.currentExecutionContext
             #if UNIT_TESTING
                 self.date = StateLocker.unitTestCustomDate
             #else
@@ -106,7 +110,8 @@ class StateLocker {
     /// - Throws: `StateLockerError.alreadyLocked` if the lock cannot be acquired within the wait time,
     ///           or other errors related to file operations.
     static func lock(_ process: ProcessType, wait: TimeInterval) throws {
-        if lockFileContent(process)?.environment != Environment.current {
+        // Check if the process is already locked
+        if isLocked(process) {
             // Different environment has the lock, wait to acquire it
             let startTime = Date()
             let pollInterval: TimeInterval = 0.1
@@ -136,7 +141,7 @@ class StateLocker {
             return
         }
 
-        if lock.environment != Environment.current {
+        if lock.environment != Env.currentExecutionContext {
             throw StateLockerError.differentEnvironmentLocked
         }
 

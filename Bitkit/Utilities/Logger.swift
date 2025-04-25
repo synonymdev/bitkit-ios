@@ -18,7 +18,8 @@ class Logger {
         let timestamp = dateFormatter.string(from: Date())
         
         let baseDir = Env.logDirectory
-        let sessionLogPath = "\(baseDir)/bitkit_\(timestamp).log"
+        let contextPrefix = Env.currentExecutionContext.filenamePrefix
+        let sessionLogPath = "\(baseDir)/bitkit_\(contextPrefix)_\(timestamp).log"
         
         // Create directory if it doesn't exist
         let directory = URL(fileURLWithPath: baseDir)
