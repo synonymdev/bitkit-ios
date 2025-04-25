@@ -35,27 +35,28 @@ struct LogView: View {
     private func loadLogFiles() {
         var files: [LogFile] = []
         
-        let ldkLogURL = URL(fileURLWithPath: Env.ldkLogFile(walletIndex: LightningService.shared.currentWalletIndex))
-        if FileManager.default.fileExists(atPath: ldkLogURL.path) {
-            files.append(LogFile(displayName: "LDK Log", url: ldkLogURL, type: .ldk))
-        }
-        
-        let logDirectory = URL(fileURLWithPath: Env.bitkitLogFileDirectory)
+        let logDirectory = URL(fileURLWithPath: Env.logDirectory)
         if let logURLs = try? FileManager.default.contentsOfDirectory(
             at: logDirectory,
             includingPropertiesForKeys: [.creationDateKey],
             options: .skipsHiddenFiles
         ) {
-            let bitkitLogs = logURLs
+            let logFiles = logURLs
                 .filter { $0.pathExtension == "log" }
-                .map { LogFile(displayName: formatLogFileName($0.lastPathComponent), url: $0, type: .bitkit) }
+                .map { url -> LogFile in
+                    let fileName = url.lastPathComponent
+                    let type: LogFile.LogType = fileName.hasPrefix("ldk_") ? .ldk : .bitkit
+                    let formattedDate = formatLogFileName(fileName)
+                    let displayName = type == .ldk ? "LDK Log: \(formattedDate)" : "Bitkit Log: \(formattedDate)"
+                    return LogFile(displayName: displayName, url: url, type: type)
+                }
                 .sorted { (lhs, rhs) -> Bool in
                     let lhsDate = try? lhs.url.resourceValues(forKeys: [.creationDateKey]).creationDate
                     let rhsDate = try? rhs.url.resourceValues(forKeys: [.creationDateKey]).creationDate
                     return (lhsDate ?? Date.distantPast) > (rhsDate ?? Date.distantPast)
                 }
             
-            files.append(contentsOf: bitkitLogs)
+            files.append(contentsOf: logFiles)
         }
         
         logFiles = files
@@ -63,9 +64,14 @@ struct LogView: View {
     
     private func formatLogFileName(_ filename: String) -> String {
         var name = filename
+        
+        // Remove prefix based on log type
         if name.hasPrefix("bitkit_") {
             name = String(name.dropFirst(7))
+        } else if name.hasPrefix("ldk_") {
+            name = String(name.dropFirst(4))
         }
+        
         if name.hasSuffix(".log") {
             name = String(name.dropLast(4))
         }
@@ -74,12 +80,10 @@ struct LogView: View {
         
         if let dateEndIndex = name.firstIndex(of: " ") {
             let dateString = String(name[..<dateEndIndex])
-            let timeString = String(name[dateEndIndex...])
-            
-            return "Bitkit Log: \(dateString)"
+            return dateString
         }
         
-        return "Bitkit Log: \(name)"
+        return name
     }
 }
 

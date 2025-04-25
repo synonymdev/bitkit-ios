@@ -185,11 +185,7 @@ enum Env {
         }
     }
 
-    static func ldkLogFile(walletIndex: Int) -> String {
-        return ldkStorage(walletIndex: walletIndex).path + "/ldk_node_latest.log"
-    }
-
-    static var bitkitLogFileDirectory: String {
+    static var logDirectory: String {
         return appStorageUrl.appendingPathComponent("logs").path
     }
 

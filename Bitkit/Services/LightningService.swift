@@ -14,6 +14,7 @@ import LDKNode
 class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
+    private var currentLogFilePath: String?
 
     static var shared = LightningService()
 
@@ -55,7 +56,9 @@ class LightningService {
         
         Logger.info("LDK-node log path: \(ldkStoragePath)")
         
-        builder.setFilesystemLogger(logFilePath: Env.ldkLogFile(walletIndex: walletIndex), maxLogLevel: Env.ldkLogLevel)
+        let logFilePath = generateLogFilePath()
+        currentLogFilePath = logFilePath
+        builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
         
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
         if let rgsServerUrl = Env.ldkRgsServerUrl {
@@ -334,8 +337,14 @@ class LightningService {
         }
     }
 
+    //TODO: update this
     func dumpLdkLogs() {
-        let fileURL = URL(fileURLWithPath: Env.ldkLogFile(walletIndex: currentWalletIndex))
+        guard let logFilePath = currentLogFilePath else {
+            Logger.error("No log file path available")
+            return
+        }
+        
+        let fileURL = URL(fileURLWithPath: logFilePath)
 
         do {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
@@ -345,8 +354,33 @@ class LightningService {
                 print(line)
             }
         } catch {
-            Logger.error(error, context: "failed to load ldk log file")
+            Logger.error(error, context: "failed to load ldk log file: \(logFilePath)")
         }
+    }
+
+    // MARK: Logging helpers
+
+    private func generateLogFilePath() -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        let timestamp = dateFormatter.string(from: Date())
+        
+        let baseDir = Env.logDirectory
+        let logFilePath = "\(baseDir)/ldk_\(timestamp).log"
+        
+        // Create directory if it doesn't exist
+        let directory = URL(fileURLWithPath: baseDir)
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            } catch {
+                Logger.error("Failed to create log directory: \(error)")
+            }
+        }
+        
+        Logger.debug("Generated LDK log file path: \(logFilePath)")
+        return logFilePath
     }
 }
 
