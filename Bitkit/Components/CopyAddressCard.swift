@@ -31,7 +31,7 @@ struct CopyAddressCard: View {
                         .padding(.bottom)
 
                     // Ellipse the address if it's too long
-                    BodySSBText((pair.address.count > 35 ? pair.address.prefix(30) + "..." : pair.address).uppercased())
+                    BodySSBText((pair.address.count > 32 ? pair.address.prefix(27) + "..." : pair.address).uppercased())
                         .padding(.bottom)
 
                     HStack {
