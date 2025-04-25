@@ -71,19 +71,8 @@ struct CreateCjitView: View {
                 guard amountSats > 0 else { return }
                 
                 // Wait until node is running if it's in starting state
-                if wallet.nodeLifecycleState == .starting {
-                    // Wait for the node to be fully running
-                    while wallet.nodeLifecycleState == .starting {
-                        try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
-                        // Break if task cancelled or app state changes
-                        if Task.isCancelled {
-                            break
-                        }
-                    }
-                }
-                
-                // Only proceed if node is running
-                if wallet.nodeLifecycleState == .running {
+                if await wallet.waitForNodeToRun() {
+                    // Only proceed if node is running
                     do {
                         let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
                         createdEntry = entry
@@ -93,7 +82,7 @@ struct CreateCjitView: View {
                         Logger.error(error)
                     }
                 } else {
-                    // Show error if node is not running
+                    // Show error if node is not running or timed out
                     app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }

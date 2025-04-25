@@ -20,6 +20,7 @@ struct ReceiveViewContent: View {
     
     @State private var selectedTab = 0
     @State private var cjitActive = false
+    @State private var showEditInvoice = false
     
     var body: some View {
         VStack {
@@ -72,12 +73,12 @@ struct ReceiveViewContent: View {
                 QR(content: uri, imageAsset: imageAsset)
                 
                 HStack {
-                    CustomButton(
-                        title: NSLocalizedString("common__edit", comment: ""),
-                        size: .small,
-                        icon: Image("pencil-brand")
-                    ) {
-                        // Edit action
+                    NavigationLink(destination: EditInvoiceView()) {
+                        CustomButton(
+                            title: NSLocalizedString("common__edit", comment: ""),
+                            size: .small,
+                            icon: Image("pencil-brand")
+                        )
                     }
                     
                     CustomButton(
@@ -215,6 +216,16 @@ struct ReceiveView: View {
                     EmptyView()
                 }
             )
+        }
+        .onDisappear {
+            if wallet.invoiceAmountSats > 0 && !wallet.invoiceNote.isEmpty {
+                wallet.invoiceAmountSats = 0
+                wallet.invoiceNote = ""
+                Task {
+                    try? await wallet.refreshBip21(forceRefreshBolt11: true)
+                }
+                Logger.info("ReceiveView closed, reset invoice amount and note")
+            }
         }
         .task {
             do {                
