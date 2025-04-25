@@ -35,6 +35,14 @@ struct AmountInput: View {
         Haptics.play(.buttonTap)
         onSatsChange(value)
     }
+    
+    private func focusTextField() {
+        if primaryDisplay == .bitcoin {
+            isSatsFocused = true
+        } else {
+            isFiatFocused = true
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -122,18 +130,35 @@ struct AmountInput: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        focusTextField()
+                    }
                 }
                 
                 if let converted = currency.convert(sats: sats) {
                     if primaryDisplay == .bitcoin {
                         let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                         DisplayText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", accentColor: .textSecondary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                focusTextField()
+                            }
                     } else {
                         DisplayText("<accent>\(converted.symbol)</accent> \(fiatAmount.isEmpty ? "0" : fiatAmount)", accentColor: .textSecondary)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                focusTextField()
+                            }
                     }
                 }
             }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                focusTextField()
+            }
         }
+        .contentShape(Rectangle())
         .onChange(of: overrideSats) { newValue in
             if let exactSats = newValue {
                 satsAmount = String(exactSats)
@@ -172,11 +197,7 @@ struct AmountInput: View {
             }
         }
         .onTapGesture {
-            if primaryDisplay == .bitcoin {
-                isSatsFocused = true
-            } else {
-                isFiatFocused = true
-            }
+            focusTextField()
         }
     }
 }
