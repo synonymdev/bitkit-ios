@@ -45,10 +45,18 @@ struct LogView: View {
                 .filter { $0.pathExtension == "log" }
                 .map { url -> LogFile in
                     let fileName = url.lastPathComponent
-                    let type: LogFile.LogType = fileName.hasPrefix("ldk_") ? .ldk : .bitkit
-                    let formattedDate = formatLogFileName(fileName)
-                    let displayName = type == .ldk ? "LDK Log: \(formattedDate)" : "Bitkit Log: \(formattedDate)"
-                    return LogFile(displayName: displayName, url: url, type: type)
+                    let components = fileName.components(separatedBy: "_")
+                    
+                    // First component is the service name (e.g., "bitkit" or "ldk")
+                    let serviceName = components.first?.capitalized ?? "Unknown"
+                    
+                    // Format the date from the timestamp component (should be near the end)
+                    let timestamp = components.count >= 3 ? components[components.count - 2] : ""
+                    
+                    // Create a display name showing service and date
+                    let displayName = "\(serviceName) Log: \(timestamp)"
+                    
+                    return LogFile(displayName: displayName, url: url)
                 }
                 .sorted { (lhs, rhs) -> Bool in
                     let lhsDate = try? lhs.url.resourceValues(forKeys: [.creationDateKey]).creationDate
@@ -61,30 +69,6 @@ struct LogView: View {
         
         logFiles = files
     }
-    
-    private func formatLogFileName(_ filename: String) -> String {
-        var name = filename
-        
-        // Remove prefix based on log type
-        if name.hasPrefix("bitkit_") {
-            name = String(name.dropFirst(7))
-        } else if name.hasPrefix("ldk_") {
-            name = String(name.dropFirst(4))
-        }
-        
-        if name.hasSuffix(".log") {
-            name = String(name.dropLast(4))
-        }
-        
-        name = name.replacingOccurrences(of: "_", with: " ")
-        
-        if let dateEndIndex = name.firstIndex(of: " ") {
-            let dateString = String(name[..<dateEndIndex])
-            return dateString
-        }
-        
-        return name
-    }
 }
 
 // Model representing a log file
@@ -92,12 +76,6 @@ struct LogFile: Identifiable {
     var id: String { url.lastPathComponent }
     let displayName: String
     let url: URL
-    let type: LogType
-    
-    enum LogType {
-        case ldk
-        case bitkit
-    }
 }
 
 // View to display the content of a log file
