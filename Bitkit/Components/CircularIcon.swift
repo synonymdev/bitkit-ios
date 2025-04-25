@@ -4,11 +4,13 @@ struct CircularIcon: View {
     let icon: Image
     let iconColor: Color
     let backgroundColor: Color
+    let size: CGFloat
 
-    init(icon: String, iconColor: Color, backgroundColor: Color) {
+    init(icon: String, iconColor: Color, backgroundColor: Color, size: CGFloat = 32) {
         self.icon = Image(icon).resizable()
         self.iconColor = iconColor
         self.backgroundColor = backgroundColor
+        self.size = size
     }
 
     var body: some View {
@@ -17,8 +19,8 @@ struct CircularIcon: View {
                 .fill(backgroundColor)
             icon
                 .foregroundColor(iconColor)
-                .frame(width: 16, height: 16)
+                .frame(width: size * 0.5, height: size * 0.5)
         }
-        .frame(width: 32, height: 32)
+        .frame(width: size, height: size)
     }
 }
