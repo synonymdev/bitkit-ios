@@ -56,7 +56,7 @@ struct EditInvoiceView: View {
 
                 Spacer()
 
-                if !isAmountInputFocused && !isNoteEditorFocused {  
+                if !isAmountInputFocused && !isNoteEditorFocused {
                     Image("coin-stack")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -72,7 +72,7 @@ struct EditInvoiceView: View {
 
             Spacer()
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+            CustomButton(title: NSLocalizedString("wallet__receive_show_qr", comment: "")) {
                 // Wait until node is running if it's in starting state
                 if await wallet.waitForNodeToRun() {
                     do {
@@ -92,8 +92,8 @@ struct EditInvoiceView: View {
             .padding(.vertical, 16)
         }
         .sheetBackground()
-        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
-            .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(NSLocalizedString("wallet__receive_specify", comment: ""))
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             primaryDisplay = currency.primaryDisplay
         }
