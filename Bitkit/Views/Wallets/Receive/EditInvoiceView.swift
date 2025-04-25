@@ -96,6 +96,14 @@ struct EditInvoiceView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             primaryDisplay = currency.primaryDisplay
+            // Initialize with existing values from wallet model
+            if wallet.invoiceAmountSats > 0 {
+                amountSats = wallet.invoiceAmountSats
+                overrideSats = wallet.invoiceAmountSats
+            }
+            if !wallet.invoiceNote.isEmpty {
+                noteText = wallet.invoiceNote
+            }
         }
     }
     
