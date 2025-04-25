@@ -189,6 +189,10 @@ enum Env {
         return ldkStorage(walletIndex: walletIndex).path + "/ldk_node_latest.log"
     }
 
+    static var bitkitLogFileDirectory: String {
+        return appStorageUrl.appendingPathComponent("logs").path
+    }
+
     static var ldkLogLevel: LDKNode.LogLevel {
         return .trace
     }
