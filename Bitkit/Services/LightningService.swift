@@ -46,7 +46,7 @@ class LightningService {
         )
 
         let builder = Builder.fromConfig(config: config)
-
+        
         let esploraConfig = EsploraSyncConfig(backgroundSyncConfig: .init(
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
@@ -123,8 +123,8 @@ class LightningService {
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
             try node.stop()
-            self.node = nil
         }
+        self.node = nil
         Logger.info("Node stopped")
 
         try StateLocker.unlock(.lightning)
