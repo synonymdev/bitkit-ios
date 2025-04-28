@@ -8,7 +8,7 @@
 import Foundation
 
 enum StateLockerError: Error {
-    case alreadyLocked
+    case alreadyLocked(processName: String)
     case differentEnvironmentLocked
     case staleLock
 }
@@ -16,8 +16,8 @@ enum StateLockerError: Error {
 extension StateLockerError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .alreadyLocked:
-            return "State already locked"
+        case .alreadyLocked(let processName):
+            return "State already locked by process: \(processName)"
         case .differentEnvironmentLocked:
             return "Different environment has the lock"
         case .staleLock:
@@ -110,15 +110,19 @@ class StateLocker {
     /// - Throws: `StateLockerError.alreadyLocked` if the lock cannot be acquired within the wait time,
     ///           or other errors related to file operations.
     static func lock(_ process: ProcessType, wait: TimeInterval) throws {
+        Logger.debug("🔒 Attempting to lock process: \(process.rawValue) with wait time: \(wait)s")
+        
         // Check if the process is already locked
         if isLocked(process) {
+            Logger.debug("🔒 Process \(process.rawValue) is locked, waiting up to \(wait)s for it to become available")
             // Different environment has the lock, wait to acquire it
             let startTime = Date()
             let pollInterval: TimeInterval = 0.1
             while isLocked(process) {
                 let elapsed = Date().timeIntervalSince(startTime)
                 if elapsed >= wait {
-                    throw StateLockerError.alreadyLocked
+                    Logger.warn("🔒 Failed to acquire lock for process \(process.rawValue) after waiting \(elapsed)s")
+                    throw StateLockerError.alreadyLocked(processName: process.rawValue)
                 }
                 // Sleep for a short duration before retrying
                 Thread.sleep(forTimeInterval: pollInterval)
@@ -128,36 +132,54 @@ class StateLocker {
         let lockContent = LockFileContent()
         let data = try JSONEncoder().encode(lockContent)
         try data.write(to: lockfile(process), options: .atomic)
+        Logger.debug("🔒 Successfully locked process: \(process.rawValue)")
     }
 
     static func unlock(_ process: ProcessType) throws {
+        Logger.debug("🔒 Attempting to unlock process: \(process.rawValue)")
+        
         guard let lock = lockFileContent(process) else {
+            Logger.debug("🔒 No lock file found for process \(process.rawValue), nothing to unlock")
             return
         }
 
         if lock.isExpired {
             // If the lock is expired, we can remove it regardless of the environment
+            Logger.debug("🔒 Removing expired lock for process \(process.rawValue)")
             try? FileManager.default.removeItem(at: lockfile(process))
             return
         }
 
         if lock.environment != Env.currentExecutionContext {
+            Logger.warn("🔒 Cannot unlock process \(process.rawValue): locked by different environment (\(lock.environment.rawValue))")
             throw StateLockerError.differentEnvironmentLocked
         }
 
         do {
             try FileManager.default.removeItem(at: lockfile(process))
+            Logger.debug("🔒 Successfully unlocked process: \(process.rawValue)")
         } catch {
             // If we can't delete our own lock, rethrow the original error
+            Logger.error("🔒 Failed to unlock process \(process.rawValue): \(error.localizedDescription)")
             throw error
         }
     }
 
     static func isLocked(_ process: ProcessType) -> Bool {
+        Logger.debug("🔒 Checking if process is locked: \(process.rawValue)")
+        
         guard let lock = lockFileContent(process) else {
+            Logger.debug("🔒 No lock file found for process: \(process.rawValue)")
             return false
         }
-
-        return !lock.isExpired
+        
+        let isExpired = lock.isExpired
+        if isExpired {
+            Logger.debug("🔒 Lock for process \(process.rawValue) exists but is expired (created: \(lock.date.description))")
+        } else {
+            Logger.info("🔒 Process \(process.rawValue) is locked by environment: \(lock.environment.rawValue), created: \(lock.date.description)")
+        }
+        
+        return !isExpired
     }
 }
