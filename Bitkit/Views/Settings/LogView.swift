@@ -10,6 +10,7 @@ import UIKit
 
 struct LogView: View {
     @State private var logFiles: [LogFile] = []
+    @State private var showingDeleteConfirmation = false
     
     var body: some View {
         List {
@@ -27,6 +28,22 @@ struct LogView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Log Files")
+        .navigationBarItems(trailing: 
+            Button(action: {
+                showingDeleteConfirmation = true
+            }) {
+                Image(systemName: "trash")
+            }
+            .disabled(logFiles.isEmpty)
+        )
+        .alert("Delete All Logs", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                deleteAllLogs()
+            }
+        } message: {
+            Text("Are you sure you want to delete all log files? This action cannot be undone.")
+        }
         .task {
             loadLogFiles()
         }
@@ -38,7 +55,7 @@ struct LogView: View {
         let logDirectory = URL(fileURLWithPath: Env.logDirectory)
         if let logURLs = try? FileManager.default.contentsOfDirectory(
             at: logDirectory,
-            includingPropertiesForKeys: [.creationDateKey],
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
             options: .skipsHiddenFiles
         ) {
             let logFiles = logURLs
@@ -59,15 +76,32 @@ struct LogView: View {
                     return LogFile(displayName: displayName, url: url)
                 }
                 .sorted { (lhs, rhs) -> Bool in
-                    let lhsDate = try? lhs.url.resourceValues(forKeys: [.creationDateKey]).creationDate
-                    let rhsDate = try? rhs.url.resourceValues(forKeys: [.creationDateKey]).creationDate
-                    return (lhsDate ?? Date.distantPast) > (rhsDate ?? Date.distantPast)
+                    // Try to get creation dates, fall back to modification dates if needed
+                    let lhsResourceValues = try? lhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                    let rhsResourceValues = try? rhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                    
+                    let lhsDate = lhsResourceValues?.creationDate ?? lhsResourceValues?.contentModificationDate ?? Date.distantPast
+                    let rhsDate = rhsResourceValues?.creationDate ?? rhsResourceValues?.contentModificationDate ?? Date.distantPast
+                    
+                    // Sort descending (newest first)
+                    return lhsDate > rhsDate
                 }
             
             files.append(contentsOf: logFiles)
         }
         
         logFiles = files
+    }
+    
+    private func deleteAllLogs() {
+        let fileManager = FileManager.default
+        
+        for logFile in logFiles {
+            try? fileManager.removeItem(at: logFile.url)
+        }
+        
+        // Refresh the list
+        loadLogFiles()
     }
 }
 
