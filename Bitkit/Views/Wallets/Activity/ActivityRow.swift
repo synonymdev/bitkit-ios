@@ -22,8 +22,6 @@ private struct AmountDisplayView: View {
                 }
 
                 CaptionBText("\(converted.symbol) \(converted.formatted)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             } else {
                 HStack(spacing: 1) {
                     BodyMSBText(prefix, textColor: .textSecondary)
@@ -99,58 +97,6 @@ private struct TransactionStatusText: View {
             BodyMSBText(localizedString("wallet__activity_sent"), textColor: .textPrimary)
         } else {
             BodyMSBText(localizedString("wallet__activity_received"), textColor: .textPrimary)
-        }
-    }
-}
-
-private struct TransactionIcon: View {
-    let isLightning: Bool
-    let status: PaymentState?
-    let confirmed: Bool?
-    let txType: PaymentType
-
-    init(activity: Activity) {
-        switch activity {
-        case .lightning(let ln):
-            self.isLightning = true
-            self.status = ln.status
-            self.confirmed = nil
-            self.txType = ln.txType
-        case .onchain(let onchain):
-            self.isLightning = false
-            self.status = nil
-            self.confirmed = onchain.confirmed
-            self.txType = onchain.txType
-        }
-    }
-
-    var body: some View {
-        if isLightning {
-            if status == .failed {
-                CircularIcon(
-                    icon: "x-circle",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16
-                )
-            } else if status == .pending {
-                CircularIcon(
-                    icon: "hourglass-simple",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16
-                )
-            } else {
-                CircularIcon(
-                    icon: txType == .sent ? "arrow-up" : "arrow-down",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16
-                )
-            }
-        } else {
-            CircularIcon(
-                icon: txType == .sent ? "arrow-up" : "arrow-down",
-                iconColor: .brandAccent,
-                backgroundColor: .brand16
-            )
         }
     }
 }
@@ -240,6 +186,6 @@ struct ActivityRow: View {
 
     @ViewBuilder
     var icon: some View {
-        TransactionIcon(activity: item)
+        ActivityIcon(activity: item, size: 32)
     }
 }

@@ -76,6 +76,7 @@ struct CustomButton: View {
     let size: Size
     let icon: AnyView?
     let isDisabled: Bool
+    let shouldExpand: Bool
     let action: (() async -> Void)?
     let destination: AnyView?
 
@@ -88,13 +89,15 @@ struct CustomButton: View {
         variant: Variant = .primary,
         size: Size = .large,
         icon: (any View)? = nil,
-        isDisabled: Bool = false
+        isDisabled: Bool = false,
+        shouldExpand: Bool = false
     ) {
         self.title = title
         self.variant = variant
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.shouldExpand = shouldExpand
         self.action = nil
         self.destination = nil
     }
@@ -106,6 +109,7 @@ struct CustomButton: View {
         size: Size = .large,
         icon: (any View)? = nil,
         isDisabled: Bool = false,
+        shouldExpand: Bool = false,
         action: @escaping () async -> Void
     ) {
         self.title = title
@@ -113,6 +117,7 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.shouldExpand = shouldExpand
         self.action = action
         self.destination = nil
     }
@@ -124,6 +129,7 @@ struct CustomButton: View {
         size: Size = .large,
         icon: (any View)? = nil,
         isDisabled: Bool = false,
+        shouldExpand: Bool = false,
         destination: D
     ) {
         self.title = title
@@ -131,6 +137,7 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.shouldExpand = shouldExpand
         self.action = nil
         self.destination = AnyView(destination)
     }
@@ -250,10 +257,14 @@ struct CustomButton: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: foregroundColor))
                     .frame(width: 20, height: 20)
             } else {
-                BodySSBText(title, textColor: foregroundColor)
+                if size == .small {
+                    CaptionBText(title, textColor: foregroundColor)
+                } else {
+                    BodySSBText(title, textColor: foregroundColor)
+                }
             }
         }
-        .frame(maxWidth: size == .large ? .infinity : nil)
+        .frame(maxWidth: size == .large || shouldExpand ? .infinity : nil)
         .frame(height: size.height)
         .padding(.horizontal, size.horizontalPadding)
         .background(backgroundColor)

@@ -22,4 +22,5 @@ struct EmptyActivityRow: View {
 #Preview {
     EmptyActivityRow()
         .padding()
+        .preferredColorScheme(.dark)
 }
