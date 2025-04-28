@@ -11,24 +11,23 @@ struct CjitConfirmationView: View {
     let entry: IcJitEntry
     let onCjitCreated: (String) -> Void
     let receiveAmountSats: UInt64
-    
+
     @EnvironmentObject private var currency: CurrencyViewModel
-        
+
     private func formattedNetworkFee() -> String {
         guard let converted = currency.convert(sats: entry.networkFeeSat) else {
             return String(entry.networkFeeSat)
         }
         return "\(converted.symbol)\(converted.formatted)"
     }
-    
+
     private func formattedServiceFee() -> String {
         guard let converted = currency.convert(sats: entry.serviceFeeSat) else {
             return String(entry.serviceFeeSat)
         }
         return "\(converted.symbol)\(converted.formatted)"
     }
-    
-    
+
     private func formattedAmountReceive() -> String {
         let sats = receiveAmountSats - entry.feeSat
         if let converted = currency.convert(sats: sats) {
@@ -41,7 +40,7 @@ struct CjitConfirmationView: View {
         }
         return String(sats)
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
@@ -62,14 +61,14 @@ struct CjitConfirmationView: View {
                         comment: "",
                         variables: [
                             "networkFee": formattedNetworkFee(),
-                            "serviceFee": formattedServiceFee()
+                            "serviceFee": formattedServiceFee(),
                         ]
                     ),
                     textColor: .textSecondary,
                     accentColor: .white
                 )
 
-                 VStack(alignment: .leading) {
+                VStack(alignment: .leading) {
                     BodyMText(NSLocalizedString("wallet__receive_will", comment: "").uppercased(), textColor: .textSecondary)
                     TitleText(formattedAmountReceive(), textColor: .textPrimary)
                 }
@@ -77,9 +76,9 @@ struct CjitConfirmationView: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 16)
-           
+
             Spacer()
-            
+
             Image("lightning")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -87,12 +86,12 @@ struct CjitConfirmationView: View {
                 .padding(.horizontal, 16)
 
             Spacer()
-            
+
             HStack(spacing: 16) {
                 NavigationLink(destination: CjitLearnMoreView(entry: entry, receiveAmountSats: receiveAmountSats)) {
                     CustomButton(title: NSLocalizedString("common__learn_more", comment: ""), variant: .secondary)
                 }
-                
+
                 CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
                     onCjitCreated(entry.invoice.request)
                 }
@@ -107,9 +106,8 @@ struct CjitConfirmationView: View {
     }
 }
 
-@available(iOS 16.0, *)
 #Preview("CJIT Confirmation") {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -124,5 +122,5 @@ struct CjitConfirmationView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }

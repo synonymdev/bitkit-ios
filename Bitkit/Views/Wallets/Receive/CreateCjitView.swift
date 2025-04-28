@@ -69,7 +69,7 @@ struct CreateCjitView: View {
 
             CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
                 guard amountSats > 0 else { return }
-                
+
                 // Wait until node is running if it's in starting state
                 if await wallet.waitForNodeToRun() {
                     // Only proceed if node is running
@@ -110,7 +110,7 @@ struct CreateCjitView: View {
             }
         )
     }
-    
+
     private var amountButtons: some View {
         HStack(spacing: 16) {
             NumberPadActionButton(
@@ -122,7 +122,7 @@ struct CreateCjitView: View {
                     primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
                 }
             }
-            
+
             if let minSats = blocktank.minCjitSats {
                 NumberPadActionButton(text: "Min", color: Color.brandAccent) {
                     overrideSats = UInt64(minSats)
@@ -132,9 +132,8 @@ struct CreateCjitView: View {
     }
 }
 
-@available(iOS 16.0, *)
 #Preview {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -148,5 +147,5 @@ struct CreateCjitView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }
