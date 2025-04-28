@@ -126,7 +126,7 @@ struct LogContentView: View {
                     Text(line)
                         .font(.system(size: 8))
                         .multilineTextAlignment(.leading)
-                        .foregroundColor(.greenAccent)
+                        .foregroundColor(line.contains("ERROR") ? .red : .greenAccent)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
