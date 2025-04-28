@@ -164,23 +164,23 @@ class LightningService {
     }
 
     /// Temp fix for regtest where nodes might not agree on current fee rates
-    //    private func setMaxDustHtlcExposureForCurrentChannels() throws {
-    //        guard Env.network == .regtest else {
-    //            Logger.debug("Not updating channel config for non-regtest network")
-    //            return
-    //        }
-    //
-    //        guard let node else {
-    //            throw AppError(serviceError: .nodeNotSetup)
-    //        }
-    //
-    //        for channel in node.listChannels() {
-    //            let config = channel.config
-    //            config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
-    //            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
-    //            Logger.info("Updated channel config for: \(channel.userChannelId)")
-    //        }
-    //    }
+    private func setMaxDustHtlcExposureForCurrentChannels() throws {
+        guard Env.network == .regtest else {
+            Logger.debug("Not updating channel config for non-regtest network")
+            return
+        }
+
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        for channel in node.listChannels() {
+            var config = channel.config
+            config.maxDustHtlcExposure = .fixedLimit(limitMsat: 999999 * 1000)
+            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
+            Logger.info("Updated channel config for: \(channel.userChannelId)")
+        }
+    }
 
     func sync() async throws {
         guard let node else {
@@ -258,8 +258,13 @@ class LightningService {
 
         Logger.info("Sending \(sats) sats to \(address)")
 
-        return try await ServiceQueue.background(.ldk) {
-            try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
+        do {
+            return try await ServiceQueue.background(.ldk) {
+                try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
+            }
+        } catch {
+            dumpLdkLogs()
+            throw error
         }
     }
 
@@ -270,12 +275,17 @@ class LightningService {
 
         Logger.info("Paying bolt11: \(bolt11)")
 
-        return try await ServiceQueue.background(.ldk) {
-            if let sats {
-                try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
-            } else {
-                try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
+        do {
+            return try await ServiceQueue.background(.ldk) {
+                if let sats {
+                    try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
+                } else {
+                    try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
+                }
             }
+        } catch {
+            dumpLdkLogs()
+            throw error
         }
     }
 
@@ -337,7 +347,6 @@ class LightningService {
         }
     }
 
-    //TODO: update this
     func dumpLdkLogs() {
         guard let logFilePath = currentLogFilePath else {
             Logger.error("No log file path available")
