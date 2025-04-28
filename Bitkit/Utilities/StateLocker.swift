@@ -103,6 +103,12 @@ class StateLocker {
         return try? decoder.decode(LockFileContent.self, from: data)
     }
 
+    private static func writeLockFile(_ process: ProcessType) throws {
+        let lockContent = LockFileContent()
+        let data = try JSONEncoder().encode(lockContent)
+        try data.write(to: lockfile(process), options: .atomic)
+    }
+
     /// Attempts to acquire a lock for the specified process.
     /// - Parameters:
     ///   - process: The type of process to lock.
@@ -113,9 +119,17 @@ class StateLocker {
         Logger.debug("🔒 Attempting to lock process: \(process.rawValue) with wait time: \(wait)s")
         
         // Check if the process is already locked
-        if isLocked(process) {
-            Logger.debug("🔒 Process \(process.rawValue) is locked, waiting up to \(wait)s for it to become available")
+        if let existingLock = lockFileContent(process) {
+            // If the lock is held by the same execution context, allow it
+            if existingLock.environment == Env.currentExecutionContext {
+                Logger.debug("🔒 Process \(process.rawValue) is already locked by same context, allowing lock")
+                try writeLockFile(process)
+                Logger.debug("🔒 Successfully updated lock for process: \(process.rawValue)")
+                return
+            }
+            
             // Different environment has the lock, wait to acquire it
+            Logger.debug("🔒 Process \(process.rawValue) is locked by different context, waiting up to \(wait)s for it to become available")
             let startTime = Date()
             let pollInterval: TimeInterval = 0.1
             while isLocked(process) {
@@ -129,9 +143,7 @@ class StateLocker {
             }
         }
 
-        let lockContent = LockFileContent()
-        let data = try JSONEncoder().encode(lockContent)
-        try data.write(to: lockfile(process), options: .atomic)
+        try writeLockFile(process)
         Logger.debug("🔒 Successfully locked process: \(process.rawValue)")
     }
 
