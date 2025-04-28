@@ -12,7 +12,7 @@ struct CopyAddressPair {
         case onchain
         case lightning
     }
-    
+
     let title: String
     let address: String
     let type: AddressType
@@ -23,9 +23,9 @@ struct CopyAddressCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
-            ForEach(0..<addresses.count, id: \.self) { index in
+            ForEach(0 ..< addresses.count, id: \.self) { index in
                 let pair = addresses[index]
-                
+
                 VStack(alignment: .leading) {
                     CaptionText(pair.title.uppercased())
                         .padding(.bottom)
@@ -44,20 +44,16 @@ struct CopyAddressCard: View {
                             Haptics.play(.copiedToClipboard)
                         }
 
-                        if #available(iOS 16.0, *) {
-                            ShareLink(item: URL(string: pair.address)!) {
-                                CustomButton(
-                                    title: NSLocalizedString("common__share", comment: ""),
-                                    size: .small,
-                                    icon: Image(pair.type == .lightning ? "share-purple" : "share-brand")
-                                )
-                            }
-                        } else {
-                            // TODO: Add share sheet for iOS 15
+                        ShareLink(item: URL(string: pair.address)!) {
+                            CustomButton(
+                                title: NSLocalizedString("common__share", comment: ""),
+                                size: .small,
+                                icon: Image(pair.type == .lightning ? "share-purple" : "share-brand")
+                            )
                         }
                     }
                 }
-                
+
                 if index < addresses.count - 1 {
                     VStack {}.frame(height: 12)
                 }
@@ -73,7 +69,9 @@ struct CopyAddressCard: View {
 #Preview {
     CopyAddressCard(addresses: [
         CopyAddressPair(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", type: .onchain),
-        CopyAddressPair(title: "Lightning Invoice", address: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5", type: .lightning)
+        CopyAddressPair(
+            title: "Lightning Invoice", address: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5",
+            type: .lightning),
     ])
     .preferredColorScheme(.dark)
 }

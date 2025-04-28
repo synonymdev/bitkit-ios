@@ -13,7 +13,7 @@ struct SendOptionCard<Destination: View>: View {
     var isButton: Bool = false
     var action: (() -> Void)? = nil
     var iconName: String
-    
+
     var body: some View {
         Group {
             if isButton {
@@ -27,7 +27,7 @@ struct SendOptionCard<Destination: View>: View {
             }
         }
     }
-    
+
     private var cardContent: some View {
         HStack {
             Image(iconName)
@@ -63,24 +63,24 @@ struct SendOptionsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
                     .padding(.horizontal)
-                
+
                 VStack(spacing: 12) {
                     SendOptionCard(
-                        title: "Paste Invoice", 
+                        title: "Paste Invoice",
                         destination: EmptyView(),
                         isButton: true,
                         action: handlePaste,
                         iconName: "clipboard-brand"
                     )
-                    
+
                     SendOptionCard(
-                        title: "Enter Manually", 
+                        title: "Enter Manually",
                         destination: SendEnterManuallyView(),
                         iconName: "pencil-brand"
                     )
-                    
+
                     SendOptionCard(
-                        title: "Scan QR Code", 
+                        title: "Scan QR Code",
                         destination: ScannerView(
                             showSendAmountView: $showSendAmountView,
                             showSendConfirmationView: $showSendConfirmationView,
@@ -90,12 +90,12 @@ struct SendOptionsView: View {
                     )
                 }
                 .padding(.horizontal)
-                
+
                 Spacer()
             }
 
             Spacer()
-            
+
             Image("coin-stack-logo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -150,9 +150,8 @@ struct SendOptionsView: View {
     }
 }
 
-@available(iOS 16.0, *)
 #Preview {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -164,5 +163,5 @@ struct SendOptionsView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }
