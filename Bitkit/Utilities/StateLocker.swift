@@ -7,10 +7,23 @@
 
 import Foundation
 
-enum StateLockerError: Error {
+enum StateLockerError: Error, Equatable {
     case alreadyLocked(processName: String)
     case differentEnvironmentLocked
     case staleLock
+    
+    static func == (lhs: StateLockerError, rhs: StateLockerError) -> Bool {
+        switch (lhs, rhs) {
+        case (.alreadyLocked(let lhsProcess), .alreadyLocked(let rhsProcess)):
+            return lhsProcess == rhsProcess
+        case (.differentEnvironmentLocked, .differentEnvironmentLocked):
+            return true
+        case (.staleLock, .staleLock):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
 extension StateLockerError: LocalizedError {
@@ -66,9 +79,19 @@ class StateLocker {
         static var unitTestCustomExecutionContext: ExecutionContext?
         
         /// Allows unit tests to override the execution context returned by Env.currentExecutionContext
-        /// When used in unit tests, this value will be checked and used if set
+        /// When used in unit tests, this value will be checked and used if set 
         static func injectTestEnvironment(_ environment: ExecutionContext?) {
             unitTestCustomExecutionContext = environment
+        }
+        
+        /// Returns the current execution context, using the injected test context if available
+        static var currentExecutionContext: ExecutionContext {
+            return unitTestCustomExecutionContext ?? Env.currentExecutionContext
+        }
+    #else
+        /// Returns the current execution context from Env
+        static var currentExecutionContext: ExecutionContext {
+            return Env.currentExecutionContext
         }
     #endif
 
@@ -80,10 +103,11 @@ class StateLocker {
         }
 
         init() {
-            self.environment = Env.currentExecutionContext
             #if UNIT_TESTING
+                self.environment = StateLocker.currentExecutionContext
                 self.date = StateLocker.unitTestCustomDate
             #else
+                self.environment = Env.currentExecutionContext
                 self.date = Date()
             #endif
         }
@@ -121,7 +145,7 @@ class StateLocker {
         // Check if the process is already locked
         if let existingLock = lockFileContent(process) {
             // If the lock is held by the same execution context, allow it
-            if existingLock.environment == Env.currentExecutionContext {
+            if existingLock.environment == StateLocker.currentExecutionContext {
                 Logger.debug("🔒 Process \(process.rawValue) is already locked by same context, allowing lock")
                 try writeLockFile(process)
                 Logger.debug("🔒 Successfully updated lock for process: \(process.rawValue)")
@@ -162,7 +186,7 @@ class StateLocker {
             return
         }
 
-        if lock.environment != Env.currentExecutionContext {
+        if lock.environment != StateLocker.currentExecutionContext {
             Logger.warn("🔒 Cannot unlock process \(process.rawValue): locked by different environment (\(lock.environment.rawValue))")
             throw StateLockerError.differentEnvironmentLocked
         }

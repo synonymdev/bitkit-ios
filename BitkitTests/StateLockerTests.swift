@@ -39,7 +39,7 @@ final class StateLockerTests: XCTestCase {
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
 
         XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
-            XCTAssertEqual(error as? StateLockerError, .alreadyLocked)
+            XCTAssertEqual(error as? StateLockerError, .alreadyLocked(processName: "lightning"))
         }
         StateLocker.injectTestEnvironment(nil)
     }
@@ -84,11 +84,12 @@ final class StateLockerTests: XCTestCase {
         // Lock in foreground app environment
         StateLocker.injectTestEnvironment(.foregroundApp)
         XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        XCTAssertTrue(StateLocker.isLocked(.lightning))
 
         // Attempt to lock in push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
         XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
-            XCTAssertEqual(error as? StateLockerError, .alreadyLocked)
+            XCTAssertEqual(error as? StateLockerError, .alreadyLocked(processName: "lightning"))
         }
 
         StateLocker.injectTestEnvironment(.foregroundApp)
@@ -109,6 +110,30 @@ final class StateLockerTests: XCTestCase {
         XCTAssertFalse(StateLocker.isLocked(.lightning))
 
         // Attempt to lock in push notification extension environment
+        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        XCTAssertTrue(StateLocker.isLocked(.lightning))
+    }
+
+    func testUnlockDifferentEnvironment() {
+        // Lock in foreground app environment
+        StateLocker.injectTestEnvironment(.foregroundApp)
+        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+
+        // Try to unlock from push notification extension environment
+        StateLocker.injectTestEnvironment(.pushNotificationExtension)
+        XCTAssertThrowsError(try StateLocker.unlock(.lightning)) { error in
+            XCTAssertEqual(error as? StateLockerError, .differentEnvironmentLocked)
+        }
+    }
+
+    func testLockSameEnvironment() {
+        StateLocker.injectTestEnvironment(.foregroundApp)
+        
+        // First lock
+        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        XCTAssertTrue(StateLocker.isLocked(.lightning))
+        
+        // Second lock attempt in same environment should succeed
         XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
         XCTAssertTrue(StateLocker.isLocked(.lightning))
     }
