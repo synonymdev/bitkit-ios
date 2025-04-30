@@ -13,6 +13,11 @@ enum Env {
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
+    /// The current execution context of the app
+    static var currentExecutionContext: ExecutionContext {
+        return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
+    }
+
     // {Team ID}.{Keychain Group}
     static let keychainGroup = "KYH47R284B.to.bitkit" //TODO: needs to change for regtest/mainnet so we don't use same group
 
@@ -185,8 +190,8 @@ enum Env {
         }
     }
 
-    static func ldkLogFile(walletIndex: Int) -> String {
-        return ldkStorage(walletIndex: walletIndex).path + "/ldk_node_latest.log"
+    static var logDirectory: String {
+        return appStorageUrl.appendingPathComponent("logs").path
     }
 
     static var ldkLogLevel: LDKNode.LogLevel {

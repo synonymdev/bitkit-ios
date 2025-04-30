@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
@@ -15,6 +16,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var blocktank: BlocktankViewModel
 
     let sleepTime: UInt64 = 500_000_000  // 0.5 seconds
+    
+    // Store the background task identifier
+    @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
     func body(content: Content) -> some View {
         content
@@ -36,6 +40,13 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     }
 
                     if newPhase == .active {
+                        // End background task if it's still active
+                        if backgroundTaskID != .invalid {
+                            UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                            backgroundTaskID = .invalid
+                            Logger.debug("Ended background task on app becoming active")
+                        }
+                        
                         if let transaction = NewTransactionSheetDetails.load() {
                             // Background extension received a transaction
                             NewTransactionSheetDetails.clear()
@@ -79,13 +90,41 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             return
         }
 
+        // Begin a background task to request more execution time
+        backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "StopLightningNode") {
+            // This closure is called if the task expires
+            Logger.debug("Background task for stopping Lightning node expired before completion")
+            if self.backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
+                self.backgroundTaskID = .invalid
+            }
+        }
+        
+        Logger.debug("Background task started with ID: \(backgroundTaskID.rawValue)")
         Logger.debug("App backgrounded Stopping node...")
 
-        try await wallet.stopLightningNode()
-
-        //If we're stopped and we're not in the background, we need to start again
-        if scenePhase == .active {
-            try await startNodeIfNeeded()
+        do {
+            try await wallet.stopLightningNode()
+            
+            // End the background task if completed successfully
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                backgroundTaskID = .invalid
+                Logger.debug("Background task ended after successful node stop")
+            }
+            
+            //If we're stopped and we're not in the background, we need to start again
+            if scenePhase == .active {
+                try await startNodeIfNeeded()
+            }
+        } catch {
+            // End the background task if there was an error
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                backgroundTaskID = .invalid
+                Logger.debug("Background task ended after error stopping node")
+            }
+            throw error
         }
     }
 
