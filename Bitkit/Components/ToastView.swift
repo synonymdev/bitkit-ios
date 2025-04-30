@@ -25,8 +25,7 @@ struct ToastView: View {
                 Spacer()
                 if !toast.autoHide {
                     Button(action: onDismiss) {
-                        Image(systemName: "xmark")
-                            .foregroundColor(.white)
+                        Image("x-mark")
                     }
                 }
             }
