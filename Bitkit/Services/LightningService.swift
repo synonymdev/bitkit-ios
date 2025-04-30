@@ -14,6 +14,7 @@ import LDKNode
 class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
+    private var currentLogFilePath: String?
 
     static var shared = LightningService()
 
@@ -45,7 +46,7 @@ class LightningService {
         )
 
         let builder = Builder.fromConfig(config: config)
-
+        
         let esploraConfig = EsploraSyncConfig(backgroundSyncConfig: .init(
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
@@ -55,7 +56,9 @@ class LightningService {
         
         Logger.info("LDK-node log path: \(ldkStoragePath)")
         
-        builder.setFilesystemLogger(logFilePath: Env.ldkLogFile(walletIndex: walletIndex), maxLogLevel: Env.ldkLogLevel)
+        let logFilePath = generateLogFilePath()
+        currentLogFilePath = logFilePath
+        builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
         
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
         if let rgsServerUrl = Env.ldkRgsServerUrl {
@@ -120,8 +123,8 @@ class LightningService {
         Logger.debug("Stopping node...")
         try await ServiceQueue.background(.ldk) {
             try node.stop()
-            self.node = nil
         }
+        self.node = nil
         Logger.info("Node stopped")
 
         try StateLocker.unlock(.lightning)
@@ -161,23 +164,23 @@ class LightningService {
     }
 
     /// Temp fix for regtest where nodes might not agree on current fee rates
-    //    private func setMaxDustHtlcExposureForCurrentChannels() throws {
-    //        guard Env.network == .regtest else {
-    //            Logger.debug("Not updating channel config for non-regtest network")
-    //            return
-    //        }
-    //
-    //        guard let node else {
-    //            throw AppError(serviceError: .nodeNotSetup)
-    //        }
-    //
-    //        for channel in node.listChannels() {
-    //            let config = channel.config
-    //            config.setMaxDustHtlcExposureFromFixedLimit(limitMsat: 999999 * 1000)
-    //            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
-    //            Logger.info("Updated channel config for: \(channel.userChannelId)")
-    //        }
-    //    }
+    private func setMaxDustHtlcExposureForCurrentChannels() throws {
+        guard Env.network == .regtest else {
+            Logger.debug("Not updating channel config for non-regtest network")
+            return
+        }
+
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        for channel in node.listChannels() {
+            var config = channel.config
+            config.maxDustHtlcExposure = .fixedLimit(limitMsat: 999999 * 1000)
+            try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
+            Logger.info("Updated channel config for: \(channel.userChannelId)")
+        }
+    }
 
     func sync() async throws {
         guard let node else {
@@ -255,8 +258,13 @@ class LightningService {
 
         Logger.info("Sending \(sats) sats to \(address)")
 
-        return try await ServiceQueue.background(.ldk) {
-            try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
+        do {
+            return try await ServiceQueue.background(.ldk) {
+                try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
+            }
+        } catch {
+            dumpLdkLogs()
+            throw error
         }
     }
 
@@ -267,12 +275,17 @@ class LightningService {
 
         Logger.info("Paying bolt11: \(bolt11)")
 
-        return try await ServiceQueue.background(.ldk) {
-            if let sats {
-                try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
-            } else {
-                try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
+        do {
+            return try await ServiceQueue.background(.ldk) {
+                if let sats {
+                    try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
+                } else {
+                    try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
+                }
             }
+        } catch {
+            dumpLdkLogs()
+            throw error
         }
     }
 
@@ -335,7 +348,12 @@ class LightningService {
     }
 
     func dumpLdkLogs() {
-        let fileURL = URL(fileURLWithPath: Env.ldkLogFile(walletIndex: currentWalletIndex))
+        guard let logFilePath = currentLogFilePath else {
+            Logger.error("No log file path available")
+            return
+        }
+        
+        let fileURL = URL(fileURLWithPath: logFilePath)
 
         do {
             let text = try String(contentsOf: fileURL, encoding: .utf8)
@@ -345,8 +363,34 @@ class LightningService {
                 print(line)
             }
         } catch {
-            Logger.error(error, context: "failed to load ldk log file")
+            Logger.error(error, context: "failed to load ldk log file: \(logFilePath)")
         }
+    }
+
+    // MARK: Logging helpers
+
+    private func generateLogFilePath() -> String {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        let timestamp = dateFormatter.string(from: Date())
+        
+        let baseDir = Env.logDirectory
+        let contextPrefix = Env.currentExecutionContext.filenamePrefix
+        let logFilePath = "\(baseDir)/ldk_\(contextPrefix)_\(timestamp).log"
+        
+        // Create directory if it doesn't exist
+        let directory = URL(fileURLWithPath: baseDir)
+        if !FileManager.default.fileExists(atPath: directory.path) {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            } catch {
+                Logger.error("Failed to create log directory: \(error)")
+            }
+        }
+        
+        Logger.debug("Generated LDK log file path: \(logFilePath)")
+        return logFilePath
     }
 }
 
@@ -373,39 +417,44 @@ extension LightningService {
                 }
 
                 let event = await node.nextEventAsync()
+                
+                do {
+                    try node.eventHandled()
+                } catch {
+                    Logger.error(error, context: "node.eventHandled()")
+                }
+                
                 onEvent?(event)
-
+                
                 // TODO: actual event handler
                 switch event {
                 case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
+                    break
                 case .paymentFailed(let paymentId, let paymentHash, let reason):
-                    Logger.info(
-                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
+                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
+                    break
                 case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
+                    break
                 case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline, let customRecords):
-                    Logger.info(
-                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
+                    Logger.info("🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
+                    break
                 case .channelPending(let channelId, let userChannelId, let formerTemporaryChannelId, let counterpartyNodeId, let fundingTxo):
                     Logger.info(
                         "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
                     )
+                    break
                 case .channelReady(let channelId, let userChannelId, let counterpartyNodeId):
                     Logger.info(
                         "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")")
+                    break
                 case .channelClosed(let channelId, let userChannelId, let counterpartyNodeId, let reason):
                     Logger.info(
                         "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)"
                     )
                 case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
                     break
-                }
-
-                do {
-                    try node.eventHandled()
-                } catch {
-                    Logger.error(error, context: "node.eventHandled()")
                 }
             }
         }
