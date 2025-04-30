@@ -417,39 +417,44 @@ extension LightningService {
                 }
 
                 let event = await node.nextEventAsync()
+                
+                do {
+                    try node.eventHandled()
+                } catch {
+                    Logger.error(error, context: "node.eventHandled()")
+                }
+                
                 onEvent?(event)
-
+                
                 // TODO: actual event handler
                 switch event {
                 case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
+                    break
                 case .paymentFailed(let paymentId, let paymentHash, let reason):
-                    Logger.info(
-                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
+                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
+                    break
                 case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
+                    break
                 case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline, let customRecords):
-                    Logger.info(
-                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
+                    Logger.info("🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
+                    break
                 case .channelPending(let channelId, let userChannelId, let formerTemporaryChannelId, let counterpartyNodeId, let fundingTxo):
                     Logger.info(
                         "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
                     )
+                    break
                 case .channelReady(let channelId, let userChannelId, let counterpartyNodeId):
                     Logger.info(
                         "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")")
+                    break
                 case .channelClosed(let channelId, let userChannelId, let counterpartyNodeId, let reason):
                     Logger.info(
                         "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)"
                     )
                 case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
                     break
-                }
-
-                do {
-                    try node.eventHandled()
-                } catch {
-                    Logger.error(error, context: "node.eventHandled()")
                 }
             }
         }
