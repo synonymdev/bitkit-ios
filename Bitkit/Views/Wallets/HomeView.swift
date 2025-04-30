@@ -13,7 +13,6 @@ struct HomeView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var activity: ActivityListViewModel
 
-    
     @State private var showNodeState = false
     private let sheetHeight = UIScreen.screenHeight - 120
 
@@ -138,35 +137,23 @@ struct HomeView: View {
         .sheet(
             isPresented: $app.showSendOptionsSheet,
             content: {
-                if #available(iOS 16.0, *) {
-                    SendOptionsView()
-                        .presentationDetents([.height(sheetHeight)])
-                } else {
-                    SendOptionsView() // Will just consume full screen on older iOS versions
-                }
+                SendOptionsView()
+                    .presentationDetents([.height(sheetHeight)])
             }
         )
         .sheet(
             isPresented: $app.showReceiveSheet,
             content: {
-                if #available(iOS 16.0, *) {
-                    ReceiveView()
-                        .presentationDetents([.height(sheetHeight)])
-                } else {
-                    ReceiveView() // Will just consume full screen on older iOS versions
-                }
+                ReceiveView()
+                    .presentationDetents([.height(sheetHeight)])
             }
         )
         .sheet(
             isPresented: $showSendAmountView,
             content: {
                 NavigationView {
-                    if #available(iOS 16.0, *) {
-                        SendAmountView()
-                            .presentationDetents([.height(sheetHeight)])
-                    } else {
-                        SendAmountView() // Will just consume full screen on older iOS versions
-                    }
+                    SendAmountView()
+                        .presentationDetents([.height(sheetHeight)])
                 }
             }
         )
@@ -174,12 +161,8 @@ struct HomeView: View {
             isPresented: $showSendConfirmationView,
             content: {
                 NavigationView {
-                    if #available(iOS 16.0, *) {
-                        SendConfirmationView()
-                            .presentationDetents([.height(sheetHeight)])
-                    } else {
-                        SendConfirmationView() // Will just consume full screen on older iOS versions
-                    }
+                    SendConfirmationView()
+                        .presentationDetents([.height(sheetHeight)])
                 }
             }
         )
@@ -207,12 +190,8 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showProfile) {
             NavigationView {
-                if #available(iOS 16.0, *) {
-                    Text("Profile View") // Placeholder for profile view
-                        .presentationDetents([.height(sheetHeight)])
-                } else {
-                    Text("Profile View") // Placeholder for profile view
-                }
+                Text("Profile View") // Placeholder for profile view
+                    .presentationDetents([.height(sheetHeight)])
             }
         }
     }

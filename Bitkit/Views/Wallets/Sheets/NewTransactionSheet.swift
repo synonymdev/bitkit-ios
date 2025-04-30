@@ -9,9 +9,9 @@ import SwiftUI
 
 struct NewTransactionSheet: View {
     @Binding var details: NewTransactionSheetDetails
-    
+
     @EnvironmentObject private var app: AppViewModel
-    
+
     var body: some View {
         NavigationView {
             VStack {
@@ -22,16 +22,16 @@ struct NewTransactionSheet: View {
                 // }
                 // .frame(maxWidth: .infinity, alignment: .leading)
                 // .padding(.top)
-                
+
                 Spacer()
-                
+
                 Image("check")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 300, height: 300)
-                
+
                 Spacer()
-                
+
                 CustomButton(title: "Close") {
                     app.showNewTransaction = false
                 }
@@ -42,7 +42,7 @@ struct NewTransactionSheet: View {
             .navigationBarTitleDisplayMode(.inline)
         }
     }
-    
+
     private func getTitle() -> String {
         if details.type == .lightning {
             return details.direction == .sent ? "Sent Instant Bitcoin" : "Received Instant Bitcoin"
@@ -52,10 +52,8 @@ struct NewTransactionSheet: View {
     }
 }
 
-
-@available(iOS 16.0, *)
 #Preview {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
