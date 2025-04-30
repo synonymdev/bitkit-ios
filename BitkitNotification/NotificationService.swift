@@ -202,6 +202,8 @@ class NotificationService: UNNotificationServiceExtension {
 
     func deliver() {
         Task {
+            //Sleep to allow event to be processed
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
             try? await LightningService.shared.stop()
             self.nodeStopTime = CFAbsoluteTimeGetCurrent()
 
