@@ -73,12 +73,13 @@ struct SendConfirmationView: View {
                         // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
                         app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
                     } else {
-                        throw NSError(domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
+                        throw NSError(
+                            domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
                     }
                 } catch {
                     app.toast(error)
                     Logger.error("Error sending: \(error)")
-                    throw error  // Passing error up to SwipeButton so it knows to reset state
+                    throw error // Passing error up to SwipeButton so it knows to reset state
                 }
             }
         }
@@ -174,9 +175,8 @@ struct SendConfirmationView: View {
     }
 }
 
-@available(iOS 16.0, *)
 #Preview {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -184,14 +184,15 @@ struct SendConfirmationView: View {
                     SendConfirmationView()
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
-                        .environmentObject({
-                            let vm = CurrencyViewModel()
-                            vm.primaryDisplay = .bitcoin
-                            return vm
-                        }())
+                        .environmentObject(
+                            {
+                                let vm = CurrencyViewModel()
+                                vm.primaryDisplay = .bitcoin
+                                return vm
+                            }())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }

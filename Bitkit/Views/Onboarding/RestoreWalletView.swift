@@ -43,12 +43,8 @@ struct RestoreWalletView: View {
     }
 
     var body: some View {
-        if #available(iOS 16.0, *) {
-            mainBody
-                .scrollDismissesKeyboard(.interactively)
-        } else {
-            mainBody
-        }
+        mainBody
+            .scrollDismissesKeyboard(.interactively)
     }
 
     private var mainBody: some View {

@@ -17,11 +17,11 @@ struct ReceiveViewContent: View {
     let cjitInvoice: String?
     let onCjitToggle: (Bool) -> Void
     let onCreateCjit: (String) -> Void
-    
+
     @State private var selectedTab = 0
     @State private var cjitActive = false
     @State private var showEditInvoice = false
-    
+
     var body: some View {
         VStack {
             TabView(selection: $selectedTab) {
@@ -34,9 +34,9 @@ struct ReceiveViewContent: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .always))
             .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
-            
+
             Spacer()
-            
+
             if (nodeLifecycleState == .running || nodeLifecycleState == .starting) && channelsCount == 0 {
                 //CJIT option
                 receiveLightningFunds
@@ -51,11 +51,11 @@ struct ReceiveViewContent: View {
         .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
     }
-    
+
     @ViewBuilder
     var receiveQR: some View {
         let uri = cjitInvoice ?? bip21
-        
+
         // Determine the appropriate image asset based on available content
         let imageAsset: String? = {
             if let cjitInvoice = cjitInvoice, !cjitInvoice.isEmpty {
@@ -67,11 +67,11 @@ struct ReceiveViewContent: View {
             }
             return nil
         }()
-        
+
         VStack {
             if !uri.isEmpty {
                 QR(content: uri, imageAsset: imageAsset)
-                
+
                 HStack {
                     NavigationLink(destination: EditInvoiceView()) {
                         CustomButton(
@@ -80,7 +80,7 @@ struct ReceiveViewContent: View {
                             icon: Image("pencil-brand")
                         )
                     }
-                    
+
                     CustomButton(
                         title: NSLocalizedString("common__copy", comment: ""),
                         size: .small,
@@ -89,15 +89,13 @@ struct ReceiveViewContent: View {
                         UIPasteboard.general.string = uri
                         Haptics.play(.copiedToClipboard)
                     }
-                    
-                    if #available(iOS 16.0, *) {
-                        ShareLink(item: URL(string: uri)!) {
-                            CustomButton(
-                                title: NSLocalizedString("common__share", comment: ""),
-                                size: .small,
-                                icon: Image("share-brand")
-                            )
-                        }
+
+                    ShareLink(item: URL(string: uri)!) {
+                        CustomButton(
+                            title: NSLocalizedString("common__share", comment: ""),
+                            size: .small,
+                            icon: Image("share-brand")
+                        )
                     }
                 }
                 .padding(.vertical)
@@ -106,46 +104,49 @@ struct ReceiveViewContent: View {
             }
         }
     }
-    
+
     @ViewBuilder
     var copyValues: some View {
         VStack {
             let addressPairs: [CopyAddressPair] = {
                 var pairs: [CopyAddressPair] = []
-                
+
                 if !onchainAddress.isEmpty {
-                    pairs.append(CopyAddressPair(
-                        title: NSLocalizedString("wallet__receive_bitcoin_invoice", comment: ""),
-                        address: onchainAddress,
-                        type: .onchain
-                    ))
+                    pairs.append(
+                        CopyAddressPair(
+                            title: NSLocalizedString("wallet__receive_bitcoin_invoice", comment: ""),
+                            address: onchainAddress,
+                            type: .onchain
+                        ))
                 }
-                
+
                 if !bolt11.isEmpty {
-                    pairs.append(CopyAddressPair(
-                        title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
-                        address: bolt11,
-                        type: .lightning
-                    ))
+                    pairs.append(
+                        CopyAddressPair(
+                            title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
+                            address: bolt11,
+                            type: .lightning
+                        ))
                 } else if let cjitInvoice = cjitInvoice {
-                    pairs.append(CopyAddressPair(
-                        title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
-                        address: cjitInvoice,
-                        type: .lightning
-                    ))
+                    pairs.append(
+                        CopyAddressPair(
+                            title: NSLocalizedString("wallet__receive_lightning_invoice", comment: ""),
+                            address: cjitInvoice,
+                            type: .lightning
+                        ))
                 }
-                
+
                 return pairs
             }()
-            
+
             if !addressPairs.isEmpty {
                 CopyAddressCard(addresses: addressPairs)
             }
-            
+
             Spacer()
         }
     }
-    
+
     @ViewBuilder
     var receiveLightningFunds: some View {
         HStack(alignment: .bottom) {
@@ -153,7 +154,7 @@ struct ReceiveViewContent: View {
                 if cjitInvoice == nil {
                     HeadlineText(NSLocalizedString("wallet__receive_text_lnfunds", comment: ""), accentColor: .purpleAccent)
                 }
-                
+
                 BodyMText(NSLocalizedString("wallet__receive_spending", comment: ""))
                     .padding(.top, 4)
             }
@@ -181,10 +182,10 @@ struct ReceiveView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var blocktank: BlocktankViewModel
-    
+
     @State private var cjitInvoice: String? = nil
     @State private var showCreateCjit = false
-    
+
     var body: some View {
         NavigationView {
             ReceiveViewContent(
@@ -228,7 +229,7 @@ struct ReceiveView: View {
             }
         }
         .task {
-            do {                
+            do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
                     group.addTask { await refreshBip21() }
                     group.addTask { try await blocktank.refreshInfo() }
@@ -259,9 +260,8 @@ struct ReceiveView: View {
 }
 
 // Previews
-@available(iOS 16.0, *)
 #Preview("Onchain Only") {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -282,20 +282,21 @@ struct ReceiveView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }
 
-@available(iOS 16.0, *)
 #Preview("With Lightning") {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
                 NavigationView {
                     ReceiveViewContent(
-                        bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        bip21:
+                            "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
                         onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
-                        bolt11: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        bolt11:
+                            "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
                         nodeLifecycleState: .running,
                         channelsCount: 1,
                         cjitInvoice: nil,
@@ -308,12 +309,11 @@ struct ReceiveView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }
 
-@available(iOS 16.0, *)
 #Preview("With CJIT") {
-    VStack { }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
+    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
         .sheet(
             isPresented: .constant(true),
             content: {
@@ -324,7 +324,8 @@ struct ReceiveView: View {
                         bolt11: "",
                         nodeLifecycleState: .running,
                         channelsCount: 0,
-                        cjitInvoice: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                        cjitInvoice:
+                            "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
                         onCjitToggle: { _ in },
                         onCreateCjit: { _ in }
                     )
@@ -337,5 +338,5 @@ struct ReceiveView: View {
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }
         )
-    .preferredColorScheme(.dark)
+        .preferredColorScheme(.dark)
 }
