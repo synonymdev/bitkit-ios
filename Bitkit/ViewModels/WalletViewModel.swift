@@ -15,6 +15,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0  // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0  // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0  // Combined LN
+    @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
 
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -36,11 +37,13 @@ class WalletViewModel: ObservableObject {
     private var syncTimer: Timer?
 
     private let lightningService: LightningService
-
+    private let coreService: CoreService
+    
     @Published var isRestoringWallet = false
 
-    init(lightningService: LightningService = .shared) {
+    init(lightningService: LightningService = .shared, coreService: CoreService = .shared) {
         self.lightningService = lightningService
+        self.coreService = coreService
     }
 
     deinit {
@@ -199,8 +202,27 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
-    func send(address: String, sats: UInt64) async throws -> Txid {
-        let txid = try await lightningService.send(address: address, sats: sats)
+    /// Sends bitcoin to an on-chain address
+    /// - Parameters:
+    ///   - address: The bitcoin address to send to
+    ///   - sats: The amount in satoshis to send
+    ///   - speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
+    /// - Returns: The transaction ID (txid) of the sent transaction
+    /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
+    func send(address: String, sats: UInt64, speed: TransactionSpeed? = nil) async throws -> Txid {
+        var fees = try? await coreService.blocktank.fees(refresh: true)
+        if fees == nil {
+            Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
+            fees = try await coreService.blocktank.fees(refresh: false)
+        }
+        
+        guard let fees else {
+            throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
+        }
+        
+        let satsPerVbyte = fees.getSatsPerVbyte(for: speed ?? defaultTransactionSpeed)
+        
+        let txid = try await lightningService.send(address: address, sats: sats, satsPerVbyte: satsPerVbyte)
         Task {
             // Best to auto sync on chain so we have latest state
             try await sync()

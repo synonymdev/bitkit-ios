@@ -252,7 +252,7 @@ class BlocktankViewModel: ObservableObject {
 
         try Keychain.save(key: .pushNotificationPrivateKey, data: keypair.privateKey)
 
-        let result = try await coreService.blocktank.registerDeviceForNotifications(
+        let _ = try await coreService.blocktank.registerDeviceForNotifications(
             deviceToken: deviceToken,
             publicKey: keypair.publicKey.hex,
             features: Env.pushNotificationFeatures.map { $0.feature },
@@ -273,7 +273,7 @@ class BlocktankViewModel: ObservableObject {
 
         Logger.debug("Sending test notification to self")
 
-        try await coreService.blocktank.pushNotificationTest(
+        let _ = try await coreService.blocktank.pushNotificationTest(
             deviceToken: deviceToken,
             secretMessage: "hello",
             notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue
