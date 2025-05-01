@@ -47,8 +47,8 @@ class WalletViewModel: ObservableObject {
     }
 
     deinit {
-        Task { @MainActor in
-            stopPolling()
+        Task { [weak self] in
+            await self?.stopPolling()
         }
     }
 
