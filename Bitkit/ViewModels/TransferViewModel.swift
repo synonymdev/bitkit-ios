@@ -92,8 +92,20 @@ class TransferViewModel: ObservableObject {
         uiState.isAdvanced = true
     }
 
-    func payOrder(order: IBtOrder) async throws {
-        try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat)
+    func payOrder(order: IBtOrder, speed: TransactionSpeed) async throws {
+        var fees = try? await coreService.blocktank.fees(refresh: true)
+        if fees == nil {
+            Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
+            fees = try await coreService.blocktank.fees(refresh: false)
+        }
+        
+        guard let fees else {
+            throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
+        }
+        
+        let satsPerVbyte = fees.getSatsPerVbyte(for: speed)
+        
+        let paymentHash = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
         lightningSetupStep = 0
         watchOrder(orderId: order.id)
     }

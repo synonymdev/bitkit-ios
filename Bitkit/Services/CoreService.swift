@@ -310,6 +310,10 @@ class BlocktankService {
             try await getInfo(refresh: refresh)
         }
     }
+    
+    func fees(refresh: Bool = true) async throws -> FeeRates? {
+        try await info(refresh: refresh)?.onchain.feeRates
+    }
 
     func createCjit(
         channelSizeSat: UInt64,
