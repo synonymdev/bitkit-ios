@@ -110,7 +110,7 @@ struct SpendingConfirmationView: View {
                         ) {
                             isPaying = true
                             do {
-                                try await transfer.payOrder(order: order)
+                                try await transfer.payOrder(order: order, speed: .fast)
 
                                 try await Task.sleep(nanoseconds: 1_000_000_000)
 

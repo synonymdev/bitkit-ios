@@ -249,9 +249,15 @@ class LightningService {
 
         return true
     }
+    
+    private static func convertVByteToKwu(satsPerVByte: UInt32) -> FeeRate {
+        // 1 vbyte = 4 weight units, so 1 sats/vbyte = 250 sats/kwu
+        let satPerKwu = UInt64(satsPerVByte * 250)
+        // Ensure we're above the minimum relay fee
+        return .fromSatPerKwu(satKwu:  max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
+    }
 
-    //TODO: get fee from real source
-    func send(address: String, sats: UInt64, satKwu: UInt64 = 250 * 5) async throws -> Txid {
+    func send(address: String, sats: UInt64, satsPerVbyte: UInt32) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -260,7 +266,7 @@ class LightningService {
 
         do {
             return try await ServiceQueue.background(.ldk) {
-                try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: .fromSatPerKwu(satKwu: satKwu))
+                try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte))
             }
         } catch {
             dumpLdkLogs()
