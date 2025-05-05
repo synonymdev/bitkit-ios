@@ -23,7 +23,7 @@ struct HomeView: View {
     @State private var showProfile = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading) {
                     BalanceHeaderView(sats: wallet.totalBalanceSats)
@@ -33,39 +33,42 @@ struct HomeView: View {
                 .padding(.top, 32)
 
                 if !app.showHomeViewEmptyState {
-                    HStack {
-                        NavigationLink(destination: SavingsWalletView()) {
-                            WalletBalanceView(
-                                type: .onchain,
-                                sats: UInt64(wallet.totalOnchainSats)
-                            )
+                    VStack(spacing: 0) {
+                        HStack {
+                            NavigationLink(destination: SavingsWalletView()) {
+                                WalletBalanceView(
+                                    type: .onchain,
+                                    sats: UInt64(wallet.totalOnchainSats)
+                                )
+                            }
+
+                            Divider()
+                                .frame(height: 50)
+
+                            NavigationLink(destination: SpendingWalletView()) {
+                                WalletBalanceView(
+                                    type: .lightning,
+                                    sats: UInt64(wallet.totalLightningSats)
+                                )
+                            }
                         }
-
-                        Divider()
-                            .frame(height: 50)
-
-                        NavigationLink(destination: SpendingWalletView()) {
-                            WalletBalanceView(
-                                type: .lightning,
-                                sats: UInt64(wallet.totalLightningSats)
-                            )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .padding(.bottom, 16)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-
-                    CaptionText(localizedString("wallet__activity"))
-                        .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.top)
                         .padding(.horizontal)
-                        .padding(.bottom, 16)
 
-                    ActivityLatest(viewType: .all)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                        .padding(.horizontal)
+                        Suggestions()
+                            .padding(.top, 32)
+
+                        CaptionText(localizedString("wallet__activity"))
+                            .textCase(.uppercase)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.bottom, 16)
+                            .padding(.top, 32)
+                            .padding(.horizontal)
+
+                        ActivityLatest(viewType: .all)
+                            .padding(.horizontal)
+                    }
                 }
             }
             .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
@@ -80,7 +83,6 @@ struct HomeView: View {
                         }
                     )
                     .padding(.horizontal)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
@@ -106,19 +108,14 @@ struct HomeView: View {
                 leading: leftNavigationItem,
                 trailing: rightNavigationItem
             )
-            .background {
-                NavigationLink(
-                    destination: ScannerView(
-                        showSendAmountView: $showSendAmountView,
-                        showSendConfirmationView: $showSendConfirmationView
-                    ),
-                    isActive: $app.showScanner
-                ) {
-                    EmptyView()
-                }
-                .onChange(of: app.showScanner) { showScanner in
-                    app.showTabBar = !showScanner
-                }
+            .navigationDestination(isPresented: $app.showScanner) {
+                ScannerView(
+                    showSendAmountView: $showSendAmountView,
+                    showSendConfirmationView: $showSendConfirmationView
+                )
+            }
+            .onChange(of: app.showScanner) { showScanner in
+                app.showTabBar = !showScanner
             }
             .navigationBarTitleDisplayMode(.inline)
         }
