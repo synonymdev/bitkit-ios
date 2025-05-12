@@ -28,6 +28,8 @@ class AppViewModel: ObservableObject {
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
     @Published var showTransferToSpendingSheet = false
     @Published var showTransferToSavingsSheet = false
+    @Published var showAddTagSheet = false
+    @Published var selectedActivityIdForTag: String? = nil
 
     // Bottom tab bar
     @Published var showTabBar = true

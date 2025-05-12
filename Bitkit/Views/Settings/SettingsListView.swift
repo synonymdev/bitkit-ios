@@ -12,6 +12,8 @@ struct SettingsListView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
 
+    @State private var showNodeState = false
+
     var body: some View {
         List {
             Section {
@@ -52,6 +54,16 @@ struct SettingsListView: View {
                         Text("Logs")
                     } icon: {
                         Image(systemName: "doc.text.fill")
+                    }
+                }
+
+                Button {
+                    showNodeState = true
+                } label: {
+                    Label {
+                        Text("Show Node State")
+                    } icon: {
+                        Image(systemName: wallet.nodeLifecycleState.systemImage)
                     }
                 }
             }
@@ -139,6 +151,11 @@ struct SettingsListView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showNodeState) {
+            NavigationView {
+                NodeStateView()
+            }
+        }
     }
 }
 
