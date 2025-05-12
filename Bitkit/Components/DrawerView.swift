@@ -4,7 +4,7 @@ struct DrawerView: View {
     var onClose: () -> Void
     @Binding var navigationPath: NavigationPath
 
-    @GestureState private var dragOffset: CGFloat = 0
+    @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
     @State private var showMenu = false
 
@@ -19,11 +19,14 @@ struct DrawerView: View {
     ]
 
     private func closeMenu() {
+        showMenu = false
         withAnimation(.easeOut(duration: 0.25)) {
-            showMenu = false
             showBackdrop = false
         }
-        onClose()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            onClose()
+        }
     }
 
     @ViewBuilder
@@ -77,21 +80,27 @@ struct DrawerView: View {
                     }
                     .frame(width: geometry.size.width * 0.5, height: geometry.size.height)
                     .sheetBackground()
-                    .offset(x: dragOffset > 0 ? dragOffset : 0)
+                    .offset(x: currentDragOffset)
                     .gesture(
                         DragGesture()
-                            .updating($dragOffset) { value, state, _ in
-                                if value.translation.width > 0 {
-                                    state = value.translation.width
-                                }
+                            .onChanged { value in
+                                currentDragOffset = max(0, value.translation.width)
                             }
                             .onEnded { value in
-                                if value.translation.width > 100 {
-                                    withAnimation(.easeOut(duration: 0.25)) {
-                                        showMenu = false
-                                        showBackdrop = false
+                                let drawerWidth = geometry.size.width * 0.5
+                                let closeCompletionThreshold = drawerWidth - 100
+
+                                if currentDragOffset > closeCompletionThreshold {
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        currentDragOffset = drawerWidth
                                     }
-                                    onClose()
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                        closeMenu()
+                                    }
+                                } else {
+                                    withAnimation(.easeOut) {
+                                        currentDragOffset = 0
+                                    }
                                 }
                             }
                     )
@@ -101,6 +110,7 @@ struct DrawerView: View {
             }
         }
         .onAppear {
+            currentDragOffset = 0
             withAnimation(.easeOut(duration: 0.25)) {
                 showBackdrop = true
             }
