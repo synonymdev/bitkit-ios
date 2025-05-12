@@ -13,17 +13,17 @@ struct HomeView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var activity: ActivityListViewModel
 
-    @State private var showNodeState = false
     private let sheetHeight = UIScreen.screenHeight - 120
 
     // If scanned directly from home screen
     @State private var showSendAmountView = false
     @State private var showSendConfirmationView = false
-
     @State private var showProfile = false
+    @State private var showDrawer = false
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(alignment: .leading) {
                     BalanceHeaderView(sats: wallet.totalBalanceSats)
@@ -117,6 +117,13 @@ struct HomeView: View {
             .onChange(of: app.showScanner) { showScanner in
                 app.showTabBar = !showScanner
             }
+            .navigationDestination(for: String.self) { destination in
+                if destination == "ACTIVITY" {
+                    AllActivityView()
+                } else if destination == "SETTINGS" {
+                    SettingsListView()
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
         }
         .accentColor(.white)
@@ -131,6 +138,28 @@ struct HomeView: View {
             TabBar()
                 .bottomSafeAreaPadding()
         }
+        .overlay {
+            if showDrawer {
+                DrawerView(
+                    onClose: {
+                        withAnimation {
+                            showDrawer = false
+                        }
+                    }, navigationPath: $navigationPath
+                )
+                .zIndex(1)
+            }
+        }
+        .gesture(
+            DragGesture()
+                .onEnded { value in
+                    if value.startLocation.x > UIScreen.main.bounds.width * 0.8 && value.translation.width < -50 {
+                        withAnimation {
+                            showDrawer = true
+                        }
+                    }
+                }
+        )
         .sheet(
             isPresented: $app.showSendOptionsSheet,
             content: {
@@ -160,6 +189,17 @@ struct HomeView: View {
                 NavigationView {
                     SendConfirmationView()
                         .presentationDetents([.height(sheetHeight)])
+                }
+            }
+        )
+        .sheet(
+            isPresented: $app.showAddTagSheet,
+            content: {
+                if let activityId = app.selectedActivityIdForTag {
+                    AddTagSheet(activityId: activityId)
+                        .presentationDetents([.height(400)])
+                } else {
+                    EmptyView()
                 }
             }
         )
@@ -195,17 +235,12 @@ struct HomeView: View {
 
     var rightNavigationItem: some View {
         HStack {
-            Image(systemName: wallet.nodeLifecycleState.systemImage)
-                .onTapGesture {
-                    showNodeState = true
+            Button(action: {
+                withAnimation {
+                    showDrawer = true
                 }
-            NavigationLink(destination: SettingsListView()) {
-                Image(systemName: "gear")
-            }
-        }
-        .sheet(isPresented: $showNodeState) {
-            NavigationView {
-                NodeStateView()
+            }) {
+                Image("burger")
             }
         }
     }

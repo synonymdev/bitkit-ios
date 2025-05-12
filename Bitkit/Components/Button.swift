@@ -90,6 +90,7 @@ struct CustomButton: View {
         size: Size = .large,
         icon: (any View)? = nil,
         isDisabled: Bool = false,
+        isLoading: Bool = false,
         shouldExpand: Bool = false
     ) {
         self.title = title
@@ -97,6 +98,7 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.action = nil
         self.destination = nil
@@ -109,6 +111,7 @@ struct CustomButton: View {
         size: Size = .large,
         icon: (any View)? = nil,
         isDisabled: Bool = false,
+        isLoading: Bool = false,
         shouldExpand: Bool = false,
         action: @escaping () async -> Void
     ) {
@@ -117,6 +120,7 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.action = action
         self.destination = nil
@@ -129,6 +133,7 @@ struct CustomButton: View {
         size: Size = .large,
         icon: (any View)? = nil,
         isDisabled: Bool = false,
+        isLoading: Bool = false,
         shouldExpand: Bool = false,
         destination: D
     ) {
@@ -137,12 +142,17 @@ struct CustomButton: View {
         self.size = size
         self.icon = icon.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.action = nil
         self.destination = AnyView(destination)
     }
 
     private var backgroundColor: Color {
+        if isLoading {
+            return .gray6
+        }
+
         if isDisabled {
             return .clear
         }
@@ -210,17 +220,18 @@ struct CustomButton: View {
                     )
                 )
                 .disabled(isDisabled)
-                .simultaneousGesture(TapGesture().onEnded {
-                    if !isDisabled {
-                        Haptics.play(.buttonTap)
-                    }
-                })
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        if !isDisabled {
+                            Haptics.play(.buttonTap)
+                        }
+                    })
             } else if let action = action {
                 Button {
                     guard !isLoading, !isDisabled else { return }
-                    
+
                     Haptics.play(.buttonTap)
-                    
+
                     Task { @MainActor in
                         isLoading = true
                         await action()
@@ -238,7 +249,6 @@ struct CustomButton: View {
                     )
                 )
                 .disabled(isDisabled || isLoading)
-                .opacity(isDisabled || isLoading ? 0.5 : 1)
             } else {
                 buttonContent
                     .opacity(isDisabled ? 0.5 : 1)

@@ -10,7 +10,16 @@ import SwiftUI
 
 struct ActivityItemView: View {
     let item: Activity
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @StateObject private var viewModel: ActivityItemViewModel
+
+    private let sheetHeight = UIScreen.screenHeight - 120
+
+    init(item: Activity) {
+        self.item = item
+        _viewModel = StateObject(wrappedValue: ActivityItemViewModel(item: item))
+    }
 
     private var isSent: Bool {
         switch item {
@@ -78,6 +87,13 @@ struct ActivityItemView: View {
             Spacer()
         }
         .padding()
+        .onChange(of: app.showAddTagSheet) { isShowing in
+            if !isShowing {
+                Task {
+                    await viewModel.loadTags()
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -226,20 +242,27 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var tagsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CaptionText(localizedString("wallet__tags"))
-                .textCase(.uppercase)
-                .padding(.bottom, 8)
+        if !viewModel.tags.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionText(localizedString("wallet__tags"))
+                    .textCase(.uppercase)
+                    .padding(.bottom, 8)
 
-            HStack(spacing: 4) {
-                // TODO: get actual tags
-                Tag("test1", onDelete: {})
-                Tag("test2", onDelete: {})
-                Tag("test3", onDelete: {})
+                WrappingHStack(spacing: 8) {
+                    ForEach(viewModel.tags, id: \.self) { tag in
+                        Tag(
+                            tag,
+                            onDelete: {
+                                Task {
+                                    await viewModel.removeTag(tag)
+                                }
+                            })
+                    }
+                }
+                .padding(.bottom, 16)
+
+                Divider()
             }
-            .padding(.bottom, 16)
-
-            Divider()
         }
     }
 
@@ -280,7 +303,16 @@ struct ActivityItemView: View {
                     title: localizedString("wallet__activity_tag"), size: .small,
                     icon: Image("tag")
                         .foregroundColor(accentColor),
-                    shouldExpand: true)
+                    shouldExpand: true
+                ) {
+                    switch item {
+                    case .lightning(let activity):
+                        app.selectedActivityIdForTag = activity.id
+                    case .onchain(let activity):
+                        app.selectedActivityIdForTag = activity.id
+                    }
+                    app.showAddTagSheet = true
+                }
             }
             .frame(maxWidth: .infinity)
 
@@ -380,6 +412,8 @@ struct ActivityItemView_Previews: PreviewProvider {
             )
             .environmentObject(CurrencyViewModel())
             .previewDisplayName("Onchain Payment")
-        }.preferredColorScheme(.dark)
+        }
+        .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
     }
 }
