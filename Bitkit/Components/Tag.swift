@@ -25,23 +25,19 @@ struct Tag: View {
 
     @ViewBuilder
     private var tagContent: some View {
-        HStack(spacing: 0) { // Set spacing to 0 to precisely control with padding
-            Text(value)
-                .lineLimit(1)
+        HStack(spacing: 0) {
+            BodySSBText(value).lineLimit(1)
 
             if let onDelete = onDelete {
                 Button(action: onDelete) {
-                    Image(systemName: icon == .close ? "xmark" : "trash")
-                        .font(.caption.weight(.light)) // Adjust size if needed
+                    Image(icon == .close ? "x-mark" : "trash")
                         .frame(width: 16, height: 16)
                 }
-                .padding(.leading, 8) // Corresponds to icon paddingLeft
+                .padding(.leading, 6) // Corresponds to icon paddingLeft
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 32)
-        .foregroundColor(.white)
-        .font(.body.weight(.bold))
+        .padding(.horizontal, 12)
+        .frame(height: 36)
         .overlay(
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.white16, lineWidth: 2)

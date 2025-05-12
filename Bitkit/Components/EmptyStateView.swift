@@ -56,10 +56,8 @@ struct EmptyStateView: View {
                         Haptics.play(.buttonTap)
                         onClose()
                     }) {
-                        Image(systemName: "xmark")
-                            .resizable()
-                            .foregroundColor(.white64)
-                            .frame(width: 10, height: 10, alignment: .topTrailing)
+                        Image("x-mark")
+                            .frame(width: 16, height: 16, alignment: .topTrailing)
                     }
                     .frame(maxWidth: .infinity, alignment: .topTrailing)
                     Spacer()

@@ -166,6 +166,17 @@ struct HomeView: View {
                 }
             }
         )
+        .sheet(
+            isPresented: $app.showAddTagSheet,
+            content: {
+                if let activityId = app.selectedActivityIdForTag {
+                    AddTagSheet(activityId: activityId)
+                        .presentationDetents([.height(400)])
+                } else {
+                    EmptyView()
+                }
+            }
+        )
         .onChange(of: app.resetSendStateToggle) { _ in
             // If this is triggered it means we had a successful send and need to drop the sheet
             showSendAmountView = false
