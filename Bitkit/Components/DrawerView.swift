@@ -4,6 +4,7 @@ struct DrawerView: View {
     var onClose: () -> Void
     @Binding var navigationPath: NavigationPath
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
@@ -190,13 +191,12 @@ struct DrawerView: View {
 
     @ViewBuilder
     private func appStatus() -> some View {
-        // TODO: Add app status variants (error, warning, success) with appropriate icons and animations
         HStack(spacing: 8) {
-            Image("warning")
+            Image(wallet.nodeLifecycleState.statusIcon)
                 .resizable()
                 .frame(width: 24, height: 24)
-                .foregroundColor(.redAccent)
-            BodyMSBText(NSLocalizedString("settings__support__status", comment: ""), textColor: .redAccent)
+                .foregroundColor(wallet.nodeLifecycleState.statusColor)
+            BodyMSBText(NSLocalizedString("settings__status__title", comment: ""), textColor: wallet.nodeLifecycleState.statusColor)
         }
     }
 }
