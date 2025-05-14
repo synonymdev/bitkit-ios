@@ -118,10 +118,13 @@ struct HomeView: View {
                 app.showTabBar = !showScanner
             }
             .navigationDestination(for: String.self) { destination in
-                if destination == "ACTIVITY" {
+                switch destination {
+                case DrawerView.MenuItem.activity.destination:
                     AllActivityView()
-                } else if destination == "SETTINGS" {
+                case DrawerView.MenuItem.settings.destination:
                     SettingsListView()
+                default:
+                    EmptyView()
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
