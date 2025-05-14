@@ -53,6 +53,8 @@
 "lightning__close_button" = "Κλείσιμο";
 "onboarding__skip" = "Παράλειψη";
 "other__high_balance__continue" = "Κατανοητό";
+"other__gift__error__button" = "ΟΚ";
+"other__gift__used__button" = "ΟΚ";
 "settings__about__share" = "Διαμοιρασμός";
 "settings__support__text_success_button" = "ΟΚ";
 "settings__support__text_unsuccess_button" = "Προσπαθείστε Ξανά";
@@ -65,4 +67,3 @@
 "slashtags__profile_save" = "Καταχώρηση";
 "slashtags__profile_link_suggestions" = "Προτάσεις";
 "slashtags__profile_delete" = "Διαγραφή";
-"slashtags__widget_edit_custom" = "Προσαρμοσμένο";
