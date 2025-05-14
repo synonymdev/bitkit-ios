@@ -3,20 +3,59 @@ import SwiftUI
 struct DrawerView: View {
     var onClose: () -> Void
     @Binding var navigationPath: NavigationPath
+    @EnvironmentObject private var app: AppViewModel
 
     @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
     @State private var showMenu = false
-
-    let menuItems: [(icon: String, label: String)] = [
-        ("coins", "WALLET"),
-        ("heartbeat", "ACTIVITY"),
-        ("users", "CONTACTS"),
-        ("user-square", "PROFILE"),
-        ("stack", "WIDGETS"),
-        ("storefront", "SHOP"),
-        ("gear-six", "SETTINGS"),
-    ]
+    
+    enum MenuItem: String, CaseIterable, Identifiable {
+        case wallet
+        case activity
+        case contacts
+        case profile
+        case widgets
+        // case shop
+        case settings
+        
+        var id: String { rawValue }
+        
+        var icon: String {
+            switch self {
+            case .wallet: return "coins"
+            case .activity: return "heartbeat"
+            case .contacts: return "users"
+            case .profile: return "user-square"
+            case .widgets: return "stack"
+            // case .shop: return "storefront"
+            case .settings: return "gear-six"
+            }
+        }
+        
+        var label: String {
+            switch self {
+            case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
+            case .activity: return NSLocalizedString("wallet__drawer__activity", comment: "").uppercased()
+            case .contacts: return NSLocalizedString("wallet__drawer__contacts", comment: "").uppercased()
+            case .profile: return NSLocalizedString("wallet__drawer__profile", comment: "").uppercased()
+            case .widgets: return NSLocalizedString("wallet__drawer__widgets", comment: "").uppercased()
+            // case .shop: return "SHOP"
+            case .settings: return NSLocalizedString("wallet__drawer__settings", comment: "").uppercased()
+            }
+        }
+        
+        var destination: String {
+            switch self {
+            case .wallet: return "WALLET"
+            case .activity: return "ACTIVITY"
+            case .contacts: return "CONTACTS"
+            case .profile: return "PROFILE"
+            case .widgets: return "WIDGETS"
+            // case .shop: return "SHOP"
+            case .settings: return "SETTINGS"
+            }
+        }
+    }
 
     private func closeMenu() {
         showMenu = false
@@ -28,7 +67,7 @@ struct DrawerView: View {
             onClose()
         }
     }
-
+    
     @ViewBuilder
     private var backdrop: some View {
         Color.black.opacity(0.6)
@@ -48,27 +87,34 @@ struct DrawerView: View {
             if showMenu {
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(menuItems, id: \.label) { item in
-                            if item.label == "WALLET" {
+                        ForEach(MenuItem.allCases) { item in
+                            switch item {
+                            case .wallet:
                                 Button(action: closeMenu) {
                                     menuItemContent(item: item)
                                 }
-                            } else if item.label == "ACTIVITY" {
+                            case .activity:
                                 Button(action: {
-                                    navigationPath.append("ACTIVITY")
+                                    navigationPath.append(item.destination)
                                     closeMenu()
                                 }) {
                                     menuItemContent(item: item)
                                 }
-                            } else if item.label == "SETTINGS" {
+                            case .settings:
                                 Button(action: {
-                                    navigationPath.append("SETTINGS")
+                                    navigationPath.append(item.destination)
                                     closeMenu()
                                 }) {
                                     menuItemContent(item: item)
                                 }
-                            } else {
-                                Button(action: {}) {
+                            default:
+                                Button(action: {
+                                    app.toast(
+                                        type: .info,
+                                        title: "Coming Soon"
+                                    )
+                                    closeMenu()
+                                }) {
                                     menuItemContent(item: item)
                                 }
                             }
@@ -121,7 +167,7 @@ struct DrawerView: View {
     }
 
     @ViewBuilder
-    private func menuItemContent(item: (icon: String, label: String)) -> some View {
+    private func menuItemContent(item: MenuItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Image(item.icon)
@@ -150,7 +196,7 @@ struct DrawerView: View {
                 .resizable()
                 .frame(width: 24, height: 24)
                 .foregroundColor(.redAccent)
-            BodyMSBText("App Status", textColor: .redAccent)
+            BodyMSBText(NSLocalizedString("settings__support__status", comment: ""), textColor: .redAccent)
         }
     }
 }
