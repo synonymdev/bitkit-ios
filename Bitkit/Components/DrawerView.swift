@@ -1,5 +1,53 @@
 import SwiftUI
 
+enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
+    case wallet
+    case activity
+    case contacts
+    case profile
+    case widgets
+    case shop
+    case settings
+    case appStatus
+    
+    var id: Int { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .wallet: return "coins"
+        case .activity: return "heartbeat"
+        case .contacts: return "users"
+        case .profile: return "user-square"
+        case .widgets: return "stack"
+        case .shop: return "storefront"
+        case .settings: return "gear-six"
+        case .appStatus: return "status-circle"
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
+        case .activity: return NSLocalizedString("wallet__drawer__activity", comment: "").uppercased()
+        case .contacts: return NSLocalizedString("wallet__drawer__contacts", comment: "").uppercased()
+        case .profile: return NSLocalizedString("wallet__drawer__profile", comment: "").uppercased()
+        case .widgets: return NSLocalizedString("wallet__drawer__widgets", comment: "").uppercased()
+        case .shop: return "SHOP"
+        case .settings: return NSLocalizedString("wallet__drawer__settings", comment: "").uppercased()
+        case .appStatus: return NSLocalizedString("settings__status__title", comment: "")
+        }
+    }
+    
+    var isMainMenuItem: Bool {
+        switch self {
+        case .appStatus, .shop:
+            return false
+        default:
+            return true
+        }
+    }
+}
+
 struct DrawerView: View {
     var onClose: () -> Void
     @Binding var navigationPath: NavigationPath
@@ -10,53 +58,7 @@ struct DrawerView: View {
     @State private var showBackdrop = false
     @State private var showMenu = false
     
-    enum MenuItem: String, CaseIterable, Identifiable {
-        case wallet
-        case activity
-        case contacts
-        case profile
-        case widgets
-        // case shop
-        case settings
-        
-        var id: String { rawValue }
-        
-        var icon: String {
-            switch self {
-            case .wallet: return "coins"
-            case .activity: return "heartbeat"
-            case .contacts: return "users"
-            case .profile: return "user-square"
-            case .widgets: return "stack"
-            // case .shop: return "storefront"
-            case .settings: return "gear-six"
-            }
-        }
-        
-        var label: String {
-            switch self {
-            case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
-            case .activity: return NSLocalizedString("wallet__drawer__activity", comment: "").uppercased()
-            case .contacts: return NSLocalizedString("wallet__drawer__contacts", comment: "").uppercased()
-            case .profile: return NSLocalizedString("wallet__drawer__profile", comment: "").uppercased()
-            case .widgets: return NSLocalizedString("wallet__drawer__widgets", comment: "").uppercased()
-            // case .shop: return "SHOP"
-            case .settings: return NSLocalizedString("wallet__drawer__settings", comment: "").uppercased()
-            }
-        }
-        
-        var destination: String {
-            switch self {
-            case .wallet: return "WALLET"
-            case .activity: return "ACTIVITY"
-            case .contacts: return "CONTACTS"
-            case .profile: return "PROFILE"
-            case .widgets: return "WIDGETS"
-            // case .shop: return "SHOP"
-            case .settings: return "SETTINGS"
-            }
-        }
-    }
+    
 
     private func closeMenu() {
         showMenu = false
@@ -88,36 +90,22 @@ struct DrawerView: View {
             if showMenu {
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(MenuItem.allCases) { item in
-                            switch item {
-                            case .wallet:
-                                Button(action: closeMenu) {
-                                    menuItemContent(item: item)
-                                }
-                            case .activity:
-                                Button(action: {
-                                    navigationPath.append(item.destination)
-                                    closeMenu()
-                                }) {
-                                    menuItemContent(item: item)
-                                }
-                            case .settings:
-                                Button(action: {
-                                    navigationPath.append(item.destination)
-                                    closeMenu()
-                                }) {
-                                    menuItemContent(item: item)
-                                }
-                            default:
-                                Button(action: {
+                        ForEach(DrawerMenuItem.allCases.filter { $0.isMainMenuItem }) { item in
+                            Button(action: {
+                                switch item {
+                                case .wallet:
+                                    break
+                                case .activity, .settings: //Any implemented views will be added here
+                                    navigationPath.append(item)
+                                default:
                                     app.toast(
                                         type: .info,
                                         title: "Coming Soon"
                                     )
-                                    closeMenu()
-                                }) {
-                                    menuItemContent(item: item)
                                 }
+                                closeMenu()
+                            }) {
+                                menuItemContent(item: item)
                             }
                         }
                         Spacer()
@@ -168,7 +156,7 @@ struct DrawerView: View {
     }
 
     @ViewBuilder
-    private func menuItemContent(item: MenuItem) -> some View {
+    private func menuItemContent(item: DrawerMenuItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Image(item.icon)
@@ -191,12 +179,17 @@ struct DrawerView: View {
 
     @ViewBuilder
     private func appStatus() -> some View {
-        HStack(spacing: 8) {
-            Image(wallet.nodeLifecycleState.statusIcon)
-                .resizable()
-                .frame(width: 24, height: 24)
-                .foregroundColor(wallet.nodeLifecycleState.statusColor)
-            BodyMSBText(NSLocalizedString("settings__status__title", comment: ""), textColor: wallet.nodeLifecycleState.statusColor)
+        Button(action: {
+            navigationPath.append(DrawerMenuItem.appStatus)
+            closeMenu()
+        }) {
+            HStack(spacing: 8) {
+                Image(wallet.nodeLifecycleState.statusIcon)
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(wallet.nodeLifecycleState.statusColor)
+                BodyMSBText(DrawerMenuItem.appStatus.label, textColor: wallet.nodeLifecycleState.statusColor)
+            }
         }
     }
 }
