@@ -1,5 +1,6 @@
 import SwiftUI
 
+//TODO: maybe move to a separate file
 enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case wallet
     case activity
@@ -49,8 +50,6 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 }
 
 struct DrawerView: View {
-    var onClose: () -> Void
-    @Binding var navigationPath: NavigationPath
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
@@ -58,16 +57,14 @@ struct DrawerView: View {
     @State private var showBackdrop = false
     @State private var showMenu = false
     
-    
-
     private func closeMenu() {
-        showMenu = false
         withAnimation(.easeOut(duration: 0.25)) {
             showBackdrop = false
+            showMenu = false
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            onClose()
+            app.showDrawer = false
         }
     }
     
@@ -92,17 +89,7 @@ struct DrawerView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(DrawerMenuItem.allCases.filter { $0.isMainMenuItem }) { item in
                             Button(action: {
-                                switch item {
-                                case .wallet:
-                                    break
-                                case .activity, .settings: //Any implemented views will be added here
-                                    navigationPath.append(item)
-                                default:
-                                    app.toast(
-                                        type: .info,
-                                        title: "Coming Soon"
-                                    )
-                                }
+                                app.activeDrawerMenuItem = item
                                 closeMenu()
                             }) {
                                 menuItemContent(item: item)
@@ -144,13 +131,15 @@ struct DrawerView: View {
                 .transition(.move(edge: .trailing))
             }
         }
-        .onAppear {
-            currentDragOffset = 0
-            withAnimation(.easeOut(duration: 0.25)) {
-                showBackdrop = true
-            }
-            withAnimation(.easeOut(duration: 0.25).delay(0.1)) {
-                showMenu = true
+        .onChange(of: app.showDrawer) { show in
+            if show {
+                currentDragOffset = 0
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showBackdrop = true
+                }
+                withAnimation(.easeOut(duration: 0.25).delay(0.1)) {
+                    showMenu = true
+                }
             }
         }
     }
@@ -180,7 +169,7 @@ struct DrawerView: View {
     @ViewBuilder
     private func appStatus() -> some View {
         Button(action: {
-            navigationPath.append(DrawerMenuItem.appStatus)
+            app.activeDrawerMenuItem = .appStatus
             closeMenu()
         }) {
             HStack(spacing: 8) {
@@ -195,7 +184,7 @@ struct DrawerView: View {
 }
 
 #Preview {
-    DrawerView(onClose: {}, navigationPath: .constant(NavigationPath()))
+    DrawerView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(ActivityListViewModel())

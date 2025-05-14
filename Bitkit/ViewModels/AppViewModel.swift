@@ -43,6 +43,10 @@ class AppViewModel: ObservableObject {
     @AppStorage("showSavingsViewEmptyState") var showSavingsViewEmptyState: Bool = false
     @AppStorage("showSpendingViewEmptyState") var showSpendingViewEmptyState: Bool = false
 
+    // Drawer menu
+    @Published var showDrawer = false
+    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
+
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
         showSavingsViewEmptyState = show
