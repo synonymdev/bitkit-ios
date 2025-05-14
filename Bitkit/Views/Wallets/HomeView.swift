@@ -117,15 +117,22 @@ struct HomeView: View {
             .onChange(of: app.showScanner) { showScanner in
                 app.showTabBar = !showScanner
             }
-            .navigationDestination(for: String.self) { destination in
-                switch destination {
-                case DrawerView.MenuItem.activity.destination:
-                    AllActivityView()
-                case DrawerView.MenuItem.settings.destination:
+            .navigationDestination(for: Int.self) { destination in
+                if destination == 0 {
                     SettingsListView()
-                default:
-                    EmptyView()
+                
                 }
+                
+//                switch destination {
+//                case .activity:
+//                    AllActivityView()
+//                case .settings:
+//                    SettingsListView()
+//                case .appStatus:
+//                    AppStatusView()
+//                default:
+//                    EmptyView()
+//                }
             }
             .navigationBarTitleDisplayMode(.inline)
         }
