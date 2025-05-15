@@ -5,43 +5,8 @@ struct AppStatusView: View {
     
     var body: some View {
         List {
-            // Internet status
-            StatusItemView(
-                icon: "globe",
-                iconBackgroundColor: .green16,
-                iconColor: .greenAccent,
-                title: NSLocalizedString("settings__status__internet__title", comment: ""),
-                status: NSLocalizedString("settings__status__internet__ready", comment: ""),
-                statusColor: .greenAccent,
-                animateIcon: false,
-                animateOpacity: false
-            )
-            
-            // // Bitcoin Node status
-            // StatusItemView(
-            //     icon: "bitcoin-symbol",
-            //     iconBackgroundColor: getStatusBackgroundColor(wallet.nodeLifecycleState),
-            //     iconColor: wallet.nodeLifecycleState.statusColor,
-            //     title: NSLocalizedString("settings__status__electrum__title", comment: ""),
-            //     status: getBitcoinNodeStatus(),
-            //     statusColor: wallet.nodeLifecycleState.statusColor,
-            //     animateIcon: isStatusPending(wallet.nodeLifecycleState),
-            //     animateOpacity: isStatusError(wallet.nodeLifecycleState)
-            // )
-            
-            // // Lightning Node status
-            // StatusItemView(
-            //     icon: "radio-waves",
-            //     iconBackgroundColor: getStatusBackgroundColor(wallet.nodeLifecycleState),
-            //     iconColor: wallet.nodeLifecycleState.statusColor,
-            //     title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
-            //     status: getLightningNodeStatus(),
-            //     statusColor: wallet.nodeLifecycleState.statusColor,
-            //     animateIcon: isStatusPending(wallet.nodeLifecycleState),
-            //     animateOpacity: isStatusError(wallet.nodeLifecycleState)
-            // )
-            
-            // Lightning Connection status
+            internetStatusView
+            lightningNodeStatusView
             lightningConnectionStatusView
         }
         .navigationTitle(NSLocalizedString("settings__status__title", comment: ""))
@@ -54,10 +19,46 @@ struct AppStatusView: View {
         }
     }
     
+    private var internetStatusView: some View {
+        StatusItemView(
+            imageName: "status-internet-green",
+            iconBackgroundColor: .green16,
+            iconColor: .greenAccent,
+            title: NSLocalizedString("settings__status__internet__title", comment: ""),
+            status: NSLocalizedString("settings__status__internet__ready", comment: ""),
+            statusColor: .greenAccent
+        )
+    }
+    
+    private var lightningNodeStatusView: some View {
+        let iconName: String = {
+            switch wallet.nodeLifecycleState.statusColor {
+            case .greenAccent:
+                return "status-node-green"
+            case .yellowAccent:
+                return "status-node-yellow"
+            case .redAccent:
+                return "status-node-red"
+            default:
+                return "status-node-red"
+            }
+        }()
+        
+        return StatusItemView(
+             imageName: iconName,
+             iconBackgroundColor: .green16,
+             iconColor: wallet.nodeLifecycleState.statusColor,
+             title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
+             status: wallet.nodeLifecycleState.displayState,
+             statusColor: wallet.nodeLifecycleState.statusColor
+         )
+    }
+    
     private var lightningConnectionStatusView: some View {
         let hasChannels = (wallet.channelCount > 0)
         let hasUsableChannels = wallet.channels?.contains(where: { $0.isUsable }) ?? false
-        
+        let hasReadyChannels = wallet.channels?.contains(where: { $0.isChannelReady }) ?? false
+
         let connectionColor: Color = {
             if !hasChannels {
                 return .redAccent
@@ -78,43 +79,51 @@ struct AppStatusView: View {
             }
         }()
         
+        let imageName: String = {
+            if !hasChannels {
+                return "status-lightning-red"
+            } else if hasUsableChannels {
+                return "status-lightning-green"
+            } else {
+                return "status-lightning-yellow"
+            }
+        }()
+        
         let connectionStatus: String = {
             if !hasChannels {
                 return NSLocalizedString("settings__status__lightning_connection__error", comment: "")
-            } else if hasUsableChannels {
+            } else if hasUsableChannels && hasReadyChannels {
                 return NSLocalizedString("settings__status__lightning_connection__ready", comment: "")
-            } else {
+            } else if !hasUsableChannels && hasReadyChannels {
                 return NSLocalizedString("settings__status__lightning_connection__pending", comment: "")
+            } else {
+                return NSLocalizedString("settings__status__lightning_connection__ready", comment: "")
             }
         }()
         
         return StatusItemView(
-            icon: "lightning-bolt",
+            imageName: imageName,
             iconBackgroundColor: iconBackgroundColor,
             iconColor: connectionColor,
             title: NSLocalizedString("settings__status__lightning_connection__title", comment: ""),
             status: connectionStatus,
             statusColor: connectionColor,
-            animateIcon: hasChannels && !hasUsableChannels,
-            animateOpacity: !hasUsableChannels
         )
     }
 }
 
 struct StatusItemView: View {
-    let icon: String
+    let imageName: String
     let iconBackgroundColor: Color
     let iconColor: Color
     let title: String
     let status: String
     let statusColor: Color
-    let animateIcon: Bool
-    let animateOpacity: Bool
     
     var body: some View {
         HStack(spacing: 16) {
             CircularIcon(
-                icon: icon, 
+                icon: imageName, 
                 iconColor: iconColor,
                 backgroundColor: iconBackgroundColor,
                 size: 40
