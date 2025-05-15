@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AppStatusView: View {
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var app: AppViewModel
     
     var body: some View {
         List {
@@ -20,13 +21,20 @@ struct AppStatusView: View {
     }
     
     private var internetStatusView: some View {
-        StatusItemView(
-            imageName: "status-internet-green",
-            iconBackgroundColor: .green16,
-            iconColor: .greenAccent,
+        let isConnected = app.networkStatus == .wifi || app.networkStatus == .cellular
+        let imageName = isConnected ? "status-internet-green" : "status-internet-red"
+        let iconBackgroundColor: Color = isConnected ? .green16 : .red16
+        let iconColor: Color = isConnected ? .greenAccent : .redAccent
+        let status = isConnected ? NSLocalizedString("settings__status__internet__ready", comment: "Connected") : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
+        let statusColor: Color = isConnected ? .greenAccent : .redAccent
+        
+        return StatusItemView(
+            imageName: imageName,
+            iconBackgroundColor: iconBackgroundColor,
+            iconColor: iconColor,
             title: NSLocalizedString("settings__status__internet__title", comment: ""),
-            status: NSLocalizedString("settings__status__internet__ready", comment: ""),
-            statusColor: .greenAccent
+            status: status,
+            statusColor: statusColor
         )
     }
     
