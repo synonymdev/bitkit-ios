@@ -7,6 +7,7 @@
 
 import Foundation
 import LDKNode
+import SwiftUI
 
 extension NodeStatus {
     var debugState: String {
@@ -28,5 +29,29 @@ extension NodeStatus {
         }
 
         return debug
+    }
+}
+
+extension NodeLifecycleState {
+    var statusIcon: String {
+        switch self {
+        case .running:
+            return "power"
+        case .starting, .initializing, .stopping:
+            return "arrows-clockwise"
+        case .stopped, .errorStarting:
+            return "warning"
+        }
+    }
+    
+    var statusColor: Color {
+        switch self {
+        case .running:
+            return .greenAccent
+        case .starting, .initializing, .stopping:
+            return .yellowAccent
+        case .stopped, .errorStarting:
+            return .redAccent
+        }
     }
 }

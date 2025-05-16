@@ -42,7 +42,27 @@ struct ContentView: View {
                     // Wallet exists and has been restored from backup. isRestoringWallet is to false inside below component
                     WalletInitResultView(result: .restored)
                 } else {
-                    HomeView()
+                    NavigationStack {
+                        switch app.activeDrawerMenuItem {
+                        case .wallet:
+                            HomeView()
+                        case .activity:
+                            AllActivityView()
+                                .backToWalletButton()
+                        case .settings:
+                            SettingsListView()
+                                .backToWalletButton()
+                        case .appStatus:
+                            AppStatusView()
+                                .backToWalletButton()
+                        default:
+                            Text("Coming Soon")
+                                .backToWalletButton()
+                        }
+                    }
+                    .overlay {
+                        DrawerView()
+                    }  
                 }
             } else if wallet.walletExists == false {
                 NavigationView {
@@ -167,4 +187,30 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .preferredColorScheme(.dark)
+}
+
+// MARK: - View Modifiers
+
+struct BackToWalletToolbar: ViewModifier {
+    @EnvironmentObject private var app: AppViewModel
+    
+    func body(content: Content) -> some View {
+        content
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        app.activeDrawerMenuItem = .wallet
+                    }) {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+    }
+}
+
+extension View {
+    func backToWalletButton() -> some View {
+        self.modifier(BackToWalletToolbar())
+    }
 }

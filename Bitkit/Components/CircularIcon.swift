@@ -18,6 +18,7 @@ struct CircularIcon: View {
             Circle()
                 .fill(backgroundColor)
             icon
+                .scaledToFit()
                 .foregroundColor(iconColor)
                 .frame(width: size * 0.5, height: size * 0.5)
         }

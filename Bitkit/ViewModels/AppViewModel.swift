@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import Network
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -43,6 +44,21 @@ class AppViewModel: ObservableObject {
     @AppStorage("showSavingsViewEmptyState") var showSavingsViewEmptyState: Bool = false
     @AppStorage("showSpendingViewEmptyState") var showSpendingViewEmptyState: Bool = false
 
+    // Drawer menu
+    @Published var showDrawer = false
+    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
+
+    // Network status
+    enum NetworkStatus: String {
+        case wifi = "wifi"
+        case cellular = "cellular"
+        case offline = "offline"
+        case unknown = "unknown"
+    }
+    
+    @Published var networkStatus: NetworkStatus = .unknown
+    private let networkMonitor = NWPathMonitor()
+
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
         showSavingsViewEmptyState = show
@@ -58,9 +74,34 @@ class AppViewModel: ObservableObject {
         self.lightningService = lightningService
         self.coreService = coreService
 
+        // Start network monitoring
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            Logger.debug("Network path updated - Status: \(path.status), Interface Types: \(path.availableInterfaces.map { $0.type })")
+            DispatchQueue.main.async {
+                if path.status == .satisfied {
+                    if path.usesInterfaceType(.wifi) {
+                        self.networkStatus = .wifi
+                    } else if path.usesInterfaceType(.cellular) {
+                        self.networkStatus = .cellular
+                    } else {
+                        self.networkStatus = .unknown
+                    }
+                } else {
+                    self.networkStatus = .offline
+                }
+                Logger.debug("Current network status set to: \(self.networkStatus.rawValue)")
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue.main)
+
         Task {
             await checkGeoStatus()
         }
+    }
+
+    deinit {
+        networkMonitor.cancel()
     }
 
     func checkGeoStatus() async {

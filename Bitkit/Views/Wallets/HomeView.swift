@@ -19,113 +19,104 @@ struct HomeView: View {
     @State private var showSendAmountView = false
     @State private var showSendConfirmationView = false
     @State private var showProfile = false
-    @State private var showDrawer = false
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            ScrollView {
-                VStack(alignment: .leading) {
-                    BalanceHeaderView(sats: wallet.totalBalanceSats)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
-                .padding(.top, 32)
+        ScrollView {
+            VStack(alignment: .leading) {
+                BalanceHeaderView(sats: wallet.totalBalanceSats)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.top, 32)
 
-                if !app.showHomeViewEmptyState {
-                    VStack(spacing: 0) {
-                        HStack {
-                            NavigationLink(destination: SavingsWalletView()) {
-                                WalletBalanceView(
-                                    type: .onchain,
-                                    sats: UInt64(wallet.totalOnchainSats)
-                                )
-                            }
-
-                            Divider()
-                                .frame(height: 50)
-
-                            NavigationLink(destination: SpendingWalletView()) {
-                                WalletBalanceView(
-                                    type: .lightning,
-                                    sats: UInt64(wallet.totalLightningSats)
-                                )
-                            }
+            if !app.showHomeViewEmptyState {
+                VStack(spacing: 0) {
+                    HStack {
+                        NavigationLink(destination: SavingsWalletView()) {
+                            WalletBalanceView(
+                                type: .onchain,
+                                sats: UInt64(wallet.totalOnchainSats)
+                            )
                         }
+
+                        Divider()
+                            .frame(height: 50)
+
+                        NavigationLink(destination: SpendingWalletView()) {
+                            WalletBalanceView(
+                                type: .lightning,
+                                sats: UInt64(wallet.totalLightningSats)
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top)
+                    .padding(.horizontal)
+
+                    Suggestions()
+                        .padding(.top, 32)
+
+                    CaptionText(localizedString("wallet__activity"))
+                        .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top)
+                        .padding(.bottom, 16)
+                        .padding(.top, 32)
                         .padding(.horizontal)
 
-                        Suggestions()
-                            .padding(.top, 32)
-
-                        CaptionText(localizedString("wallet__activity"))
-                            .textCase(.uppercase)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.bottom, 16)
-                            .padding(.top, 32)
-                            .padding(.horizontal)
-
-                        ActivityLatest(viewType: .all)
-                            .padding(.horizontal)
-                    }
+                    ActivityLatest(viewType: .all)
+                        .padding(.horizontal)
+                        .padding(.bottom, 100) //So user can scroll up past the tab bar
                 }
             }
-            .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
-            .overlay {
-                if wallet.totalBalanceSats == 0 && app.showHomeViewEmptyState {
-                    EmptyStateView(
-                        type: .home,
-                        onClose: {
-                            withAnimation(.spring(response: 0.3)) {
-                                app.showHomeViewEmptyState = false
-                            }
-                        }
-                    )
-                    .padding(.horizontal)
-                }
-            }
-            .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
-            .onChange(of: wallet.totalBalanceSats) { _ in
-                if wallet.totalBalanceSats > 0 {
-                    DispatchQueue.main.async {
-                        app.showHomeViewEmptyState = false
-                    }
-                }
-            }
-            .refreshable {
-                guard wallet.nodeLifecycleState == .running else {
-                    return
-                }
-                do {
-                    try await wallet.sync()
-                    try await activity.syncLdkNodePayments()
-                } catch {
-                    app.toast(error)
-                }
-            }
-            .navigationBarItems(
-                leading: leftNavigationItem,
-                trailing: rightNavigationItem
-            )
-            .navigationDestination(isPresented: $app.showScanner) {
-                ScannerView(
-                    showSendAmountView: $showSendAmountView,
-                    showSendConfirmationView: $showSendConfirmationView
-                )
-            }
-            .onChange(of: app.showScanner) { showScanner in
-                app.showTabBar = !showScanner
-            }
-            .navigationDestination(for: String.self) { destination in
-                if destination == "ACTIVITY" {
-                    AllActivityView()
-                } else if destination == "SETTINGS" {
-                    SettingsListView()
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
+        .overlay {
+            if wallet.totalBalanceSats == 0 && app.showHomeViewEmptyState {
+                EmptyStateView(
+                    type: .home,
+                    onClose: {
+                        withAnimation(.spring(response: 0.3)) {
+                            app.showHomeViewEmptyState = false
+                        }
+                    }
+                )
+                .padding(.horizontal)
+            }
+        }
+        .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
+        .onChange(of: wallet.totalBalanceSats) { _ in
+            if wallet.totalBalanceSats > 0 {
+                DispatchQueue.main.async {
+                    app.showHomeViewEmptyState = false
+                }
+            }
+        }
+        .refreshable {
+            guard wallet.nodeLifecycleState == .running else {
+                return
+            }
+            do {
+                try await wallet.sync()
+                try await activity.syncLdkNodePayments()
+            } catch {
+                app.toast(error)
+            }
+        }
+        .navigationBarItems(
+            leading: leftNavigationItem,
+            trailing: rightNavigationItem
+        )
+        .navigationDestination(isPresented: $app.showScanner) {
+            ScannerView(
+                showSendAmountView: $showSendAmountView,
+                showSendConfirmationView: $showSendConfirmationView
+            )
+        }
+        .onChange(of: app.showScanner) { showScanner in
+            app.showTabBar = !showScanner
+        }
+        .navigationBarTitleDisplayMode(.inline)
         .accentColor(.white)
         .onAppear {
             app.showTabBar = true
@@ -138,24 +129,12 @@ struct HomeView: View {
             TabBar()
                 .bottomSafeAreaPadding()
         }
-        .overlay {
-            if showDrawer {
-                DrawerView(
-                    onClose: {
-                        withAnimation {
-                            showDrawer = false
-                        }
-                    }, navigationPath: $navigationPath
-                )
-                .zIndex(1)
-            }
-        }
         .gesture(
             DragGesture()
                 .onEnded { value in
                     if value.startLocation.x > UIScreen.main.bounds.width * 0.8 && value.translation.width < -50 {
                         withAnimation {
-                            showDrawer = true
+                            app.showDrawer = true
                         }
                     }
                 }
@@ -237,7 +216,7 @@ struct HomeView: View {
         HStack {
             Button(action: {
                 withAnimation {
-                    showDrawer = true
+                    app.showDrawer = true
                 }
             }) {
                 Image("burger")
