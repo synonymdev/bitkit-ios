@@ -1,34 +1,73 @@
 import SwiftUI
 
+//TODO: maybe move to a separate file
+enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
+    case wallet
+    case activity
+    case contacts
+    case profile
+    case widgets
+    case shop
+    case settings
+    case appStatus
+    
+    var id: Int { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .wallet: return "coins"
+        case .activity: return "heartbeat"
+        case .contacts: return "users"
+        case .profile: return "user-square"
+        case .widgets: return "stack"
+        case .shop: return "storefront"
+        case .settings: return "gear-six"
+        case .appStatus: return "status-circle"
+        }
+    }
+    
+    var label: String {
+        switch self {
+        case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
+        case .activity: return NSLocalizedString("wallet__drawer__activity", comment: "").uppercased()
+        case .contacts: return NSLocalizedString("wallet__drawer__contacts", comment: "").uppercased()
+        case .profile: return NSLocalizedString("wallet__drawer__profile", comment: "").uppercased()
+        case .widgets: return NSLocalizedString("wallet__drawer__widgets", comment: "").uppercased()
+        case .shop: return "SHOP"
+        case .settings: return NSLocalizedString("wallet__drawer__settings", comment: "").uppercased()
+        case .appStatus: return NSLocalizedString("settings__status__title", comment: "")
+        }
+    }
+    
+    var isMainMenuItem: Bool {
+        switch self {
+        case .appStatus, .shop:
+            return false
+        default:
+            return true
+        }
+    }
+}
+
 struct DrawerView: View {
-    var onClose: () -> Void
-    @Binding var navigationPath: NavigationPath
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
     @State private var showMenu = false
-
-    let menuItems: [(icon: String, label: String)] = [
-        ("coins", "WALLET"),
-        ("heartbeat", "ACTIVITY"),
-        ("users", "CONTACTS"),
-        ("user-square", "PROFILE"),
-        ("stack", "WIDGETS"),
-        ("storefront", "SHOP"),
-        ("gear-six", "SETTINGS"),
-    ]
-
+    
     private func closeMenu() {
-        showMenu = false
         withAnimation(.easeOut(duration: 0.25)) {
             showBackdrop = false
+            showMenu = false
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            onClose()
+            app.showDrawer = false
         }
     }
-
+    
     @ViewBuilder
     private var backdrop: some View {
         Color.black.opacity(0.6)
@@ -48,29 +87,12 @@ struct DrawerView: View {
             if showMenu {
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(menuItems, id: \.label) { item in
-                            if item.label == "WALLET" {
-                                Button(action: closeMenu) {
-                                    menuItemContent(item: item)
-                                }
-                            } else if item.label == "ACTIVITY" {
-                                Button(action: {
-                                    navigationPath.append("ACTIVITY")
-                                    closeMenu()
-                                }) {
-                                    menuItemContent(item: item)
-                                }
-                            } else if item.label == "SETTINGS" {
-                                Button(action: {
-                                    navigationPath.append("SETTINGS")
-                                    closeMenu()
-                                }) {
-                                    menuItemContent(item: item)
-                                }
-                            } else {
-                                Button(action: {}) {
-                                    menuItemContent(item: item)
-                                }
+                        ForEach(DrawerMenuItem.allCases.filter { $0.isMainMenuItem }) { item in
+                            Button(action: {
+                                app.activeDrawerMenuItem = item
+                                closeMenu()
+                            }) {
+                                menuItemContent(item: item)
                             }
                         }
                         Spacer()
@@ -109,19 +131,21 @@ struct DrawerView: View {
                 .transition(.move(edge: .trailing))
             }
         }
-        .onAppear {
-            currentDragOffset = 0
-            withAnimation(.easeOut(duration: 0.25)) {
-                showBackdrop = true
-            }
-            withAnimation(.easeOut(duration: 0.25).delay(0.1)) {
-                showMenu = true
+        .onChange(of: app.showDrawer) { show in
+            if show {
+                currentDragOffset = 0
+                withAnimation(.easeOut(duration: 0.25)) {
+                    showBackdrop = true
+                }
+                withAnimation(.easeOut(duration: 0.25).delay(0.1)) {
+                    showMenu = true
+                }
             }
         }
     }
 
     @ViewBuilder
-    private func menuItemContent(item: (icon: String, label: String)) -> some View {
+    private func menuItemContent(item: DrawerMenuItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {
                 Image(item.icon)
@@ -144,19 +168,23 @@ struct DrawerView: View {
 
     @ViewBuilder
     private func appStatus() -> some View {
-        // TODO: Add app status variants (error, warning, success) with appropriate icons and animations
-        HStack(spacing: 8) {
-            Image("warning")
-                .resizable()
-                .frame(width: 24, height: 24)
-                .foregroundColor(.redAccent)
-            BodyMSBText("App Status", textColor: .redAccent)
+        Button(action: {
+            app.activeDrawerMenuItem = .appStatus
+            closeMenu()
+        }) {
+            HStack(spacing: 8) {
+                Image(wallet.nodeLifecycleState.statusIcon)
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(wallet.nodeLifecycleState.statusColor)
+                BodyMSBText(DrawerMenuItem.appStatus.label, textColor: wallet.nodeLifecycleState.statusColor)
+            }
         }
     }
 }
 
 #Preview {
-    DrawerView(onClose: {}, navigationPath: .constant(NavigationPath()))
+    DrawerView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(ActivityListViewModel())

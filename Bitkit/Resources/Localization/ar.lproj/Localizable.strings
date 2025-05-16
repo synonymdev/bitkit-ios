@@ -1,5 +1,4 @@
 "common__delete_yes" = "نعم، احذف";
-"settings__backup__category_contacts" = "جهات الاتصال";
 "slashtags__your_name" = "اسمك";
 "slashtags__your_name_capital" = "اسمك";
 "slashtags__contact_name" = "اسم جهة الاتصال";
@@ -24,6 +23,6 @@
 "slashtags__contact_delete_yes" = "نعم، احذف";
 "slashtags__contact_select" = "اختر جهة اتصال";
 "slashtags__profile_delete_dialogue_yes" = "نعم، احذف";
-"slashtags__widget_delete_yes" = "نعم، احذف";
+"wallet__drawer__contacts" = "جهات الاتصال";
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__activity_contact" = "جهة الاتصال";
