@@ -22,14 +22,13 @@ struct AppStatusView: View {
     
     private var internetStatusView: some View {
         let isConnected = app.networkStatus == .wifi || app.networkStatus == .cellular
-        let imageName = isConnected ? "status-internet-green" : "status-internet-red"
         let iconBackgroundColor: Color = isConnected ? .green16 : .red16
         let iconColor: Color = isConnected ? .greenAccent : .redAccent
         let status = isConnected ? NSLocalizedString("settings__status__internet__ready", comment: "Connected") : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
         let statusColor: Color = isConnected ? .greenAccent : .redAccent
         
         return StatusItemView(
-            imageName: imageName,
+            imageName: "status-internet",
             iconBackgroundColor: iconBackgroundColor,
             iconColor: iconColor,
             title: NSLocalizedString("settings__status__internet__title", comment: ""),
@@ -39,21 +38,8 @@ struct AppStatusView: View {
     }
     
     private var lightningNodeStatusView: some View {
-        let iconName: String = {
-            switch wallet.nodeLifecycleState.statusColor {
-            case .greenAccent:
-                return "status-node-green"
-            case .yellowAccent:
-                return "status-node-yellow"
-            case .redAccent:
-                return "status-node-red"
-            default:
-                return "status-node-red"
-            }
-        }()
-        
         return StatusItemView(
-             imageName: iconName,
+             imageName: "status-node",
              iconBackgroundColor: .green16,
              iconColor: wallet.nodeLifecycleState.statusColor,
              title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
@@ -87,16 +73,6 @@ struct AppStatusView: View {
             }
         }()
         
-        let imageName: String = {
-            if !hasChannels {
-                return "status-lightning-red"
-            } else if hasUsableChannels {
-                return "status-lightning-green"
-            } else {
-                return "status-lightning-yellow"
-            }
-        }()
-        
         let connectionStatus: String = {
             if !hasChannels {
                 return NSLocalizedString("settings__status__lightning_connection__error", comment: "")
@@ -110,7 +86,7 @@ struct AppStatusView: View {
         }()
         
         return StatusItemView(
-            imageName: imageName,
+            imageName: "status-lightning",
             iconBackgroundColor: iconBackgroundColor,
             iconColor: connectionColor,
             title: NSLocalizedString("settings__status__lightning_connection__title", comment: ""),
