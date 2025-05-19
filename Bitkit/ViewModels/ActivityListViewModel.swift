@@ -157,12 +157,12 @@ class ActivityListViewModel: ObservableObject {
 
     func addTags(_ tags: [String], toActivity id: String) async throws {
         try await coreService.activity.appendTag(toActivity: id, tags)
-        await syncState()  // Refresh UI after adding tags
+        await syncState() // Refresh UI after adding tags
     }
 
     func removeTags(_ tags: [String], fromActivity id: String) async throws {
         try await coreService.activity.dropTags(fromActivity: id, tags)
-        await syncState()  // Refresh UI after removing tags
+        await syncState() // Refresh UI after removing tags
     }
 
     func getActivities(withTag tag: String) async throws -> [Activity] {
