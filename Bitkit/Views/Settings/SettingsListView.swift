@@ -65,6 +65,7 @@ struct SettingsListView: View {
                     } icon: {
                         Image(systemName: wallet.nodeLifecycleState.systemImage)
                     }
+                    .foregroundColor(.white)
                 }
             }
 

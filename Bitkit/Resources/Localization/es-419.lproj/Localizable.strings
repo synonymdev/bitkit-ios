@@ -173,6 +173,7 @@
 "other__update_text" = "¡Por favor, actualice Bitkit a la última versión para obtener nuevas características y correcciones de errores!";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Empezar";
 "security__backup_wallet" = "Copia de seguridad de la cartera";
 "security__backup_funds" = "Ahora que tiene fondos en su cartera, ¡és el momento de hacer una copia de seguridad de su dinero!";
 "security__backup_funds_no" = "Todavía no hay fondos en su cartera, pero puede crear una copia de seguridad si lo desea.";
@@ -522,3 +523,11 @@
 "wallet__filter_apply" = "Aplicarse";
 "wallet__reorg_msg_end" = "Por favor, compruebe su lista de actividades para ver las transacciones afectadas.";
 "wallet__receive_insufficient_text" = "Capacidad de recepción insuficiente para recibir esta cantidad a través de Lightning.";
+"widgets__widgets" = "Widgets";
+"widgets__widget__edit" = "Widget Feed";
+"widgets__widget__edit_custom" = "personalizado";
+"widgets__add" = "Añadir Widget";
+"widgets__delete__title" = "¿Borrar Widget?";
+"widgets__delete__description" = "¿Está seguro de que desea eliminar \'{name}\' de sus widgets?";
+"widgets__price__name" = "Precio del Bitcoin";
+"widgets__blocks__name" = "Bitcoin Bloques";
