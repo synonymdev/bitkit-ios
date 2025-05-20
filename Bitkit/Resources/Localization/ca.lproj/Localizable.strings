@@ -238,6 +238,7 @@
 "other__update_button" = "Actualització";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Començar";
 "security__backup_wallet" = "Còpia de seguretat de la cartera";
 "security__backup_funds" = "Ara que tens alguns fons a la teva cartera, és hora de fer una còpia de seguretat del teu diners!";
 "security__backup_funds_no" = "Encara no hi ha fons a la teva cartera, però pots fer una còpia de seguretat si ho desitges.";
@@ -598,3 +599,16 @@
 "wallet__lnurl_w_text" = "Els fons que retiris seran dipositats al teu saldo de despesa de Bitkit.";
 "wallet__lnurl_w_button" = "Retirar";
 "wallet__lnurl_p_max" = "Quantitat màxima";
+"widgets__widgets" = "Ginys";
+"widgets__widget__nav_title" = "Giny";
+"widgets__widget__edit" = "Alimentar el Giny";
+"widgets__widget__edit_default" = "Predeterminat";
+"widgets__widget__edit_custom" = "Personalitzat";
+"widgets__widget__source" = "Origen";
+"widgets__add" = "Afegir ginys";
+"widgets__delete__title" = "Esborrar el giny?";
+"widgets__delete__description" = "Estàs segur que vols eliminar \'{name}\' dels teus ginys?";
+"widgets__price__name" = "Preu de Bitcoin";
+"widgets__news__name" = "Capçaleres de Bitcoin";
+"widgets__blocks__name" = "Blocs de Bitcoin";
+"widgets__facts__name" = "Bitcoin Fets";

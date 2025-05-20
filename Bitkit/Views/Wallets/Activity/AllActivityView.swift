@@ -109,7 +109,7 @@ struct AllActivityView: View {
                         dragOffset = 0
                     }
             )
-            //            .dismissKeyboardOnScroll()
+            .scrollDismissesKeyboard(.interactively)
         }
         .ignoresSafeArea(edges: .top)
         .navigationTitle("All Activity")

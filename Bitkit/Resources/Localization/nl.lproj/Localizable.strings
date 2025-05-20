@@ -220,6 +220,7 @@
 "other__update_button" = "Update";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Starten";
 "security__backup_wallet" = "Wallet Backup";
 "security__backup_title" = "Uw Bitcoin <accent>veilig bewaren</accent> ";
 "security__backup_funds" = "Er staat nu geld op uw wallet, tijd om een backup te maken!";
@@ -782,3 +783,13 @@
 "wallet__ldk_sync_error_title" = "Lightning Synchronisatiefout";
 "wallet__receive_insufficient_title" = "Onvoldoende ontvangstcapaciteit.";
 "wallet__receive_insufficient_text" = "Onvoldoende ontvangstcapaciteit om dit bedrag via Lightning te ontvangen.";
+"widgets__widgets" = "Widgets";
+"widgets__widget__edit" = "Widget Feed";
+"widgets__widget__edit_custom" = "Op maat";
+"widgets__add" = "Widget Toevoegen";
+"widgets__delete__title" = "Widget Verwijderen?";
+"widgets__delete__description" = "Weet u zeker dat u \'{name}\' wilt wissen van uw widgetlijst?";
+"widgets__price__name" = "Bitcoinprijs";
+"widgets__news__name" = "Bitcoin Nieuwes";
+"widgets__blocks__name" = "Bitcoin Blokken";
+"widgets__facts__name" = "Bitcoin Feiten";
