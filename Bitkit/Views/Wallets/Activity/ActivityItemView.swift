@@ -14,8 +14,6 @@ struct ActivityItemView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
-    private let sheetHeight = UIScreen.screenHeight - 120
-
     init(item: Activity) {
         self.item = item
         _viewModel = StateObject(wrappedValue: ActivityItemViewModel(item: item))
@@ -36,6 +34,15 @@ struct ActivityItemView: View {
             return true
         case .onchain:
             return false
+        }
+    }
+
+    private var isTransfer: Bool {
+        switch item {
+        case .lightning:
+            return false
+        case .onchain(let activity):
+            return activity.isTransfer
         }
     }
 
@@ -68,6 +75,18 @@ struct ActivityItemView: View {
         isLightning ? .purpleAccent : .brandAccent
     }
 
+    private var navigationTitle: String {
+        if isTransfer {
+            return isSent
+                ? localizedString("wallet__activity_transfer_spending_done")
+                : localizedString("wallet__activity_transfer_savings_done")
+        }
+
+        return isSent
+            ? localizedString("wallet__activity_bitcoin_sent")
+            : localizedString("wallet__activity_bitcoin_received")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .bottom) {
@@ -86,7 +105,9 @@ struct ActivityItemView: View {
 
             Spacer()
         }
-        .padding()
+        .navigationTitle(navigationTitle)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .onChange(of: app.showAddTagSheet) { isShowing in
             if !isShowing {
                 Task {
@@ -268,13 +289,13 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var note: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            CaptionText(localizedString("wallet__activity_invoice_note"))
-                .textCase(.uppercase)
-                .padding(.bottom, 8)
+        if case .lightning(let activity) = item {
+            if !activity.message.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptionText(localizedString("wallet__activity_invoice_note"))
+                        .textCase(.uppercase)
+                        .padding(.bottom, 8)
 
-            if case .lightning(let activity) = item {
-                if !activity.message.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ZigzagDivider()
 
@@ -327,7 +348,9 @@ struct ActivityItemView: View {
                     title: localizedString("wallet__activity_explore"), size: .small,
                     icon: Image("branch")
                         .foregroundColor(accentColor),
-                    shouldExpand: true)
+                    shouldExpand: true,
+                    destination: ActivityExplorerView(item: item)
+                )
             }
             .frame(maxWidth: .infinity)
         }
@@ -376,7 +399,8 @@ struct ActivityItemView_Previews: PreviewProvider {
                         status: .succeeded,
                         value: 50000,
                         fee: 1,
-                        invoice: "lnbc...",
+                        invoice:
+                            "lnbcrt30u1p5ppdlupp5rs2w7htserff3zcwaz3ds205y8zzj4ax82qx6f4zj0f0lxzs7nasdqqcqzzsxqy9gcqsp59h735hvajjauzewf5dsemldwgra9mrfff3eha0mwqx2n7tp4wlmq9p4gqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqysgqymzf4jnknunl6kxx2977xdy3g53m4wz9y8cds40v6ex89tct8tv8gzw40ddem70gfyr9nlfgadtzr6rk5cxuxknjx2j4ef998q8ga3sqhqlcux",
                         message: "Splitting the lunch bill. Thanks for suggesting that amazing restaurant!",
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: nil,
