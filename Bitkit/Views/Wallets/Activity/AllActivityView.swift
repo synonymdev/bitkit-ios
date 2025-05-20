@@ -42,6 +42,7 @@ struct AllActivityView: View {
                     .padding(.horizontal)
             }
             // TODO: add blur, glow and drop shadow
+            .padding(.top, 100)
             .background(Color.white10)
             .cornerRadius(20, corners: [.bottomLeft, .bottomRight])
 
@@ -110,12 +111,17 @@ struct AllActivityView: View {
             )
             //            .dismissKeyboardOnScroll()
         }
+        .ignoresSafeArea(edges: .top)
         .navigationTitle("All Activity")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.clear, for: .navigationBar)
     }
 }
 
 #Preview {
-    AllActivityView()
-        .environmentObject(ActivityListViewModel())
-        .preferredColorScheme(.dark)
+    NavigationView {
+        AllActivityView()
+            .environmentObject(ActivityListViewModel())
+            .preferredColorScheme(.dark)
+    }
 }
