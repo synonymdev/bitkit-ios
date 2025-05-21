@@ -10,32 +10,41 @@ import SwiftUI
 struct AllActivityView: View {
     @EnvironmentObject private var activity: ActivityListViewModel
     @State private var selectedTab = ActivityTab.all
+    @State private var isHorizontalSwipe = false
+    @State private var dragOffset: CGFloat = 0
 
-    enum ActivityTab {
+    enum ActivityTab: CaseIterable, CustomStringConvertible {
         case all, sent, received, other
 
-        var title: String {
+        var description: String {
             switch self {
-            case .all: return "All"
-            case .sent: return "Sent"
-            case .received: return "Received"
-            case .other: return "Other"
+            case .all:
+                return localizedString("wallet__activity_tabs__all")
+            case .sent:
+                return localizedString("wallet__activity_tabs__sent")
+            case .received:
+                return localizedString("wallet__activity_tabs__received")
+            case .other:
+                return localizedString("wallet__activity_tabs__other")
             }
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            ActivityListFilter(viewModel: activity)
+            VStack(spacing: 0) {
+                ActivityListFilter(viewModel: activity)
+                    .padding(.horizontal)
 
-            Picker("Activity Type", selection: $selectedTab) {
-                ForEach([ActivityTab.all, .sent, .received, .other], id: \.self) { tab in
-                    Text(tab.title)
-                        .tag(tab)
-                }
+                SegmentedControl<ActivityTab>(selectedTab: $selectedTab)
+                    .padding(.top)
+                    .padding(.bottom, 8)
+                    .padding(.horizontal)
             }
-            .pickerStyle(.segmented)
-            .padding()
+            // TODO: add blur, glow and drop shadow
+            .padding(.top, 100)
+            .background(Color.white10)
+            .cornerRadius(20, corners: [.bottomLeft, .bottomRight])
 
             ScrollView {
                 if let items = activity.filteredActivities {
@@ -48,6 +57,7 @@ struct AllActivityView: View {
                                     Divider()
                                 }
                             }
+                            .disabled(isHorizontalSwipe)
                         }
 
                         VStack {}.frame(height: 120)
@@ -58,14 +68,60 @@ struct AllActivityView: View {
                         .padding()
                 }
             }
-            .dismissKeyboardOnScroll()
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                    .onChanged { value in
+                        let horizontalAmount = value.translation.width
+                        let verticalAmount = value.translation.height
+
+                        if abs(horizontalAmount) > abs(verticalAmount) {
+                            isHorizontalSwipe = true
+                            dragOffset = horizontalAmount
+                        }
+                    }
+                    .onEnded { value in
+                        let horizontalAmount = value.translation.width
+                        let verticalAmount = value.translation.height
+
+                        if abs(horizontalAmount) > abs(verticalAmount) {
+                            if horizontalAmount < -50 {
+                                // Swipe left - move to next tab
+                                if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
+                                    currentIndex < ActivityTab.allCases.count - 1
+                                {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedTab = ActivityTab.allCases[currentIndex + 1]
+                                    }
+                                }
+                            } else if horizontalAmount > 50 {
+                                // Swipe right - move to previous tab
+                                if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
+                                    currentIndex > 0
+                                {
+                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                        selectedTab = ActivityTab.allCases[currentIndex - 1]
+                                    }
+                                }
+                            }
+                        }
+
+                        isHorizontalSwipe = false
+                        dragOffset = 0
+                    }
+            )
+            //            .dismissKeyboardOnScroll()
         }
+        .ignoresSafeArea(edges: .top)
         .navigationTitle("All Activity")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.clear, for: .navigationBar)
     }
 }
 
 #Preview {
-    AllActivityView()
-        .environmentObject(ActivityListViewModel())
-        .preferredColorScheme(.dark)
+    NavigationView {
+        AllActivityView()
+            .environmentObject(ActivityListViewModel())
+            .preferredColorScheme(.dark)
+    }
 }
