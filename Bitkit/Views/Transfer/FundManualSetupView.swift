@@ -8,6 +8,30 @@ struct FundManualSetupView: View {
     @State private var nodeId: String = ""
     @State private var host: String = ""
     @State private var port: String = ""
+    @State private var showAlert: Bool = false
+    @State private var alertMessage: String = ""
+    @State private var alertTitle: String = ""
+    
+    //Test uri 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
+    func pasteLightningNodeURI() {
+        guard let pastedText = UIPasteboard.general.string else {
+            alertTitle = NSLocalizedString("wallet__send_clipboard_empty_title", comment: "")
+            alertMessage = NSLocalizedString("wallet__send_clipboard_empty_text", comment: "")
+            showAlert = true
+            return
+        }
+        
+        do {
+            let lnPeer = try LnPeer(connection: pastedText)
+            nodeId = lnPeer.nodeId
+            host = lnPeer.host
+            port = String(lnPeer.port)
+        } catch {
+            alertTitle = NSLocalizedString("common__error", comment: "")
+            alertMessage = error.localizedDescription
+            showAlert = true
+        }
+    }
     
     var body: some View {
         ZStack {
@@ -59,7 +83,7 @@ struct FundManualSetupView: View {
                                 .font(.caption)
                                 .foregroundColor(.gray)
                             
-                            TextField("000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
+                            TextField("0000000000000000000000000000000", text: $nodeId)
                         }
                         
                         // Host field
@@ -83,14 +107,15 @@ struct FundManualSetupView: View {
                         // Paste Node URI button
                         CustomButton(
                             title: NSLocalizedString("lightning__external_manual__paste", comment: ""),
-                            variant: .secondary,
+                            variant: .primary,
                             size: .small,
                             icon: Image(systemName: "doc.on.clipboard")
                                 .foregroundColor(.white),
                             shouldExpand: false
                         ) {
-                            // Would implement paste logic here
+                            pasteLightningNodeURI()
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         
                         // Add padding at the bottom for the overlay buttons
                         Spacer()
@@ -108,18 +133,17 @@ struct FundManualSetupView: View {
                     // Scan QR button
                     CustomButton(
                         title: NSLocalizedString("lightning__external_manual__scan", comment: ""),
-                        variant: .secondary
-                    ) {
-                        // Would implement scan logic here
-                    }
+                        variant: .secondary,
+                        destination: ScannerView(showSendAmountView: .constant(false), showSendConfirmationView: .constant(false))
+                    )
                     
                     // Continue button
                     CustomButton(
                         title: NSLocalizedString("common__continue", comment: ""),
-                        isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty
-                    ) {
-                        // Would implement continue logic here
-                    }
+                        variant: .primary,
+                        isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
+                        destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
+                    )
                 }
                 .padding()
                 .background(Color.black)
@@ -127,6 +151,13 @@ struct FundManualSetupView: View {
         }
         .navigationBarHidden(true)
         .background(Color.black)
+        .alert(isPresented: $showAlert) {
+            Alert(
+                title: Text(alertTitle),
+                message: Text(alertMessage),
+                dismissButton: .default(Text(NSLocalizedString("common__ok", comment: "")))
+            )
+        }
     }
 }
 
