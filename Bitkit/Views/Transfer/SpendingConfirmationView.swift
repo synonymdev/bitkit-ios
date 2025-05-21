@@ -152,35 +152,6 @@ struct SpendingConfirmationView: View {
     }
 }
 
-private struct FeeDisplayRow: View {
-    let label: String
-    let amount: UInt64
-
-    @EnvironmentObject var currency: CurrencyViewModel
-
-    private func formatAmount(_ number: UInt64) -> String {
-        let formatter = NumberFormatter()
-        formatter.groupingSeparator = " "
-        formatter.groupingSize = 3
-        formatter.usesGroupingSeparator = true
-        formatter.numberStyle = .decimal
-        return formatter.string(from: NSNumber(value: number)) ?? String(number)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading) {
-            BodySText(label.uppercased(), textColor: .textSecondary)
-                .padding(.bottom, 6)
-            if let converted = currency.convert(sats: amount) {
-                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                BodyMBoldText("\(btcComponents.symbol) \(formatAmount(amount))")
-            }
-            Divider()
-        }
-        .padding(.trailing, 8)
-    }
-}
-
 private struct SpendingDetailRow: View {
     let label: String
     let value: String

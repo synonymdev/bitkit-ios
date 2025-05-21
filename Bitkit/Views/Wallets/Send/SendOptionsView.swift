@@ -33,6 +33,7 @@ struct SendOptionCard<Destination: View>: View {
             Image(iconName)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .foregroundColor(Color.brandAccent)
                 .frame(width: 32, height: 32)
                 .padding(.trailing, 8)
             SubtitleText(title)

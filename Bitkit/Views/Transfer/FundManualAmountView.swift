@@ -10,7 +10,6 @@ struct FundManualAmountView: View {
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
-    @State private var showConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -53,11 +52,10 @@ struct FundManualAmountView: View {
             
             CustomButton(
                 title: NSLocalizedString("common__continue", comment: ""),
-                isDisabled: satsAmount == 0
-            ) {
-                // Handle opening the lightning channel here
-                showConfirmation = true
-            }
+                isDisabled: satsAmount == 0,
+                destination: FundManualConfirmView(lnPeer: lnPeer, satsAmount: satsAmount)
+            )
+            .disabled(satsAmount == 0)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }

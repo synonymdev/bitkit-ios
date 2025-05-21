@@ -14,7 +14,7 @@ struct FundManualSetupView: View {
     
     //Test uri 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
     func pasteLightningNodeURI() {
-        guard let pastedText = UIPasteboard.general.string else {
+        guard let pastedText = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             alertTitle = NSLocalizedString("wallet__send_clipboard_empty_title", comment: "")
             alertMessage = NSLocalizedString("wallet__send_clipboard_empty_text", comment: "")
             showAlert = true
