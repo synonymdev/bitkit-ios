@@ -77,7 +77,7 @@ struct ReceiveViewContent: View {
                         CustomButton(
                             title: NSLocalizedString("common__edit", comment: ""),
                             size: .small,
-                            icon: Image("pencil-brand")
+                            icon: Image("pencil")
                         )
                     }
 

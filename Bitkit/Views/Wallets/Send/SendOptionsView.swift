@@ -76,7 +76,7 @@ struct SendOptionsView: View {
                     SendOptionCard(
                         title: "Enter Manually",
                         destination: SendEnterManuallyView(),
-                        iconName: "pencil-brand"
+                        iconName: "pencil"
                     )
 
                     SendOptionCard(

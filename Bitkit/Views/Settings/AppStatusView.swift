@@ -131,5 +131,6 @@ struct StatusItemView: View {
     NavigationView {
         AppStatusView()
             .environmentObject(WalletViewModel())
+            .environmentObject(AppViewModel())
     }
 } 
