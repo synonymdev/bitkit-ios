@@ -59,6 +59,7 @@ struct RectangleButton: View {
         HStack(spacing: 16) {
             if !isLoading {
                 icon
+                    .foregroundColor(.purpleAccent)
                     .frame(width: 24, height: 24)
             }
 
