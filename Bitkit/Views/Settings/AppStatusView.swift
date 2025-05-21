@@ -7,8 +7,10 @@ struct AppStatusView: View {
     var body: some View {
         List {
             internetStatusView
-            lightningNodeStatusView
-            lightningConnectionStatusView
+            NavigationLink(destination: NodeStateView()) {
+                lightningNodeStatusView
+            }
+            lightningConnectionStatusView //TODO: navigate to channel list view
         }
         .navigationTitle(NSLocalizedString("settings__status__title", comment: ""))
         .navigationBarTitleDisplayMode(.inline)

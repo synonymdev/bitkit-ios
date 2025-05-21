@@ -27,7 +27,7 @@ struct FundManualSetupView: View {
             host = lnPeer.host
             port = String(lnPeer.port)
         } catch {
-            alertTitle = NSLocalizedString("common__error", comment: "")
+            alertTitle = "Error"
             alertMessage = error.localizedDescription
             showAlert = true
         }
