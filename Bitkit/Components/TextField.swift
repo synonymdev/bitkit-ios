@@ -2,10 +2,14 @@ import SwiftUI
 
 struct TextField: View {
     let placeholder: String
+    let backgroundColor: Color
+    let font: Font
     @Binding var text: String
 
-    init(_ placeholder: String, text: Binding<String>) {
+    init(_ placeholder: String, text: Binding<String>, backgroundColor: Color = .white10, font: Font = .custom(Fonts.semiBold, size: 15)) {
         self.placeholder = placeholder
+        self.backgroundColor = backgroundColor
+        self.font = font
         self._text = text
     }
 
@@ -14,16 +18,15 @@ struct TextField: View {
             if text.isEmpty {
                 Text(placeholder)
                     .foregroundColor(.secondary)
-                    .font(.custom(Fonts.semiBold, size: 15))
+                    .font(font)
             }
 
             SwiftUI.TextField("", text: $text)
                 .accentColor(.brandAccent)
-                .font(.custom(Fonts.semiBold, size: 15))
+                .font(font)
         }
         .padding()
-        // NOTE: #1B1B1B is solid version of white10
-        .background(Color(hex: 0x1B1B1B))
+        .background(backgroundColor)
         .cornerRadius(8)
     }
 }
