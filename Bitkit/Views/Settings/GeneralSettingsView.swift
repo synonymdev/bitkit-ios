@@ -2,7 +2,7 @@ import SwiftUI
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var walletViewModel: WalletViewModel
-    
+
     var body: some View {
         List {
             NavigationLink(destination: DefaultUnitSettingsView()) {
@@ -12,12 +12,16 @@ struct GeneralSettingsView: View {
             NavigationLink(destination: LocalCurrencySettingsView()) {
                 Text("Local Currency")
             }
-            
+
             NavigationLink(destination: TransactionSpeedSettingsView()) {
                 Text("Transaction Speed")
             }
+
+            NavigationLink(destination: WidgetsSettingsView()) {
+                Text("Widgets")
+            }
         }
-        .navigationTitle("General")
+        .navigationTitle(localizedString("settings__general_title"))
     }
 }
 

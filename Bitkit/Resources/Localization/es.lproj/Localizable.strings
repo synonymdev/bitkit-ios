@@ -261,6 +261,7 @@
 "other__try_again" = "Por favor, intente de nuevo.";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Empezar";
 "security__backup_wallet" = "Copia de seguridad de la cartera";
 "security__backup_title" = "<accent>Resguarda</accent> tus Bitcoin";
 "security__backup_funds" = "Ahora que tiene fondos en su cartera, ¡és el momento de hacer una copia de seguridad de su dinero!";
@@ -716,3 +717,17 @@
 "wallet__balance_hidden_message" = "Deslice el balance del monedero para mostrarlo de nuevo.";
 "wallet__balance_unit_switched_title" = "Cambió a {unit}";
 "wallet__ldk_sync_error_title" = "Error de Sincronización de Lightning";
+"widgets__widgets" = "Widgets";
+"widgets__onboarding__title" = "Hola,\n<accent>Widgets</accent>";
+"widgets__onboarding__description" = "Disfruta de fuentes descentralizadas de tus servicios web favoritos, añadiendo widgets divertidos y útiles a tu monedero Bitkit.";
+"widgets__widget__nav_title" = "Widget";
+"widgets__widget__edit_custom" = "Personalizar";
+"widgets__widget__edit_description" = "Por favor, seleccione cuales campos quiere mostrar en el widget {name}.";
+"widgets__widget__source" = "Fuente";
+"widgets__add" = "Añadir Widget";
+"widgets__delete__title" = "¿Borrar Widget?";
+"widgets__delete__description" = "¿Está seguro de querer borrar ‘{name}‘ de sus widgets?";
+"widgets__price__name" = "Precio de Bitcoin";
+"widgets__news__name" = "Titulares Bitcoin";
+"widgets__blocks__name" = "Bloques Bitcoin";
+"widgets__facts__name" = "Hechos Bitcoin";
