@@ -13,7 +13,7 @@ struct NewTransactionSheet: View {
     @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 //Values are currently all wrong
                 // VStack(alignment: .leading) {

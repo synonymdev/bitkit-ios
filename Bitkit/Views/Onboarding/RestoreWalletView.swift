@@ -208,7 +208,7 @@ struct RestoreWalletView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         RestoreWalletView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

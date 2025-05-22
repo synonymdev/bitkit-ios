@@ -305,7 +305,7 @@ struct BackdropBlurView: UIViewRepresentable {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         VStack(spacing: 20) {
             CustomButton(
                 title: "Primary Button (Navigation)",

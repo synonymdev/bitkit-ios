@@ -2,42 +2,31 @@ import SwiftUI
 
 struct SavingsIntroView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
         VStack {
             OnboardingContent(
                 imageName: "piggybank-right",
-                title: NSLocalizedString("lightning__savings_intro__title", comment: ""),
-                text: NSLocalizedString("lightning__savings_intro__text", comment: ""),
+                title: localizedString("lightning__savings_intro__title"),
+                text: localizedString("lightning__savings_intro__text"),
                 accentColor: .brandAccent
             )
 
-            NavigationLink(destination: SavingsAvailabilityView()) {
-                CustomButton(title: NSLocalizedString("lightning__savings_intro__button", comment: ""))
+            CustomButton(title: localizedString("lightning__savings_intro__button")) {
+                app.hasSeenTransferToSavingsIntro = true
+                navigation.navigate(.savingsAvailability)
             }
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    app.hasSeenTransferToSavingsIntro = true
-                })
         }
         .padding()
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSavingsSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .backToWalletButton()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SavingsIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())

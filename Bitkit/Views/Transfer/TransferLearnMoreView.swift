@@ -51,7 +51,7 @@ struct TransferLearnMoreView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         TransferLearnMoreView(order: IBtOrder.mock())
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

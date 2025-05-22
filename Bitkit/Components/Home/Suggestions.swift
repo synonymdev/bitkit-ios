@@ -10,7 +10,7 @@ struct SuggestionCardData: Identifiable, Hashable {
 }
 
 enum SuggestionAction: Hashable {
-    case fundingOptions
+    case transferToSpending
     case invite
     case quickpay
     case support
@@ -24,7 +24,7 @@ let cards: [SuggestionCardData] = [
         imageName: "safe", color: .blue24, action: .none),
     SuggestionCardData(
         title: localizedString("cards__lightning__title"), description: localizedString("cards__lightning__description"), imageName: "lightning",
-        color: .purple24, action: .fundingOptions),
+        color: .purple24, action: .transferToSpending),
     SuggestionCardData(
         title: localizedString("cards__pin__title"), description: localizedString("cards__pin__description"), imageName: "shield", color: .green24,
         action: .none
@@ -48,7 +48,8 @@ let cards: [SuggestionCardData] = [
 ]
 
 struct Suggestions: View {
-    @State private var path: [SuggestionAction] = []
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @State private var ignoringCardTaps = false
     @State private var lastActionTime: Date? = nil
 
@@ -56,63 +57,45 @@ struct Suggestions: View {
     let cardSpacing: CGFloat = 16
 
     var body: some View {
-        NavigationStack(path: $path) {
-            VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("cards__suggestions"))
-                    .textCase(.uppercase)
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            CaptionText(localizedString("cards__suggestions"))
+                .textCase(.uppercase)
+                .padding(.horizontal)
+                .padding(.bottom, 16)
 
-                SnapCarousel(
-                    items: cards,
-                    itemSize: cardSize,
-                    itemSpacing: cardSpacing,
-                    onItemTap: { card in
-                        // Only process taps if we're not ignoring them and there's no recent action
-                        if !ignoringCardTaps && !hasRecentNavigationAction() {
-                            switch card.action {
-                            case .fundingOptions:
-                                navigateToAction(.fundingOptions)
-                            case .invite:
-                                break
-                            case .quickpay, .support:
-                                navigateToAction(.support)
-                            case .profile:
-                                break
-                            case .none:
-                                break
-                            }
+            SnapCarousel(
+                items: cards,
+                itemSize: cardSize,
+                itemSpacing: cardSpacing,
+                onItemTap: { card in
+                    if !ignoringCardTaps && !hasRecentNavigationAction() {
+                        switch card.action {
+                        case .transferToSpending:
+                            navigateToAction(.transferToSpending)
+                        case .invite:
+                            break
+                        case .quickpay, .support:
+                            navigateToAction(.support)
+                        case .profile:
+                            break
+                        case .none:
+                            break
                         }
                     }
-                ) { card in
-                    SuggestionCard(
-                        data: card,
-                        onDismiss: {
-                            // Set flag to ignore card taps temporarily
-                            ignoringCardTaps = true
-
-                            // Just log the card being dismissed
-                            print("Card dismissed: \(card.title) (ID: \(card.id))")
-
-                            // Reset the flag after a delay
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                ignoringCardTaps = false
-                            }
-                        })
                 }
-                .frame(height: cardSize)
-                .padding(.bottom, 16)
+            ) { card in
+                SuggestionCard(
+                    data: card,
+                    onDismiss: {
+                        ignoringCardTaps = true
+                        print("Card dismissed: \(card.title) (ID: \(card.id))")
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            ignoringCardTaps = false
+                        }
+                    })
             }
-            .navigationDestination(for: SuggestionAction.self) { action in
-                switch action {
-                case .fundingOptions:
-                    FundingOptionsView()
-                case .quickpay, .support:
-                    SettingsListView()
-                default:
-                    EmptyView()
-                }
-            }
+            .frame(height: cardSize)
+            .padding(.bottom, 16)
         }
     }
 
@@ -120,9 +103,30 @@ struct Suggestions: View {
     private func navigateToAction(_ action: SuggestionAction) {
         // Track navigation time to prevent rapid duplicate navigations
         lastActionTime = Date()
-        path.append(action)
+
+        let screenToNavigate: Route?
+        switch action {
+        case .transferToSpending:
+            if app.hasSeenTransferToSpendingIntro {
+                screenToNavigate = .fundingOptions
+            } else {
+                screenToNavigate = .transferIntro
+            }
+        case .quickpay, .support:
+            screenToNavigate = .settings
+        case .invite, .profile, .none:
+            screenToNavigate = nil // These actions might not navigate, or could trigger sheets/other UI
+            // Handle non-navigation actions here if needed, e.g.:
+            // if action == .invite { self.showInviteSheet = true }
+            print("SuggestionAction \(action) does not map to a main AppScreen or is not yet handled for navigation.")
+        }
+
+        if let screen = screenToNavigate {
+             navigation.navigate(screen)
+        }
     }
 
+    // TODO: Why is this needed?
     // Check if there was a recent navigation action to prevent duplicates
     private func hasRecentNavigationAction() -> Bool {
         guard let lastTime = lastActionTime else { return false }

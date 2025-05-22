@@ -11,7 +11,7 @@ struct AddTagSheet: View {
     @State private var isLoading: Bool = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
                 if !allTags.isEmpty {
                     CaptionText(localizedString("wallet__tags_previously"))

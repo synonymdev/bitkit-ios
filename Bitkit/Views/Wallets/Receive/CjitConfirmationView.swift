@@ -111,7 +111,7 @@ struct CjitConfirmationView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     CjitConfirmationView(
                         entry: IcJitEntry.mock(),
                         onCjitCreated: { _ in },

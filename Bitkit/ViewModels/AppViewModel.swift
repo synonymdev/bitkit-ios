@@ -6,8 +6,8 @@
 //
 
 import LDKNode
-import SwiftUI
 import Network
+import SwiftUI
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -23,17 +23,13 @@ class AppViewModel: ObservableObject {
     // Bottom sheets
     @Published var showReceiveSheet = false
     @Published var showSendOptionsSheet = false
-    @Published var showScanner = false
+    @Published var showScannerSheet = false
     @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
-    @Published var showTransferToSpendingSheet = false
-    @Published var showTransferToSavingsSheet = false
     @Published var showAddTagSheet = false
     @Published var selectedActivityIdForTag: String? = nil
 
-    // Bottom tab bar
-    @Published var showTabBar = true
     @Published var isGeoBlocked: Bool? = nil
 
     @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
@@ -46,7 +42,6 @@ class AppViewModel: ObservableObject {
 
     // Drawer menu
     @Published var showDrawer = false
-    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
 
     // Network status
     enum NetworkStatus: String {
@@ -55,7 +50,7 @@ class AppViewModel: ObservableObject {
         case offline = "offline"
         case unknown = "unknown"
     }
-    
+
     @Published var networkStatus: NetworkStatus = .unknown
     private let networkMonitor = NWPathMonitor()
 

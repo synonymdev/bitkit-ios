@@ -9,19 +9,13 @@ import SwiftUI
 
 struct HomeView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var activity: ActivityListViewModel
 
-    private let sheetHeight = UIScreen.screenHeight - 120
-
-    // If scanned directly from home screen
-    @State private var showSendAmountView = false
-    @State private var showSendConfirmationView = false
-    @State private var showProfile = false
-
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading) {
                 BalanceHeaderView(sats: wallet.totalBalanceSats)
             }
@@ -32,7 +26,7 @@ struct HomeView: View {
             if !app.showHomeViewEmptyState {
                 VStack(spacing: 0) {
                     HStack {
-                        NavigationLink(destination: SavingsWalletView()) {
+                        NavigationLink(value: Route.savingsWallet) {
                             WalletBalanceView(
                                 type: .onchain,
                                 sats: UInt64(wallet.totalOnchainSats)
@@ -42,7 +36,7 @@ struct HomeView: View {
                         Divider()
                             .frame(height: 50)
 
-                        NavigationLink(destination: SpendingWalletView()) {
+                        NavigationLink(value: Route.spendingWallet) {
                             WalletBalanceView(
                                 type: .lightning,
                                 sats: UInt64(wallet.totalLightningSats)
@@ -106,27 +100,12 @@ struct HomeView: View {
             leading: leftNavigationItem,
             trailing: rightNavigationItem
         )
-        .navigationDestination(isPresented: $app.showScanner) {
-            ScannerView(
-                showSendAmountView: $showSendAmountView,
-                showSendConfirmationView: $showSendConfirmationView
-            )
-        }
-        .onChange(of: app.showScanner) { showScanner in
-            app.showTabBar = !showScanner
-        }
         .navigationBarTitleDisplayMode(.inline)
         .accentColor(.white)
         .onAppear {
-            app.showTabBar = true
-
             if Env.isPreview {
                 app.showHomeViewEmptyState = true
             }
-        }
-        .overlay {
-            TabBar()
-                .bottomSafeAreaPadding()
         }
         .gesture(
             DragGesture()
@@ -139,38 +118,6 @@ struct HomeView: View {
                 }
         )
         .sheet(
-            isPresented: $app.showSendOptionsSheet,
-            content: {
-                SendOptionsView()
-                    .presentationDetents([.height(sheetHeight)])
-            }
-        )
-        .sheet(
-            isPresented: $app.showReceiveSheet,
-            content: {
-                ReceiveView()
-                    .presentationDetents([.height(sheetHeight)])
-            }
-        )
-        .sheet(
-            isPresented: $showSendAmountView,
-            content: {
-                NavigationView {
-                    SendAmountView()
-                        .presentationDetents([.height(sheetHeight)])
-                }
-            }
-        )
-        .sheet(
-            isPresented: $showSendConfirmationView,
-            content: {
-                NavigationView {
-                    SendConfirmationView()
-                        .presentationDetents([.height(sheetHeight)])
-                }
-            }
-        )
-        .sheet(
             isPresented: $app.showAddTagSheet,
             content: {
                 if let activityId = app.selectedActivityIdForTag {
@@ -181,16 +128,11 @@ struct HomeView: View {
                 }
             }
         )
-        .onChange(of: app.resetSendStateToggle) { _ in
-            // If this is triggered it means we had a successful send and need to drop the sheet
-            showSendAmountView = false
-            showSendConfirmationView = false
-        }
     }
 
     var leftNavigationItem: some View {
         Button(action: {
-            showProfile = true
+            navigation.navigate(.profile)
         }) {
             HStack(spacing: 8) {
                 Image(systemName: "person.circle.fill")
@@ -201,12 +143,6 @@ struct HomeView: View {
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
-            }
-        }
-        .sheet(isPresented: $showProfile) {
-            NavigationView {
-                Text("Profile View") // Placeholder for profile view
-                    .presentationDetents([.height(sheetHeight)])
             }
         }
     }

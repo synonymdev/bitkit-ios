@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var app = AppViewModel()
+    @StateObject private var navigation = NavigationViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
@@ -42,33 +43,12 @@ struct ContentView: View {
                     // Wallet exists and has been restored from backup. isRestoringWallet is to false inside below component
                     WalletInitResultView(result: .restored)
                 } else {
-                    NavigationStack {
-                        switch app.activeDrawerMenuItem {
-                        case .wallet:
-                            HomeView()
-                        case .activity:
-                            AllActivityView()
-                                .backToWalletButton()
-                        case .settings:
-                            SettingsListView()
-                                .backToWalletButton()
-                        case .appStatus:
-                            AppStatusView()
-                                .backToWalletButton()
-                        default:
-                            Text("Coming Soon")
-                                .backToWalletButton()
-                        }
-                    }
-                    .overlay {
-                        DrawerView()
-                    }  
+                    MainNavView()
                 }
             } else if wallet.walletExists == false {
-                NavigationView {
+                NavigationStack {
                     TermsView()
                 }
-                .navigationViewStyle(.stack)
                 .accentColor(.white)
                 .onAppear {
                     // Reset these values if the wallet is wiped
@@ -160,7 +140,7 @@ struct ContentView: View {
                 app.toast(error)
             }
         }
-        .handleLightningStateOnScenePhaseChange()  // Will stop and start LDK-node in foreground app as needed
+        .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
         .onChange(of: wallet.nodeLifecycleState) { state in
             if state == .initializing {
                 walletIsInitializing = true
@@ -176,6 +156,7 @@ struct ContentView: View {
         }
         // Environment objects always at the end
         .environmentObject(app)
+        .environmentObject(navigation)
         .environmentObject(wallet)
         .environmentObject(currency)
         .environmentObject(blocktank)
@@ -187,30 +168,4 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .preferredColorScheme(.dark)
-}
-
-// MARK: - View Modifiers
-
-struct BackToWalletToolbar: ViewModifier {
-    @EnvironmentObject private var app: AppViewModel
-    
-    func body(content: Content) -> some View {
-        content
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        app.activeDrawerMenuItem = .wallet
-                    }) {
-                        Image(systemName: "xmark")
-                            .foregroundColor(.white)
-                    }
-                }
-            }
-    }
-}
-
-extension View {
-    func backToWalletButton() -> some View {
-        self.modifier(BackToWalletToolbar())
-    }
 }

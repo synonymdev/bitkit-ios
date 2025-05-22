@@ -15,12 +15,30 @@ struct NoAnimationButtonStyle: ButtonStyle {
 
 struct TabBar: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @State private var scaleEffect: CGFloat = 1.0
+
+    var shouldShow: Bool {
+        if navigation.activeDrawerMenuItem == .wallet || navigation.activeDrawerMenuItem == .activity {
+            if navigation.path.isEmpty {
+                return true
+            }
+
+            switch navigation.currentRoute {
+            case .activityList, .savingsWallet, .spendingWallet:
+                return true
+            default:
+                return false
+            }
+        }
+
+        return false
+    }
 
     var body: some View {
         VStack {
             Spacer()
-            if app.showTabBar {
+            if shouldShow {
                 HStack {
                     Spacer()
                     Button(
@@ -66,7 +84,7 @@ struct TabBar: View {
                     Button(
                         action: {
                             Haptics.play(.openSheet)
-                            app.showScanner = true
+                            app.showScannerSheet = true
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                                 scaleEffect = 1.1
                             }
@@ -99,7 +117,8 @@ struct TabBar: View {
                 .transition(.move(edge: .bottom))
             }
         }
-        .animation(.easeInOut, value: app.showTabBar)
+        .animation(.easeInOut, value: shouldShow)
+        .bottomSafeAreaPadding()
     }
 }
 

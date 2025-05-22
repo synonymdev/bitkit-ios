@@ -25,7 +25,7 @@ struct BackupSettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         BackupSettingsView()
     }
     .preferredColorScheme(.dark)

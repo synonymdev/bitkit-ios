@@ -122,7 +122,7 @@ struct OnboardingView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         OnboardingView()
     }
     .preferredColorScheme(.dark)

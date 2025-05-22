@@ -30,14 +30,16 @@ struct ScannerView: View {
                 }
             }
             .edgesIgnoringSafeArea(.all)
-            
+
             // Scanner UI overlay - only the scanning area, not controls
-            ScannerUIOverlay(onClose: {
-                presentationMode.wrappedValue.dismiss()
-            }, onPaste: handlePaste)
+            ScannerUIOverlay(
+                onClose: {
+                    presentationMode.wrappedValue.dismiss()
+                }, onPaste: handlePaste)
         }
-        .navigationBarTitle(NSLocalizedString("other__qr_scan", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)       
+        .sheetBackground()
+        .navigationTitle(localizedString("other__qr_scan"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     func handleScan(_ uri: String) {
@@ -61,7 +63,7 @@ struct ScannerView: View {
             }
         }
     }
-    
+
     func handlePaste() async {
         guard let uri = UIPasteboard.general.string else {
             Logger.error("No data in clipboard")
@@ -71,7 +73,7 @@ struct ScannerView: View {
 
         do {
             try await app.handleScannedData(uri)
-            
+
             presentationMode.wrappedValue.dismiss()
 
             // If nil then it's not an invoice we're dealing with
@@ -91,20 +93,20 @@ struct ScannerView: View {
 struct ScannerUIOverlay: View {
     var onClose: () -> Void
     var onPaste: () async -> Void
-    
+
     var body: some View {
         ZStack {
             // Scanner overlay with blur
             ScannerOverlayView()
                 .edgesIgnoringSafeArea(.all)
-            
+
             // UI Elements
             VStack {
                 Spacer()
-                
+
                 // Paste button
                 CustomButton(
-                    title: NSLocalizedString("other__qr_paste", comment: ""),
+                    title: localizedString("other__qr_paste"),
                     variant: .tertiary,
                     icon: Image("clipboard-white")
                         .resizable()
@@ -124,7 +126,7 @@ struct ScannerUIOverlay: View {
 struct ScannerPreview: View {
     @Environment(\.presentationMode) private var presentationMode
     @EnvironmentObject private var app: AppViewModel
-    
+
     var body: some View {
         ZStack {
             // Background image instead of camera
@@ -132,7 +134,7 @@ struct ScannerPreview: View {
                 .resizable()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .edgesIgnoringSafeArea(.all)
-            
+
             // Scanner UI overlay
             ScannerUIOverlay(
                 onClose: {
@@ -143,7 +145,7 @@ struct ScannerPreview: View {
                 }
             )
         }
-        .navigationBarTitle(NSLocalizedString("other__qr_scan", comment: ""))
+        .navigationBarTitle(localizedString("other__qr_scan"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -154,7 +156,7 @@ struct ScannerOverlayView: UIViewRepresentable {
         let view = TransparentHoleView()
         return view
     }
-    
+
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
@@ -164,63 +166,63 @@ class TransparentHoleView: UIView {
     private let holeLayer = CAShapeLayer()
     private let borderLayer = CAShapeLayer()
     private let darkOverlayView = UIView()
-    
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupLayers()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupLayers()
     }
-    
+
     private func setupLayers() {
         // Add blur view
         blurView.frame = bounds
         blurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         blurView.alpha = 0.9
         addSubview(blurView)
-        
+
         // Add dark overlay
         darkOverlayView.backgroundColor = UIColor.black.withAlphaComponent(0.25)
         darkOverlayView.frame = bounds
         darkOverlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         blurView.contentView.addSubview(darkOverlayView)
-        
+
         // Configure hole layer (will be cut out of blur)
         holeLayer.fillRule = .evenOdd
         blurView.layer.mask = holeLayer
-        
+
         // Configure border layer (just for the border)
         borderLayer.fillColor = UIColor.clear.cgColor
         borderLayer.strokeColor = UIColor.white.withAlphaComponent(0.1).cgColor
         borderLayer.lineWidth = 2
         layer.addSublayer(borderLayer)
     }
-    
+
     override func layoutSubviews() {
         super.layoutSubviews()
         blurView.frame = bounds
-        
+
         // Calculate hole size
         let width = bounds.width
         let height = bounds.height
-        
+
         let holeWidth = min(width - 36, width)
         let holeHeight = height * 0.75 // Make the height 65% of available space
         let holeX = (width - holeWidth) / 2
         let holeY = (height - holeHeight) / 2
-        
+
         // Create path with hole
         let path = UIBezierPath(rect: bounds)
         let holePath = UIBezierPath(roundedRect: CGRect(x: holeX, y: holeY, width: holeWidth, height: holeHeight), cornerRadius: 12)
         path.append(holePath)
         path.usesEvenOddFillRule = true
-        
+
         // Apply path to layers
         holeLayer.path = path.cgPath
-        
+
         // Create border path
         let borderPath = UIBezierPath(roundedRect: CGRect(x: holeX, y: holeY, width: holeWidth, height: holeHeight), cornerRadius: 12)
         borderLayer.path = borderPath.cgPath
@@ -229,7 +231,7 @@ class TransparentHoleView: UIView {
 
 #Preview {
     // Use the preview-friendly version for previews
-    NavigationView {
+    NavigationStack {
         ScannerPreview()
             .environmentObject(AppViewModel())
     }

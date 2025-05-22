@@ -128,7 +128,7 @@ struct SendAmountView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     SendAmountView()
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
