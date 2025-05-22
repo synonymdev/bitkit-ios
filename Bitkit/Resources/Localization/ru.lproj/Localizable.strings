@@ -394,6 +394,7 @@
 "other__transfer_notification__body" = "Откройте Bitkit, чтобы завершить перевод";
 "other__gift__error__button" = "ОК";
 "other__gift__used__button" = "ОК";
+"other__shop__intro__button" = "Начать";
 "security__backup_wallet" = "Резервная Копия Кошелька";
 "security__backup_title" = "<accent>Безопасно храните</accent> свои биткойны";
 "security__backup_funds" = "Теперь, когда у вас есть средства в кошельке, пришло время создать их резервную копию!";
@@ -992,3 +993,19 @@
 "wallet__ldk_sync_error_title" = "Ошибка Синхронизации Lightning";
 "wallet__receive_insufficient_title" = "Недостаточный входящий баланс.";
 "wallet__receive_insufficient_text" = "Недостаточно входящей ликвидности для получения данной суммы через Lightning.";
+"widgets__widgets" = "Виджеты";
+"widgets__onboarding__title" = "Привет,\n<accent>Виджеты</accent>";
+"widgets__onboarding__description" = "Наслаждайтесь децентрализованными лентами ваших любимых веб-сервисов, добавляя интересные и полезные виджеты в ваш кошелёк Bitkit.";
+"widgets__widget__nav_title" = "Виджет";
+"widgets__widget__edit" = "Фид Виджета";
+"widgets__widget__edit_default" = "По умолчанию";
+"widgets__widget__edit_custom" = "Другое";
+"widgets__widget__edit_description" = "Пожалуйста, выберите, какие поля вы хотите отображать в виджете {name}.";
+"widgets__widget__source" = "Источник";
+"widgets__add" = "Добавить Виджет";
+"widgets__delete__title" = "Удалить виджет?";
+"widgets__delete__description" = "Вы уверены, что хотите удалить «{name}» из ваших виджетов?";
+"widgets__price__name" = "Биткоин Цена";
+"widgets__news__name" = "Биткоин Заголовки";
+"widgets__blocks__name" = "Биткоин Блоки";
+"widgets__facts__name" = "Биткоин Факты";

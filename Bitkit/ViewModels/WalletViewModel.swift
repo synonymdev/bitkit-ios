@@ -11,18 +11,20 @@ import SwiftUI
 @MainActor
 class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
-    @Published var isSyncingWallet = false  // Syncing both LN and on chain
-    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0  // Combined onchain and LN
-    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0  // Combined onchain
-    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0  // Combined LN
+    @Published var isSyncingWallet = false // Syncing both LN and on chain
+    @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
+    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
+    @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
+    @AppStorage("showWidgets") var showWidgets: Bool = true
+    @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
 
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
-    @AppStorage("channelCount") var channelCount: Int = 0 //Keeping a cached version of this so we can better aniticipate the receive flow UI
-    
+    @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better aniticipate the receive flow UI
+
     // For bolt11 details and bip21 params
     var invoiceAmountSats: UInt64 = 0
     var invoiceNote: String = ""
@@ -38,7 +40,7 @@ class WalletViewModel: ObservableObject {
 
     private let lightningService: LightningService
     private let coreService: CoreService
-    
+
     @Published var isRestoringWallet = false
 
     init(lightningService: LightningService = .shared, coreService: CoreService = .shared) {
@@ -79,9 +81,9 @@ class WalletViewModel: ObservableObject {
                     self.syncState()
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
-                        handler(event)          
+                        handler(event)
                     }
-                    
+
                     // If payment received or new channel events, refresh BIP21 for instantly usable QR in receive view
                     switch event {
                     case .paymentReceived, .channelReady, .channelClosed:
@@ -153,27 +155,27 @@ class WalletViewModel: ObservableObject {
 
     func waitForNodeToRun(timeoutSeconds: Double = 10.0) async -> Bool {
         guard nodeLifecycleState != .running else { return true }
-        
+
         if nodeLifecycleState != .starting {
             return false
         }
-        
+
         let startTime = Date()
-        
+
         while nodeLifecycleState == .starting {
             try? await Task.sleep(nanoseconds: 500_000_000) // 0.5 second delay
-            
+
             // Check for timeout
             if Date().timeIntervalSince(startTime) > timeoutSeconds {
                 return false
             }
-            
+
             // Break if task cancelled
             if Task.isCancelled {
                 break
             }
         }
-        
+
         return nodeLifecycleState == .running
     }
 
@@ -215,13 +217,13 @@ class WalletViewModel: ObservableObject {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
             fees = try await coreService.blocktank.fees(refresh: false)
         }
-        
+
         guard let fees else {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
-        
+
         let satsPerVbyte = fees.getSatsPerVbyte(for: speed ?? defaultTransactionSpeed)
-        
+
         let txid = try await lightningService.send(address: address, sats: sats, satsPerVbyte: satsPerVbyte)
         Task {
             // Best to auto sync on chain so we have latest state
@@ -267,7 +269,7 @@ class WalletViewModel: ObservableObject {
         balanceDetails = lightningService.balances
         peers = lightningService.peers
         channels = lightningService.channels
-        
+
         if let channels {
             channelCount = channels.count
         }
@@ -298,7 +300,7 @@ class WalletViewModel: ObservableObject {
             // Check if current address has been used
             let addressInfo = try await AddressChecker.getAddressInfo(address: onchainAddress)
             let hasTransactions = addressInfo.chain_stats.tx_count > 0 || addressInfo.mempool_stats.tx_count > 0
-            
+
             if hasTransactions {
                 // Address has been used, generate a new one
                 onchainAddress = try await lightningService.newAddress()
@@ -309,7 +311,7 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
         let note = invoiceNote.isEmpty ? "Bitkit" : invoiceNote
-       
+
         if channels?.count ?? 0 > 0 {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await self.createInvoice(amountSats: amountSats, note: note)
@@ -328,20 +330,20 @@ class WalletViewModel: ObservableObject {
         if !bolt11.isEmpty {
             newBip21 += "?lightning=\(bolt11)"
         }
-        
+
         // Add amount and note if available
         if invoiceAmountSats > 0 {
             let separator = newBip21.contains("?") ? "&" : "?"
             newBip21 += "\(separator)amount=\(Double(invoiceAmountSats) / 100_000_000.0)"
         }
-        
+
         if !invoiceNote.isEmpty {
             let separator = newBip21.contains("?") ? "&" : "?"
             if let encodedNote = invoiceNote.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
                 newBip21 += "\(separator)message=\(encodedNote)"
             }
         }
-        
+
         bip21 = newBip21
     }
 

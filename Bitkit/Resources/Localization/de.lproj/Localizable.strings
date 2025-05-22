@@ -405,6 +405,7 @@
 "other__scan__error__expired" = "Diese Lightning-Rechnung ist abgelaufen.";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Los geht\'s";
 "security__backup_wallet" = "Wallet Backup";
 "security__backup_title" = "<accent>Deine Bitcoin</accent> sicher lagern";
 "security__backup_funds" = "Da du jetzt einige Gelder in deinem Wallet hast, ist es Zeit, dein Geld zu sichern!";
@@ -1031,3 +1032,19 @@
 "wallet__receive_insufficient_text" = "Unzureichende Empfangskapazität, um diesen Betrag über Lightning zu empfangen.";
 "wallet__receive_foreground_title" = "Bitkit im Vordergrund halten";
 "wallet__receive_foreground_msg" = "Zahlungen auf Ihr Guthaben können fehlschlagen, wenn Sie zwischen Apps wechseln.";
+"widgets__widgets" = "Widgets";
+"widgets__onboarding__title" = "Hallo,\n<accent>Widgets</accent>";
+"widgets__onboarding__description" = "Genieße dezentrale Feeds von deinen bevorzugten Webdiensten, indem du deinem Bitkit-Wallet lustige und nützliche Widgets hinzufügst.";
+"widgets__widget__nav_title" = "Widget";
+"widgets__widget__edit" = "Widget Feed";
+"widgets__widget__edit_default" = "Standard";
+"widgets__widget__edit_custom" = "Benutzerdefiniert";
+"widgets__widget__edit_description" = "Bitte wähle die Felder aus, die du im {name} Widget anzeigen möchtest.";
+"widgets__widget__source" = "Quelle";
+"widgets__add" = "Widget hinzufügen";
+"widgets__delete__title" = "Widget löschen?";
+"widgets__delete__description" = "Bist du sicher, dass du \'{name}\' aus deinen Widgets löschen möchtest?";
+"widgets__price__name" = "Bitcoin Preis";
+"widgets__news__name" = "Bitcoin Schlagzeilen";
+"widgets__blocks__name" = "Bitcoin Blöcke";
+"widgets__facts__name" = "Bitcoin Fakten";

@@ -21,7 +21,7 @@ struct HomeView: View {
     @State private var showProfile = false
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading) {
                 BalanceHeaderView(sats: wallet.totalBalanceSats)
             }
@@ -56,6 +56,12 @@ struct HomeView: View {
                     Suggestions()
                         .padding(.top, 32)
 
+                    if wallet.showWidgets {
+                        Widgets()
+                            .padding(.top, 32)
+                            .padding(.horizontal)
+                    }
+
                     CaptionText(localizedString("wallet__activity"))
                         .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -65,8 +71,9 @@ struct HomeView: View {
 
                     ActivityLatest(viewType: .all)
                         .padding(.horizontal)
-                        .padding(.bottom, 100) //So user can scroll up past the tab bar
                 }
+                /// Leave some space for TabBar
+                .padding(.bottom, 130)
             }
         }
         .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)

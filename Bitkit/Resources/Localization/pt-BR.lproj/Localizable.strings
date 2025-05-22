@@ -344,6 +344,7 @@
 "other__try_again" = "Por favor, tente novamente.";
 "other__gift__error__button" = "OK";
 "other__gift__used__button" = "OK";
+"other__shop__intro__button" = "Começar";
 "security__backup_wallet" = "Backup da Carteira";
 "security__backup_title" = "<accent>Armazene</accent> seu Bitcoin com segurança";
 "security__backup_funds" = "Agora que o você tem fundos na sua carteira, é hora de fazer o backup do seu dinheiro!";
@@ -917,3 +918,19 @@
 "wallet__ldk_sync_error_title" = "Erro de Sincronização Lightning";
 "wallet__receive_insufficient_title" = "Limite de recebimento insuficiente.";
 "wallet__receive_insufficient_text" = "Limite de recebimento insuficiente para esse valor.";
+"widgets__widgets" = "Widgets";
+"widgets__onboarding__title" = "Olá,\n<accent>Widgets</accent>";
+"widgets__onboarding__description" = "Aproveite os feeds descentralizados de seus serviços da web favoritos, adicionando widgets divertidos e úteis à sua carteira Bitkit.";
+"widgets__widget__nav_title" = "Widget";
+"widgets__widget__edit" = "Widget Feed";
+"widgets__widget__edit_default" = "Padrão";
+"widgets__widget__edit_custom" = "Personalizada";
+"widgets__widget__edit_description" = "Por favor, selecione quais campos você deseja exibir no widget {name}.";
+"widgets__widget__source" = "Fonte";
+"widgets__add" = "Adicionar Widget";
+"widgets__delete__title" = "Excluir o Widget?";
+"widgets__delete__description" = "Tem certeza de que deseja excluir \'{name}\' dos seus widgets?";
+"widgets__price__name" = "Preço do Bitcoin";
+"widgets__news__name" = "Manchetes sobre Bitcoin";
+"widgets__blocks__name" = "Blocos do Bitcoin";
+"widgets__facts__name" = "Fatos sobre o Bitcoin";
