@@ -22,7 +22,7 @@ struct GeneralSettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         GeneralSettingsView()
             .environmentObject(WalletViewModel())
     }

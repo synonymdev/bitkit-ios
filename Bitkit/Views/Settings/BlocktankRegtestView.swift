@@ -211,7 +211,7 @@ struct BlocktankRegtestView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         BlocktankRegtestView()
             .environmentObject(AppViewModel())
             .environmentObject(WalletViewModel())

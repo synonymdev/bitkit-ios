@@ -70,16 +70,7 @@ struct FundingOptionsView: View {
         .padding()
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
         .task {
             await app.checkGeoStatus()
         }
@@ -87,7 +78,7 @@ struct FundingOptionsView: View {
 }
 
 #Preview("Default - No Balance") {
-    NavigationView {
+    NavigationStack {
         FundingOptionsView()
             .environmentObject(
                 {
@@ -102,7 +93,7 @@ struct FundingOptionsView: View {
 }
 
 #Preview("Geoblocked") {
-    NavigationView {
+    NavigationStack {
         FundingOptionsView()
             .environmentObject(
                 {
@@ -123,7 +114,7 @@ struct FundingOptionsView: View {
 }
 
 #Preview("Has Balance and not geoblocked") {
-    NavigationView {
+    NavigationStack {
         FundingOptionsView()
             .environmentObject(
                 {

@@ -137,7 +137,7 @@ struct CreateCjitView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     CreateCjitView { _ in }
                         .environmentObject(WalletViewModel())
                         .environmentObject(AppViewModel())

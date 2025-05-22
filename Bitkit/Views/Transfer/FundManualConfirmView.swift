@@ -104,16 +104,7 @@ struct FundManualConfirmView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__connections", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
         .background(Color.black)
         .task {
             // Load fees first with cached data, then refresh
@@ -124,7 +115,7 @@ struct FundManualConfirmView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         FundManualConfirmView(
             lnPeer: LnPeer(nodeId: "test", host: "test.com", port: 9735),
             satsAmount: 50000

@@ -65,10 +65,8 @@ struct CreateWalletWithPassphraseView: View {
 }
 
 #Preview {
-    NavigationView {
-        CreateWalletWithPassphraseView()
-            .environmentObject(WalletViewModel())
-            .environmentObject(AppViewModel())
-            .preferredColorScheme(.dark)
-    }
+    CreateWalletWithPassphraseView()
+        .environmentObject(WalletViewModel())
+        .environmentObject(AppViewModel())
+        .preferredColorScheme(.dark)
 }

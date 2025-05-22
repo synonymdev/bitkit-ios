@@ -130,7 +130,7 @@ struct StatusItemView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AppStatusView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

@@ -180,7 +180,7 @@ struct SendConfirmationView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     SendConfirmationView()
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())

@@ -173,7 +173,7 @@ struct ActivityRow: View {
                     } else {
                         CaptionBText(formattedTime)
                     }
-                case .onchain(let activity):
+                case .onchain(_):
                     CaptionBText(formattedTime)
                 }
             }

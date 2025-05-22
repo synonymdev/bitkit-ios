@@ -138,16 +138,7 @@ struct SpendingConfirmationView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
         .background(Color.black)
     }
 }
@@ -166,7 +157,7 @@ private struct SpendingDetailRow: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SpendingConfirmationView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

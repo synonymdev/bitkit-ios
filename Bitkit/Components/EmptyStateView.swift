@@ -57,6 +57,9 @@ struct EmptyStateView: View {
                         onClose()
                     }) {
                         Image("x-mark")
+                            .renderingMode(.original)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
                             .frame(width: 16, height: 16, alignment: .topTrailing)
                     }
                     .frame(maxWidth: .infinity, alignment: .topTrailing)

@@ -54,7 +54,7 @@ struct SendOptionsView: View {
     @State private var showSendConfirmationView = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             sendOptionsContent
         }
     }
@@ -156,7 +156,7 @@ struct SendOptionsView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     SendOptionsView()
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())

@@ -15,6 +15,8 @@ enum SavingsProgressState {
 
 struct SavingsProgressContentView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+
     let progressState: SavingsProgressState
 
     @State private var outerRotation: Double = 0
@@ -108,7 +110,7 @@ struct SavingsProgressContentView: View {
                         title: NSLocalizedString("common__ok", comment: ""),
                         size: .large
                     ) {
-                        app.showTransferToSavingsSheet = false
+                        navigation.reset()
                     }
                 }
             }
@@ -123,16 +125,7 @@ struct SavingsProgressContentView: View {
                 comment: ""
             )
         )
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSavingsSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
     }
 }
 
@@ -180,7 +173,7 @@ struct SavingsProgressView: View {
 }
 
 #Preview("In Progress") {
-    NavigationView {
+    NavigationStack {
         SavingsProgressContentView(progressState: .inProgress)
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())
@@ -189,7 +182,7 @@ struct SavingsProgressView: View {
 }
 
 #Preview("Success") {
-    NavigationView {
+    NavigationStack {
         SavingsProgressContentView(progressState: .success)
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())
@@ -198,7 +191,7 @@ struct SavingsProgressView: View {
 }
 
 #Preview("Failed") {
-    NavigationView {
+    NavigationStack {
         SavingsProgressContentView(progressState: .failed)
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())
