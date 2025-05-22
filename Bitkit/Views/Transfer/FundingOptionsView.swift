@@ -57,7 +57,7 @@ struct FundingOptionsView: View {
                 }
                 .disabled(app.isGeoBlocked == true)
 
-                NavigationLink(destination: FundCustomView()) {
+                NavigationLink(destination: FundAdvancedOptions()) {
                     RectangleButton(
                         icon: Image("external-purple"),
                         title: NSLocalizedString("lightning__funding__button3", comment: "")

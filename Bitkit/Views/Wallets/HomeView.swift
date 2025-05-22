@@ -19,7 +19,6 @@ struct HomeView: View {
     @State private var showSendAmountView = false
     @State private var showSendConfirmationView = false
     @State private var showProfile = false
-    @State private var navigationPath = NavigationPath()
 
     var body: some View {
         ScrollView {

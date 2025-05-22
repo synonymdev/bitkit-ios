@@ -10,9 +10,10 @@ struct SpendingIntroView: View {
                 accentColor: .purpleAccent
             )
 
-            NavigationLink(destination: FundTransferView()) {
-                CustomButton(title: NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-            }
+            CustomButton(
+                title: NSLocalizedString("lightning__transfer__nav_title", comment: ""),
+                destination: FundTransferView()
+            )
         }
         .padding()
     }

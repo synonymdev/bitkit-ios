@@ -115,7 +115,7 @@ enum Env {
         case .regtest:
             return [
                 // Staging Blocktank node
-                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", address: "34.65.86.104:9400")
+                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400)
             ]
         case .bitcoin:
             return []
