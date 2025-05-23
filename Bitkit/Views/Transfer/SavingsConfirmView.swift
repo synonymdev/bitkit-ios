@@ -125,21 +125,12 @@ struct SavingsConfirmView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSavingsSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SavingsConfirmView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

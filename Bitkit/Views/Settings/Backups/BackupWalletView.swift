@@ -107,7 +107,7 @@ struct BackupWalletView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         BackupWalletView()
     }
     .environmentObject(AppViewModel())

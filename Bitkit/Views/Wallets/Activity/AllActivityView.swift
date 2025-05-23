@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct AllActivityView: View {
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject private var activity: ActivityListViewModel
     @State private var selectedTab = ActivityTab.all
     @State private var isHorizontalSwipe = false
@@ -50,7 +51,7 @@ struct AllActivityView: View {
                 if let items = activity.filteredActivities {
                     LazyVStack {
                         ForEach(items, id: \.self) { item in
-                            NavigationLink(destination: ActivityItemView(item: item)) {
+                            NavigationLink(value: Route.activityDetail(item)) {
                                 ActivityRow(item: item)
 
                                 if item != items.last {
@@ -119,7 +120,7 @@ struct AllActivityView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         AllActivityView()
             .environmentObject(ActivityListViewModel())
             .preferredColorScheme(.dark)

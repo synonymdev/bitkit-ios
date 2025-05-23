@@ -11,7 +11,7 @@ struct FundReceiveView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         FundReceiveView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

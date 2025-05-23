@@ -12,7 +12,7 @@ struct ProgressSteps: View {
                     // Dashed line background
                     Path { path in
                         let y = geometry.size.height / 2
-                        let padding = 36.0 * 2.5  // Account for circle radius (16) + horizontal padding (20)
+                        let padding = 36.0 * 2.5 // Account for circle radius (16) + horizontal padding (20)
                         path.move(to: CGPoint(x: padding, y: y))
                         path.addLine(to: CGPoint(x: geometry.size.width - padding, y: y))
                     }
@@ -69,6 +69,7 @@ struct ProgressSteps: View {
 
 struct SettingUpView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
 
     @State private var isRocking = false
@@ -78,15 +79,15 @@ struct SettingUpView: View {
     // Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random", comment: "")
 
-    var isTransfering: Bool {
+    var isTransferring: Bool {
         return transfer.lightningSetupStep < 3
     }
 
     let steps = [
-        NSLocalizedString("lightning__setting_up_step1", comment: ""),  // Processing Payment
-        NSLocalizedString("lightning__setting_up_step2", comment: ""),  // Payment Successful
-        NSLocalizedString("lightning__setting_up_step3", comment: ""),  // Queued For Opening
-        NSLocalizedString("lightning__setting_up_step4", comment: ""),  // Opening Connection
+        NSLocalizedString("lightning__setting_up_step1", comment: ""), // Processing Payment
+        NSLocalizedString("lightning__setting_up_step2", comment: ""), // Payment Successful
+        NSLocalizedString("lightning__setting_up_step3", comment: ""), // Queued For Opening
+        NSLocalizedString("lightning__setting_up_step4", comment: ""), // Opening Connection
     ]
 
     var body: some View {
@@ -94,18 +95,18 @@ struct SettingUpView: View {
             VStack(alignment: .leading, spacing: 16) {
                 DisplayText(
                     NSLocalizedString(
-                        isTransfering ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""),
+                        isTransferring ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""),
                     accentColor: .purpleAccent
                 )
                 .padding(.top, 16)
 
                 BodyMText(
-                    NSLocalizedString(isTransfering ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""),
+                    NSLocalizedString(isTransferring ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""),
                     textColor: .textSecondary, accentColor: .white)
 
                 Spacer()
 
-                if isTransfering {
+                if isTransferring {
                     ZStack(alignment: .center) {
                         // Outer ellipse
                         Image("ellipse-outer-purple")
@@ -155,34 +156,25 @@ struct SettingUpView: View {
 
                 Spacer()
 
-                if isTransfering {
+                if isTransferring {
                     ProgressSteps(steps: steps, currentStep: transfer.lightningSetupStep)
                     Spacer()
                 }
 
                 CustomButton(
-                    title: isTransfering ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
+                    title: isTransferring ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
                     size: .large
                 ) {
-                    app.showTransferToSpendingSheet = false
+                    navigation.reset()
                 }
             }
             .padding(.horizontal, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .navigationTitle(NSLocalizedString(isTransferring ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
+        .backToWalletButton()
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString(isTransfering ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
         .onAppear {
             Logger.debug("View appeared - TransferViewModel is handling order updates")
 
@@ -205,7 +197,7 @@ struct SettingUpView: View {
 }
 
 #Preview("Created") {
-    NavigationView {
+    NavigationStack {
         SettingUpView()
             .environmentObject(AppViewModel())
             .environmentObject(
@@ -220,7 +212,7 @@ struct SettingUpView: View {
 }
 
 #Preview("Paid") {
-    NavigationView {
+    NavigationStack {
         SettingUpView()
             .environmentObject(AppViewModel())
             .environmentObject(
@@ -235,7 +227,7 @@ struct SettingUpView: View {
 }
 
 #Preview("Executed") {
-    NavigationView {
+    NavigationStack {
         SettingUpView()
             .environmentObject(AppViewModel())
             .environmentObject(
@@ -250,7 +242,7 @@ struct SettingUpView: View {
 }
 
 #Preview("Opened") {
-    NavigationView {
+    NavigationStack {
         SettingUpView()
             .environmentObject(AppViewModel())
             .environmentObject(

@@ -11,6 +11,7 @@ struct SettingsListView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
 
     @State private var showNodeState = false
 
@@ -125,6 +126,11 @@ struct SettingsListView: View {
                                 return
                             }
                             do {
+                                // TODO: reset all of app state
+                                navigation.reset()
+                                app.hasSeenTransferToSavingsIntro = false
+                                app.hasSeenTransferToSpendingIntro = false
+
                                 if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
                                     || wallet.nodeLifecycleState == .stopping
                                 {
@@ -153,7 +159,7 @@ struct SettingsListView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showNodeState) {
-            NavigationView {
+            NavigationStack {
                 NodeStateView()
             }
         }

@@ -45,7 +45,7 @@ struct CjitLearnMoreView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     CjitLearnMoreView(entry: IcJitEntry.mock(), receiveAmountSats: 100_000)
                         .environmentObject(CurrencyViewModel())
                 }

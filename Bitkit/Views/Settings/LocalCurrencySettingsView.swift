@@ -64,7 +64,7 @@ struct LocalCurrencySettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         LocalCurrencySettingsView()
     }
     .environmentObject(CurrencyViewModel())

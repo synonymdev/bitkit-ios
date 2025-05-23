@@ -11,8 +11,7 @@ struct SavingsWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
-
-    @State private var hasSeenTransferIntro = true
+    @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
         VStack {
@@ -72,22 +71,6 @@ struct SavingsWalletView: View {
                 }
             }
         }
-        .task {
-            // Set just once so when app.hasSeenTransferToSpendingIntro is set, it doesn't change this view until reloaded
-            hasSeenTransferIntro = app.hasSeenTransferToSpendingIntro
-        }
-        .onAppear {
-            app.showTabBar = true
-        }
-        .fullScreenCover(isPresented: $app.showTransferToSpendingSheet) {
-            NavigationView {
-                if hasSeenTransferIntro {
-                    FundingOptionsView()
-                } else {
-                    TransferIntroView()
-                }
-            }
-        }
     }
 
     var transferButton: some View {
@@ -95,16 +78,20 @@ struct SavingsWalletView: View {
             title: "Transfer To Spending", //TODO: add missing translation //lightning__spending_confirm__label
             variant: .secondary,
             icon: Image(systemName: "arrow.up.arrow.down")
-                .foregroundColor(.white80)
+                .foregroundColor(.white80),
         ) {
-            app.showTransferToSpendingSheet = true
+            if app.hasSeenTransferToSpendingIntro {
+                navigation.navigate(.fundingOptions)
+            } else {
+                navigation.navigate(.transferIntro)
+            }
         }
         .padding()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SavingsWalletView()
     }
     .environmentObject(WalletViewModel())

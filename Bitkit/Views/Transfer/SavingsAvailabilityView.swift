@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SavingsAvailabilityView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +39,7 @@ struct SavingsAvailabilityView: View {
                         variant: .secondary,
                         size: .large
                     ) {
-                        app.showTransferToSavingsSheet = false
+                        navigation.reset()
                     }
 
                     NavigationLink(destination: SavingsConfirmView()) {
@@ -55,21 +56,12 @@ struct SavingsAvailabilityView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSavingsSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SavingsAvailabilityView()
             .environmentObject(AppViewModel())
     }

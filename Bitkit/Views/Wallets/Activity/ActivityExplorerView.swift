@@ -142,6 +142,7 @@ struct ActivityExplorerView: View {
         }
         .navigationTitle(localizedString("wallet__activity_bitcoin_received"))
         .navigationBarTitleDisplayMode(.inline)
+        .backToWalletButton()
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

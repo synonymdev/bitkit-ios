@@ -41,8 +41,11 @@ struct SuggestionCard: View {
             )
 
             Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16))
+                Image("x-mark")
+                    .renderingMode(.original)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 16, height: 16)
                     .foregroundColor(.white64)
                     .padding(8)
             }

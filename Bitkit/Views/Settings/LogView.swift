@@ -206,7 +206,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         LogView()
     }
     .preferredColorScheme(.dark)

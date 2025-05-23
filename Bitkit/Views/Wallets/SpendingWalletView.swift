@@ -11,8 +11,7 @@ struct SpendingWalletView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
-
-    @State private var hasSeenTransferIntro = true
+    @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
         VStack {
@@ -73,22 +72,6 @@ struct SpendingWalletView: View {
                 }
             }
         }
-        .task {
-            // Set just once so when app.hasSeenTransferToSavingsIntro is set, it doesn't change this view until reloaded
-            hasSeenTransferIntro = app.hasSeenTransferToSavingsIntro
-        }
-        .onAppear {
-            app.showTabBar = true
-        }
-        .fullScreenCover(isPresented: $app.showTransferToSavingsSheet) {
-            NavigationView {
-                if hasSeenTransferIntro {
-                    SavingsAvailabilityView()
-                } else {
-                    SavingsIntroView()
-                }
-            }
-        }
     }
 
     var transferButton: some View {
@@ -98,14 +81,18 @@ struct SpendingWalletView: View {
             icon: Image(systemName: "arrow.up.arrow.down")
                 .foregroundColor(.white80)
         ) {
-            app.showTransferToSavingsSheet = true
+            if app.hasSeenTransferToSavingsIntro {
+                navigation.navigate(.savingsAvailability)
+            } else {
+                navigation.navigate(.savingsIntro)
+            }
         }
         .padding()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SpendingWalletView()
     }
     .environmentObject(WalletViewModel())

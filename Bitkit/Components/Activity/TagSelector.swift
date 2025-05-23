@@ -5,7 +5,7 @@ struct TagSelector: View {
     @ObservedObject var viewModel: ActivityListViewModel
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
                 if viewModel.availableTags.isEmpty {
                     Text("No tags found")
