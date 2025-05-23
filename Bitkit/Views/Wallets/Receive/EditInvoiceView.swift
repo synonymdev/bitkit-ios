@@ -130,7 +130,7 @@ struct EditInvoiceView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         EditInvoiceView()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

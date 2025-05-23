@@ -43,15 +43,8 @@ struct IntroView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         IntroView()
     }
     .preferredColorScheme(.dark)
-}
-
-#Preview {
-    NavigationView {
-        IntroView()
-    }
-    .preferredColorScheme(.light)
 }

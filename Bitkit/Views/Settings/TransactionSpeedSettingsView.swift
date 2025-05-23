@@ -84,7 +84,7 @@ struct TransactionSpeedSettingsView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         TransactionSpeedSettingsView()
             .environmentObject(WalletViewModel())
     }

@@ -51,16 +51,7 @@ struct SavingsAdvancedView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSavingsSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
         .task {
             if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {
                 transfer.selectedChannelIds = channels.map { $0.channelId }
@@ -121,7 +112,7 @@ struct SavingsAdvancedView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         SavingsAdvancedView()
             .environmentObject(AppViewModel())
             .environmentObject(TransferViewModel())

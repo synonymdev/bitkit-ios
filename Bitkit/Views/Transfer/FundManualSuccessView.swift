@@ -2,7 +2,8 @@ import SwiftUI
 
 struct FundManualSuccessView: View {
     @EnvironmentObject var app: AppViewModel
-    
+    @EnvironmentObject var navigation: NavigationViewModel
+
     // Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random", comment: "")
 
@@ -34,7 +35,7 @@ struct FundManualSuccessView: View {
                     title: randomOkText,
                     size: .large
                 ) {
-                    app.showTransferToSpendingSheet = false
+                    navigation.reset()
                 }
             }
             .padding(.horizontal, 16)
@@ -43,23 +44,14 @@ struct FundManualSuccessView: View {
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
         .navigationTitle(NSLocalizedString("lightning__transfer_success__nav_title", comment: ""))
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         FundManualSuccessView()
             .environmentObject(AppViewModel())
     }
     .preferredColorScheme(.dark)
-} 
+}

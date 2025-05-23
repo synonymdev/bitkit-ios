@@ -10,9 +10,9 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case shop
     case settings
     case appStatus
-    
+
     var id: Int { rawValue }
-    
+
     var icon: String {
         switch self {
         case .wallet: return "coins"
@@ -25,7 +25,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         case .appStatus: return "status-circle"
         }
     }
-    
+
     var label: String {
         switch self {
         case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
@@ -38,7 +38,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         case .appStatus: return NSLocalizedString("settings__status__title", comment: "")
         }
     }
-    
+
     var isMainMenuItem: Bool {
         switch self {
         case .appStatus, .shop:
@@ -51,12 +51,13 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 
 struct DrawerView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var currentDragOffset: CGFloat = 0
     @State private var showBackdrop = false
     @State private var showMenu = false
-    
+
     private func closeMenu() {
         withAnimation(.easeOut(duration: 0.25)) {
             showBackdrop = false
@@ -67,7 +68,7 @@ struct DrawerView: View {
             app.showDrawer = false
         }
     }
-    
+
     @ViewBuilder
     private var backdrop: some View {
         Color.black.opacity(0.6)
@@ -89,7 +90,7 @@ struct DrawerView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(DrawerMenuItem.allCases.filter { $0.isMainMenuItem }) { item in
                             Button(action: {
-                                app.activeDrawerMenuItem = item
+                                navigation.activeDrawerMenuItem = item
                                 closeMenu()
                             }) {
                                 menuItemContent(item: item)
@@ -169,7 +170,7 @@ struct DrawerView: View {
     @ViewBuilder
     private func appStatus() -> some View {
         Button(action: {
-            app.activeDrawerMenuItem = .appStatus
+            navigation.activeDrawerMenuItem = .appStatus
             closeMenu()
         }) {
             HStack(spacing: 8) {

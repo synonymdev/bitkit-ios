@@ -9,6 +9,8 @@ import SwiftUI
 
 struct ActivityLatest: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+
     let viewType: LatestActivityViewType
 
     enum LatestActivityViewType {
@@ -35,7 +37,7 @@ struct ActivityLatest: View {
         if let items {
             LazyVStack {
                 ForEach(items, id: \.self) { item in
-                    NavigationLink(destination: ActivityItemView(item: item)) {
+                    NavigationLink(value: Route.activityDetail(item)) {
                         ActivityRow(item: item)
                     }
 
@@ -54,7 +56,9 @@ struct ActivityLatest: View {
                             EmptyActivityRow()
                         })
                 } else {
-                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary, destination: AllActivityView())
+                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                        navigation.navigate(.activityList)
+                    }
                 }
             }
         } else {

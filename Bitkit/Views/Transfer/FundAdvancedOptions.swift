@@ -9,36 +9,9 @@ import SwiftUI
 
 struct FundAdvancedOptions: View {
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         VStack {
-            // Header
-            HStack {
-                Button(action: {
-                    dismiss()
-                }) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(.white)
-                }
-                
-                Spacer()
-                
-                Text("Spending Balance")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-                
-                Spacer()
-                
-                Button(action: {
-                    dismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-            .padding(.horizontal)
-            .padding(.top, 8)
-            
             ScrollView {
                 VStack(spacing: 24) {
                     // Title
@@ -47,11 +20,11 @@ struct FundAdvancedOptions: View {
                         accentColor: .purpleAccent
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     // Description
                     BodyMText(NSLocalizedString("lightning__funding_advanced__text", comment: ""))
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    
+
                     // Options
                     VStack(spacing: 8) {
                         NavigationLink(destination: ScannerView(showSendAmountView: .constant(false), showSendConfirmationView: .constant(false))) {
@@ -64,7 +37,7 @@ struct FundAdvancedOptions: View {
                                 title: NSLocalizedString("lightning__funding_advanced__button1", comment: "")
                             )
                         }
-                        
+
                         NavigationLink(destination: FundManualSetupView()) {
                             RectangleButton(
                                 icon: Image("pencil")
@@ -81,15 +54,16 @@ struct FundAdvancedOptions: View {
                 .padding()
             }
         }
-        .navigationBarHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(localizedString("lightning__funding_advanced__nav_title"))
+        .backToWalletButton()
         .background(Color.black)
     }
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         FundAdvancedOptions()
             .preferredColorScheme(.dark)
     }
 }
-

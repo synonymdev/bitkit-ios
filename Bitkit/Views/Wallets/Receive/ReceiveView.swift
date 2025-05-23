@@ -187,7 +187,7 @@ struct ReceiveView: View {
     @State private var showCreateCjit = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ReceiveViewContent(
                 bip21: wallet.bip21,
                 onchainAddress: wallet.onchainAddress,
@@ -265,7 +265,7 @@ struct ReceiveView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     ReceiveViewContent(
                         bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
                         onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
@@ -290,7 +290,7 @@ struct ReceiveView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     ReceiveViewContent(
                         bip21:
                             "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
@@ -317,7 +317,7 @@ struct ReceiveView: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NavigationView {
+                NavigationStack {
                     ReceiveViewContent(
                         bip21: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
                         onchainAddress: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",

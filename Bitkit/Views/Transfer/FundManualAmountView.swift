@@ -62,16 +62,7 @@ struct FundManualAmountView: View {
         .background(Color.black)
         .navigationTitle(NSLocalizedString("lightning__connections", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button(action: {
-                    app.showTransferToSpendingSheet = false
-                }) {
-                    Image(systemName: "xmark")
-                        .foregroundColor(.white)
-                }
-            }
-        }
+        .backToWalletButton()
         .task {
             primaryDisplay = currency.primaryDisplay
         }
@@ -100,7 +91,7 @@ struct FundManualAmountView: View {
 }
 
 #Preview {
-    NavigationView {
+    NavigationStack {
         FundManualAmountView(lnPeer: LnPeer(nodeId: "test", host: "test.com", port: 9735))
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())

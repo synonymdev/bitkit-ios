@@ -11,6 +11,7 @@ import SwiftUI
 struct ActivityItemView: View {
     let item: Activity
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
@@ -106,6 +107,7 @@ struct ActivityItemView: View {
             Spacer()
         }
         .navigationTitle(navigationTitle)
+        .backToWalletButton()
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .onChange(of: app.showAddTagSheet) { isShowing in
@@ -348,9 +350,10 @@ struct ActivityItemView: View {
                     title: localizedString("wallet__activity_explore"), size: .small,
                     icon: Image("branch")
                         .foregroundColor(accentColor),
-                    shouldExpand: true,
-                    destination: ActivityExplorerView(item: item)
-                )
+                    shouldExpand: true
+                ) {
+                    navigation.navigate(.activityExplorer(item))
+                }
             }
             .frame(maxWidth: .infinity)
         }
