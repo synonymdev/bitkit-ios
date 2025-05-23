@@ -15,6 +15,7 @@ struct ContentView: View {
     @StateObject private var blocktank = BlocktankViewModel()
     @StateObject private var activity = ActivityListViewModel()
     @StateObject private var transfer = TransferViewModel()
+    @StateObject private var widgets = WidgetsViewModel()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -162,6 +163,7 @@ struct ContentView: View {
         .environmentObject(blocktank)
         .environmentObject(activity)
         .environmentObject(transfer)
+        .environmentObject(widgets)
     }
 }
 

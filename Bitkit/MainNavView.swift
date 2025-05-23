@@ -4,7 +4,8 @@ struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
 
-    private let sheetHeight = UIScreen.screenHeight - 120
+    // TODO: should be screen height - header height
+    private let sheetHeight = UIScreen.screenHeight - 150
 
     // If scanned directly from home screen
     // TODO: These should be part of the SendSheetView
@@ -26,6 +27,12 @@ struct MainNavView: View {
                 case .settings:
                     SettingsListView()
                         .backToWalletButton()
+                case .widgets:
+                    if app.hasSeenWidgetsIntro {
+                        WidgetsListView()
+                    } else {
+                        WidgetsIntroView()
+                    }
                 case .appStatus:
                     AppStatusView()
                         .backToWalletButton()
@@ -56,6 +63,12 @@ struct MainNavView: View {
                     SavingsAvailabilityView()
                 case .profile:
                     ProfileView()
+                case .widgetsIntro:
+                    WidgetsIntroView()
+                case .widgetsList:
+                    WidgetsListView()
+                case .widgetDetail(let widgetType):
+                    WidgetDetailView(id: widgetType)
                 case .settings:
                     SettingsListView()
                 }

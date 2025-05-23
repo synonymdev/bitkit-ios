@@ -14,6 +14,9 @@ struct NewsWidget: View {
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
+    
+    /// Callback to signal when editing should end
+    var onEditingEnd: (() -> Void)?
 
     /// View model for handling news data
     @StateObject private var viewModel = NewsViewModel.shared
@@ -25,9 +28,11 @@ struct NewsWidget: View {
     init(
         options: NewsWidgetOptions = NewsWidgetOptions(),
         isEditing: Bool = false,
+        onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
         self.isEditing = isEditing
+        self.onEditingEnd = onEditingEnd
     }
 
     /// Initialize with a custom view model (for previews)
@@ -35,18 +40,21 @@ struct NewsWidget: View {
         viewModel: NewsViewModel,
         options: NewsWidgetOptions = NewsWidgetOptions(),
         isEditing: Bool = false,
+        onEditingEnd: (() -> Void)? = nil,
         skipLoading: Bool = true
     ) {
         self.options = options
         self.isEditing = isEditing
+        self.onEditingEnd = onEditingEnd
         self._viewModel = StateObject(wrappedValue: viewModel)
         self._skipLoading = State(initialValue: skipLoading)
     }
 
     var body: some View {
         BaseWidget(
-            id: "news",
-            isEditing: isEditing
+            type: .news,
+            isEditing: isEditing,
+            onEditingEnd: onEditingEnd
         ) {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
@@ -103,7 +111,6 @@ struct NewsWidget: View {
         .padding()
         .background(Color.black)
         .environmentObject(WalletViewModel())
-        .environmentObject(WidgetStore())
         .preferredColorScheme(.dark)
 }
 
@@ -114,7 +121,6 @@ struct NewsWidget: View {
     .padding()
     .background(Color.black)
     .environmentObject(WalletViewModel())
-    .environmentObject(WidgetStore())
     .preferredColorScheme(.dark)
 }
 
@@ -132,7 +138,6 @@ struct NewsWidget: View {
     .padding()
     .background(Color.black)
     .environmentObject(WalletViewModel())
-    .environmentObject(WidgetStore())
     .preferredColorScheme(.dark)
 }
 
@@ -150,7 +155,6 @@ struct NewsWidget: View {
     .padding()
     .background(Color.black)
     .environmentObject(WalletViewModel())
-    .environmentObject(WidgetStore())
     .preferredColorScheme(.dark)
 }
 
@@ -161,6 +165,5 @@ struct NewsWidget: View {
     .padding()
     .background(Color.black)
     .environmentObject(WalletViewModel())
-    .environmentObject(WidgetStore())
     .preferredColorScheme(.dark)
 }

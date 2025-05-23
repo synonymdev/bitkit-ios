@@ -7,6 +7,9 @@ enum Route: Hashable {
     case activityDetail(Activity)
     case activityExplorer(Activity)
     case profile
+    case widgetsIntro
+    case widgetsList
+    case widgetDetail(WidgetType)
     case settings
     case transferIntro
     case fundingOptions
