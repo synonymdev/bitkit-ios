@@ -37,8 +37,6 @@ class AppViewModel: ObservableObject {
 
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
-    @AppStorage("showSavingsViewEmptyState") var showSavingsViewEmptyState: Bool = false
-    @AppStorage("showSpendingViewEmptyState") var showSpendingViewEmptyState: Bool = false
 
     // Drawer menu
     @Published var showDrawer = false
@@ -56,8 +54,6 @@ class AppViewModel: ObservableObject {
 
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
-        showSavingsViewEmptyState = show
-        showSpendingViewEmptyState = show
     }
 
     @Published var currentToast: Toast?

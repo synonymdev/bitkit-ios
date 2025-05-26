@@ -20,8 +20,9 @@ class ActivityListViewModel: ObservableObject {
 
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
-    @Published var latestLightningActivities: [Activity]? = nil
-    @Published var latestOnchainActivities: [Activity]? = nil
+    
+    // Grouped activities for display
+    @Published var groupedActivities: [ActivityGroupItem] = []
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -81,11 +82,9 @@ class ActivityListViewModel: ObservableObject {
 
     func syncState() async {
         do {
-            // Get latest activities first as that's displayed on the initial views
+            // Get latest activities first as that's displayed on the home view
             let limitLatest: UInt32 = 3
             latestActivities = try await coreService.activity.get(filter: .all, limit: limitLatest)
-            latestLightningActivities = try await coreService.activity.get(filter: .lightning, limit: limitLatest)
-            latestOnchainActivities = try await coreService.activity.get(filter: .onchain, limit: limitLatest)
 
             // Fetch all activities
             await updateFilteredActivities()
@@ -128,6 +127,9 @@ class ActivityListViewModel: ObservableObject {
                 minDate: minDate,
                 maxDate: maxDate
             )
+            
+            // Update grouped activities
+            updateGroupedActivities()
         } catch {
             Logger.error(error, context: "Failed to filter activities")
         }
@@ -167,5 +169,151 @@ class ActivityListViewModel: ObservableObject {
 
     func getActivities(withTag tag: String) async throws -> [Activity] {
         try await coreService.activity.get(tags: [tag])
+    }
+}
+
+// MARK: - Activity Grouping
+
+enum ActivityGroupItem: Hashable {
+    case header(String)
+    case activity(Activity)
+}
+
+extension ActivityListViewModel {
+    func groupActivities(_ activities: [Activity]) -> [ActivityGroupItem] {
+        let calendar = Calendar.current
+        let now = Date()
+        
+        // Calculate date boundaries
+        let beginningOfDay = calendar.startOfDay(for: now)
+        let beginningOfYesterday = calendar.date(byAdding: .day, value: -1, to: beginningOfDay)!
+        let beginningOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
+        let beginningOfMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        let beginningOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
+        
+        // Group activities
+        var today: [Activity] = []
+        var yesterday: [Activity] = []
+        var thisWeek: [Activity] = []
+        var thisMonth: [Activity] = []
+        var thisYear: [Activity] = []
+        var earlier: [Activity] = []
+        
+        for activity in activities {
+            let timestamp: UInt64
+            switch activity {
+            case .lightning(let ln):
+                timestamp = ln.timestamp
+            case .onchain(let on):
+                timestamp = on.timestamp
+            }
+            
+            let activityDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
+            
+            if activityDate >= beginningOfDay {
+                today.append(activity)
+            } else if activityDate >= beginningOfYesterday {
+                yesterday.append(activity)
+            } else if activityDate >= beginningOfWeek {
+                thisWeek.append(activity)
+            } else if activityDate >= beginningOfMonth {
+                thisMonth.append(activity)
+            } else if activityDate >= beginningOfYear {
+                thisYear.append(activity)
+            } else {
+                earlier.append(activity)
+            }
+        }
+        
+        // Build result array using localized headers
+        var result: [ActivityGroupItem] = []
+        
+        if !today.isEmpty {
+            let headerDate = today.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? now
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: today.map { .activity($0) })
+        }
+        
+        if !yesterday.isEmpty {
+            let headerDate = yesterday.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? beginningOfYesterday
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: yesterday.map { .activity($0) })
+        }
+        
+        if !thisWeek.isEmpty {
+            let headerDate = thisWeek.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? beginningOfWeek
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisWeek.map { .activity($0) })
+        }
+        
+        if !thisMonth.isEmpty {
+            let headerDate = thisMonth.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? beginningOfMonth
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisMonth.map { .activity($0) })
+        }
+        
+        if !thisYear.isEmpty {
+            let headerDate = thisYear.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? beginningOfYear
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisYear.map { .activity($0) })
+        }
+        
+        if !earlier.isEmpty {
+            let headerDate = earlier.first.map { activity in
+                let timestamp: UInt64
+                switch activity {
+                case .lightning(let ln): timestamp = ln.timestamp
+                case .onchain(let on): timestamp = on.timestamp
+                }
+                return Date(timeIntervalSince1970: TimeInterval(timestamp))
+            } ?? Date.distantPast
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: earlier.map { .activity($0) })
+        }
+        
+        return result
+    }
+    
+    private func updateGroupedActivities() {
+        if let activities = filteredActivities {
+            groupedActivities = groupActivities(activities)
+        } else {
+            groupedActivities = []
+        }
     }
 }

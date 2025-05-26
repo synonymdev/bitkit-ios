@@ -51,18 +51,6 @@ struct ActivityItemView: View {
         isSent ? "-" : "+"
     }
 
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM d"
-        return formatter
-    }()
-
-    private let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm"
-        return formatter
-    }()
-
     private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64) {
         switch item {
         case .lightning(let activity):
@@ -86,6 +74,10 @@ struct ActivityItemView: View {
         return isSent
             ? localizedString("wallet__activity_bitcoin_sent")
             : localizedString("wallet__activity_bitcoin_received")
+    }
+
+    private var formattedDateTime: (date: String, time: String) {
+        return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
     var body: some View {
@@ -193,7 +185,7 @@ struct ActivityItemView: View {
                     Image("calendar")
                         .foregroundColor(accentColor)
                         .frame(width: 16, height: 16)
-                    BodySSBText(dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp))))
+                    BodySSBText(formattedDateTime.date)
                 }
                 .padding(.bottom, 16)
 
@@ -210,7 +202,7 @@ struct ActivityItemView: View {
                     Image("clock")
                         .foregroundColor(accentColor)
                         .frame(width: 16, height: 16)
-                    BodySSBText(timeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(activity.timestamp))))
+                    BodySSBText(formattedDateTime.time)
                 }
                 .padding(.bottom, 16)
 
