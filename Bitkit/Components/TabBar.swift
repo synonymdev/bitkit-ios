@@ -103,6 +103,7 @@ struct TabBar: View {
                                 .padding(24)
                                 .frame(width: 80, height: 80)
                                 .background(Circle().fill(Color.gray6))
+                                .foregroundColor(.gray2)
                                 .overlay(
                                     Circle()
                                         .strokeBorder(Color.white10, lineWidth: 2)

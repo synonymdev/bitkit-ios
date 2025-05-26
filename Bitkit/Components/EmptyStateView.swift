@@ -28,7 +28,7 @@ enum EmptyStateType {
 
 struct EmptyStateView: View {
     let type: EmptyStateType
-    var onClose: () -> Void
+    var onClose: (() -> Void)?
 
     var body: some View {
         VStack {
@@ -51,19 +51,21 @@ struct EmptyStateView: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 100)
             .overlay {
-                VStack {
-                    Button(action: {
-                        Haptics.play(.buttonTap)
-                        onClose()
-                    }) {
-                        Image("x-mark")
-                            .renderingMode(.original)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 16, height: 16, alignment: .topTrailing)
+                if let onClose = onClose {
+                    VStack {
+                        Button(action: {
+                            Haptics.play(.buttonTap)
+                            onClose()
+                        }) {
+                            Image("x-mark")
+                                .renderingMode(.original)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 16, height: 16, alignment: .topTrailing)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topTrailing)
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity, alignment: .topTrailing)
-                    Spacer()
                 }
             }
         }
