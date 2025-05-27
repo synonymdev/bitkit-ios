@@ -6,12 +6,17 @@ struct DisplayText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
+    var accentFont: String? = nil
     var textAlignment: NSTextAlignment = .left
 
-    init(_ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, textAlignment: NSTextAlignment = .left) {
+    init(
+        _ text: String, textColor: Color = .textPrimary, accentColor: Color = .brandAccent, accentFont: String? = nil,
+        textAlignment: NSTextAlignment = .left
+    ) {
         self.text = text
         self.textColor = textColor
         self.accentColor = accentColor
+        self.accentFont = accentFont
         self.textAlignment = textAlignment
     }
 
@@ -20,7 +25,7 @@ struct DisplayText: View {
     var body: some View {
         CustomTextWrapper(
             text: text, fontSize: 44, lineHeight: 47, shouldCapitalize: true, font: Fonts.black, textColor: textColor, accentColor: accentColor,
-            kerning: -1, textAlignment: textAlignment)
+            accentFont: accentFont, kerning: -1, textAlignment: textAlignment)
     }
 }
 
