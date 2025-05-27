@@ -7,35 +7,6 @@
 
 import SwiftUI
 
-private struct AmountDisplayView: View {
-    let converted: ConvertedAmount
-    let prefix: String
-    @EnvironmentObject var currency: CurrencyViewModel
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            if currency.primaryDisplay == .bitcoin {
-                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                HStack(spacing: 1) {
-                    BodyMSBText(prefix, textColor: .textSecondary)
-                    BodyMSBText(btcComponents.value)
-                }
-
-                CaptionBText("\(converted.symbol) \(converted.formatted)")
-            } else {
-                HStack(spacing: 1) {
-                    BodyMSBText(prefix, textColor: .textSecondary)
-                    BodyMSBText(converted.symbol, textColor: .textSecondary)
-                    BodyMSBText(" \(converted.formatted)")
-                }
-
-                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                CaptionBText(btcComponents.value)
-            }
-        }
-    }
-}
-
 private struct TransactionStatusText: View {
     let txType: PaymentType
     let isLightning: Bool
@@ -130,13 +101,9 @@ struct ActivityRow: View {
     private var amountView: some View {
         switch item {
         case .lightning(let activity):
-            if let converted = currency.convert(sats: UInt64(activity.value)) {
-                AmountDisplayView(converted: converted, prefix: amountPrefix)
-            }
+            MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
         case .onchain(let activity):
-            if let converted = currency.convert(sats: UInt64(activity.value)) {
-                AmountDisplayView(converted: converted, prefix: amountPrefix)
-            }
+            MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
         }
     }
 
