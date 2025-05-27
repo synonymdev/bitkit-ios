@@ -34,6 +34,7 @@ class AppViewModel: ObservableObject {
 
     @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
+    @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false

@@ -11,6 +11,9 @@ struct FactsWidget: View {
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
+    
+    /// Callback to signal when editing should end
+    var onEditingEnd: (() -> Void)?
 
     /// View model for handling facts data
     @StateObject private var viewModel = FactsViewModel.shared
@@ -19,26 +22,31 @@ struct FactsWidget: View {
     init(
         options: FactsWidgetOptions = FactsWidgetOptions(),
         isEditing: Bool = false,
+        onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
         self.isEditing = isEditing
+        self.onEditingEnd = onEditingEnd
     }
 
     /// Initialize with a custom view model (for previews)
     init(
         viewModel: FactsViewModel,
         options: FactsWidgetOptions = FactsWidgetOptions(),
-        isEditing: Bool = false
+        isEditing: Bool = false,
+        onEditingEnd: (() -> Void)? = nil
     ) {
         self.options = options
         self.isEditing = isEditing
+        self.onEditingEnd = onEditingEnd
         self._viewModel = StateObject(wrappedValue: viewModel)
     }
 
     var body: some View {
         BaseWidget(
-            id: "facts",
+            type: .facts,
             isEditing: isEditing,
+            onEditingEnd: onEditingEnd
         ) {
             VStack(spacing: 0) {
                 TitleText(viewModel.fact)
@@ -81,6 +89,5 @@ struct FactsWidget: View {
     .padding()
     .background(Color.black)
     .environmentObject(WalletViewModel())
-    .environmentObject(WidgetStore())
     .preferredColorScheme(.dark)
 }
