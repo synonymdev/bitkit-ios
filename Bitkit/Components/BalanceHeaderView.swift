@@ -14,7 +14,7 @@ struct BalanceHeaderView: View {
                         CaptionBText(
                             "<accent>\(converted.symbol)</accent> \(converted.formatted)", textColor: .textSecondary, accentColor: .textSecondary
                         )
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 10)
                     }
                     .transition(
                         .move(edge: .bottom)
@@ -45,7 +45,7 @@ struct BalanceHeaderView: View {
                         CaptionBText(
                             "<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", textColor: .textSecondary, accentColor: .textSecondary
                         )
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 10)
                     }
                     .transition(
                         .move(edge: .bottom)

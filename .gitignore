@@ -1,5 +1,18 @@
+# macOS
 **/.DS_Store
+
+# Xcode
 Bitkit.xcodeproj/project.xcworkspace/xcuserdata/
 Bitkit.xcodeproj/xcuserdata/
+
+# Node
 scripts/node_modules/
+
+# Transaction
 tx
+
+# Sweetpad
+buildServer.json
+
+# VSCode
+.vscode/

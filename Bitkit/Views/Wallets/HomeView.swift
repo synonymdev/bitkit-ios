@@ -56,14 +56,7 @@ struct HomeView: View {
                             .padding(.horizontal)
                     }
 
-                    CaptionText(localizedString("wallet__activity"))
-                        .textCase(.uppercase)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 16)
-                        .padding(.top, 32)
-                        .padding(.horizontal)
-
-                    ActivityLatest(viewType: .all)
+                    ActivityLatest()
                         .padding(.horizontal)
                 }
                 /// Leave some space for TabBar
