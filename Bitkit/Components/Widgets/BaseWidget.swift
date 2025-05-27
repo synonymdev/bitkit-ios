@@ -4,60 +4,60 @@ import SwiftUI
 struct BaseWidget<Content: View>: View {
     // MARK: - Properties
 
-    /// Unique identifier for the widget
-    let id: String
+    /// Widget type identifier
+    let type: WidgetType
 
     /// Content to display within the widget
     let content: Content
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
+    
+    /// Callback to signal when editing should end
+    var onEditingEnd: (() -> Void)?
 
     /// State for showing the delete confirmation dialog
     @State private var showDeleteDialog = false
 
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var wallet: WalletViewModel
-    @EnvironmentObject private var widgetStore: WidgetStore
+    @EnvironmentObject private var widgets: WidgetsViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
 
-    /// Widget information
-    private var widget: (name: String, icon: String) {
-        return (
-            name: localizedString("widgets__\(id)__name"),
-            icon: "\(id)-widget"
-        )
+    /// Widget metadata computed from type
+    private var metadata: WidgetMetadata {
+        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
     }
 
     // MARK: - Initialization
 
     /// Initialize a new widget with required and optional parameters
     /// - Parameters:
-    ///   - id: Unique identifier for the widget
+    ///   - type: Widget type identifier
     ///   - isEditing: Flag indicating if the widget is in editing mode
+    ///   - onEditingEnd: Callback to signal when editing should end
     ///   - content: Content view builder for the widget
     init(
-        id: String,
+        type: WidgetType,
         isEditing: Bool = false,
+        onEditingEnd: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
-        self.id = id
+        self.type = type
         self.isEditing = isEditing
+        self.onEditingEnd = onEditingEnd
         self.content = content()
     }
 
-    // MARK: - Actions
-
-    /// Navigate to widget edit screen
     private func onEdit() {
-        // TODO: Implement navigation
-        // navigation.navigate(to: .widget(id: id))
+        navigation.navigate(.widgetDetail(type))
+        onEditingEnd?()
     }
 
-    /// Show the delete confirmation dialog
     private func onDelete() {
         showDeleteDialog = true
     }
-
-    // MARK: - View Body
 
     var body: some View {
         Button {
@@ -66,12 +66,12 @@ struct BaseWidget<Content: View>: View {
                 if wallet.showWidgetTitles || isEditing {
                     HStack {
                         HStack(spacing: 16) {
-                            Image(widget.icon)
+                            Image(metadata.icon)
                                 .renderingMode(.original)
                                 .resizable()
                                 .frame(width: 32, height: 32)
 
-                            BodyMSBText(truncate(widget.name, 18))
+                            BodyMSBText(truncate(metadata.name, 18))
                                 .lineLimit(1)
                         }
 
@@ -85,6 +85,7 @@ struct BaseWidget<Content: View>: View {
                                     onDelete()
                                 } label: {
                                     Image("trash")
+                                        .renderingMode(.original)
                                         .resizable()
                                         .frame(width: 24, height: 24)
                                         .foregroundColor(.white)
@@ -128,7 +129,7 @@ struct BaseWidget<Content: View>: View {
             }
             .contentShape(Rectangle())
         }
-        .accessibilityIdentifier("\(id)-widget")
+        .accessibilityIdentifier("\(type.rawValue)-widget")
         .buttonStyle(WidgetButtonStyle())
         .frame(maxWidth: .infinity)
         .padding(16)
@@ -143,17 +144,13 @@ struct BaseWidget<Content: View>: View {
                 }
 
                 Button(localizedString("common__delete_yes"), role: .destructive) {
-                    widgetStore.deleteWidget(id: id)
+                    widgets.deleteWidget(type)
                     showDeleteDialog = false
+                    onEditingEnd?()
                 }
             },
             message: {
-                Text(
-                    localizedString(
-                        "widgets__delete__description"
-                    )
-                    .replacingOccurrences(of: "{name}", with: widget.name)
-                )
+                Text(localizedString("widgets__delete__description", variables: ["name": metadata.name]))
             }
         )
     }
@@ -181,8 +178,11 @@ struct WidgetButtonStyle: ButtonStyle {
 #Preview {
     VStack {
         BaseWidget(
-            id: "facts",
-            isEditing: false
+            type: .facts,
+            isEditing: false,
+            onEditingEnd: {
+                print("Editing ended")
+            }
         ) {
             Text("Widget Content Goes Here")
                 .frame(height: 100)
@@ -190,8 +190,11 @@ struct WidgetButtonStyle: ButtonStyle {
         }
 
         BaseWidget(
-            id: "stats",
-            isEditing: true
+            type: .news,
+            isEditing: true,
+            onEditingEnd: {
+                print("Editing ended")
+            }
         ) {
             Text("Widget Content Goes Here")
                 .frame(height: 100)
@@ -200,13 +203,9 @@ struct WidgetButtonStyle: ButtonStyle {
     }
     .padding()
     .background(Color.black)
-    .environmentObject(WidgetStore())
-}
-
-/// Placeholder widget store - would be replaced by actual app implementation
-class WidgetStore: ObservableObject {
-    func deleteWidget(id: String) {
-        // Delete widget logic would go here
-        print("Deleting widget with id: \(id)")
-    }
+    .environmentObject(WalletViewModel())
+    .environmentObject(WidgetsViewModel())
+    .environmentObject(NavigationViewModel())
+    .environmentObject(CurrencyViewModel())
+    .preferredColorScheme(.dark)
 }

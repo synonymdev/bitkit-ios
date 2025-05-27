@@ -12,6 +12,7 @@ struct SettingsListView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var widgets: WidgetsViewModel
 
     @State private var showNodeState = false
 
@@ -130,6 +131,8 @@ struct SettingsListView: View {
                                 navigation.reset()
                                 app.hasSeenTransferToSavingsIntro = false
                                 app.hasSeenTransferToSpendingIntro = false
+                                app.hasSeenWidgetsIntro = false
+                                widgets.clearWidgets()
 
                                 if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
                                     || wallet.nodeLifecycleState == .stopping
