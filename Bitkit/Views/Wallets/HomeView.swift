@@ -16,12 +16,9 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading) {
-                BalanceHeaderView(sats: wallet.totalBalanceSats)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal)
-            .padding(.top, 32)
+            MoneyStack(sats: wallet.totalBalanceSats, showEyeIcon: true, enableSwipeGesture: true)
+                .padding(.horizontal)
+                .padding(.top, 32)
 
             if !app.showHomeViewEmptyState {
                 VStack(spacing: 0) {
