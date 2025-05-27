@@ -10,59 +10,46 @@ import SwiftUI
 struct ActivityLatest: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-
-    let viewType: LatestActivityViewType
-
-    enum LatestActivityViewType {
-        case all
-        case lightning
-        case onchain
-    }
-
     @EnvironmentObject private var activity: ActivityListViewModel
 
     var body: some View {
-        switch viewType {
-        case .all:
-            return list(activity.latestActivities)
-        case .lightning:
-            return list(activity.lightningActivities)
-        case .onchain:
-            return list(activity.onchainActivities)
-        }
-    }
+        VStack(spacing: 0) {
+            CaptionText(localizedString("wallet__activity"))
+                .textCase(.uppercase)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 16)
+                .padding(.top, 32)
 
-    @ViewBuilder
-    func list(_ items: [Activity]?) -> some View {
-        if let items {
-            LazyVStack {
-                ForEach(items, id: \.self) { item in
-                    NavigationLink(value: Route.activityDetail(item)) {
-                        ActivityRow(item: item)
+            if let items = activity.latestActivities {
+                LazyVStack(alignment: .leading, spacing: 16) {
+                    ForEach(items, id: \.self) { item in
+                        NavigationLink(value: Route.activityDetail(item)) {
+                            ActivityRow(item: item)
+                        }
+
+                        if item != items.last {
+                            Divider()
+                        }
                     }
 
-                    if item != items.last {
-                        Divider()
-                    }
-                }
-
-                if items.count == 0 {
-                    Button(
-                        action: {
-                            app.showReceiveSheet = true
-                            Haptics.play(.openSheet)
-                        },
-                        label: {
-                            EmptyActivityRow()
-                        })
-                } else {
-                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
-                        navigation.navigate(.activityList)
+                    if items.count == 0 {
+                        Button(
+                            action: {
+                                app.showReceiveSheet = true
+                                Haptics.play(.openSheet)
+                            },
+                            label: {
+                                EmptyActivityRow()
+                            })
+                    } else {
+                        CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                            navigation.navigate(.activityList)
+                        }
                     }
                 }
+            } else {
+                EmptyView()
             }
-        } else {
-            EmptyView()
         }
     }
 }

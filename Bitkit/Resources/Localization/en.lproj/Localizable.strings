@@ -1030,6 +1030,9 @@
 "wallet__activity_tabs__sent" = "Sent";
 "wallet__activity_tabs__received" = "Received";
 "wallet__activity_tabs__other" = "Other";
+"wallet__activity_group_month" = "This month";
+"wallet__activity_group_week" = "This week";
+"wallet__activity_group_year" = "This year";
 "wallet__details_savings_title" = "Savings";
 "wallet__details_spending_title" = "Spending";
 "wallet__savings__title" = "Savings";

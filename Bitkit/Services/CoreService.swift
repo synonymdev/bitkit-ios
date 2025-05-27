@@ -55,7 +55,7 @@ class ActivityService {
                     case .succeeded:
                         state = .succeeded
                     }
-                    
+
                     if case .onchain(let txid, let txStatus) = payment.kind {
                         var isConfirmed = false
                         var confirmedTimestamp: UInt64?
@@ -63,14 +63,14 @@ class ActivityService {
                             isConfirmed = true
                             confirmedTimestamp = timestamp
                         }
-                        
+
                         // Ensure confirmTimestamp is at least equal to timestamp when confirmed
                         let timestamp = payment.latestUpdateTimestamp
-                        
+
                         if isConfirmed && confirmedTimestamp != nil && confirmedTimestamp! < timestamp {
                             confirmedTimestamp = timestamp
                         }
-                        
+
                         let onchain = OnchainActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
@@ -90,7 +90,7 @@ class ActivityService {
                             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
                             updatedAt: timestamp
                         )
-                                            
+
                         if (try getActivityById(activityId: payment.id)) != nil {
                             try updateActivity(activityId: payment.id, activity: .onchain(onchain))
                             updatedCount += 1
@@ -107,7 +107,7 @@ class ActivityService {
                             txType: payment.direction == .outbound ? .sent : .received,
                             status: state,
                             value: UInt64(payment.amountSats ?? 0),
-                            fee: nil,  // TODO:
+                            fee: nil, // TODO:
                             invoice: "lnbc123",
                             message: "",
                             timestamp: UInt64(payment.latestUpdateTimestamp),
@@ -128,7 +128,7 @@ class ActivityService {
                     Logger.error("Error syncing LDK payment: \(error)", context: "CoreService")
                     latestCaughtError = error
                 }
-                
+
                 //case spontaneous(hash: PaymentHash, preimage: PaymentPreimage?)
             }
 
@@ -209,7 +209,6 @@ class ActivityService {
         }
     }
 
-
     func generateRandomTestData(count: Int = 100) async throws {
         try await ServiceQueue.background(.core) {
             let timestamp = UInt64(Date().timeIntervalSince1970)
@@ -229,14 +228,30 @@ class ActivityService {
 
             for i in 0 ..< count {
                 let isLightning = Bool.random()
-                let value = UInt64.random(in: 1000 ... 1_000_000)  // Random sats between 1k and 1M
-                let timestamp = timestamp - UInt64.random(in: 0 ... 2_592_000)  // Random time in last 30 days
+                let value = UInt64.random(in: 1000 ... 1_000_000) // Random sats between 1k and 1M
+
+                // Ensure that the activities are spread out over the last 30 days
+                let offset: UInt64
+                switch i % 4 {
+                case 0: // Today
+                    offset = 0
+                case 1: // Yesterday
+                    offset = 86400 // 24 hours * 60 minutes * 60 seconds
+                case 2: // Last week
+                    offset = 604800 // 7 days * 24 hours * 60 minutes * 60 seconds
+                case 3: // Last month
+                    offset = 2_629_800 // Approx. 30 days * 24 hours * 60 minutes * 60 seconds
+                default:
+                    offset = 0
+                }
+
+                let timestamp = timestamp - offset
                 let txType: PaymentType = Bool.random() ? .sent : .received
                 let status: PaymentState = {
                     let random = Int.random(in: 0 ... 10)
-                    if random < 8 { return .succeeded }  // 80% chance
-                    if random < 9 { return .pending }  // 10% chance
-                    return .failed  // 10% chance
+                    if random < 8 { return .succeeded } // 80% chance
+                    if random < 9 { return .pending } // 10% chance
+                    return .failed // 10% chance
                 }()
 
                 let activity: Activity
@@ -264,7 +279,7 @@ class ActivityService {
                         OnchainActivity(
                             id: id,
                             txType: txType,
-                            txId: String(repeating: "a", count: 64),  // Mock txid
+                            txId: String(repeating: "a", count: 64), // Mock txid
                             value: value,
                             fee: UInt64.random(in: 100 ... 10000),
                             feeRate: UInt64.random(in: 1 ... 100),
@@ -274,7 +289,7 @@ class ActivityService {
                             isBoosted: Bool.random(),
                             isTransfer: Bool.random(),
                             doesExist: true,
-                            confirmTimestamp: Bool.random() ? timestamp + 3600 : nil,  // 1 hour later if confirmed
+                            confirmTimestamp: Bool.random() ? timestamp + 3600 : nil, // 1 hour later if confirmed
                             channelId: Bool.random() ? "channel\(i)" : nil,
                             transferTxId: nil,
                             createdAt: timestamp,
@@ -310,7 +325,7 @@ class BlocktankService {
             try await getInfo(refresh: refresh)
         }
     }
-    
+
     func fees(refresh: Bool = true) async throws -> FeeRates? {
         try await info(refresh: refresh)?.onchain.feeRates
     }
@@ -324,7 +339,7 @@ class BlocktankService {
         options: CreateCjitOptions
     ) async throws -> IcJitEntry {
         Logger.info("Creating CJIT invoice with channel size: \(channelSizeSat) and invoice amount: \(invoiceSat)", context: "BlocktankService")
-        
+
         return try await ServiceQueue.background(.core) {
             try await createCjitEntry(
                 channelSizeSat: channelSizeSat,

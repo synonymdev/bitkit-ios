@@ -70,23 +70,18 @@ class NewsService {
     /// - Returns: Human-readable time difference (e.g. "5 hours ago")
     func timeAgo(from dateString: String) -> String {
         let formatter = DateFormatter()
+        formatter.locale = Locale.current
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
 
         guard let date = formatter.date(from: dateString) else {
             return ""
         }
 
-        let calendar = Calendar.current
-        let now = Date()
-        let components = calendar.dateComponents([.hour, .minute], from: date, to: now)
-
-        if let hours = components.hour, hours > 0 {
-            return "\(hours) hour\(hours == 1 ? "" : "s") ago"
-        } else if let minutes = components.minute, minutes > 0 {
-            return "\(minutes) minute\(minutes == 1 ? "" : "s") ago"
-        } else {
-            return "Just now"
-        }
+        let relativeFormatter = RelativeDateTimeFormatter()
+        relativeFormatter.locale = Locale.current
+        relativeFormatter.dateTimeStyle = .named
+        
+        return relativeFormatter.localizedString(for: date, relativeTo: Date())
     }
 }
 

@@ -14,19 +14,28 @@ struct SavingsWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             BalanceHeaderView(sats: wallet.totalOnchainSats)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
+                .padding(.top)
 
             Divider()
+                .padding(.top, 8)
 
-            if !app.showSavingsViewEmptyState || wallet.totalOnchainSats > 0 {
-                transferButton
-                    .transition(.move(edge: .leading).combined(with: .opacity))
+            if wallet.totalOnchainSats > 0 {
+                if !(app.isGeoBlocked ?? true) {
+                    transferButton
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
 
-                ScrollView {
-                    ActivityLatest(viewType: .onchain)
+                ScrollView(showsIndicators: false) {
+                    ActivityList(viewType: .onchain)
+
+                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                        navigation.navigate(.activityList)
+                    }
+                    /// Leave some space for TabBar
+                    .padding(.bottom, 130)
                 }
                 .refreshable {
                     do {
@@ -40,44 +49,34 @@ struct SavingsWalletView: View {
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
+        .navigationTitle(localizedString("wallet__savings__title"))
+        .padding(.horizontal)
         .frame(maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .topTrailing) {
             Image("piggybank")
                 .resizable()
                 .frame(width: 256, height: 256)
                 .offset(x: 110)
-                .offset(y: -68)
+                .offset(y: -80)
         }
-        .animation(.spring(response: 0.3), value: app.showSavingsViewEmptyState)
+        .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
         .overlay {
-            if wallet.totalOnchainSats == 0 && app.showSavingsViewEmptyState {
-                EmptyStateView(
-                    type: .savings,
-                    onClose: {
-                        withAnimation(.spring(response: 0.3)) {
-                            app.showSavingsViewEmptyState = false
-                        }
-                    }
-                )
-                .padding(.horizontal)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.3), value: app.showSavingsViewEmptyState)
-        .onChange(of: wallet.totalOnchainSats) { _ in
-            if wallet.totalOnchainSats > 0 {
-                DispatchQueue.main.async {
-                    app.showSavingsViewEmptyState = false
-                }
+            if wallet.totalOnchainSats == 0 {
+                EmptyStateView(type: .savings)
+                    .padding(.horizontal)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
         }
     }
 
     var transferButton: some View {
         CustomButton(
-            title: "Transfer To Spending", //TODO: add missing translation //lightning__spending_confirm__label
+            title: "Transfer To Spending", //TODO: add missing translation
             variant: .secondary,
-            icon: Image(systemName: "arrow.up.arrow.down")
+            icon: Image("arrow-up-down")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
                 .foregroundColor(.white80),
         ) {
             if app.hasSeenTransferToSpendingIntro {
@@ -86,7 +85,7 @@ struct SavingsWalletView: View {
                 navigation.navigate(.transferIntro)
             }
         }
-        .padding()
+        .padding(.top)
     }
 }
 

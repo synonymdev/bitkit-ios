@@ -114,20 +114,7 @@ struct ActivityRow: View {
             timestamp = TimeInterval(activity.timestamp)
         }
 
-        let date = Date(timeIntervalSince1970: timestamp)
-        let calendar = Calendar.current
-
-        // Check if the activity is from today
-        if calendar.isDateInToday(date) {
-            let timeFormatter = DateFormatter()
-            timeFormatter.timeStyle = .short
-            return timeFormatter.string(from: date)
-        } else {
-            let dateFormatter = DateFormatter()
-            dateFormatter.dateStyle = .medium
-            dateFormatter.timeStyle = .short
-            return dateFormatter.string(from: date)
-        }
+        return DateFormatterHelpers.formatActivityTime(UInt64(timestamp))
     }
 
     private var amountPrefix: String {
