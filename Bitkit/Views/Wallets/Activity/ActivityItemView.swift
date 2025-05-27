@@ -115,9 +115,9 @@ struct ActivityItemView: View {
     private var amountView: some View {
         switch item {
         case .lightning(let activity):
-            BalanceHeaderView(sats: Int(activity.value), sign: amountPrefix, showBitcoinSymbol: false)
+            MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
         case .onchain(let activity):
-            BalanceHeaderView(sats: Int(activity.value), sign: amountPrefix, showBitcoinSymbol: false)
+            MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
         }
     }
 
