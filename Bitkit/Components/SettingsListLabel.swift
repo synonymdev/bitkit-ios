@@ -41,16 +41,22 @@ struct SettingsListLabel: View {
     let iconColor: Color
     let rightText: String?
     let rightIcon: SettingsListRightIcon?
+    let toggle: Binding<Bool>?
 
     init(
-        title: String, iconName: String? = nil, iconColor: Color = .white,
-        rightText: String? = nil, rightIcon: SettingsListRightIcon? = .rightArrow
+        title: String,
+        iconName: String? = nil,
+        iconColor: Color = .white,
+        rightText: String? = nil,
+        rightIcon: SettingsListRightIcon? = .rightArrow,
+        toggle: Binding<Bool>? = nil
     ) {
         self.title = title
         self.iconName = iconName
         self.iconColor = iconColor
         self.rightText = rightText
         self.rightIcon = rightIcon
+        self.toggle = toggle
     }
 
     var body: some View {
@@ -69,19 +75,25 @@ struct SettingsListLabel: View {
 
                 Spacer()
 
-                if let rightText = rightText {
-                    BodyMText(rightText, textColor: .textPrimary, textAlignment: .right)
-                        .padding(.trailing, 8)
-                }
+                if let toggle = toggle {
+                    Toggle("", isOn: toggle)
+                        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                        .labelsHidden()
+                } else {
+                    if let rightText = rightText {
+                        BodyMText(rightText, textColor: .textPrimary, textAlignment: .right)
+                            .padding(.trailing, 8)
+                    }
 
-                if let rightIcon = rightIcon {
-                    switch rightIcon {
-                    case .rightArrow:
-                        Image("arrow-right")
-                            .foregroundColor(.textSecondary)
-                    case .checkmark:
-                        Image("checkmark")
-                            .foregroundColor(.brandAccent)
+                    if let rightIcon = rightIcon {
+                        switch rightIcon {
+                        case .rightArrow:
+                            Image("arrow-right")
+                                .foregroundColor(.textSecondary)
+                        case .checkmark:
+                            Image("checkmark")
+                                .foregroundColor(.brandAccent)
+                        }
                     }
                 }
             }
