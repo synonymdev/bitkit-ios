@@ -170,6 +170,19 @@ class ActivityListViewModel: ObservableObject {
     func getActivities(withTag tag: String) async throws -> [Activity] {
         try await coreService.activity.get(tags: [tag])
     }
+
+    // MARK: - Global Tag Management
+
+    /// Deletes a tag from all activities that use it
+    func deleteTagGlobally(_ tag: String) async throws {
+        try await coreService.activity.deleteTagGlobally(tag)
+        await syncState() // Refresh UI after deleting tag
+    }
+
+    /// Gets all unique tags that have ever been used
+    func getAllTags() async throws -> [String] {
+        try await coreService.activity.allPossibleTags()
+    }
 }
 
 // MARK: - Activity Grouping

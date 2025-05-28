@@ -34,7 +34,7 @@ struct GeneralSettingsView: View {
                 )
             }
 
-            NavigationLink(destination: Text("Coming soon")) {
+            NavigationLink(destination: TagSettingsView()) {
                 SettingsListLabel(
                     title: localizedString("settings__general__tags")
                 )
