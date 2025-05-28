@@ -72,8 +72,7 @@ struct SettingsListView: View {
                 NavigationLink(destination: DevSettingsView()) {
                     SettingsListLabel(
                         title: NSLocalizedString("settings__dev_title", comment: ""),
-                        iconName: "wrench.and.screwdriver",
-                        isSystemIcon: true
+                        iconName: "settings-gear" //TODO: find icon for this
                     )
                 }
             }
@@ -118,7 +117,7 @@ struct SettingsListView: View {
 
                         // Toggle dev settings every 5 taps
                         if cogTapCount >= 5 {
-                            showDevSettings
+                            showDevSettings.toggle()
                             cogTapCount = 0
                         }
                     }
