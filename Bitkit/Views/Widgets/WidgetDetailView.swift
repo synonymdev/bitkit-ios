@@ -27,6 +27,21 @@ struct WidgetDetailView: View {
         widgets.isWidgetSaved(id)
     }
 
+    // Check if widget has customization options
+    private var hasOptions: Bool {
+        switch id {
+        case .blocks, .facts, .news, .price, .weather:
+            return true
+        case .calculator:
+            return false
+        }
+    }
+
+    // Check if widget has custom options
+    private var hasCustomOptions: Bool {
+        widgets.hasCustomOptions(for: id)
+    }
+
     private func onSave() {
         widgets.saveWidget(id)
         navigation.reset()
@@ -39,25 +54,8 @@ struct WidgetDetailView: View {
 
     @ViewBuilder
     private func renderWidget() -> some View {
-        switch id {
-        case .facts:
-            FactsWidget(isEditing: false)
-        case .news:
-            NewsWidget(isEditing: false)
-        case .price, .calculator, .weather, .block:
-            // Placeholder for widgets not yet implemented
-            VStack {
-                Text("Widget Preview")
-                    .foregroundColor(.textSecondary)
-                Text("Coming Soon")
-                    .foregroundColor(.textSecondary)
-                    .font(.caption)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 120)
-            .background(Color.white10)
-            .cornerRadius(16)
-        }
+        let widget = Widget(type: id)
+        widget.view(widgetsViewModel: widgets, isEditing: false)
     }
 
     var body: some View {
@@ -78,6 +76,46 @@ struct WidgetDetailView: View {
             .padding(.bottom, 16)
 
             BodyMText(widget.description, textColor: .textSecondary)
+
+            if hasOptions {
+                Button(action: {
+                    navigation.navigate(.widgetEdit(id))
+                }) {
+                    HStack(spacing: 0) {
+                        BodyMText(localizedString("widgets__widget__edit"), textColor: .textPrimary)
+
+                        Spacer()
+
+                        BodyMText(
+                            hasCustomOptions
+                                ? localizedString("widgets__widget__edit_custom")
+                                : localizedString("widgets__widget__edit_default"),
+                            textColor: .textPrimary
+                        )
+
+                        Image("arrow-right")
+                            .renderingMode(.original)
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.vertical, 14)
+                .overlay(
+                    VStack {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                        Spacer()
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                    }
+                )
+                .padding(.top, 16)
+                .accessibilityIdentifier("WidgetEdit")
+            }
 
             Spacer()
 
