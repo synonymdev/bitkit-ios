@@ -244,7 +244,7 @@
 "lightning__close_button" = "Close";
 "lightning__force_nav_title" = "Force Transfer";
 "lightning__force_title" = "Force\n<accent>Transfer</accent>";
-"lightning__force_text" = "Could not initiate transfer. Do you want to force this transfer? You won’t be able to use these funds for ±14 days (!)";
+"lightning__force_text" = "Could not initiate transfer. Do you want to force this transfer? You won't be able to use these funds for ±14 days (!)";
 "lightning__force_button" = "Force Transfer";
 "lightning__force_init_title" = "Force Transfer Initiated";
 "lightning__force_init_msg" = "Your funds will be accessible in ±14 days.";
@@ -291,14 +291,14 @@
 "onboarding__slide3_header" = "Privacy is\n<accent>not a crime</accent>";
 "onboarding__slide3_text" = "Swipe to hide your balance, enjoy more private payments, and protect your wallet by enabling security features.";
 "onboarding__slide4_header" = "Your keys,\n<accent>your coins</accent>";
-"onboarding__slide4_text" = "Let’s create your wallet. Please be aware that Bitkit is mobile software. <accent>Don’t store all your money in Bitkit.</accent>";
+"onboarding__slide4_text" = "Let's create your wallet. Please be aware that Bitkit is mobile software. <accent>Don't store all your money in Bitkit.</accent>";
 "onboarding__new_wallet" = "New Wallet";
 "onboarding__restore" = "Restore";
 "onboarding__restore_wallet" = "Restore Wallet";
 "onboarding__advanced_setup" = "Advanced Setup";
 "onboarding__advanced" = "Advanced";
 "onboarding__passphrase_header" = "Secure with <accent>Passphrase</accent>";
-"onboarding__passphrase_text" = "You can add a secret passphrase to the 12-word recovery phrase. If you do, make sure you don’t forget.";
+"onboarding__passphrase_text" = "You can add a secret passphrase to the 12-word recovery phrase. If you do, make sure you don't forget.";
 "onboarding__passphrase" = "Passphrase";
 "onboarding__create_new_wallet" = "Create New Wallet";
 "onboarding__restore_header" = "<accent>Restore</accent>\nyour wallet";
@@ -307,7 +307,7 @@
 "onboarding__restore_inv_checksum" = "The checksum for the recovery phrase appears to be incorrect. Please double check your recovery phrase.";
 "onboarding__restore_suggestions" = "SUGGESTIONS";
 "onboarding__restore_passphrase_placeholder" = "Passphrase*";
-"onboarding__restore_passphrase_meaning" = "*Optional, enter only if you’ve set up one.";
+"onboarding__restore_passphrase_meaning" = "*Optional, enter only if you've set up one.";
 "onboarding__restore_error_title" = "Wallet Restore Failed";
 "onboarding__restore_error_description" = "Bitkit could not restore your wallet from backup or recovery phrase.";
 "onboarding__loading_header" = "Setting up\n<accent>your wallet</accent>";
@@ -330,14 +330,14 @@
 "other__qr_error_network_text" = "Bitkit is currently set to {selectedNetwork} but data is for {dataNetwork}.";
 "other__qr_paste" = "Paste QR Code";
 "other__buy_header" = "Buy some\n<accent>Bitcoin</accent>";
-"other__buy_text" = "Don’t have any Bitcoin or need more?";
+"other__buy_text" = "Don't have any Bitcoin or need more?";
 "other__buy_button" = "Choose Exchange";
 "other__error_keychain" = "Data Connection Issue";
 "other__error_keychain_msg" = "Could not load primary key from keychain.";
 "other__connection_restored_title" = "Electrum Connection Restored";
 "other__connection_restored_message" = "Bitkit successfully reconnected to Electrum.";
 "other__connection_issue" = "Internet Connectivity Issues";
-"other__connection_issue_explain" = "It appears you’re disconnected, trying to reconnect...";
+"other__connection_issue_explain" = "It appears you're disconnected, trying to reconnect...";
 "other__connection_reconnect_title" = "Reconnecting To Electrum";
 "other__connection_reconnect_msg" = "Lost connection to Electrum, trying to reconnect...";
 "other__connection_back_title" = "Internet Connection Restored";
@@ -496,7 +496,7 @@
 "security__bio_error_title" = "Biometrics Setup Failed";
 "security__bio_error_message" = "Bitkit could not set up {type} for your device.";
 "security__bio_loading" = "Loading...";
-"security__bio_not_available" = "Looks like you haven’t set up biometric security yet (or it is not supported). Try to enable it in your phone settings.";
+"security__bio_not_available" = "Looks like you haven't set up biometric security yet (or it is not supported). Try to enable it in your phone settings.";
 "security__bio_ask" = "PIN code set. Would you like to use {biometricsName} instead of your PIN code?";
 "security__bio_use" = "Use {biometricsName}";
 "security__bio_phone_settings" = "Phone Settings";
@@ -590,6 +590,7 @@
 "settings__general__speed_fee_total_fiat" = "₿ {feeSats} for the average transaction ({fiatSymbol}{fiatFormatted})";
 "settings__general__tags" = "Tags";
 "settings__general__tags_previously" = "Previously used tags";
+"settings__general__app_icon" = "App Icon";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
 "settings__widgets__showWidgetTitles" = "Show Widget Titles";
@@ -843,7 +844,7 @@
 "slashtags__error_saving_profile" = "Unable To Save Profile";
 "slashtags__error_deleting_profile" = "Unable To Delete Profile";
 "slashtags__error_pay_title" = "Unable To Pay Contact";
-"slashtags__error_pay_empty_msg" = "The contact you’re trying to send to hasn’t enabled payments.";
+"slashtags__error_pay_empty_msg" = "The contact you're trying to send to hasn't enabled payments.";
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "wallet__drawer__wallet" = "Wallet";
@@ -1097,7 +1098,7 @@
 "widgets__widget__source" = "Source";
 "widgets__add" = "Add Widget";
 "widgets__delete__title" = "Delete Widget?";
-"widgets__delete__description" = "Are you sure you want to delete ‘{name}‘ from your widgets?";
+"widgets__delete__description" = "Are you sure you want to delete '{name}' from your widgets?";
 "widgets__price__name" = "Bitcoin Price";
 "widgets__price__description" = "Check the latest Bitcoin exchange rates for a variety of fiat currencies.";
 "widgets__price__error" = "Couldn\'t get price data";
@@ -1112,7 +1113,7 @@
 "widgets__calculator__name" = "Bitcoin Calculator";
 "widgets__calculator__description" = "Convert ₿ amounts to {fiatSymbol} or vice versa.";
 "widgets__weather__name" = "Bitcoin Weather";
-"widgets__weather__description" = "Find out when it’s a good time to transact on the Bitcoin blockchain.";
+"widgets__weather__description" = "Find out when it's a good time to transact on the Bitcoin blockchain.";
 "widgets__weather__condition__good__title" = "Favorable Conditions";
 "widgets__weather__condition__good__description" = "All clear. Now would be a good time to transact on the blockchain.";
 "widgets__weather__condition__average__title" = "Average Conditions";

@@ -25,41 +25,46 @@ struct LocalCurrencySettingsView: View {
     }
 
     private func currencyRow(_ rate: FxRate) -> some View {
-        HStack {
-            Text("\(rate.quote) (\(rate.currencySymbol))")
-            Spacer()
-            if currency.selectedCurrency == rate.quote {
-                Image(systemName: "checkmark")
-                    .foregroundColor(.accentColor)
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
+        Button(action: {
             currency.selectedCurrency = rate.quote
             Task {
                 await currency.refresh()
             }
+        }) {
+            SettingsListLabel(
+                title: "\(rate.quote) (\(rate.currencySymbol))",
+                rightIcon: currency.selectedCurrency == rate.quote ? .checkmark : nil
+            )
         }
+        .buttonStyle(PlainButtonStyle())
     }
 
     var body: some View {
-        List {
+        ScrollView {
             if !availableMostUsed.isEmpty {
-                Section("Most Used") {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionText(NSLocalizedString("settings__general__currency_most_used", comment: "").uppercased())
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
                     ForEach(availableMostUsed, id: \.quote) { rate in
                         currencyRow(rate)
                     }
                 }
             }
 
-            Section("Other Currencies") {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionText(NSLocalizedString("settings__general__currency_other", comment: "").uppercased())
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 ForEach(otherCurrencies, id: \.quote) { rate in
                     currencyRow(rate)
                 }
             }
         }
-        .navigationTitle("Local Currency")
-        .searchable(text: $searchText, prompt: "Search currencies")
+        .navigationTitle(NSLocalizedString("settings__general__currency_local_title", comment: ""))
+        .searchable(text: $searchText, prompt: NSLocalizedString("common__search", comment: ""))
     }
 }
 

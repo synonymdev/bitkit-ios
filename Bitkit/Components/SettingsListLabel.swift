@@ -7,43 +7,50 @@
 
 import SwiftUI
 
+enum SettingsListRightIcon {
+    case rightArrow
+    case checkmark
+}
+
 struct SettingsListIcon: View {
     let imageName: String
-    let isSystemImage: Bool
+    let iconColor: Color
 
-    init(_ imageName: String, isSystemImage: Bool = false) {
+    init(_ imageName: String, iconColor: Color = .white) {
         self.imageName = imageName
-        self.isSystemImage = isSystemImage
+        self.iconColor = iconColor
     }
 
     var body: some View {
-        Group {
-            if isSystemImage {
-                Image(systemName: imageName)
-                    .padding(8)
-            } else {
-                Image(imageName)
-            }
-        }
-        .foregroundColor(.white)
-        .frame(width: 20, height: 20)
-        .background(
-            Circle()
-                .fill(Color.white10)
-                .frame(width: 32, height: 32)
-        )
+        Image(imageName)
+            .resizable()
+            .scaledToFit()
+            .foregroundColor(iconColor)
+            .frame(width: 14, height: 14)
+            .background(
+                Circle()
+                    .fill(Color.white10)
+                    .frame(width: 32, height: 32)
+            )
     }
 }
 
 struct SettingsListLabel: View {
     let title: String
     let iconName: String?
-    let isSystemIcon: Bool
+    let iconColor: Color
+    let rightText: String?
+    let rightIcon: SettingsListRightIcon?
 
-    init(title: String, iconName: String? = nil, isSystemIcon: Bool = false) {
+    init(
+        title: String, iconName: String? = nil, iconColor: Color = .white,
+        rightText: String? = nil, rightIcon: SettingsListRightIcon? = .rightArrow
+    ) {
         self.title = title
         self.iconName = iconName
-        self.isSystemIcon = isSystemIcon
+        self.iconColor = iconColor
+        self.rightText = rightText
+        self.rightIcon = rightIcon
     }
 
     var body: some View {
@@ -53,7 +60,7 @@ struct SettingsListLabel: View {
                     Label {
                         BodyMText(title, textColor: .textPrimary)
                     } icon: {
-                        SettingsListIcon(iconName, isSystemImage: isSystemIcon)
+                        SettingsListIcon(iconName, iconColor: iconColor)
                             .padding(.trailing, 12)
                     }
                 } else {
@@ -62,8 +69,21 @@ struct SettingsListLabel: View {
 
                 Spacer()
 
-                Image("arrow-right")
-                    .foregroundColor(.textSecondary)
+                if let rightText = rightText {
+                    BodyMText(rightText, textColor: .textPrimary, textAlignment: .right)
+                        .padding(.trailing, 8)
+                }
+
+                if let rightIcon = rightIcon {
+                    switch rightIcon {
+                    case .rightArrow:
+                        Image("arrow-right")
+                            .foregroundColor(.textSecondary)
+                    case .checkmark:
+                        Image("checkmark")
+                            .foregroundColor(.brandAccent)
+                    }
+                }
             }
             .padding(.vertical, 8)
             Divider()
