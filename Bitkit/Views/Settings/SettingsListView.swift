@@ -14,158 +14,117 @@ struct SettingsListView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
 
-    @State private var showNodeState = false
+    @AppStorage("showDevSettings") private var showDevSettings = false
+    @State private var cogTapCount = 0
 
     var body: some View {
-        List {
-            Section {
-                NavigationLink(destination: GeneralSettingsView()) {
-                    Label {
-                        Text("General")
-                    } icon: {
-                        Image(systemName: "gearshape")
-                    }
-                }
+        ScrollView {
+            NavigationLink(destination: GeneralSettingsView()) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__general_title", comment: ""),
+                    iconName: "settings-gear"
+                )
+            }
 
-                NavigationLink(destination: BackupSettingsView()) {
-                    Label {
-                        Text("Back Up Or Restore")
-                    } icon: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                    }
-                }
+            NavigationLink(destination: SecurityPrivacySettingsView()) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__security_title", comment: ""),
+                    iconName: "settings-shield"
+                )
+            }
 
-                NavigationLink(destination: LightningSettingsView()) {
-                    Label {
-                        Text("Lightning")
-                    } icon: {
-                        Image(systemName: "bolt.fill")
-                    }
-                }
+            NavigationLink(destination: Text("Coming soon")) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__backup_title", comment: ""),
+                    iconName: "settings-clock"
+                )
+            }
 
-                NavigationLink(destination: ChannelOrders()) {
-                    Label {
-                        Text("Channel Orders")
-                    } icon: {
-                        Image(systemName: "list.bullet.rectangle")
-                    }
-                }
+            NavigationLink(destination: Text("Coming soon")) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__advanced_title", comment: ""),
+                    iconName: "settings-slider"
+                )
+            }
 
-                NavigationLink(destination: LogView()) {
-                    Label {
-                        Text("Logs")
-                    } icon: {
-                        Image(systemName: "doc.text.fill")
-                    }
-                }
+            NavigationLink(destination: Text("Coming soon")) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__support_title", comment: ""),
+                    iconName: "settings-chat"
+                )
+            }
 
-                Button {
-                    showNodeState = true
-                } label: {
-                    Label {
-                        Text("Show Node State")
-                    } icon: {
-                        Image(systemName: wallet.nodeLifecycleState.systemImage)
-                    }
-                    .foregroundColor(.white)
+            NavigationLink(destination: Text("Coming soon")) {
+                SettingsListLabel(
+                    title: NSLocalizedString("settings__about_title", comment: ""),
+                    iconName: "settings-info"
+                )
+            }
+
+            NavigationLink(destination: Text("Coming soon")) {
+                SettingsListLabel(
+                    title: NSLocalizedString("cards__discount__title", comment: ""),
+                    iconName: "settings-gift"
+                )
+            }
+
+            if showDevSettings {
+                NavigationLink(destination: DevSettingsView()) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__dev_title", comment: ""),
+                        iconName: "wrench.and.screwdriver",
+                        isSystemIcon: true
+                    )
                 }
             }
 
-            Section {
-                if Env.network == .regtest {
-                    NavigationLink(destination: BlocktankRegtestView()) {
-                        Label {
-                            Text("Blocktank Regtest")
-                        } icon: {
-                            Image(systemName: "hammer.fill")
-                        }
-                    }
+            // TODO: add to subview
+            // NavigationLink(destination: LightningSettingsView()) {
+            //     Label {
+            //         Text("Lightning")
+            //     } icon: {
+            //         Image(systemName: "bolt.fill")
+            //     }
+            // }
 
-                    Button {
-                        Task {
-                            do {
-                                try await CoreService.shared.activity.removeAll()
-                                await activity.syncState()
-                                app.toast(type: .success, title: "Success", description: "All activities removed")
-                            } catch {
-                                app.toast(type: .error, title: "Error", description: "Failed to remove activities: \(error.localizedDescription)")
-                            }
-                        }
-                    } label: {
-                        Label {
-                            Text("Reset All Activities")
-                        } icon: {
-                            Image(systemName: "clock.badge.xmark")
-                        }
-                        .foregroundColor(.redAccent)
-                    }
+            // NavigationLink(destination: ChannelOrders()) {
+            //     Label {
+            //         Text("Channel Orders")
+            //     } icon: {
+            //         Image(systemName: "list.bullet.rectangle")
+            //     }
+            // }
 
-                    Button {
-                        Task {
-                            do {
-                                try await CoreService.shared.activity.generateRandomTestData(count: 100)
-                                await activity.syncState()
-                                app.toast(type: .success, title: "Success", description: "Generated 100 random activities")
-                            } catch {
-                                app.toast(type: .error, title: "Error", description: "Failed to generate activities: \(error.localizedDescription)")
-                            }
-                        }
-                    } label: {
-                        Label {
-                            Text("Generate Test Activities")
-                        } icon: {
-                            Image(systemName: "ladybug.fill")
-                        }
-                        .foregroundColor(.orange)
-                    }
-
-                    Button {
-                        Task {
-                            guard Env.network == .regtest else {
-                                Logger.error("Can only nuke on regtest")
-                                app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
-                                return
-                            }
-                            do {
-                                // TODO: reset all of app state
-                                navigation.reset()
-                                app.hasSeenTransferToSavingsIntro = false
-                                app.hasSeenTransferToSpendingIntro = false
-                                app.hasSeenWidgetsIntro = false
-                                widgets.clearWidgets()
-
-                                if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
-                                    || wallet.nodeLifecycleState == .stopping
-                                {
-                                    try await wallet.wipeLightningWallet()
-                                }
-                                try await CoreService.shared.activity.removeAll()
-                                try Keychain.wipeEntireKeychain()
-                                try wallet.setWalletExistsState()
-                            } catch {
-                                app.toast(error)
-                            }
-                        }
-                    } label: {
-                        Label {
-                            Text("Wipe Wallet")
-                        } icon: {
-                            Image(systemName: "trash.fill")
-                        }
-                        .foregroundColor(.redAccent)
-                    }
-                }
-            } header: {
-                Text("Regtest only")
-            }
+            // NavigationLink(destination: LogView()) {
+            //     Label {
+            //         Text("Logs")
+            //     } icon: {
+            //         Image(systemName: "doc.text.fill")
+            //     }
+            // }
         }
-        .navigationTitle("Settings")
+        .navigationTitle(NSLocalizedString("settings__settings", comment: ""))
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showNodeState) {
-            NavigationStack {
-                NodeStateView()
+        .overlay(
+            VStack {
+                Spacer()
+                Image("cog")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 256)
+                    .padding()
+                    .onTapGesture {
+                        cogTapCount += 1
+
+                        // Toggle dev settings every 5 taps
+                        if cogTapCount >= 5 {
+                            showDevSettings
+                            cogTapCount = 0
+                        }
+                    }
             }
-        }
+            .ignoresSafeArea(.container, edges: .bottom)
+        )
     }
 }
 
