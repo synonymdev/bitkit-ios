@@ -13,6 +13,7 @@ struct HomeView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var settings: SettingsViewModel
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -50,7 +51,7 @@ struct HomeView: View {
                     Suggestions()
                         .padding(.top, 32)
 
-                    if wallet.showWidgets {
+                    if settings.showWidgets {
                         Widgets()
                             .padding(.top, 32)
                             .padding(.horizontal)
@@ -166,5 +167,6 @@ struct HomeView: View {
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(ActivityListViewModel())
+        .environmentObject(SettingsViewModel())
         .preferredColorScheme(.dark)
 }

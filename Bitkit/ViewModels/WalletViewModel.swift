@@ -16,8 +16,6 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
-    @AppStorage("showWidgets") var showWidgets: Bool = true
-    @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
 
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""
