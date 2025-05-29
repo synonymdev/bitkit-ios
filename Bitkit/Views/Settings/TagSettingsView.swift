@@ -52,7 +52,7 @@ struct TagSettingsView: View {
         } catch {
             app.toast(
                 type: .error,
-                title: NSLocalizedString("settings__tags__delete_error_title", comment: ""),
+                title: "Error deleting tag",
                 description: error.localizedDescription
             )
         }
