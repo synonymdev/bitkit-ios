@@ -1,18 +1,18 @@
 import SwiftUI
 
 struct WidgetsSettingsView: View {
-    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
 
     var body: some View {
         ScrollView {
             SettingsListLabel(
                 title: localizedString("settings__widgets__showWidgets"),
-                toggle: $wallet.showWidgets
+                toggle: $settings.showWidgets
             )
 
             SettingsListLabel(
                 title: localizedString("settings__widgets__showWidgetTitles"),
-                toggle: $wallet.showWidgetTitles
+                toggle: $settings.showWidgetTitles
             )
         }
         .navigationTitle(localizedString("settings__widgets__nav_title"))
@@ -22,7 +22,7 @@ struct WidgetsSettingsView: View {
 #Preview {
     NavigationView {
         WidgetsSettingsView()
-            .environmentObject(WalletViewModel())
+            .environmentObject(SettingsViewModel())
     }
     .preferredColorScheme(.dark)
 }
