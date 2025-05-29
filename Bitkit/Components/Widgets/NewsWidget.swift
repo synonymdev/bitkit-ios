@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Options for configuring the NewsWidget
-struct NewsWidgetOptions {
+struct NewsWidgetOptions: Codable, Equatable {
     var showDate: Bool = true
     var showTitle: Bool = true
     var showSource: Bool = true
@@ -14,7 +14,7 @@ struct NewsWidget: View {
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
-    
+
     /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
@@ -58,12 +58,9 @@ struct NewsWidget: View {
         ) {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if viewModel.error != nil {
-                    CaptionBText("Failed to load news")
-                        .foregroundColor(.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    WidgetContentBuilder.loadingView()
+                } else if let error = viewModel.error {
+                    WidgetContentBuilder.errorView("Failed to load news")
                 } else if let data = viewModel.widgetData {
                     if options.showDate {
                         BodyMText(data.timeAgo, textColor: .textPrimary)
@@ -79,20 +76,7 @@ struct NewsWidget: View {
                     }
 
                     if options.showSource {
-                        HStack(spacing: 0) {
-                            HStack {
-                                CaptionBText(localizedString("widgets__widget__source"))
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            HStack {
-                                CaptionBText(data.publisher)
-                                    .lineLimit(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        }
-                        .padding(.top, 16)
+                        WidgetContentBuilder.sourceRow(source: data.publisher)
                     }
                 }
             }
