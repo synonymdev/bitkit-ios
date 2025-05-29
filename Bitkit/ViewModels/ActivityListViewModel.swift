@@ -7,6 +7,7 @@
 
 import Combine
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class ActivityListViewModel: ObservableObject {

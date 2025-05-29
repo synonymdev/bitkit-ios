@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 enum Route: Hashable {
     case savingsWallet
