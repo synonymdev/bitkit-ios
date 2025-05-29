@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class WalletViewModel: ObservableObject {

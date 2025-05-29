@@ -6,6 +6,7 @@
 // //
 
 import Foundation
+import BitkitCore
 
 // // Extension to provide LDK-node compatible fee rates
 extension FeeRates {
