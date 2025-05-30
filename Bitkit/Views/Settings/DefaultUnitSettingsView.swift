@@ -4,59 +4,59 @@ struct DefaultUnitSettingsView: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
-        List {
-            Section {
-                HStack {
-                    Label("Bitcoin", systemImage: "bitcoinsign.circle")
-                    Spacer()
-                    if currency.primaryDisplay == .bitcoin {
-                        Image(systemName: "checkmark")
-                            .foregroundColor(.accentColor)
-                    }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionText(NSLocalizedString("settings__general__unit_display", comment: "").uppercased())
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button(action: {
                     currency.primaryDisplay = .bitcoin
+                }) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__general__unit_bitcoin", comment: ""),
+                        iconName: "b-unit",
+                        rightIcon: currency.primaryDisplay == .bitcoin ? .checkmark : nil
+                    )
                 }
+                .buttonStyle(PlainButtonStyle())
 
                 if let rate = currency.convert(sats: 1)?.currency {
-                    HStack {
-                        Label(rate, systemImage: "globe-sphere")
-                        Spacer()
-                        if currency.primaryDisplay == .fiat {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button(action: {
                         currency.primaryDisplay = .fiat
+                    }) {
+                        SettingsListLabel(
+                            title: rate,
+                            iconName: "fiat-unit",
+                            rightIcon: currency.primaryDisplay == .fiat ? .checkmark : nil
+                        )
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
-            } header: {
-                Text("Display Amounts In")
-            } footer: {
-                Text("Tip: Quickly toggle between Bitcoin and \(currency.convert(sats: 1)?.currency ?? "fiat") by tapping on your wallet balance.")
+
+                BodyMText(localizedString("settings__general__unit_note", comment: "", variables: ["currency": currency.selectedCurrency]))
+                    .padding(16)
             }
 
-            Section("Bitcoin Denomination") {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionText(NSLocalizedString("settings__general__denomination_label", comment: "").uppercased())
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 ForEach(BitcoinDisplayUnit.allCases, id: \.self) { unit in
-                    HStack {
-                        Text("\(unit.display) (\(unit == .modern ? "₿ 10 000" : "₿ 0.00010000"))")
-                        Spacer()
-                        if currency.displayUnit == unit {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.accentColor)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button(action: {
                         currency.displayUnit = unit
+                    }) {
+                        SettingsListLabel(
+                            title: "\(unit.display) (\(unit == .modern ? "₿ 10 000" : "₿ 0.00010000"))",
+                            rightIcon: currency.displayUnit == unit ? .checkmark : nil
+                        )
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
         }
-        .navigationTitle("Default Unit")
+        .navigationTitle(NSLocalizedString("settings__general__unit_title", comment: ""))
     }
 }
 

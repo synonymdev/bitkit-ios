@@ -2,25 +2,26 @@ import SwiftUI
 
 struct AddTagSheet: View {
     @EnvironmentObject private var app: AppViewModel
-    private let coreService: CoreService = .shared
+    @EnvironmentObject private var activityListViewModel: ActivityListViewModel
     let activityId: String
     var previewTags: [String]? = nil
 
-    @State private var allTags: [String] = []
     @State private var newTag: String = ""
     @State private var isLoading: Bool = false
 
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                if !allTags.isEmpty {
+                let tagsToShow = previewTags ?? activityListViewModel.recentlyUsedTags
+
+                if !tagsToShow.isEmpty {
                     CaptionText(localizedString("wallet__tags_previously"))
                         .textCase(.uppercase)
                         .padding(.top, 24)
                         .padding(.bottom, 16)
 
                     WrappingHStack(spacing: 8) {
-                        ForEach(allTags, id: \.self) { tag in
+                        ForEach(tagsToShow, id: \.self) { tag in
                             Tag(
                                 tag,
                                 onPress: {
@@ -57,21 +58,6 @@ struct AddTagSheet: View {
             .sheetBackground()
             .navigationTitle(localizedString("wallet__tags_add"))
             .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                if let previewTags = previewTags {
-                    allTags = previewTags
-                } else {
-                    Task { await loadTags() }
-                }
-            }
-        }
-    }
-
-    private func loadTags() async {
-        do {
-            allTags = try await coreService.activity.allPossibleTags()
-        } catch {
-            app.toast(type: .error, title: "Failed to load tags", description: error.localizedDescription)
         }
     }
 
@@ -79,7 +65,7 @@ struct AddTagSheet: View {
         guard !tag.isEmpty else { return }
         isLoading = true
         do {
-            try await coreService.activity.appendTag(toActivity: activityId, [tag])
+            try await activityListViewModel.appendTag(toActivity: activityId, tags: [tag])
             app.showAddTagSheet = false
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
@@ -98,6 +84,7 @@ struct AddTagSheet: View {
                     previewTags: ["Lunch", "Mom", "Dad", "Conference", "Dinner", "Tip", "Friend", "Gift"]
                 )
                 .environmentObject(AppViewModel())
+                .environmentObject(ActivityListViewModel())
                 .presentationDetents([.height(400)])
             }
         )
