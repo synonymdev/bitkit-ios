@@ -31,9 +31,9 @@ struct Tag: View {
             if let onDelete = onDelete {
                 Button(action: onDelete) {
                     Image(icon == .close ? "x-mark" : "trash")
-                        .renderingMode(.original)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .foregroundColor(.textSecondary)
                         .frame(width: 16, height: 16)
                 }
                 .padding(.leading, 6) // Corresponds to icon paddingLeft

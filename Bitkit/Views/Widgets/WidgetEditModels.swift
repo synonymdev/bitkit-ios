@@ -330,14 +330,101 @@ struct WidgetEditItemFactory {
     }
 
     @MainActor
+    static func getWeatherItems(
+        weatherViewModel: WeatherViewModel,
+        weatherOptions: WeatherWidgetOptions
+    ) -> [WidgetEditItem] {
+        var items: [WidgetEditItem] = []
+
+        if let data = weatherViewModel.weatherData {
+            items.append(
+                WidgetEditItem(
+                    key: "showStatus",
+                    type: .toggleItem,
+                    titleView: AnyView(TitleText(data.condition.title)),
+                    valueView: AnyView(Text(data.condition.icon).font(.system(size: 30))),
+                    isChecked: weatherOptions.showStatus
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showText",
+                    type: .toggleItem,
+                    titleView: AnyView(BodyMText(data.condition.description, textColor: .textPrimary)),
+                    valueView: nil,
+                    isChecked: weatherOptions.showText
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showMedian",
+                    type: .toggleItem,
+                    title: localizedString("widgets__weather__current_fee"),
+                    value: data.currentFee,
+                    isChecked: weatherOptions.showMedian
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showNextBlockFee",
+                    type: .toggleItem,
+                    title: localizedString("widgets__weather__next_block"),
+                    value: "\(data.nextBlockFee) ₿/vByte",
+                    isChecked: weatherOptions.showNextBlockFee
+                ))
+        } else {
+            // Fallback when no data is available
+            items.append(
+                WidgetEditItem(
+                    key: "showStatus",
+                    type: .toggleItem,
+                    titleView: AnyView(TitleText("Good")),
+                    valueView: AnyView(Text("☀️").font(.system(size: 30))),
+                    isChecked: weatherOptions.showStatus
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showText",
+                    type: .toggleItem,
+                    titleView: AnyView(BodyMText("Fees are low and transactions are fast", textColor: .textPrimary)),
+                    valueView: nil,
+                    isChecked: weatherOptions.showText
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showMedian",
+                    type: .toggleItem,
+                    title: localizedString("widgets__weather__current_fee"),
+                    value: "$0.50",
+                    isChecked: weatherOptions.showMedian
+                ))
+
+            items.append(
+                WidgetEditItem(
+                    key: "showNextBlockFee",
+                    type: .toggleItem,
+                    title: localizedString("widgets__weather__next_block"),
+                    value: "15 ₿/vByte",
+                    isChecked: weatherOptions.showNextBlockFee
+                ))
+        }
+
+        return items
+    }
+
+    @MainActor
     static func getItems(
         for widgetType: WidgetType,
         blocksViewModel: BlocksViewModel,
         factsViewModel: FactsViewModel,
         newsViewModel: NewsViewModel,
+        weatherViewModel: WeatherViewModel,
         blocksOptions: BlocksWidgetOptions,
         factsOptions: FactsWidgetOptions,
-        newsOptions: NewsWidgetOptions
+        newsOptions: NewsWidgetOptions,
+        weatherOptions: WeatherWidgetOptions
     ) -> [WidgetEditItem] {
         switch widgetType {
         case .blocks:
@@ -346,7 +433,9 @@ struct WidgetEditItemFactory {
             return getFactsItems(factsViewModel: factsViewModel, factsOptions: factsOptions)
         case .news:
             return getNewsItems(newsViewModel: newsViewModel, newsOptions: newsOptions)
-        case .price, .calculator, .weather:
+        case .weather:
+            return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
+        case .price, .calculator:
             return []
         }
     }
