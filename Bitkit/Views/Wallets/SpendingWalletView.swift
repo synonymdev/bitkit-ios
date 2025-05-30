@@ -15,8 +15,7 @@ struct SpendingWalletView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BalanceHeaderView(sats: wallet.totalLightningSats)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            MoneyStack(sats: wallet.totalLightningSats, showEyeIcon: false, enableSwipeGesture: true)
                 .padding(.top)
 
             Divider()

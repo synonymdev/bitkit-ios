@@ -5,6 +5,7 @@
 //  Created by Jason van den Berg on 2024/06/28.
 //
 
+import BitkitCore
 import LDKNode
 import SwiftUI
 
@@ -16,6 +17,10 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
+
+    // Settings
+    @AppStorage("hideBalance") var hideBalance: Bool = false
+    @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
 
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""

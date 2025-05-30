@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Options for configuring the FactsWidget
-struct FactsWidgetOptions {
+struct FactsWidgetOptions: Codable, Equatable {
     var showSource: Bool = true
 }
 
@@ -54,20 +54,7 @@ struct FactsWidget: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 if options.showSource {
-                    HStack(spacing: 0) {
-                        HStack {
-                            CaptionBText(localizedString("widgets__widget__source"))
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        HStack {
-                            CaptionBText("synonym.to")
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                    }
-                    .padding(.top, 16)
+                    WidgetContentBuilder.sourceRow(source: "synonym.to")
                 }
             }
         }

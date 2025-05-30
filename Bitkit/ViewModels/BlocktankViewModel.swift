@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class BlocktankViewModel: ObservableObject {

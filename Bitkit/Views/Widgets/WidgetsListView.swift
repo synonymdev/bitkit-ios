@@ -6,7 +6,7 @@ struct WidgetsListView: View {
     @EnvironmentObject var widgets: WidgetsViewModel
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(WidgetType.allCases, id: \.rawValue) { widgetType in
                     WidgetListItem(id: widgetType)

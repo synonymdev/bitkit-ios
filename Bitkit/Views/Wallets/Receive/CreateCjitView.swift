@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 struct CreateCjitView: View {
     let onCjitCreated: (String) -> Void
