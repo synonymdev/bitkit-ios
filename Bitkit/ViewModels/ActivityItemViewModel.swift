@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class ActivityItemViewModel: ObservableObject {

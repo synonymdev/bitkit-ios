@@ -1,4 +1,5 @@
 import Foundation
+import BitkitCore
 
 extension IcJitEntry {
     static func mock(

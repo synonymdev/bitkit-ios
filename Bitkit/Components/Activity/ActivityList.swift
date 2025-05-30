@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 struct ActivityList: View {
     @EnvironmentObject var activity: ActivityListViewModel
