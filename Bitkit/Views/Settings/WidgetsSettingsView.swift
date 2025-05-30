@@ -4,14 +4,18 @@ struct WidgetsSettingsView: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
-        List {
-            Toggle(localizedString("settings__widgets__showWidgets"), isOn: $wallet.showWidgets)
-                .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+        ScrollView {
+            SettingsListLabel(
+                title: localizedString("settings__widgets__showWidgets"),
+                toggle: $wallet.showWidgets
+            )
 
-            Toggle(localizedString("settings__widgets__showWidgetTitles"), isOn: $wallet.showWidgetTitles)
-                .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+            SettingsListLabel(
+                title: localizedString("settings__widgets__showWidgetTitles"),
+                toggle: $wallet.showWidgetTitles
+            )
         }
-        .navigationBarTitle(localizedString("settings__widgets__nav_title"))
+        .navigationTitle(localizedString("settings__widgets__nav_title"))
     }
 }
 
