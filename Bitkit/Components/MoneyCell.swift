@@ -40,8 +40,8 @@ extension MoneyCell {
         return vm
     }
 
-    fileprivate static func previewWalletVM(hideBalance: Bool = false) -> WalletViewModel {
-        let vm = WalletViewModel()
+    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+        let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm
     }
@@ -53,12 +53,12 @@ extension MoneyCell {
             // With toggle enabled
             MoneyCell(sats: 123_456, prefix: "+")
                 .environmentObject(MoneyCell.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
-                .environmentObject(MoneyCell.previewWalletVM())
+                .environmentObject(MoneyCell.previewSettingsVM())
 
             // With symbol
             MoneyCell(sats: 123_456, prefix: "-")
                 .environmentObject(MoneyCell.previewCurrencyVM(primaryDisplay: .fiat, currency: "EUR"))
-                .environmentObject(MoneyCell.previewWalletVM())
+                .environmentObject(MoneyCell.previewSettingsVM())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()

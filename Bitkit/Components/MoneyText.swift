@@ -23,7 +23,7 @@ struct MoneyText: View {
     var symbolColor: Color? = nil
 
     @EnvironmentObject var currency: CurrencyViewModel
-    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
 
     // MARK: - Computed Properties
     private var unit: PrimaryDisplay {
@@ -35,7 +35,7 @@ struct MoneyText: View {
     }
 
     private var hideBalance: Bool {
-        enableHide && wallet.hideBalance
+        enableHide && settings.hideBalance
     }
 
     private var displayDots: String {
@@ -115,8 +115,8 @@ extension MoneyText {
         return vm
     }
 
-    fileprivate static func previewWalletVM(hideBalance: Bool = false) -> WalletViewModel {
-        let vm = WalletViewModel()
+    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+        let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm
     }
@@ -128,27 +128,27 @@ extension MoneyText {
             // Primary display (Bitcoin)
             MoneyText(sats: 123_456, unitType: .primary, size: .display)
                 .environmentObject(MoneyText.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
-                .environmentObject(MoneyText.previewWalletVM())
+                .environmentObject(MoneyText.previewSettingsVM())
 
             // Secondary display (Fiat)
             MoneyText(sats: 123_456, unitType: .secondary, size: .caption)
                 .environmentObject(MoneyText.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
-                .environmentObject(MoneyText.previewWalletVM())
+                .environmentObject(MoneyText.previewSettingsVM())
 
             // With prefix
             MoneyText(sats: 123_456, prefix: "+", color: .green)
                 .environmentObject(MoneyText.previewCurrencyVM(primaryDisplay: .fiat, currency: "EUR"))
-                .environmentObject(MoneyText.previewWalletVM())
+                .environmentObject(MoneyText.previewSettingsVM())
 
             // Hidden balance
             MoneyText(sats: 123_456, enableHide: true)
                 .environmentObject(MoneyText.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
-                .environmentObject(MoneyText.previewWalletVM(hideBalance: true))
+                .environmentObject(MoneyText.previewSettingsVM(hideBalance: true))
 
             // No symbol
             MoneyText(sats: 123_456, symbol: false)
                 .environmentObject(MoneyText.previewCurrencyVM(primaryDisplay: .fiat, currency: "USD"))
-                .environmentObject(MoneyText.previewWalletVM())
+                .environmentObject(MoneyText.previewSettingsVM())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()

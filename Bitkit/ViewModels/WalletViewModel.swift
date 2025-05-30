@@ -18,10 +18,6 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
 
-    // Settings
-    @AppStorage("hideBalance") var hideBalance: Bool = false
-    @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
-
     // Receiving
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
