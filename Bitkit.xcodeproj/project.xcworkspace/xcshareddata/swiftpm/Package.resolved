@@ -1,6 +1,15 @@
 {
-  "originHash" : "86f1361efd46fcc80bac05c75a52b9ce7669775d83398e16b43ac3a0570c23a2",
+  "originHash" : "06730355b35a0eb595c6423069119a4e733683724bb2d33f5f35f504732628be",
   "pins" : [
+    {
+      "identity" : "bitkit-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/synonymdev/bitkit-core",
+      "state" : {
+        "branch" : "master",
+        "revision" : "b25b48c1468bd004801a2793196c6cc0d228dd73"
+      }
+    },
     {
       "identity" : "codescanner",
       "kind" : "remoteSourceControl",

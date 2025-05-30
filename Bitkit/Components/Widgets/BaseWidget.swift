@@ -1,5 +1,66 @@
 import SwiftUI
 
+// MARK: - Widget Protocol
+
+/// Protocol that all widgets should conform to for consistent behavior
+protocol WidgetProtocol {
+    associatedtype OptionsType: Codable & Equatable
+    associatedtype ViewModelType: ObservableObject
+    
+    var options: OptionsType { get set }
+    var isEditing: Bool { get set }
+    var onEditingEnd: (() -> Void)? { get set }
+    
+    init(options: OptionsType, isEditing: Bool, onEditingEnd: (() -> Void)?)
+    init(viewModel: ViewModelType, options: OptionsType, isEditing: Bool, onEditingEnd: (() -> Void)?)
+}
+
+// MARK: - Common Widget States
+
+/// Common states that widgets can be in
+enum WidgetState {
+    case loading
+    case loaded
+    case error(String)
+    case empty
+}
+
+// MARK: - Widget Content Builder
+
+/// Helper for building common widget content patterns
+struct WidgetContentBuilder {
+    
+    /// Creates a standard loading view
+    static func loadingView() -> some View {
+        ProgressView()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    /// Creates a standard error view
+    static func errorView(_ message: String) -> some View {
+        CaptionBText(message, textColor: .textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+    
+    /// Creates a standard source attribution row
+    static func sourceRow(source: String) -> some View {
+        HStack(spacing: 0) {
+            HStack {
+                CaptionBText(localizedString("widgets__widget__source"))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack {
+                CaptionBText(source)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.top, 16)
+    }
+}
+
 /// BaseWidget component that forms the foundation for all widget types in the app
 struct BaseWidget<Content: View>: View {
     // MARK: - Properties

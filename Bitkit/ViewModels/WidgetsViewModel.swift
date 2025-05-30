@@ -1,6 +1,32 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Widget Options Protocol
+
+protocol WidgetOptionsProtocol: Codable, Equatable {
+    static var defaultOptions: Self { get }
+}
+
+// MARK: - Widget Options Types
+
+// Default options for each widget type
+func getDefaultOptions(for type: WidgetType) -> Any {
+    switch type {
+    case .blocks:
+        return BlocksWidgetOptions()
+    case .facts:
+        return FactsWidgetOptions()
+    case .news:
+        return NewsWidgetOptions()
+    case .price, .calculator, .weather:
+        return EmptyWidgetOptions()
+    }
+}
+
+// Empty options for widgets that don't have customization yet
+struct EmptyWidgetOptions: Codable, Equatable {
+}
+
 // MARK: - Widget Metadata
 
 struct WidgetMetadata {
@@ -15,30 +41,48 @@ struct WidgetMetadata {
     }
 }
 
-// MARK: - Widget Model
+// MARK: - Widget Models
 
 struct Widget: Identifiable {
-    let id: UUID
     let type: WidgetType
+
+    // Use type as identifier since only one widget per type is allowed
+    var id: WidgetType { type }
+
+    init(type: WidgetType) {
+        self.type = type
+    }
 
     // Widget metadata computed on demand
     func metadata(fiatSymbol: String = "$") -> WidgetMetadata {
         return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
     }
 
+    @MainActor
     @ViewBuilder
-    func view(isEditing: Bool, onEditingEnd: (() -> Void)? = nil) -> some View {
+    func view(widgetsViewModel: WidgetsViewModel, isEditing: Bool, onEditingEnd: (() -> Void)? = nil) -> some View {
         switch type {
-        case .block:
-            // BlockWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+        case .blocks:
+            BlocksWidget(
+                options: widgetsViewModel.getOptions(for: type, as: BlocksWidgetOptions.self),
+                isEditing: isEditing, 
+                onEditingEnd: onEditingEnd
+            )
         case .calculator:
             // CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
             PlaceholderWidget(type: type, message: "Coming Soon")
         case .facts:
-            FactsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
+            FactsWidget(
+                options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),
+                isEditing: isEditing, 
+                onEditingEnd: onEditingEnd
+            )
         case .news:
-            NewsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
+            NewsWidget(
+                options: widgetsViewModel.getOptions(for: type, as: NewsWidgetOptions.self),
+                isEditing: isEditing, 
+                onEditingEnd: onEditingEnd
+            )
         case .price:
             // PriceWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
             PlaceholderWidget(type: type, message: "Coming Soon")
@@ -46,6 +90,25 @@ struct Widget: Identifiable {
             // WeatherWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
             PlaceholderWidget(type: type, message: "Coming Soon")
         }
+    }
+}
+
+// Saved widget with options
+struct SavedWidget: Codable, Identifiable {
+    let type: WidgetType
+    let optionsData: Data?
+
+    // Use type as identifier since only one widget per type is allowed
+    var id: WidgetType { type }
+
+    init(type: WidgetType, optionsData: Data? = nil) {
+        self.type = type
+        self.optionsData = optionsData
+    }
+
+    // Convert to Widget for UI
+    func toWidget() -> Widget {
+        return Widget(type: type)
     }
 }
 
@@ -74,7 +137,7 @@ struct PlaceholderWidget: View {
 enum WidgetType: String, CaseIterable, Codable {
     case price = "price"
     case news = "news"
-    case block = "blocks"
+    case blocks = "blocks"
     case facts = "facts"
     case calculator = "calculator"
     case weather = "weather"
@@ -86,14 +149,18 @@ enum WidgetType: String, CaseIterable, Codable {
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    // Persist widget IDs using AppStorage
-    @AppStorage("savedWidgetTypes") private var savedWidgetTypesData: Data = Data()
+    // Single AppStorage key for widgets with their options
+    @AppStorage("savedWidgets") private var savedWidgetsData: Data = Data()
+
+    // In-memory storage for saved widgets with options
+    private var savedWidgetsWithOptions: [SavedWidget] = []
 
     // Default widgets for new installs and resets
-    private static let defaultWidgets: [Widget] = [
-        // Widget(id: UUID(), type: .price),
-        Widget(id: UUID(), type: .news),
-        Widget(id: UUID(), type: .facts),
+    private static let defaultSavedWidgets: [SavedWidget] = [
+        // SavedWidget(type: .price),
+        SavedWidget(type: .facts),
+        SavedWidget(type: .news),
+        SavedWidget(type: .blocks),
     ]
 
     init() {
@@ -112,21 +179,17 @@ class WidgetsViewModel: ObservableObject {
         // Don't add duplicates
         guard !isWidgetSaved(type) else { return }
 
-        let newWidget = Widget(id: UUID(), type: type)
-        savedWidgets.append(newWidget)
-        persistWidgets()
+        let newSavedWidget = SavedWidget(type: type)
+        savedWidgetsWithOptions.append(newSavedWidget)
+        savedWidgets.append(newSavedWidget.toWidget())
+        persistSavedWidgets()
     }
 
     /// Delete a widget
     func deleteWidget(_ type: WidgetType) {
+        savedWidgetsWithOptions.removeAll { $0.type == type }
         savedWidgets.removeAll { $0.type == type }
-        persistWidgets()
-    }
-
-    /// Delete a widget by ID
-    func deleteWidget(id: UUID) {
-        savedWidgets.removeAll { $0.id == id }
-        persistWidgets()
+        persistSavedWidgets()
     }
 
     /// Reorder widgets
@@ -136,34 +199,98 @@ class WidgetsViewModel: ObservableObject {
             destinationIndex >= 0, destinationIndex < savedWidgets.count
         else { return }
 
+        let savedWidget = savedWidgetsWithOptions.remove(at: sourceIndex)
+        savedWidgetsWithOptions.insert(savedWidget, at: destinationIndex)
+
         let widget = savedWidgets.remove(at: sourceIndex)
         savedWidgets.insert(widget, at: destinationIndex)
-        persistWidgets()
+
+        persistSavedWidgets()
     }
 
     /// Clear all persisted widgets and restore defaults
     func clearWidgets() {
-        savedWidgets = WidgetsViewModel.defaultWidgets
-        persistWidgets()
+        savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
+        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+        persistSavedWidgets()
+    }
+
+    // MARK: - Widget Options Methods
+
+    /// Get options for a specific widget type
+    func getOptions<T: Codable>(for type: WidgetType, as optionsType: T.Type) -> T {
+        // Find the saved widget with this type
+        if let savedWidget = savedWidgetsWithOptions.first(where: { $0.type == type }),
+            let optionsData = savedWidget.optionsData,
+            let options = try? JSONDecoder().decode(optionsType, from: optionsData)
+        {
+            return options
+        }
+
+        // Return default options if none saved
+        return getDefaultOptions(for: type) as! T
+    }
+
+    /// Save options for a specific widget type
+    func saveOptions<T: Codable>(_ options: T, for type: WidgetType) {
+        do {
+            let optionsData = try JSONEncoder().encode(options)
+
+            // Find existing saved widget or create new one
+            if let index = savedWidgetsWithOptions.firstIndex(where: { $0.type == type }) {
+                // Update existing widget with new options
+                savedWidgetsWithOptions[index] = SavedWidget(
+                    type: type,
+                    optionsData: optionsData
+                )
+            } else {
+                // Create new saved widget with options
+                savedWidgetsWithOptions.append(SavedWidget(type: type, optionsData: optionsData))
+            }
+
+            persistSavedWidgets()
+        } catch {
+            print("Failed to save widget options: \(error)")
+        }
+    }
+
+    /// Check if widget has custom options (different from default)
+    func hasCustomOptions(for type: WidgetType) -> Bool {
+        switch type {
+        case .blocks:
+            let current: BlocksWidgetOptions = getOptions(for: type, as: BlocksWidgetOptions.self)
+            let defaultOptions = BlocksWidgetOptions()
+            return current != defaultOptions
+        case .facts:
+            let current: FactsWidgetOptions = getOptions(for: type, as: FactsWidgetOptions.self)
+            let defaultOptions = FactsWidgetOptions()
+            return current != defaultOptions
+        case .news:
+            let current: NewsWidgetOptions = getOptions(for: type, as: NewsWidgetOptions.self)
+            let defaultOptions = NewsWidgetOptions()
+            return current != defaultOptions
+        case .price, .calculator, .weather:
+            return false // No customization available yet
+        }
     }
 
     // MARK: - Private Methods
 
     private func loadSavedWidgets() {
         do {
-            let savedTypes = try JSONDecoder().decode([WidgetType].self, from: savedWidgetTypesData)
-            savedWidgets = savedTypes.map { Widget(id: UUID(), type: $0) }
+            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: savedWidgetsData)
+            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         } catch {
             // If no saved data or decode fails, start with default widgets
-            savedWidgets = WidgetsViewModel.defaultWidgets
-            persistWidgets()
+            savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
+            savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+            persistSavedWidgets()
         }
     }
 
-    private func persistWidgets() {
+    private func persistSavedWidgets() {
         do {
-            let widgetTypes = savedWidgets.map { $0.type }
-            savedWidgetTypesData = try JSONEncoder().encode(widgetTypes)
+            savedWidgetsData = try JSONEncoder().encode(savedWidgetsWithOptions)
         } catch {
             print("Failed to persist widgets: \(error)")
         }

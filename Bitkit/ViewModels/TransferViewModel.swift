@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import BitkitCore
 
 struct TransferUiState {
     var order: IBtOrder? = nil

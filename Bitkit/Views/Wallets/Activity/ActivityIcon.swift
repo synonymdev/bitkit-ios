@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 struct ActivityIcon: View {
     let isLightning: Bool

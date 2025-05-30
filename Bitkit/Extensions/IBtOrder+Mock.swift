@@ -1,4 +1,5 @@
 import Foundation
+import BitkitCore
 
 extension IBtOrder {
     static func mock(
