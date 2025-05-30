@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 struct SpendingConfirmationView: View {
     @State private var isPaying = false

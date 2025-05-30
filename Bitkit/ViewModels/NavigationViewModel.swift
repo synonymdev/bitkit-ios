@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 enum Route: Hashable {
     case savingsWallet
@@ -10,6 +11,7 @@ enum Route: Hashable {
     case widgetsIntro
     case widgetsList
     case widgetDetail(WidgetType)
+    case widgetEdit(WidgetType)
     case settings
     case transferIntro
     case fundingOptions

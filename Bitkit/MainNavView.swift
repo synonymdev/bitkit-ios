@@ -69,6 +69,8 @@ struct MainNavView: View {
                     WidgetsListView()
                 case .widgetDetail(let widgetType):
                     WidgetDetailView(id: widgetType)
+                case .widgetEdit(let widgetType):
+                    WidgetEditView(id: widgetType)
                 case .settings:
                     SettingsListView()
                 }

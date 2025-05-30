@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class WalletViewModel: ObservableObject {
@@ -16,6 +17,10 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
+
+    // Settings
+    @AppStorage("hideBalance") var hideBalance: Bool = false
+    @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("showWidgets") var showWidgets: Bool = true
     @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
 
