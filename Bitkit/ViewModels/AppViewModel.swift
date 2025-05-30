@@ -8,6 +8,7 @@
 import LDKNode
 import Network
 import SwiftUI
+import BitkitCore
 
 @MainActor
 class AppViewModel: ObservableObject {

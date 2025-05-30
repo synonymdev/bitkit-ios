@@ -1,6 +1,8 @@
 import Foundation
 import LDKNode
 import SwiftUI
+import BitkitCore
+
 
 struct ActivityExplorerView: View {
     let item: Activity

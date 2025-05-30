@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import BitkitCore
 
 struct ActivityItemView: View {
     let item: Activity

@@ -9,15 +9,11 @@
 /* Begin PBXBuildFile section */
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		9613018C2C5022D700878183 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* SQLite */; };
-		96555F562D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
-		96555F572D4CB05F00A1EECB /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
-		96555F582D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
-		96555F592D4CB05F00A1EECB /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
 		966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 966DE66F2C51210000A7B0EF /* LightningDevKit */; };
-		96CCDC3F2CEC637000388EAD /* bitkitcore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96CCDC3E2CEC637000388EAD /* bitkitcore.swift */; };
-		96CCDC432CEC637700388EAD /* BitkitCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 96CCDC412CEC637700388EAD /* BitkitCore.xcframework */; };
 		96DE9C682DE87C5C009932BF /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96DE9C672DE87C5C009932BF /* LDKNode */; };
 		96DE9C6A2DE87C78009932BF /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96DE9C692DE87C78009932BF /* LDKNode */; };
+		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
+		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
 		96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */ = {isa = PBXBuildFile; productRef = 96E20CD32CB6D91A00C24149 /* CodeScanner */; };
 		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
 		96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* secp256k1 */; };
@@ -64,8 +60,6 @@
 
 /* Begin PBXFileReference section */
 		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		96CCDC3E2CEC637000388EAD /* bitkitcore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = bitkitcore.swift; sourceTree = "<group>"; };
-		96CCDC412CEC637700388EAD /* BitkitCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = BitkitCore.xcframework; sourceTree = "<group>"; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -143,8 +137,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				96DE9C6A2DE87C78009932BF /* LDKNode in Frameworks */,
+				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
-				96555F582D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -154,9 +148,9 @@
 			files = (
 				96DE9C682DE87C5C009932BF /* LDKNode in Frameworks */,
 				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
-				96CCDC432CEC637700388EAD /* BitkitCore.xcframework in Frameworks */,
 				9613018C2C5022D700878183 /* SQLite in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
+				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
 				96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -166,7 +160,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */,
-				96555F562D4CB05F00A1EECB /* BitkitCore.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,8 +176,6 @@
 		961058EC2C35798C00E1F1D8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				96CCDC412CEC637700388EAD /* BitkitCore.xcframework */,
-				96CCDC3E2CEC637000388EAD /* bitkitcore.swift */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -231,6 +222,7 @@
 			packageProductDependencies = (
 				96E493A72C943184000E8BC2 /* secp256k1 */,
 				96DE9C692DE87C78009932BF /* LDKNode */,
+				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -260,6 +252,7 @@
 				96E493A32C942FD1000E8BC2 /* secp256k1 */,
 				96E20CD32CB6D91A00C24149 /* CodeScanner */,
 				96DE9C672DE87C5C009932BF /* LDKNode */,
+				96DEA0392DE8BBA1009932BF /* BitkitCore */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -365,6 +358,7 @@
 				96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
 				96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */,
 				96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */,
+				96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -414,7 +408,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96555F592D4CB05F00A1EECB /* bitkitcore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -422,7 +415,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96CCDC3F2CEC637000388EAD /* bitkitcore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -430,7 +422,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96555F572D4CB05F00A1EECB /* bitkitcore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -881,6 +872,14 @@
 				kind = branch;
 			};
 		};
+		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/synonymdev/bitkit-core";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/twostraws/CodeScanner";
@@ -919,6 +918,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */;
 			productName = LDKNode;
+		};
+		96DEA0392DE8BBA1009932BF /* BitkitCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */;
+			productName = BitkitCore;
+		};
+		96DEA03B2DE8BBAB009932BF /* BitkitCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */;
+			productName = BitkitCore;
 		};
 		96E20CD32CB6D91A00C24149 /* CodeScanner */ = {
 			isa = XCSwiftPackageProductDependency;

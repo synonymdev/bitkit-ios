@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 struct SpendingAdvancedView: View {
     let order: IBtOrder

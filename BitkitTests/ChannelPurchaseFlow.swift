@@ -6,6 +6,8 @@
 //
 
 import XCTest
+import BitkitCore
+
 @testable import Bitkit
 
 final class PaymentFlowTests: XCTestCase {

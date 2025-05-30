@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 private struct TransactionStatusText: View {
     let txType: PaymentType
