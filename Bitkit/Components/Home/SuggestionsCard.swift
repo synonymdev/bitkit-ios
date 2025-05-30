@@ -42,11 +42,10 @@ struct SuggestionCard: View {
 
             Button(action: onDismiss) {
                 Image("x-mark")
-                    .renderingMode(.original)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .foregroundColor(.textSecondary)
                     .frame(width: 16, height: 16)
-                    .foregroundColor(.white64)
                     .padding(8)
             }
             .padding(8)

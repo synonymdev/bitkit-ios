@@ -4,9 +4,10 @@ import SwiftUI
 
 @MainActor
 class WidgetEditLogic: ObservableObject {
-    @Published var newsOptions = NewsWidgetOptions()
-    @Published var factsOptions = FactsWidgetOptions()
     @Published var blocksOptions = BlocksWidgetOptions()
+    @Published var factsOptions = FactsWidgetOptions()
+    @Published var newsOptions = NewsWidgetOptions()
+    @Published var weatherOptions = WeatherWidgetOptions()
 
     private let widgetType: WidgetType
     private let widgetsViewModel: WidgetsViewModel
@@ -38,7 +39,10 @@ class WidgetEditLogic: ObservableObject {
         case .news, .facts:
             // Static items (showTitle) are always enabled, so these widgets always have enabled options
             return true
-        case .price, .calculator, .weather:
+        case .weather:
+            // Weather widget has multiple options, check if any are enabled
+            return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
+        case .price, .calculator:
             return false
         }
     }
@@ -54,7 +58,10 @@ class WidgetEditLogic: ObservableObject {
         case .news:
             let defaultOptions = NewsWidgetOptions()
             return newsOptions != defaultOptions
-        case .price, .calculator, .weather:
+        case .weather:
+            let defaultOptions = WeatherWidgetOptions()
+            return weatherOptions != defaultOptions
+        case .price, .calculator:
             return false
         }
     }
@@ -109,7 +116,20 @@ class WidgetEditLogic: ObservableObject {
             default:
                 break
             }
-        case .price, .calculator, .weather:
+        case .weather:
+            switch item.key {
+            case "showStatus":
+                weatherOptions.showStatus.toggle()
+            case "showText":
+                weatherOptions.showText.toggle()
+            case "showMedian":
+                weatherOptions.showMedian.toggle()
+            case "showNextBlockFee":
+                weatherOptions.showNextBlockFee.toggle()
+            default:
+                break
+            }
+        case .price, .calculator:
             break
         }
         onStateChange?()
@@ -123,7 +143,9 @@ class WidgetEditLogic: ObservableObject {
             factsOptions = widgetsViewModel.getOptions(for: widgetType, as: FactsWidgetOptions.self)
         case .news:
             newsOptions = widgetsViewModel.getOptions(for: widgetType, as: NewsWidgetOptions.self)
-        case .price, .calculator, .weather:
+        case .weather:
+            weatherOptions = widgetsViewModel.getOptions(for: widgetType, as: WeatherWidgetOptions.self)
+        case .price, .calculator:
             break
         }
     }
@@ -136,7 +158,9 @@ class WidgetEditLogic: ObservableObject {
             factsOptions = FactsWidgetOptions()
         case .news:
             newsOptions = NewsWidgetOptions()
-        case .price, .calculator, .weather:
+        case .weather:
+            weatherOptions = WeatherWidgetOptions()
+        case .price, .calculator:
             break
         }
         onStateChange?()
@@ -150,7 +174,9 @@ class WidgetEditLogic: ObservableObject {
             widgetsViewModel.saveOptions(factsOptions, for: widgetType)
         case .news:
             widgetsViewModel.saveOptions(newsOptions, for: widgetType)
-        case .price, .calculator, .weather:
+        case .weather:
+            widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
+        case .price, .calculator:
             break
         }
     }
