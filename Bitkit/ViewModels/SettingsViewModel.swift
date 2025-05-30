@@ -11,6 +11,7 @@ import SwiftUI
 class SettingsViewModel: ObservableObject {
     // Security & Privacy Settings
     @AppStorage("swipeBalanceToHide") var swipeBalanceToHide: Bool = true
+    @AppStorage("hideBalance") var hideBalance: Bool = false
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
@@ -27,5 +28,10 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("showWidgets") var showWidgets: Bool = true
     @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
 
-    init() {}
+    init() {
+        if hideBalanceOnOpen {
+            hideBalance = true
+            Logger.test("SettingsViewModel: hideBalanceOnOpen is true, setting hideBalance to true as well")
+        }
+    }
 }
