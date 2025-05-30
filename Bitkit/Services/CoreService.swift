@@ -1,5 +1,6 @@
 import Foundation
 import LDKNode
+import BitkitCore
 
 // MARK: - Activity Service
 
@@ -46,7 +47,7 @@ class ActivityService {
 
             for payment in payments {
                 do {
-                    let state: PaymentState
+                    let state: BitkitCore.PaymentState
                     switch payment.status {
                     case .failed:
                         state = .failed
@@ -268,7 +269,7 @@ class ActivityService {
 
                 let timestamp = timestamp - offset
                 let txType: PaymentType = Bool.random() ? .sent : .received
-                let status: PaymentState = {
+                let status: BitkitCore.PaymentState = {
                     let random = Int.random(in: 0 ... 10)
                     if random < 8 { return .succeeded } // 80% chance
                     if random < 9 { return .pending } // 10% chance
@@ -444,6 +445,7 @@ class BlocktankService {
                 nodeId: nodeId,
                 isoTimestamp: isoTimestamp,
                 signature: signature,
+                isProduction: !Env.isDebug,
                 customUrl: Env.blocktankPushNotificationServer
             )
         }

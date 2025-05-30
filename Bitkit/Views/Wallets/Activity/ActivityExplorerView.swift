@@ -1,6 +1,8 @@
 import Foundation
 import LDKNode
 import SwiftUI
+import BitkitCore
+
 
 struct ActivityExplorerView: View {
     let item: Activity
@@ -36,9 +38,9 @@ struct ActivityExplorerView: View {
     private var amountView: some View {
         switch item {
         case .lightning(let activity):
-            BalanceHeaderView(sats: Int(activity.value), sign: activity.txType == .sent ? "-" : "+", showBitcoinSymbol: false)
+            MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
         case .onchain(let activity):
-            BalanceHeaderView(sats: Int(activity.value), sign: activity.txType == .sent ? "-" : "+", showBitcoinSymbol: false)
+            MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
         }
     }
 

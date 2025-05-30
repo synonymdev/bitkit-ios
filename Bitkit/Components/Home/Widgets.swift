@@ -1,5 +1,17 @@
 import SwiftUI
 
+struct WidgetViewWrapper: View {
+    let widget: Widget
+    let isEditing: Bool
+    let onEditingEnd: (() -> Void)?
+    
+    @EnvironmentObject private var widgets: WidgetsViewModel
+    
+    var body: some View {
+        widget.view(widgetsViewModel: widgets, isEditing: isEditing, onEditingEnd: onEditingEnd)
+    }
+}
+
 struct Widgets: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -39,7 +51,7 @@ struct Widgets: View {
                     }
                 }
             ) { widget in
-                widget.view(isEditing: isEditing) {
+                WidgetViewWrapper(widget: widget, isEditing: isEditing) {
                     withAnimation {
                         isEditing = false
                     }

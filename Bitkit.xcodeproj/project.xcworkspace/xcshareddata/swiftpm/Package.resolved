@@ -1,6 +1,15 @@
 {
-  "originHash" : "9eeaba7be0bdbecad58c6f291e8ecbe60853ce94a77b578a3b444a1b6467f312",
+  "originHash" : "06730355b35a0eb595c6423069119a4e733683724bb2d33f5f35f504732628be",
   "pins" : [
+    {
+      "identity" : "bitkit-core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/synonymdev/bitkit-core",
+      "state" : {
+        "branch" : "master",
+        "revision" : "b25b48c1468bd004801a2793196c6cc0d228dd73"
+      }
+    },
     {
       "identity" : "codescanner",
       "kind" : "remoteSourceControl",
@@ -13,10 +22,10 @@
     {
       "identity" : "ldk-node",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Jasonvdb/ldk-node",
+      "location" : "https://github.com/lightningdevkit/ldk-node",
       "state" : {
         "branch" : "main",
-        "revision" : "0b8f6d1bb331be850fc66d3f5255a4f9a3fda5cb"
+        "revision" : "7977b0429801c277f8dddabaa2c15011b64a00e0"
       }
     },
     {

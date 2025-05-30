@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 struct TransferLearnMoreView: View {
     let order: IBtOrder

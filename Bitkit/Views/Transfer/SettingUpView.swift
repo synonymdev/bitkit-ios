@@ -1,4 +1,5 @@
 import SwiftUI
+import BitkitCore
 
 struct ProgressSteps: View {
     let steps: [String]
