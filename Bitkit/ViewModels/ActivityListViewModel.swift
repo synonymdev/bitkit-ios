@@ -20,7 +20,7 @@ class ActivityListViewModel: ObservableObject {
 
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
-    
+
     // Grouped activities for display
     @Published var groupedActivities: [ActivityGroupItem] = []
 
@@ -31,6 +31,10 @@ class ActivityListViewModel: ObservableObject {
     private var tagsCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
+    @Published private(set) var recentlyUsedTags: [String] = []
+
+    // Persistent storage for recently used tags
+    @AppStorage("recentlyUsedTags") private var recentlyUsedTagsData: Data = Data()
 
     private func updateAvailableTags() async {
         do {
@@ -41,12 +45,47 @@ class ActivityListViewModel: ObservableObject {
         }
     }
 
+    private func addToRecentlyUsedTags(_ tag: String) {
+        // Remove the tag if it already exists
+        recentlyUsedTags.removeAll { $0 == tag }
+        // Add to the front of the list
+        recentlyUsedTags.insert(tag, at: 0)
+        // Keep only the most recent 20 tags to prevent unlimited growth
+        if recentlyUsedTags.count > 20 {
+            recentlyUsedTags = Array(recentlyUsedTags.prefix(20))
+        }
+
+        // Persist to storage
+        saveRecentlyUsedTags()
+    }
+
+    private func loadRecentlyUsedTags() {
+        do {
+            let tags = try JSONDecoder().decode([String].self, from: recentlyUsedTagsData)
+            recentlyUsedTags = tags
+        } catch {
+            // If no saved data or decode fails, start with empty array
+            recentlyUsedTags = []
+        }
+    }
+
+    private func saveRecentlyUsedTags() {
+        do {
+            recentlyUsedTagsData = try JSONEncoder().encode(recentlyUsedTags)
+        } catch {
+            Logger.error(error, context: "Failed to persist recently used tags")
+        }
+    }
+
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
+
+        // Load persisted recently used tags
+        loadRecentlyUsedTags()
 
         // Setup search text subscription with debounce
         searchCancellable =
@@ -127,7 +166,7 @@ class ActivityListViewModel: ObservableObject {
                 minDate: minDate,
                 maxDate: maxDate
             )
-            
+
             // Update grouped activities
             updateGroupedActivities()
         } catch {
@@ -157,31 +196,37 @@ class ActivityListViewModel: ObservableObject {
 
     // MARK: - Tag Methods
 
-    func addTags(_ tags: [String], toActivity id: String) async throws {
-        try await coreService.activity.appendTag(toActivity: id, tags)
-        await syncState() // Refresh UI after adding tags
-    }
-
-    func removeTags(_ tags: [String], fromActivity id: String) async throws {
-        try await coreService.activity.dropTags(fromActivity: id, tags)
-        await syncState() // Refresh UI after removing tags
-    }
-
     func getActivities(withTag tag: String) async throws -> [Activity] {
         try await coreService.activity.get(tags: [tag])
     }
 
-    // MARK: - Global Tag Management
-
-    /// Deletes a tag from all activities that use it
-    func deleteTagGlobally(_ tag: String) async throws {
-        try await coreService.activity.deleteTagGlobally(tag)
-        await syncState() // Refresh UI after deleting tag
+    func getAllPossibleTags() async throws -> [String] {
+        try await coreService.activity.allPossibleTags()
     }
 
-    /// Gets all unique tags that have ever been used
-    func getAllTags() async throws -> [String] {
-        try await coreService.activity.allPossibleTags()
+    func appendTag(toActivity activityId: String, tags: [String]) async throws {
+        try await coreService.activity.appendTag(toActivity: activityId, tags)
+        // Add tags to recently used list
+        for tag in tags {
+            addToRecentlyUsedTags(tag)
+        }
+        // Refresh the activities after adding a tag
+        await syncState()
+    }
+
+    func removeTag(fromActivity activityId: String, tag: String) async throws {
+        try await coreService.activity.dropTags(fromActivity: activityId, [tag])
+        // Refresh the activities after removing a tag
+        await syncState()
+    }
+
+    func getTagsForActivity(_ activityId: String) async throws -> [String] {
+        try await coreService.activity.tags(forActivity: activityId)
+    }
+
+    func removeFromRecentlyUsedTags(_ tag: String) {
+        recentlyUsedTags.removeAll { $0 == tag }
+        saveRecentlyUsedTags()
     }
 }
 
@@ -196,14 +241,14 @@ extension ActivityListViewModel {
     func groupActivities(_ activities: [Activity]) -> [ActivityGroupItem] {
         let calendar = Calendar.current
         let now = Date()
-        
+
         // Calculate date boundaries
         let beginningOfDay = calendar.startOfDay(for: now)
         let beginningOfYesterday = calendar.date(byAdding: .day, value: -1, to: beginningOfDay)!
         let beginningOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
         let beginningOfMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
         let beginningOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
-        
+
         // Group activities
         var today: [Activity] = []
         var yesterday: [Activity] = []
@@ -211,7 +256,7 @@ extension ActivityListViewModel {
         var thisMonth: [Activity] = []
         var thisYear: [Activity] = []
         var earlier: [Activity] = []
-        
+
         for activity in activities {
             let timestamp: UInt64
             switch activity {
@@ -220,9 +265,9 @@ extension ActivityListViewModel {
             case .onchain(let on):
                 timestamp = on.timestamp
             }
-            
+
             let activityDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
-            
+
             if activityDate >= beginningOfDay {
                 today.append(activity)
             } else if activityDate >= beginningOfYesterday {
@@ -237,91 +282,97 @@ extension ActivityListViewModel {
                 earlier.append(activity)
             }
         }
-        
+
         // Build result array using localized headers
         var result: [ActivityGroupItem] = []
-        
+
         if !today.isEmpty {
-            let headerDate = today.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? now
+            let headerDate =
+                today.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? now
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: today.map { .activity($0) })
         }
-        
+
         if !yesterday.isEmpty {
-            let headerDate = yesterday.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? beginningOfYesterday
+            let headerDate =
+                yesterday.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? beginningOfYesterday
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: yesterday.map { .activity($0) })
         }
-        
+
         if !thisWeek.isEmpty {
-            let headerDate = thisWeek.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? beginningOfWeek
+            let headerDate =
+                thisWeek.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? beginningOfWeek
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: thisWeek.map { .activity($0) })
         }
-        
+
         if !thisMonth.isEmpty {
-            let headerDate = thisMonth.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? beginningOfMonth
+            let headerDate =
+                thisMonth.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? beginningOfMonth
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: thisMonth.map { .activity($0) })
         }
-        
+
         if !thisYear.isEmpty {
-            let headerDate = thisYear.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? beginningOfYear
+            let headerDate =
+                thisYear.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? beginningOfYear
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: thisYear.map { .activity($0) })
         }
-        
+
         if !earlier.isEmpty {
-            let headerDate = earlier.first.map { activity in
-                let timestamp: UInt64
-                switch activity {
-                case .lightning(let ln): timestamp = ln.timestamp
-                case .onchain(let on): timestamp = on.timestamp
-                }
-                return Date(timeIntervalSince1970: TimeInterval(timestamp))
-            } ?? Date.distantPast
+            let headerDate =
+                earlier.first.map { activity in
+                    let timestamp: UInt64
+                    switch activity {
+                    case .lightning(let ln): timestamp = ln.timestamp
+                    case .onchain(let on): timestamp = on.timestamp
+                    }
+                    return Date(timeIntervalSince1970: TimeInterval(timestamp))
+                } ?? Date.distantPast
             result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
             result.append(contentsOf: earlier.map { .activity($0) })
         }
-        
+
         return result
     }
-    
+
     private func updateGroupedActivities() {
         if let activities = filteredActivities {
             groupedActivities = groupActivities(activities)
