@@ -22,7 +22,7 @@ struct WidgetEditView: View {
     // Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
         let name = localizedString("widgets__\(id.rawValue)__name")
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
         return (name: name, description: description, icon: icon)
