@@ -14,9 +14,10 @@ struct WidgetEditView: View {
     @State private var refreshTrigger = false
 
     // View models for getting actual content
-    @StateObject private var newsViewModel = NewsViewModel.shared
-    @StateObject private var factsViewModel = FactsViewModel.shared
     @StateObject private var blocksViewModel = BlocksViewModel.shared
+    @StateObject private var factsViewModel = FactsViewModel.shared
+    @StateObject private var newsViewModel = NewsViewModel.shared
+    @StateObject private var weatherViewModel = WeatherViewModel.shared
 
     // Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
@@ -34,9 +35,11 @@ struct WidgetEditView: View {
             blocksViewModel: blocksViewModel,
             factsViewModel: factsViewModel,
             newsViewModel: newsViewModel,
+            weatherViewModel: weatherViewModel,
             blocksOptions: editLogic.blocksOptions,
             factsOptions: editLogic.factsOptions,
-            newsOptions: editLogic.newsOptions
+            newsOptions: editLogic.newsOptions,
+            weatherOptions: editLogic.weatherOptions
         )
     }
 

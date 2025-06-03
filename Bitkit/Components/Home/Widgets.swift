@@ -4,9 +4,9 @@ struct WidgetViewWrapper: View {
     let widget: Widget
     let isEditing: Bool
     let onEditingEnd: (() -> Void)?
-    
+
     @EnvironmentObject private var widgets: WidgetsViewModel
-    
+
     var body: some View {
         widget.view(widgetsViewModel: widgets, isEditing: isEditing, onEditingEnd: onEditingEnd)
     }
@@ -28,14 +28,12 @@ struct Widgets: View {
                 Spacer()
 
                 Button(action: {
-                    withAnimation {
-                        isEditing.toggle()
-                    }
+                    isEditing.toggle()
                 }) {
                     Image(isEditing ? "checkmark" : "sort-ascending")
                         .resizable()
+                        .foregroundColor(.textSecondary)
                         .frame(width: 24, height: 24)
-                        .foregroundColor(.white)
                 }
             }
             .padding(.bottom, 16)
