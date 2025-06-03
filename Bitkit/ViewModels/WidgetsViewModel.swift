@@ -18,7 +18,9 @@ func getDefaultOptions(for type: WidgetType) -> Any {
         return FactsWidgetOptions()
     case .news:
         return NewsWidgetOptions()
-    case .price, .calculator, .weather:
+    case .weather:
+        return WeatherWidgetOptions()
+    case .price, .calculator:
         return EmptyWidgetOptions()
     }
 }
@@ -65,7 +67,7 @@ struct Widget: Identifiable {
         case .blocks:
             BlocksWidget(
                 options: widgetsViewModel.getOptions(for: type, as: BlocksWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .calculator:
@@ -74,21 +76,24 @@ struct Widget: Identifiable {
         case .facts:
             FactsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .news:
             NewsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: NewsWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .price:
             // PriceWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
             PlaceholderWidget(type: type, message: "Coming Soon")
         case .weather:
-            // WeatherWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+            WeatherWidget(
+                options: widgetsViewModel.getOptions(for: type, as: WeatherWidgetOptions.self),
+                isEditing: isEditing,
+                onEditingEnd: onEditingEnd
+            )
         }
     }
 }
@@ -269,7 +274,11 @@ class WidgetsViewModel: ObservableObject {
             let current: NewsWidgetOptions = getOptions(for: type, as: NewsWidgetOptions.self)
             let defaultOptions = NewsWidgetOptions()
             return current != defaultOptions
-        case .price, .calculator, .weather:
+        case .weather:
+            let current: WeatherWidgetOptions = getOptions(for: type, as: WeatherWidgetOptions.self)
+            let defaultOptions = WeatherWidgetOptions()
+            return current != defaultOptions
+        case .price, .calculator:
             return false // No customization available yet
         }
     }
