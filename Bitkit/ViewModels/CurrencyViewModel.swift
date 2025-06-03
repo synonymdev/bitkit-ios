@@ -96,6 +96,14 @@ class CurrencyViewModel: ObservableObject {
 // MARK: - UI Helpers
 
 extension CurrencyViewModel {
+    /// Get the symbol for the currently selected currency
+    var symbol: String {
+        guard let rate = currencyService.getCurrentRate(for: selectedCurrency, from: rates) else {
+            return "$" // Default fallback
+        }
+        return rate.currencySymbol
+    }
+
     func convert(sats: UInt64, to currency: String? = nil) -> ConvertedAmount? {
         let targetCurrency = currency ?? selectedCurrency
         guard let rate = currencyService.getCurrentRate(for: targetCurrency, from: rates) else {

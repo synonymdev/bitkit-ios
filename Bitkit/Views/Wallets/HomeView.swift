@@ -60,6 +60,8 @@ struct HomeView: View {
                 .padding(.bottom, 130)
             }
         }
+        /// Dismiss (calculator widget) keyboard when scrolling
+        .scrollDismissesKeyboard(.immediately)
         .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
         .overlay {
             if wallet.totalBalanceSats == 0 && app.showHomeViewEmptyState {
@@ -128,9 +130,9 @@ struct HomeView: View {
     }
 
     var leftNavigationItem: some View {
-        Button(action: {
+        Button {
             navigation.navigate(.profile)
-        }) {
+        } label: {
             HStack(spacing: 8) {
                 Image(systemName: "person.circle.fill")
                     .font(.title2)
@@ -146,11 +148,11 @@ struct HomeView: View {
 
     var rightNavigationItem: some View {
         HStack {
-            Button(action: {
+            Button {
                 withAnimation {
                     app.showDrawer = true
                 }
-            }) {
+            } label: {
                 Image("burger")
             }
         }
