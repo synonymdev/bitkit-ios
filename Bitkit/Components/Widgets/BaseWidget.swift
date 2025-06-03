@@ -87,7 +87,7 @@ struct BaseWidget<Content: View>: View {
 
     /// Widget metadata computed from type
     private var metadata: WidgetMetadata {
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
     }
 

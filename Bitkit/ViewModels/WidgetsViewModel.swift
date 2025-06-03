@@ -71,8 +71,7 @@ struct Widget: Identifiable {
                 onEditingEnd: onEditingEnd
             )
         case .calculator:
-            // CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+            CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .facts:
             FactsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),

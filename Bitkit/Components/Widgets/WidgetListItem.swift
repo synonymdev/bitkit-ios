@@ -11,7 +11,7 @@ struct WidgetListItem: View {
         let name = localizedString("widgets__\(id.rawValue)__name")
 
         // Get fiat symbol from currency conversion
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
 
