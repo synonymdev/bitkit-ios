@@ -330,6 +330,66 @@ struct WidgetEditItemFactory {
     }
 
     @MainActor
+    static func getPriceItems(priceOptions: PriceWidgetOptions, priceDataByPeriod: [GraphPeriod: [PriceData]] = [:]) -> [WidgetEditItem] {
+        var items: [WidgetEditItem] = []
+
+        // Trading pair options with live or fallback prices
+        let fallbackPrices = ["$ 43,250", "€ 39,850", "£ 34,120", "¥ 6,245,000"]
+
+        // Use current period data for trading pair prices
+        let currentPeriodData = priceDataByPeriod[priceOptions.selectedPeriod] ?? []
+
+        for (index, pair) in tradingPairNames.enumerated() {
+            // Try to find live data for this pair
+            let livePrice = currentPeriodData.first { $0.name == pair }?.price ?? fallbackPrices[index]
+
+            items.append(
+                WidgetEditItem(
+                    key: pair,
+                    type: .toggleItem,
+                    title: pair,
+                    value: livePrice,
+                    isChecked: priceOptions.selectedPairs.contains(pair)
+                ))
+        }
+
+        // Period selection (radio group) with charts
+        let periods: [GraphPeriod] = [.oneDay, .oneWeek, .oneMonth, .oneYear]
+
+        for period in periods {
+            // Get data for this specific period
+            let periodData = priceDataByPeriod[period] ?? []
+            let firstPairData = periodData.first
+
+            items.append(
+                WidgetEditItem(
+                    key: "period_\(period.rawValue)",
+                    type: .toggleItem,
+                    titleView: AnyView(
+                        PriceChart(
+                            values: firstPairData?.pastValues ?? [],
+                            isPositive: firstPairData?.change.isPositive ?? true,
+                            period: period.rawValue
+                        )
+                    ),
+                    valueView: nil,
+                    isChecked: priceOptions.selectedPeriod == period
+                ))
+        }
+
+        items.append(
+            WidgetEditItem(
+                key: "showSource",
+                type: .toggleItem,
+                title: localizedString("widgets__widget__source"),
+                valueView: AnyView(BodySSBText("Bitfinex.com", textColor: .textSecondary)),
+                isChecked: priceOptions.showSource
+            ))
+
+        return items
+    }
+
+    @MainActor
     static func getWeatherItems(
         weatherViewModel: WeatherViewModel,
         weatherOptions: WeatherWidgetOptions
@@ -420,10 +480,12 @@ struct WidgetEditItemFactory {
         blocksViewModel: BlocksViewModel,
         factsViewModel: FactsViewModel,
         newsViewModel: NewsViewModel,
+        priceDataByPeriod: [GraphPeriod: [PriceData]] = [:],
         weatherViewModel: WeatherViewModel,
         blocksOptions: BlocksWidgetOptions,
         factsOptions: FactsWidgetOptions,
         newsOptions: NewsWidgetOptions,
+        priceOptions: PriceWidgetOptions,
         weatherOptions: WeatherWidgetOptions
     ) -> [WidgetEditItem] {
         switch widgetType {
@@ -433,9 +495,11 @@ struct WidgetEditItemFactory {
             return getFactsItems(factsViewModel: factsViewModel, factsOptions: factsOptions)
         case .news:
             return getNewsItems(newsViewModel: newsViewModel, newsOptions: newsOptions)
+        case .price:
+            return getPriceItems(priceOptions: priceOptions, priceDataByPeriod: priceDataByPeriod)
         case .weather:
             return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
-        case .price, .calculator:
+        case .calculator:
             return []
         }
     }

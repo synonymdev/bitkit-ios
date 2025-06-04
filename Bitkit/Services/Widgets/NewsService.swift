@@ -56,7 +56,7 @@ class NewsService {
         guard let data = cache.data(forKey: cacheKey) else {
             return nil
         }
-        
+
         do {
             let decoder = JSONDecoder()
             return try decoder.decode(WidgetData.self, from: data)
@@ -80,8 +80,64 @@ class NewsService {
         let relativeFormatter = RelativeDateTimeFormatter()
         relativeFormatter.locale = Locale.current
         relativeFormatter.dateTimeStyle = .named
-        
+
         return relativeFormatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    /// Fetches widget data using stale-while-revalidate strategy
+    /// - Parameter returnCachedImmediately: If true, returns cached data immediately if available
+    /// - Returns: Widget data
+    /// - Throws: URLError or decoding error
+    @discardableResult
+    func fetchWidgetData(returnCachedImmediately: Bool = true) async throws -> WidgetData {
+        // If we want cached data and it exists, return it immediately
+        if returnCachedImmediately, let cachedData = getCachedData() {
+            // Start fresh fetch in background to update cache (don't await)
+            Task {
+                do {
+                    try await fetchFreshData()
+                    // Cache will be updated automatically in fetchFreshData
+                } catch {
+                    // Silent failure for background updates
+                    print("Background news data update failed: \(error)")
+                }
+            }
+            return cachedData
+        }
+
+        // No cache available or cache not requested - fetch fresh data
+        return try await fetchFreshData()
+    }
+
+    /// Fetches fresh data from API (always hits the network)
+    @discardableResult
+    private func fetchFreshData() async throws -> WidgetData {
+        let articles = try await fetchArticles()
+
+        // Get a random article from the last 10
+        let recentArticles =
+            articles
+            .sorted { $0.published > $1.published }
+            .prefix(10)
+
+        guard let article = recentArticles.randomElement() else {
+            Logger.error("No articles available after filtering")
+            throw URLError(.cannotParseResponse)
+        }
+
+        let timeAgoString = timeAgo(from: article.publishedDate)
+
+        let widgetData = WidgetData(
+            title: article.title,
+            timeAgo: timeAgoString,
+            link: article.comments ?? article.link,
+            publisher: article.publisher.title
+        )
+
+        // Cache the data
+        cacheData(widgetData)
+
+        return widgetData
     }
 }
 

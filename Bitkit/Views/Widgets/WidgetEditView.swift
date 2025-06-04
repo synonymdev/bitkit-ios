@@ -17,6 +17,7 @@ struct WidgetEditView: View {
     @StateObject private var blocksViewModel = BlocksViewModel.shared
     @StateObject private var factsViewModel = FactsViewModel.shared
     @StateObject private var newsViewModel = NewsViewModel.shared
+    @StateObject private var priceViewModel = PriceViewModel.shared
     @StateObject private var weatherViewModel = WeatherViewModel.shared
 
     // Widget data computed from the ID
@@ -35,11 +36,13 @@ struct WidgetEditView: View {
             blocksViewModel: blocksViewModel,
             factsViewModel: factsViewModel,
             newsViewModel: newsViewModel,
+            priceDataByPeriod: priceViewModel.dataByPeriod,
             weatherViewModel: weatherViewModel,
             blocksOptions: editLogic.blocksOptions,
             factsOptions: editLogic.factsOptions,
             newsOptions: editLogic.newsOptions,
-            weatherOptions: editLogic.weatherOptions
+            priceOptions: editLogic.priceOptions,
+            weatherOptions: editLogic.weatherOptions,
         )
     }
 
@@ -112,6 +115,10 @@ struct WidgetEditView: View {
                 editLogic = logic
             }
             editLogic?.loadCurrentOptions()
+
+            if id == .price {
+                priceViewModel.fetchForEditView()
+            }
         }
     }
 }

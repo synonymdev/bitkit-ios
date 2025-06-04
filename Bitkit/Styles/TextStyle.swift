@@ -261,7 +261,7 @@ struct CaptionBText: View {
         Text(
             AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.semiBold))
         )
-        .font(.custom(Fonts.regular, size: fontSize))
+        .font(.custom(Fonts.semiBold, size: fontSize))
         .kerning(0.4)
     }
 }
