@@ -5,10 +5,10 @@
 //  Created by Jason van den Berg on 2024/10/10.
 //
 
+import BitkitCore
 import LDKNode
 import Network
 import SwiftUI
-import BitkitCore
 
 @MainActor
 class AppViewModel: ObservableObject {
