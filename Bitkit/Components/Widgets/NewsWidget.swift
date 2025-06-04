@@ -21,9 +21,6 @@ struct NewsWidget: View {
     /// View model for handling news data
     @StateObject private var viewModel = NewsViewModel.shared
 
-    /// Flag to skip automatic loading for preview/testing
-    @State private var skipLoading: Bool = false
-
     /// Initialize the widget
     init(
         options: NewsWidgetOptions = NewsWidgetOptions(),
@@ -35,21 +32,6 @@ struct NewsWidget: View {
         self.onEditingEnd = onEditingEnd
     }
 
-    /// Initialize with a custom view model (for previews)
-    init(
-        viewModel: NewsViewModel,
-        options: NewsWidgetOptions = NewsWidgetOptions(),
-        isEditing: Bool = false,
-        onEditingEnd: (() -> Void)? = nil,
-        skipLoading: Bool = true
-    ) {
-        self.options = options
-        self.isEditing = isEditing
-        self.onEditingEnd = onEditingEnd
-        self._viewModel = StateObject(wrappedValue: viewModel)
-        self._skipLoading = State(initialValue: skipLoading)
-    }
-
     var body: some View {
         BaseWidget(
             type: .news,
@@ -59,8 +41,8 @@ struct NewsWidget: View {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
-                } else if let error = viewModel.error {
-                    WidgetContentBuilder.errorView("Failed to load news")
+                } else if viewModel.error != nil {
+                    WidgetContentBuilder.errorView(localizedString("widgets__news__error"))
                 } else if let data = viewModel.widgetData {
                     if options.showDate {
                         BodyMText(data.timeAgo, textColor: .textPrimary)
@@ -87,67 +69,16 @@ struct NewsWidget: View {
                 }
             }
         }
+        .onAppear {
+            viewModel.startUpdates()
+        }
     }
 }
 
-#Preview("Default") {
+#Preview {
     NewsWidget()
         .padding()
-        .background(Color.black)
+        .background(.black)
         .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)
-}
-
-#Preview("Custom") {
-    NewsWidget(
-        options: NewsWidgetOptions(showDate: false, showSource: false)
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Loading") {
-    NewsWidget(
-        viewModel: {
-            let vm = NewsViewModel(preview: true)
-            vm.isLoading = true
-            vm.widgetData = nil
-            vm.error = nil
-            return vm
-        }(),
-        skipLoading: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Error") {
-    NewsWidget(
-        viewModel: {
-            let vm = NewsViewModel(preview: true)
-            vm.isLoading = false
-            vm.widgetData = nil
-            vm.error = NSError(domain: "NewsWidgetPreview", code: 404, userInfo: [NSLocalizedDescriptionKey: "Test error message"])
-            return vm
-        }(),
-        skipLoading: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Editing") {
-    NewsWidget(
-        isEditing: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
 }

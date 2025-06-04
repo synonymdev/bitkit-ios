@@ -26,6 +26,7 @@ class WeatherViewModel: ObservableObject {
     private let weatherService = WeatherService.shared
     private var refreshTimer: Timer?
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
+    private var hasStartedUpdates = false
 
     private let vbytesSize = 140 // average native segwit transaction size
 
@@ -34,26 +35,27 @@ class WeatherViewModel: ObservableObject {
 
     /// Private initializer for the singleton instance
     private init() {
-        // Load initial data
-        Task {
-            await fetchWeatherData()
-        }
-
-        startRefreshTimer()
-    }
-
-    /// Public initializer for previews and testing
-    init(preview: Bool = true) {
-        // Skip timer and initial load for previews
-    }
-
-    deinit {
-        refreshTimer?.invalidate()
+        // No automatic loading - widgets will control when to load
     }
 
     /// Sets the currency view model for currency conversion
     func setCurrencyViewModel(_ currencyViewModel: CurrencyViewModel) {
         self.currencyViewModel = currencyViewModel
+    }
+
+    /// Start loading data and periodic updates (idempotent - only starts once)
+    func startUpdates() {
+        guard !hasStartedUpdates else { return }
+
+        hasStartedUpdates = true
+
+        // Load initial data
+        Task {
+            await fetchWeatherData()
+        }
+
+        // Start refresh timer
+        startRefreshTimer()
     }
 
     private func startRefreshTimer() {
@@ -67,36 +69,30 @@ class WeatherViewModel: ObservableObject {
     func fetchWeatherData() async {
         Logger.debug("Loading weather data")
 
-        // Try to load cached data first
+        // Try to load cached data first and return immediately if available
         if let cached = weatherService.getCachedData() {
             weatherData = cached
             isLoading = false
+
+            // Start fresh fetch in background to update cache (don't await)
+            Task {
+                do {
+                    try await fetchFreshWeatherData()
+                    // Cache will be updated automatically in fetchFreshWeatherData
+                } catch {
+                    // Silent failure for background updates
+                    print("Background weather data update failed: \(error)")
+                }
+            }
+            return
         }
 
+        // No cache available - fetch fresh data with loading state
         isLoading = true
         error = nil
 
         do {
-            let response = try await weatherService.fetchWeatherData()
-
-            // Calculate condition using USD threshold logic
-            let condition = calculateCondition(
-                feeRate: Double(response.fees.mid),
-                percentile: response.historicalPercentile
-            )
-
-            let avgFee = Int(response.fees.mid) * vbytesSize
-            let formattedFee = try formatFeeAmount(avgFee)
-
-            let data = WeatherData(
-                condition: condition,
-                currentFee: formattedFee,
-                nextBlockFee: Int(response.fees.fast)
-            )
-
-            weatherService.cacheData(data)
-            weatherData = data
-            error = nil
+            try await fetchFreshWeatherData()
         } catch {
             Logger.error("Failed to load weather data: \(error.localizedDescription)")
             if let decodingError = error as? DecodingError {
@@ -106,6 +102,33 @@ class WeatherViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Fetches fresh weather data from API (always hits the network)
+    @discardableResult
+    private func fetchFreshWeatherData() async throws -> WeatherData {
+        let response = try await weatherService.fetchWeatherData()
+
+        // Calculate condition using USD threshold logic
+        let condition = calculateCondition(
+            feeRate: Double(response.fees.mid),
+            percentile: response.historicalPercentile
+        )
+
+        let avgFee = Int(response.fees.mid) * vbytesSize
+        let formattedFee = try formatFeeAmount(avgFee)
+
+        let data = WeatherData(
+            condition: condition,
+            currentFee: formattedFee,
+            nextBlockFee: Int(response.fees.fast)
+        )
+
+        weatherService.cacheData(data)
+        weatherData = data
+        error = nil
+
+        return data
     }
 
     /// Calculates fee condition using USD threshold and historical percentiles
@@ -144,5 +167,9 @@ class WeatherViewModel: ObservableObject {
         }
 
         return "\(converted.symbol) \(converted.formatted)"
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 }
