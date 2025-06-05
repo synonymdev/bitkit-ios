@@ -28,9 +28,6 @@ struct BlocksWidget: View {
     /// View model for handling block data
     @StateObject private var viewModel = BlocksViewModel.shared
 
-    /// Flag to skip automatic loading for preview/testing
-    @State private var skipLoading: Bool = false
-
     /// Initialize the widget
     init(
         options: BlocksWidgetOptions = BlocksWidgetOptions(),
@@ -40,21 +37,6 @@ struct BlocksWidget: View {
         self.options = options
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
-    }
-
-    /// Initialize with a custom view model (for previews)
-    init(
-        viewModel: BlocksViewModel,
-        options: BlocksWidgetOptions = BlocksWidgetOptions(),
-        isEditing: Bool = false,
-        onEditingEnd: (() -> Void)? = nil,
-        skipLoading: Bool = true
-    ) {
-        self.options = options
-        self.isEditing = isEditing
-        self.onEditingEnd = onEditingEnd
-        self._viewModel = StateObject(wrappedValue: viewModel)
-        self._skipLoading = State(initialValue: skipLoading)
     }
 
     /// Mapping of block data keys to display labels
@@ -79,8 +61,8 @@ struct BlocksWidget: View {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
-                } else if let error = viewModel.error {
-                    WidgetContentBuilder.errorView("Failed to load block data")
+                } else if viewModel.error != nil {
+                    WidgetContentBuilder.errorView(localizedString("widgets__blocks__error"))
                 } else if let data = viewModel.blockData {
                     VStack(spacing: 0) {
                         // Display block data rows based on options
@@ -108,6 +90,9 @@ struct BlocksWidget: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            viewModel.startUpdates()
         }
     }
 
@@ -147,75 +132,10 @@ struct BlocksWidget: View {
     }
 }
 
-#Preview("Default") {
+#Preview {
     BlocksWidget()
         .padding()
-        .background(Color.black)
+        .background(.black)
         .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)
-}
-
-#Preview("Custom") {
-    BlocksWidget(
-        options: BlocksWidgetOptions(
-            height: true,
-            time: false,
-            date: false,
-            transactionCount: true,
-            size: false,
-            weight: false,
-            difficulty: true,
-            hash: false,
-            merkleRoot: false,
-            showSource: false
-        )
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Loading") {
-    BlocksWidget(
-        viewModel: {
-            let vm = BlocksViewModel(preview: true)
-            vm.isLoading = true
-            vm.blockData = nil
-            vm.error = nil
-            return vm
-        }(),
-        skipLoading: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Error") {
-    BlocksWidget(
-        viewModel: {
-            let vm = BlocksViewModel(preview: true)
-            vm.isLoading = false
-            vm.blockData = nil
-            vm.error = NSError(domain: "BlocksWidgetPreview", code: 404, userInfo: [NSLocalizedDescriptionKey: "Test error message"])
-            return vm
-        }(),
-        skipLoading: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Editing") {
-    BlocksWidget(
-        isEditing: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .preferredColorScheme(.dark)
 }

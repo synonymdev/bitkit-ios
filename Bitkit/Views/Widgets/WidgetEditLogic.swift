@@ -8,6 +8,7 @@ class WidgetEditLogic: ObservableObject {
     @Published var factsOptions = FactsWidgetOptions()
     @Published var newsOptions = NewsWidgetOptions()
     @Published var weatherOptions = WeatherWidgetOptions()
+    @Published var priceOptions = PriceWidgetOptions()
 
     private let widgetType: WidgetType
     private let widgetsViewModel: WidgetsViewModel
@@ -42,7 +43,10 @@ class WidgetEditLogic: ObservableObject {
         case .weather:
             // Weather widget has multiple options, check if any are enabled
             return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
-        case .price, .calculator:
+        case .price:
+            // Price widget has options, check if at least one trading pair is selected
+            return !priceOptions.selectedPairs.isEmpty
+        case .calculator:
             return false
         }
     }
@@ -61,7 +65,10 @@ class WidgetEditLogic: ObservableObject {
         case .weather:
             let defaultOptions = WeatherWidgetOptions()
             return weatherOptions != defaultOptions
-        case .price, .calculator:
+        case .price:
+            let defaultOptions = PriceWidgetOptions()
+            return priceOptions != defaultOptions
+        case .calculator:
             return false
         }
     }
@@ -129,10 +136,41 @@ class WidgetEditLogic: ObservableObject {
             default:
                 break
             }
-        case .price, .calculator:
+        case .price:
+            switch item.key {
+            case "BTC/USD":
+                toggleTradingPair("BTC/USD")
+            case "BTC/EUR":
+                toggleTradingPair("BTC/EUR")
+            case "BTC/GBP":
+                toggleTradingPair("BTC/GBP")
+            case "BTC/JPY":
+                toggleTradingPair("BTC/JPY")
+            case "period_1D":
+                priceOptions.selectedPeriod = .oneDay
+            case "period_1W":
+                priceOptions.selectedPeriod = .oneWeek
+            case "period_1M":
+                priceOptions.selectedPeriod = .oneMonth
+            case "period_1Y":
+                priceOptions.selectedPeriod = .oneYear
+            case "showSource":
+                priceOptions.showSource.toggle()
+            default:
+                break
+            }
+        case .calculator:
             break
         }
         onStateChange?()
+    }
+
+    private func toggleTradingPair(_ pairName: String) {
+        if priceOptions.selectedPairs.contains(pairName) {
+            priceOptions.selectedPairs.removeAll { $0 == pairName }
+        } else {
+            priceOptions.selectedPairs.append(pairName)
+        }
     }
 
     func loadCurrentOptions() {
@@ -145,7 +183,9 @@ class WidgetEditLogic: ObservableObject {
             newsOptions = widgetsViewModel.getOptions(for: widgetType, as: NewsWidgetOptions.self)
         case .weather:
             weatherOptions = widgetsViewModel.getOptions(for: widgetType, as: WeatherWidgetOptions.self)
-        case .price, .calculator:
+        case .price:
+            priceOptions = widgetsViewModel.getOptions(for: widgetType, as: PriceWidgetOptions.self)
+        case .calculator:
             break
         }
     }
@@ -160,7 +200,9 @@ class WidgetEditLogic: ObservableObject {
             newsOptions = NewsWidgetOptions()
         case .weather:
             weatherOptions = WeatherWidgetOptions()
-        case .price, .calculator:
+        case .price:
+            priceOptions = PriceWidgetOptions()
+        case .calculator:
             break
         }
         onStateChange?()
@@ -176,7 +218,9 @@ class WidgetEditLogic: ObservableObject {
             widgetsViewModel.saveOptions(newsOptions, for: widgetType)
         case .weather:
             widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
-        case .price, .calculator:
+        case .price:
+            widgetsViewModel.saveOptions(priceOptions, for: widgetType)
+        case .calculator:
             break
         }
     }
