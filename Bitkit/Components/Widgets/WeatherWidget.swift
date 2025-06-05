@@ -83,19 +83,6 @@ struct WeatherWidget: View {
         self.onEditingEnd = onEditingEnd
     }
 
-    /// Initialize with a custom view model (for previews)
-    init(
-        viewModel: WeatherViewModel,
-        options: WeatherWidgetOptions = WeatherWidgetOptions(),
-        isEditing: Bool = false,
-        onEditingEnd: (() -> Void)? = nil
-    ) {
-        self.options = options
-        self.isEditing = isEditing
-        self.onEditingEnd = onEditingEnd
-        self._viewModel = StateObject(wrappedValue: viewModel)
-    }
-
     var body: some View {
         BaseWidget(
             type: .weather,
@@ -105,7 +92,7 @@ struct WeatherWidget: View {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
-                } else if let error = viewModel.error {
+                } else if viewModel.error != nil {
                     WidgetContentBuilder.errorView(localizedString("widgets__weather__error"))
                 } else if let data = viewModel.weatherData {
                     VStack(spacing: 16) {
@@ -172,76 +159,17 @@ struct WeatherWidget: View {
         .onAppear {
             // Inject currency dependency into view model
             viewModel.setCurrencyViewModel(currency)
+            // Start data updates
+            viewModel.startUpdates()
         }
     }
 }
 
-#Preview("Default") {
+#Preview {
     WeatherWidget()
         .padding()
-        .background(Color.black)
+        .background(.black)
         .environmentObject(WalletViewModel())
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
-}
-
-#Preview("Custom") {
-    WeatherWidget(
-        options: WeatherWidgetOptions(
-            showStatus: true,
-            showText: false,
-            showMedian: true,
-            showNextBlockFee: false
-        )
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .environmentObject(CurrencyViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Loading") {
-    WeatherWidget(
-        viewModel: {
-            let vm = WeatherViewModel(preview: true)
-            vm.isLoading = true
-            vm.weatherData = nil
-            vm.error = nil
-            return vm
-        }()
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .environmentObject(CurrencyViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Error") {
-    WeatherWidget(
-        viewModel: {
-            let vm = WeatherViewModel(preview: true)
-            vm.isLoading = false
-            vm.weatherData = nil
-            vm.error = NSError(domain: "WeatherWidgetPreview", code: 404, userInfo: [NSLocalizedDescriptionKey: "Test error message"])
-            return vm
-        }()
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .environmentObject(CurrencyViewModel())
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Editing") {
-    WeatherWidget(
-        isEditing: true
-    )
-    .padding()
-    .background(Color.black)
-    .environmentObject(WalletViewModel())
-    .environmentObject(CurrencyViewModel())
-    .preferredColorScheme(.dark)
 }
