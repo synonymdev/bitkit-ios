@@ -5,14 +5,17 @@
 //  Created by Jason van den Berg on 2024/11/19.
 //
 
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
+    @State private var showWarningAlert = false
+    @State private var alertContinuation: CheckedContinuation<Bool, Error>?
 
     var body: some View {
         VStack {
@@ -34,60 +37,109 @@ struct SendConfirmationView: View {
                 title: NSLocalizedString("wallet__send_swipe", comment: ""),
                 accentColor: .greenAccent
             ) {
-                do {
-                    if app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningBolt11Invoice {
-                        // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
-                        // So we need to handle all these cases here.
-                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                            Task {
-                                do {
-                                    let paymentHash = try await wallet.send(
-                                        bolt11: bolt11,
-                                        sats: app.sendAmountSats,
-                                        onSuccess: {
-                                            app.resetSendState()
-                                            Logger.info("Lightning payment successful")
-                                            continuation.resume()
-                                        },
-                                        onFail: { reason in
-                                            Logger.error("Lightning payment failed: \(reason)")
-                                            app.toast(type: .error, title: "Payment failed", description: reason)
-                                            continuation.resume(
-                                                throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
-                                        }
-                                    )
-                                    Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
-                                } catch {
-                                    continuation.resume(throwing: error)
-                                }
-                            }
-                        }
+                // Check if we need to show warning for amounts over $100 USD
+                if settings.warnWhenSendingOver100 {
+                    let sats: UInt64
+                    if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+                        sats = app.sendAmountSats ?? invoice.amountSatoshis
                     } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                        let sats = app.sendAmountSats ?? invoice.amountSatoshis
-                        let txid = try await wallet.send(address: invoice.address, sats: sats)
-
-                        Logger.info("Onchain send result txid: \(txid)")
-
-                        // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
-                        try? await Task.sleep(nanoseconds: 3_000_000_000)
-                        app.resetSendState()
-                        // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
-                        app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
+                        sats = app.sendAmountSats ?? invoice.amountSatoshis
                     } else {
-                        throw NSError(
-                            domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
+                        sats = 0
                     }
-                } catch {
-                    app.toast(error)
-                    Logger.error("Error sending: \(error)")
-                    throw error // Passing error up to SwipeButton so it knows to reset state
+
+                    // Convert to USD to check if over $100
+                    if let usdAmount = currency.convert(sats: sats, to: "USD") {
+                        if usdAmount.value > 100.0 {
+                            showWarningAlert = true
+                            // Wait for the alert to be dismissed
+                            let shouldProceed = try await waitForAlertDismissal()
+                            if !shouldProceed {
+                                // User cancelled, throw error to reset SwipeButton
+                                throw CancellationError()
+                            }
+                            // User confirmed, continue with payment
+                        }
+                    }
                 }
+
+                // Proceed with payment
+                try await performPayment()
             }
         }
         .padding()
         .sheetBackground()
         .navigationTitle(NSLocalizedString("wallet__send_review", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Confirm Large Payment", isPresented: $showWarningAlert) {
+            Button("No, cancel", role: .cancel) {
+                alertContinuation?.resume(returning: false)
+                alertContinuation = nil
+            }
+            Button("Yes, send") {
+                alertContinuation?.resume(returning: true)
+                alertContinuation = nil
+            }
+        } message: {
+            Text("You're about to send over $100 USD. Are you sure you want to continue?")
+        }
+    }
+
+    private func waitForAlertDismissal() async throws -> Bool {
+        return try await withCheckedThrowingContinuation { continuation in
+            alertContinuation = continuation
+        }
+    }
+
+    private func performPayment() async throws {
+        do {
+            if app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningBolt11Invoice {
+                // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
+                // So we need to handle all these cases here.
+                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                    Task {
+                        do {
+                            let paymentHash = try await wallet.send(
+                                bolt11: bolt11,
+                                sats: app.sendAmountSats,
+                                onSuccess: {
+                                    app.resetSendState()
+                                    Logger.info("Lightning payment successful")
+                                    continuation.resume()
+                                },
+                                onFail: { reason in
+                                    Logger.error("Lightning payment failed: \(reason)")
+                                    app.toast(type: .error, title: "Payment failed", description: reason)
+                                    continuation.resume(
+                                        throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                }
+                            )
+                            Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
+                        } catch {
+                            continuation.resume(throwing: error)
+                        }
+                    }
+                }
+            } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                let sats = app.sendAmountSats ?? invoice.amountSatoshis
+                let txid = try await wallet.send(address: invoice.address, sats: sats)
+
+                Logger.info("Onchain send result txid: \(txid)")
+
+                // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                app.resetSendState()
+                // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
+                app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
+            } else {
+                throw NSError(
+                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
+            }
+        } catch {
+            app.toast(error)
+            Logger.error("Error sending: \(error)")
+            throw error // Passing error up to SwipeButton so it knows to reset state
+        }
     }
 
     @ViewBuilder
@@ -185,6 +237,7 @@ struct SendConfirmationView: View {
                     SendConfirmationView()
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
+                        .environmentObject(SettingsViewModel())
                         .environmentObject(
                             {
                                 let vm = CurrencyViewModel()
