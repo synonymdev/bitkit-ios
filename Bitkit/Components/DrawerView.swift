@@ -28,20 +28,20 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .wallet: return NSLocalizedString("wallet__drawer__wallet", comment: "").uppercased()
-        case .activity: return NSLocalizedString("wallet__drawer__activity", comment: "").uppercased()
-        case .contacts: return NSLocalizedString("wallet__drawer__contacts", comment: "").uppercased()
-        case .profile: return NSLocalizedString("wallet__drawer__profile", comment: "").uppercased()
-        case .widgets: return NSLocalizedString("wallet__drawer__widgets", comment: "").uppercased()
-        case .shop: return "SHOP"
-        case .settings: return NSLocalizedString("wallet__drawer__settings", comment: "").uppercased()
-        case .appStatus: return NSLocalizedString("settings__status__title", comment: "")
+        case .wallet: return localizedString("wallet__drawer__wallet").uppercased()
+        case .activity: return localizedString("wallet__drawer__activity").uppercased()
+        case .contacts: return localizedString("wallet__drawer__contacts").uppercased()
+        case .profile: return localizedString("wallet__drawer__profile").uppercased()
+        case .widgets: return localizedString("wallet__drawer__widgets").uppercased()
+        case .shop: return localizedString("wallet__drawer__shop").uppercased()
+        case .settings: return localizedString("wallet__drawer__settings").uppercased()
+        case .appStatus: return localizedString("settings__status__title")
         }
     }
 
     var isMainMenuItem: Bool {
         switch self {
-        case .appStatus, .shop:
+        case .appStatus:
             return false
         default:
             return true
@@ -102,7 +102,7 @@ struct DrawerView: View {
                             .padding(.bottom, 16)
                     }
                     .frame(width: geometry.size.width * 0.5, height: geometry.size.height)
-                    .sheetBackground()
+                    .background(Color.brandAccent)
                     .offset(x: currentDragOffset)
                     .gesture(
                         DragGesture()
@@ -151,7 +151,7 @@ struct DrawerView: View {
             HStack(spacing: 12) {
                 Image(item.icon)
                     .resizable()
-                    .foregroundColor(.brandAccent)
+                    .foregroundColor(.white)
                     .frame(width: 24, height: 24)
                 Text(item.label)
                     .font(.custom(Fonts.black, size: 24))
@@ -169,16 +169,16 @@ struct DrawerView: View {
 
     @ViewBuilder
     private func appStatus() -> some View {
-        Button(action: {
+        Button {
             navigation.activeDrawerMenuItem = .appStatus
             closeMenu()
-        }) {
+        } label: {
             HStack(spacing: 8) {
                 Image(wallet.nodeLifecycleState.statusIcon)
                     .resizable()
+                    .foregroundColor(.black)
                     .frame(width: 24, height: 24)
-                    .foregroundColor(wallet.nodeLifecycleState.statusColor)
-                BodyMSBText(DrawerMenuItem.appStatus.label, textColor: wallet.nodeLifecycleState.statusColor)
+                BodyMSBText(DrawerMenuItem.appStatus.label, textColor: .black)
             }
         }
     }

@@ -1,28 +1,31 @@
 import SwiftUI
 
 struct SpendingIntroView: View {
-    var body: some View {
-        VStack {
-            OnboardingContent(
-                imageName: "coin-stack-x",
-                title: NSLocalizedString("lightning__spending_intro__title", comment: ""),
-                text: NSLocalizedString("lightning__spending_intro__text", comment: ""),
-                accentColor: .purpleAccent
-            )
+    @EnvironmentObject var navigation: NavigationViewModel
 
-            CustomButton(
-                title: NSLocalizedString("lightning__transfer__nav_title", comment: ""),
-                destination: FundTransferView()
-            )
-        }
-        .padding()
+    var body: some View {
+        OnboardingView(
+            title: localizedString("lightning__spending_intro__title"),
+            description: localizedString("lightning__spending_intro__text"),
+            imageName: "coin-stack-x",
+            buttonText: localizedString("lightning__spending_intro__button"),
+            onButtonPress: {
+                navigation.navigate(.fundingOptions)
+            },
+            accentColor: .purpleAccent,
+            imagePosition: .center,
+            testID: "SpendingIntro"
+        )
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .backToWalletButton()
     }
 }
 
 #Preview {
     NavigationStack {
         SpendingIntroView()
-            .environmentObject(AppViewModel())
+            .environmentObject(NavigationViewModel())
             .preferredColorScheme(.dark)
     }
 }

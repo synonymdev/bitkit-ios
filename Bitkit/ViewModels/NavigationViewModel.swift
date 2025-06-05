@@ -1,5 +1,5 @@
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 enum Route: Hashable {
     case savingsWallet
@@ -7,16 +7,24 @@ enum Route: Hashable {
     case activityList
     case activityDetail(Activity)
     case activityExplorer(Activity)
+    case buyBitcoin
+    case contacts
+    case contactsIntro
     case profile
-    case widgetsIntro
-    case widgetsList
-    case widgetDetail(WidgetType)
-    case widgetEdit(WidgetType)
-    case settings
+    case profileIntro
+    case quickpay
+    case quickpayIntro
     case transferIntro
     case fundingOptions
     case savingsIntro
     case savingsAvailability
+    case settings
+    case shopIntro
+    case shopDiscover
+    case widgetsIntro
+    case widgetsList
+    case widgetDetail(WidgetType)
+    case widgetEdit(WidgetType)
     // Add other distinct screens
 }
 

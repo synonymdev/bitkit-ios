@@ -5,10 +5,10 @@
 //  Created by Jason van den Berg on 2024/10/10.
 //
 
+import BitkitCore
 import LDKNode
 import Network
 import SwiftUI
-import BitkitCore
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -33,6 +33,11 @@ class AppViewModel: ObservableObject {
 
     @Published var isGeoBlocked: Bool? = nil
 
+    // Onboarding
+    @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
+    @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
+    @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
+    @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false

@@ -5,20 +5,18 @@ struct WidgetsIntroView: View {
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            OnboardingContent(
-                imageName: "puzzle",
-                title: localizedString("widgets__onboarding__title"),
-                text: localizedString("widgets__onboarding__description"),
-                accentColor: .brandAccent
-            )
-
-            CustomButton(title: localizedString("common__continue")) {
+        OnboardingView(
+            title: localizedString("widgets__onboarding__title"),
+            description: localizedString("widgets__onboarding__description"),
+            imageName: "puzzle",
+            buttonText: localizedString("common__continue"),
+            onButtonPress: {
                 app.hasSeenWidgetsIntro = true
                 navigation.navigate(.widgetsList)
-            }
-        }
-        .padding(.horizontal, 32)
+            },
+            imagePosition: .center,
+            testID: "WidgetsIntro"
+        )
         .backToWalletButton()
     }
 }
