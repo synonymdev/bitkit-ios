@@ -46,7 +46,6 @@ struct HomeView: View {
                     .padding(.horizontal)
 
                     Suggestions()
-                        .padding(.top, 32)
 
                     if settings.showWidgets {
                         Widgets()
