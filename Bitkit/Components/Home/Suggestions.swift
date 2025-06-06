@@ -15,6 +15,7 @@ enum SuggestionAction: Hashable {
     case quickpay
     case support
     case profile
+    case setupPin
     case none
 }
 
@@ -27,7 +28,7 @@ let cards: [SuggestionCardData] = [
         color: .purple24, action: .transferToSpending),
     SuggestionCardData(
         title: localizedString("cards__pin__title"), description: localizedString("cards__pin__description"), imageName: "shield", color: .green24,
-        action: .none
+        action: .setupPin
     ),
     SuggestionCardData(
         title: localizedString("cards__buyBitcoin__title"), description: localizedString("cards__buyBitcoin__description"), imageName: "b-emboss",
@@ -78,6 +79,8 @@ struct Suggestions: View {
                             navigateToAction(.support)
                         case .profile:
                             break
+                        case .setupPin:
+                            app.showSetupSecuritySheet = true
                         case .none:
                             break
                         }
@@ -114,7 +117,7 @@ struct Suggestions: View {
             }
         case .quickpay, .support:
             screenToNavigate = .settings
-        case .invite, .profile, .none:
+        case .invite, .profile, .setupPin, .none:
             screenToNavigate = nil // These actions might not navigate, or could trigger sheets/other UI
             // Handle non-navigation actions here if needed, e.g.:
             // if action == .invite { self.showInviteSheet = true }
@@ -122,7 +125,7 @@ struct Suggestions: View {
         }
 
         if let screen = screenToNavigate {
-             navigation.navigate(screen)
+            navigation.navigate(screen)
         }
     }
 

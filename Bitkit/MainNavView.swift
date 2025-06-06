@@ -8,7 +8,8 @@ struct MainNavView: View {
     @Environment(\.scenePhase) var scenePhase
 
     // TODO: should be screen height - header height
-    private let sheetHeight = UIScreen.screenHeight - 150
+    private let defaultSheetHeight = UIScreen.screenHeight - 150
+    private let securitySheetHeight = CGFloat(600)
 
     // If scanned directly from home screen
     // TODO: These should be part of the SendSheetView
@@ -82,14 +83,14 @@ struct MainNavView: View {
                 isPresented: $app.showSendOptionsSheet,
                 content: {
                     SendOptionsView()
-                        .presentationDetents([.height(sheetHeight)])
+                        .presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
                 isPresented: $app.showReceiveSheet,
                 content: {
                     ReceiveView()
-                        .presentationDetents([.height(sheetHeight)])
+                        .presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
@@ -98,7 +99,7 @@ struct MainNavView: View {
                     ScannerView(
                         showSendAmountView: $showSendAmountView,
                         showSendConfirmationView: $showSendConfirmationView
-                    ).presentationDetents([.height(sheetHeight)])
+                    ).presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
@@ -106,7 +107,7 @@ struct MainNavView: View {
                 content: {
                     NavigationStack {
                         SendAmountView()
-                            .presentationDetents([.height(sheetHeight)])
+                            .presentationDetents([.height(defaultSheetHeight)])
                     }
                 }
             )
@@ -115,8 +116,15 @@ struct MainNavView: View {
                 content: {
                     NavigationStack {
                         SendConfirmationView()
-                            .presentationDetents([.height(sheetHeight)])
+                            .presentationDetents([.height(defaultSheetHeight)])
                     }
+                }
+            )
+            .sheet(
+                isPresented: $app.showSetupSecuritySheet,
+                content: {
+                    SetupSecuritySheet()
+                        .presentationDetents([.height(securitySheetHeight)])
                 }
             )
             .onChange(of: app.resetSendStateToggle) { _ in
