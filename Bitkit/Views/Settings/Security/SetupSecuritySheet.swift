@@ -2,60 +2,25 @@ import SwiftUI
 
 struct SetupSecuritySheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @State private var pinEnabled: Bool = false
+    @State private var useBiometrics: Bool = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Main content
-                VStack(spacing: 32) {
-                    Spacer()
-
-                    // Shield illustration
-                    Image("shield")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 300, height: 300)
-
-                    // Title and description
-                    VStack(spacing: 8) {
-                        DisplayText(
-                            NSLocalizedString("security__pin_security_title", comment: "Title for security setup sheet"),
-                            textColor: .textPrimary,
-                            accentColor: .greenAccent,
-                        )
-
-                        BodyMText(
-                            NSLocalizedString("security__pin_security_text", comment: "Description for security setup"),
-                            textColor: .textSecondary,
-                        )
-                        .multilineTextAlignment(.center)
-                    }
-
-                    Spacer()
+            Group {
+                if settings.pinEnabled && settings.useBiometrics {
+                    //Replace current view with this so they can't go back in navigation stack
+                    SecuritySetupSuccess()
+                } else if pinEnabled {
+                    // PIN is enabled but biometrics is not - show biometrics setup
+                    SetupBiometricsView()
+                } else {
+                    // PIN is not enabled - show intro to start setup
+                    SecuritySetupIntro()
                 }
-
-                // Buttons
-                HStack(spacing: 16) {
-                    CustomButton(
-                        title: NSLocalizedString("common__later", comment: "Later button"),
-                        variant: .secondary
-                    ) {
-                        app.showSetupSecuritySheet = false
-                    }
-
-                    CustomButton(
-                        title: NSLocalizedString("security__pin_security_button", comment: "Secure wallet button"),
-                        variant: .primary,
-                        destination: ChoosePinView()
-                    )
-                }
-                .padding(.bottom, 40)
             }
-            .padding(.horizontal, 32)
-
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .sheetBackground()
-            .navigationTitle(NSLocalizedString("security__pin_security_header", comment: "Navigation title for security setup"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -69,6 +34,10 @@ struct SetupSecuritySheet: View {
                     }
                 }
             }
+            .onAppear {
+                pinEnabled = settings.pinEnabled
+                useBiometrics = settings.useBiometrics
+            }
         }
     }
 }
@@ -76,4 +45,5 @@ struct SetupSecuritySheet: View {
 #Preview {
     SetupSecuritySheet()
         .environmentObject(AppViewModel())
+        .environmentObject(SettingsViewModel())
 }

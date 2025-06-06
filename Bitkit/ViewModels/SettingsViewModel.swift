@@ -26,12 +26,12 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("hideBalance") var hideBalance: Bool = false
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
-    @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false //TODO: Feature needed
+    @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     @AppStorage("showRecentlyPaidContacts") var showRecentlyPaidContacts: Bool = true //TODO: probably not going to be in anytime soon
     @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = false //TODO: Feature needed
     @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = true //TODO: Feature needed
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false //TODO: Feature needed
-    @AppStorage("useFaceIDInstead") var useFaceIDInstead: Bool = false //TODO: Feature needed
+    @AppStorage("useBiometrics") var useBiometrics: Bool = false //TODO: Checks in UX still need to be done
 
     // PIN Management
     @Published private(set) var pinEnabled: Bool = false

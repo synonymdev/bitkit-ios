@@ -1,14 +1,12 @@
 import SwiftUI
 
 struct ChoosePinView: View {
-    var pinToCheck: String? = nil
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
     @State private var navigateToSetupBiometrics: Bool = false
-    @State private var navigateToConfirmPin: Bool = false
-    @State private var initialPin: String = ""
+    @State private var pinToCheck: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,9 +50,6 @@ struct ChoosePinView: View {
         .navigationDestination(isPresented: $navigateToSetupBiometrics) {
             SetupBiometricsView()
         }
-        .navigationDestination(isPresented: $navigateToConfirmPin) {
-            ChoosePinView(pinToCheck: initialPin)
-        }
     }
 
     private func handlePinComplete(_ pin: String) {
@@ -76,9 +71,10 @@ struct ChoosePinView: View {
                 pinInput = ""
             }
         } else {
-            // This is the initial PIN entry, navigate to confirmation
-            initialPin = pin
-            navigateToConfirmPin = true
+            // This is the initial PIN entry, set pinToCheck and reset input for confirmation
+            self.pinToCheck = pin
+            pinInput = ""
+            errorMessage = ""
         }
     }
 }

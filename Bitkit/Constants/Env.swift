@@ -7,6 +7,7 @@
 
 import Foundation
 import LDKNode
+import LocalAuthentication
 
 enum Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
@@ -148,13 +149,13 @@ enum Env {
     }
 
     static var btcRatesServer: String {
-        "https://bitkit.stag0.blocktank.to/fx/rates/btc"  // TODO: switch to prod when available
+        "https://bitkit.stag0.blocktank.to/fx/rates/btc" // TODO: switch to prod when available
     }
 
-    static let fxRateRefreshInterval: TimeInterval = 2 * 60  // 2 minutes
-    static let fxRateStaleThreshold: TimeInterval = 10 * 60  // After this we notify the user that the rates are stale due to a failed refresh
+    static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
+    static let fxRateStaleThreshold: TimeInterval = 10 * 60 // After this we notify the user that the rates are stale due to a failed refresh
 
-    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60  // 2 minutes
+    static let blocktankOrderRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
     static var pushNotificationFeatures: [BlocktankNotificationType] = [
         .incomingHtlc,
@@ -208,5 +209,18 @@ enum Env {
 
     static var geoCheckUrl: String {
         "https://api1.blocktank.to/api/geocheck"
+    }
+
+    // MARK: Biometric Authentication
+
+    static var biometryType: LABiometryType {
+        let context = LAContext()
+        var error: NSError?
+
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            return .none
+        }
+
+        return context.biometryType
     }
 }
