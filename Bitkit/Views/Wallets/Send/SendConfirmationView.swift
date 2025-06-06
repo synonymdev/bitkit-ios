@@ -71,17 +71,17 @@ struct SendConfirmationView: View {
         .sheetBackground()
         .navigationTitle(NSLocalizedString("wallet__send_review", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Confirm Large Payment", isPresented: $showWarningAlert) {
-            Button("No, cancel", role: .cancel) {
+        .alert(NSLocalizedString("common__are_you_sure", comment: ""), isPresented: $showWarningAlert) {
+            Button(NSLocalizedString("common__dialog_cancel", comment: ""), role: .cancel) {
                 alertContinuation?.resume(returning: false)
                 alertContinuation = nil
             }
-            Button("Yes, send") {
+            Button(NSLocalizedString("wallet__send_yes", comment: "")) {
                 alertContinuation?.resume(returning: true)
                 alertContinuation = nil
             }
         } message: {
-            Text("You're about to send over $100 USD. Are you sure you want to continue?")
+            Text(NSLocalizedString("wallet__send_dialog1", comment: ""))
         }
     }
 

@@ -34,7 +34,49 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("useFaceIDInstead") var useFaceIDInstead: Bool = false //TODO: Feature needed
 
     // PIN Management
-    @AppStorage("hasPinEnabled") var hasPinEnabled: Bool = false //TODO: Feature needed
+    @Published private(set) var pinEnabled: Bool = false
+
+    private func updatePinEnabledState() {
+        let newState = checkPinExists()
+        if pinEnabled != newState {
+            pinEnabled = newState
+            Logger.debug("PIN enabled state updated to \(newState)", context: "SettingsViewModel")
+        }
+    }
+
+    private func checkPinExists() -> Bool {
+        do {
+            return try Keychain.exists(key: .securityPin)
+        } catch {
+            Logger.error("Failed to check if PIN exists in keychain: \(error)", context: "SettingsViewModel")
+            return false
+        }
+    }
+
+    func setPin(_ pin: String) throws {
+        try Keychain.saveString(key: .securityPin, str: pin)
+        updatePinEnabledState()
+    }
+
+    func pinCheck(pin: String) -> Bool {
+        do {
+            guard let storedPin = try Keychain.loadString(key: .securityPin) else {
+                return false
+            }
+            return storedPin == pin
+        } catch {
+            Logger.error("Failed to check PIN from keychain: \(error)", context: "SettingsViewModel")
+            return false
+        }
+    }
+
+    func removePin(pin: String) throws {
+        guard pinCheck(pin: pin) else {
+            throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
+        }
+        try Keychain.delete(key: .securityPin)
+        updatePinEnabledState()
+    }
 
     // Widget Settings
     @AppStorage("showWidgets") var showWidgets: Bool = true
@@ -44,5 +86,7 @@ class SettingsViewModel: ObservableObject {
         if hideBalanceOnOpen {
             hideBalance = true
         }
+
+        updatePinEnabledState()
     }
 }

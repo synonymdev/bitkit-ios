@@ -25,6 +25,7 @@ class AppViewModel: ObservableObject {
     @Published var showReceiveSheet = false
     @Published var showSendOptionsSheet = false
     @Published var showScannerSheet = false
+    @Published var showSetupSecuritySheet = false
     @Published var resetSendStateToggle = false
     @Published var showNewTransaction = false
     @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
