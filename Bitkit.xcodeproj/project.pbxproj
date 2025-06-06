@@ -8,10 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		9613018C2C5022D700878183 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* SQLite */; };
+		96204B762DE9A91A007BAA26 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B752DE9A91A007BAA26 /* SQLite */; };
+		96204B782DE9AA43007BAA26 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B772DE9AA43007BAA26 /* SQLite */; };
+		96204B7B2DE9AABE007BAA26 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B7A2DE9AABE007BAA26 /* LDKNode */; };
 		966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 966DE66F2C51210000A7B0EF /* LightningDevKit */; };
-		96DE9C682DE87C5C009932BF /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96DE9C672DE87C5C009932BF /* LDKNode */; };
-		96DE9C6A2DE87C78009932BF /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96DE9C692DE87C78009932BF /* LDKNode */; };
 		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
 		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
 		96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */ = {isa = PBXBuildFile; productRef = 96E20CD32CB6D91A00C24149 /* CodeScanner */; };
@@ -136,7 +136,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96DE9C6A2DE87C78009932BF /* LDKNode in Frameworks */,
+				96204B7B2DE9AABE007BAA26 /* LDKNode in Frameworks */,
 				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
 			);
@@ -146,9 +146,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				96DE9C682DE87C5C009932BF /* LDKNode in Frameworks */,
+				96204B782DE9AA43007BAA26 /* SQLite in Frameworks */,
 				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
-				9613018C2C5022D700878183 /* SQLite in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
 				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
 				96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */,
@@ -159,6 +158,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96204B762DE9A91A007BAA26 /* SQLite in Frameworks */,
 				96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -221,8 +221,8 @@
 			name = BitkitNotification;
 			packageProductDependencies = (
 				96E493A72C943184000E8BC2 /* secp256k1 */,
-				96DE9C692DE87C78009932BF /* LDKNode */,
 				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
+				96204B7A2DE9AABE007BAA26 /* LDKNode */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -247,12 +247,12 @@
 			);
 			name = Bitkit;
 			packageProductDependencies = (
-				9613018B2C5022D700878183 /* SQLite */,
+				9613018B2C5022D700878183 /* LDKNode */,
 				966DE66F2C51210000A7B0EF /* LightningDevKit */,
 				96E493A32C942FD1000E8BC2 /* secp256k1 */,
 				96E20CD32CB6D91A00C24149 /* CodeScanner */,
-				96DE9C672DE87C5C009932BF /* LDKNode */,
 				96DEA0392DE8BBA1009932BF /* BitkitCore */,
+				96204B772DE9AA43007BAA26 /* SQLite */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -277,6 +277,7 @@
 			name = BitkitTests;
 			packageProductDependencies = (
 				96E493A52C94317D000E8BC2 /* secp256k1 */,
+				96204B752DE9A91A007BAA26 /* SQLite */,
 			);
 			productName = BitkitTests;
 			productReference = 96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */;
@@ -357,8 +358,8 @@
 				966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */,
 				96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
 				96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */,
-				96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */,
 				96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */,
+				96204B792DE9AABE007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -856,20 +857,28 @@
 				minimumVersion = 0.15.3;
 			};
 		};
+		962045C92DE998F1007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lightningdevkit/ldk-node";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		96204B792DE9AABE007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/lightningdevkit/ldk-node";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/lightningdevkit/ldk-swift/";
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 0.0.123;
-			};
-		};
-		96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/lightningdevkit/ldk-node";
-			requirement = {
-				branch = main;
-				kind = branch;
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
@@ -899,25 +908,30 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		9613018B2C5022D700878183 /* SQLite */ = {
+		9613018B2C5022D700878183 /* LDKNode */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 962045C92DE998F1007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */;
+			productName = LDKNode;
+		};
+		96204B752DE9A91A007BAA26 /* SQLite */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 961301892C50215500878183 /* XCRemoteSwiftPackageReference "SQLite.swift" */;
 			productName = SQLite;
+		};
+		96204B772DE9AA43007BAA26 /* SQLite */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 961301892C50215500878183 /* XCRemoteSwiftPackageReference "SQLite.swift" */;
+			productName = SQLite;
+		};
+		96204B7A2DE9AABE007BAA26 /* LDKNode */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 96204B792DE9AABE007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */;
+			productName = LDKNode;
 		};
 		966DE66F2C51210000A7B0EF /* LightningDevKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 966DE66E2C51210000A7B0EF /* XCRemoteSwiftPackageReference "ldk-swift" */;
 			productName = LightningDevKit;
-		};
-		96DE9C672DE87C5C009932BF /* LDKNode */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */;
-			productName = LDKNode;
-		};
-		96DE9C692DE87C78009932BF /* LDKNode */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 96DE9C662DE87C5C009932BF /* XCRemoteSwiftPackageReference "ldk-node" */;
-			productName = LDKNode;
 		};
 		96DEA0392DE8BBA1009932BF /* BitkitCore */ = {
 			isa = XCSwiftPackageProductDependency;

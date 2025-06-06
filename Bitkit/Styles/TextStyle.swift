@@ -49,6 +49,24 @@ struct HeadlineText: View {
     }
 }
 
+struct WeatherTitleText: View {
+    let text: String
+    var textColor: Color = .textPrimary
+    var textAlignment: NSTextAlignment = .left
+
+    init(_ text: String, textColor: Color = .textPrimary, textAlignment: NSTextAlignment = .left) {
+        self.text = text
+        self.textColor = textColor
+        self.textAlignment = textAlignment
+    }
+
+    var body: some View {
+        CustomTextWrapper(
+            text: text, fontSize: 34, lineHeight: 34, shouldCapitalize: false, font: Fonts.bold, textColor: textColor, accentColor: textColor,
+            kerning: 0, textAlignment: textAlignment)
+    }
+}
+
 struct TitleText: View {
     let text: String
     var textColor: Color = .textPrimary
@@ -243,7 +261,7 @@ struct CaptionBText: View {
         Text(
             AttributedString(parseAccentTags(text: text, defaultColor: textColor, accentColor: accentColor, fontSize: fontSize, font: Fonts.semiBold))
         )
-        .font(.custom(Fonts.regular, size: fontSize))
+        .font(.custom(Fonts.semiBold, size: fontSize))
         .kerning(0.4)
     }
 }

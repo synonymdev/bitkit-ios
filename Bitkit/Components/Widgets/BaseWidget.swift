@@ -6,11 +6,11 @@ import SwiftUI
 protocol WidgetProtocol {
     associatedtype OptionsType: Codable & Equatable
     associatedtype ViewModelType: ObservableObject
-    
+
     var options: OptionsType { get set }
     var isEditing: Bool { get set }
     var onEditingEnd: (() -> Void)? { get set }
-    
+
     init(options: OptionsType, isEditing: Bool, onEditingEnd: (() -> Void)?)
     init(viewModel: ViewModelType, options: OptionsType, isEditing: Bool, onEditingEnd: (() -> Void)?)
 }
@@ -29,19 +29,19 @@ enum WidgetState {
 
 /// Helper for building common widget content patterns
 struct WidgetContentBuilder {
-    
+
     /// Creates a standard loading view
     static func loadingView() -> some View {
         ProgressView()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
     /// Creates a standard error view
     static func errorView(_ message: String) -> some View {
         CaptionBText(message, textColor: .textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
-    
+
     /// Creates a standard source attribution row
     static func sourceRow(source: String) -> some View {
         HStack(spacing: 0) {
@@ -87,7 +87,7 @@ struct BaseWidget<Content: View>: View {
 
     /// Widget metadata computed from type
     private var metadata: WidgetMetadata {
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
     }
 
@@ -128,7 +128,6 @@ struct BaseWidget<Content: View>: View {
                     HStack {
                         HStack(spacing: 16) {
                             Image(metadata.icon)
-                                .renderingMode(.original)
                                 .resizable()
                                 .frame(width: 32, height: 32)
 
@@ -146,10 +145,9 @@ struct BaseWidget<Content: View>: View {
                                     onDelete()
                                 } label: {
                                     Image("trash")
-                                        .renderingMode(.original)
                                         .resizable()
+                                        .foregroundColor(.textPrimary)
                                         .frame(width: 24, height: 24)
-                                        .foregroundColor(.white)
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
@@ -161,8 +159,8 @@ struct BaseWidget<Content: View>: View {
                                 } label: {
                                     Image("gear-six")
                                         .resizable()
+                                        .foregroundColor(.textPrimary)
                                         .frame(width: 24, height: 24)
-                                        .foregroundColor(.white)
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
@@ -170,8 +168,8 @@ struct BaseWidget<Content: View>: View {
 
                                 Image("burger")
                                     .resizable()
+                                    .foregroundColor(.textPrimary)
                                     .frame(width: 24, height: 24)
-                                    .foregroundColor(.white)
                             }
                         }
                     }
@@ -207,7 +205,6 @@ struct BaseWidget<Content: View>: View {
                 Button(localizedString("common__delete_yes"), role: .destructive) {
                     widgets.deleteWidget(type)
                     showDeleteDialog = false
-                    onEditingEnd?()
                 }
             },
             message: {

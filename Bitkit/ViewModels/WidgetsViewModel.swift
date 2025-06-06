@@ -18,7 +18,11 @@ func getDefaultOptions(for type: WidgetType) -> Any {
         return FactsWidgetOptions()
     case .news:
         return NewsWidgetOptions()
-    case .price, .calculator, .weather:
+    case .weather:
+        return WeatherWidgetOptions()
+    case .price:
+        return PriceWidgetOptions()
+    case .calculator:
         return EmptyWidgetOptions()
     }
 }
@@ -65,30 +69,35 @@ struct Widget: Identifiable {
         case .blocks:
             BlocksWidget(
                 options: widgetsViewModel.getOptions(for: type, as: BlocksWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .calculator:
-            // CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+            CalculatorWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
         case .facts:
             FactsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: FactsWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .news:
             NewsWidget(
                 options: widgetsViewModel.getOptions(for: type, as: NewsWidgetOptions.self),
-                isEditing: isEditing, 
+                isEditing: isEditing,
                 onEditingEnd: onEditingEnd
             )
         case .price:
-            // PriceWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+            PriceWidget(
+                options: widgetsViewModel.getOptions(for: type, as: PriceWidgetOptions.self),
+                isEditing: isEditing,
+                onEditingEnd: onEditingEnd
+            )
         case .weather:
-            // WeatherWidget(isEditing: isEditing, onEditingEnd: onEditingEnd)
-            PlaceholderWidget(type: type, message: "Coming Soon")
+            WeatherWidget(
+                options: widgetsViewModel.getOptions(for: type, as: WeatherWidgetOptions.self),
+                isEditing: isEditing,
+                onEditingEnd: onEditingEnd
+            )
         }
     }
 }
@@ -157,8 +166,7 @@ class WidgetsViewModel: ObservableObject {
 
     // Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
-        // SavedWidget(type: .price),
-        SavedWidget(type: .facts),
+        SavedWidget(type: .price),
         SavedWidget(type: .news),
         SavedWidget(type: .blocks),
     ]
@@ -269,7 +277,15 @@ class WidgetsViewModel: ObservableObject {
             let current: NewsWidgetOptions = getOptions(for: type, as: NewsWidgetOptions.self)
             let defaultOptions = NewsWidgetOptions()
             return current != defaultOptions
-        case .price, .calculator, .weather:
+        case .weather:
+            let current: WeatherWidgetOptions = getOptions(for: type, as: WeatherWidgetOptions.self)
+            let defaultOptions = WeatherWidgetOptions()
+            return current != defaultOptions
+        case .price:
+            let current: PriceWidgetOptions = getOptions(for: type, as: PriceWidgetOptions.self)
+            let defaultOptions = PriceWidgetOptions()
+            return current != defaultOptions
+        case .calculator:
             return false // No customization available yet
         }
     }

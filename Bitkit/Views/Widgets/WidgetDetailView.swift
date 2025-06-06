@@ -15,7 +15,7 @@ struct WidgetDetailView: View {
         let name = localizedString("widgets__\(id.rawValue)__name")
 
         // Get fiat symbol from currency conversion
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
 
@@ -68,7 +68,6 @@ struct WidgetDetailView: View {
                 Spacer()
 
                 Image(widget.icon)
-                    .renderingMode(.original)
                     .resizable()
                     .frame(width: 64, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -94,10 +93,9 @@ struct WidgetDetailView: View {
                         )
 
                         Image("arrow-right")
-                            .renderingMode(.original)
                             .resizable()
-                            .frame(width: 24, height: 24)
                             .foregroundColor(.textSecondary)
+                            .frame(width: 24, height: 24)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())

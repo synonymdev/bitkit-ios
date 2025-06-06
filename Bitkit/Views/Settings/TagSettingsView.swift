@@ -7,7 +7,7 @@ struct TagSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if !activityViewModel.availableTags.isEmpty {
+                if !activityViewModel.recentlyUsedTags.isEmpty {
                     CaptionText(NSLocalizedString("settings__general__tags_previously", comment: ""))
                         .textCase(.uppercase)
                         .padding(.top, 24)
@@ -16,14 +16,12 @@ struct TagSettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     WrappingHStack(spacing: 8) {
-                        ForEach(activityViewModel.availableTags, id: \.self) { tag in
+                        ForEach(activityViewModel.recentlyUsedTags, id: \.self) { tag in
                             Tag(
                                 tag,
                                 icon: .trash,
                                 onDelete: {
-                                    Task {
-                                        await deleteTag(tag)
-                                    }
+                                    activityViewModel.removeFromRecentlyUsedTags(tag)
                                 }
                             )
                         }
@@ -43,18 +41,6 @@ struct TagSettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .task {
             await activityViewModel.syncState()
-        }
-    }
-
-    private func deleteTag(_ tag: String) async {
-        do {
-            try await activityViewModel.deleteTagGlobally(tag)
-        } catch {
-            app.toast(
-                type: .error,
-                title: "Error deleting tag",
-                description: error.localizedDescription
-            )
         }
     }
 }

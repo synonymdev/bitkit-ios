@@ -210,27 +210,6 @@ class ActivityService {
         }
     }
 
-    // MARK: - Global Tag Deletion
-
-    /// Deletes a tag from all activities that use it
-    func deleteTagGlobally(_ tag: String) async throws {
-        try await ServiceQueue.background(.core) {
-            // Get all activities that use this tag
-            let activitiesWithTag = try getActivitiesByTag(tag: tag, limit: nil, sortDirection: nil)
-
-            // Remove the tag from each activity
-            for activity in activitiesWithTag {
-                let activityId: String
-                switch activity {
-                case .lightning(let ln): activityId = ln.id
-                case .onchain(let on): activityId = on.id
-                }
-
-                try removeTags(activityId: activityId, tags: [tag])
-            }
-        }
-    }
-
     func generateRandomTestData(count: Int = 100) async throws {
         try await ServiceQueue.background(.core) {
             let timestamp = UInt64(Date().timeIntervalSince1970)
