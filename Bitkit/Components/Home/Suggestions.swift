@@ -51,11 +51,22 @@ let cards: [SuggestionCardData] = [
 struct Suggestions: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @State private var ignoringCardTaps = false
     @State private var lastActionTime: Date? = nil
 
     let cardSize: CGFloat = 152
     let cardSpacing: CGFloat = 16
+
+    // Filter out cards that have already been completed
+    private var filteredCards: [SuggestionCardData] {
+        cards.filter { card in
+            if card.action == .setupPin && settings.pinEnabled {
+                return false
+            }
+            return true
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -65,7 +76,7 @@ struct Suggestions: View {
                 .padding(.bottom, 16)
 
             SnapCarousel(
-                items: cards,
+                items: filteredCards,
                 itemSize: cardSize,
                 itemSpacing: cardSpacing,
                 onItemTap: { card in
@@ -142,5 +153,6 @@ struct Suggestions: View {
     VStack {
         Suggestions()
     }
+    .environmentObject(SettingsViewModel())
     .preferredColorScheme(.dark)
 }
