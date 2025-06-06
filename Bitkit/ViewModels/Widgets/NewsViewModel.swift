@@ -6,30 +6,32 @@ class NewsViewModel: ObservableObject {
     static let shared = NewsViewModel()
 
     @Published var widgetData: WidgetData?
-    @Published var isLoading = true
+    @Published var isLoading = false
     @Published var error: Error?
 
     private let newsService = NewsService.shared
     private var refreshTimer: Timer?
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
+    private var hasStartedUpdates = false
 
     /// Private initializer for the singleton instance
     private init() {
+        // No automatic loading - widgets will control when to load
+    }
+
+    /// Start loading data and periodic updates (idempotent - only starts once)
+    func startUpdates() {
+        guard !hasStartedUpdates else { return }
+
+        hasStartedUpdates = true
+
         // Load initial data
         Task {
             await loadArticle()
         }
 
+        // Start refresh timer
         startRefreshTimer()
-    }
-
-    /// Public initializer for previews and testing
-    init(preview: Bool = true) {
-        // Skip timer and initial load for previews
-    }
-
-    deinit {
-        refreshTimer?.invalidate()
     }
 
     private func startRefreshTimer() {
@@ -43,34 +45,30 @@ class NewsViewModel: ObservableObject {
     func loadArticle() async {
         Logger.debug("Loading article")
 
-        // Try to load cached data first
+        // Try to load cached data first and return immediately if available
         if let cached = newsService.getCachedData() {
             widgetData = cached
             isLoading = false
+
+            // Start fresh fetch in background to update cache (don't await)
+            Task {
+                do {
+                    try await newsService.fetchWidgetData(returnCachedImmediately: false)
+                    // Cache will be updated automatically in fetchWidgetData
+                } catch {
+                    // Silent failure for background updates
+                    print("Background news data update failed: \(error)")
+                }
+            }
+            return
         }
 
+        // No cache available - fetch fresh data with loading state
+        isLoading = true
+        error = nil
+
         do {
-            let articles = try await newsService.fetchArticles()
-
-            // Get a random article from the last 10
-            let recentArticles =
-                articles
-                .sorted { $0.published > $1.published }
-                .prefix(10)
-
-            guard let article = recentArticles.randomElement() else {
-                Logger.error("No articles available after filtering")
-                throw URLError(.cannotParseResponse)
-            }
-
-            let data = WidgetData(
-                title: article.title,
-                timeAgo: newsService.timeAgo(from: article.publishedDate),
-                link: article.comments ?? article.link,
-                publisher: article.publisher.title
-            )
-
-            newsService.cacheData(data)
+            let data = try await newsService.fetchWidgetData(returnCachedImmediately: false)
             widgetData = data
             error = nil
         } catch {
@@ -82,5 +80,9 @@ class NewsViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 }

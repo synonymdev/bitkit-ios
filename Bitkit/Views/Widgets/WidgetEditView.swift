@@ -14,14 +14,16 @@ struct WidgetEditView: View {
     @State private var refreshTrigger = false
 
     // View models for getting actual content
-    @StateObject private var newsViewModel = NewsViewModel.shared
-    @StateObject private var factsViewModel = FactsViewModel.shared
     @StateObject private var blocksViewModel = BlocksViewModel.shared
+    @StateObject private var factsViewModel = FactsViewModel.shared
+    @StateObject private var newsViewModel = NewsViewModel.shared
+    @StateObject private var priceViewModel = PriceViewModel.shared
+    @StateObject private var weatherViewModel = WeatherViewModel.shared
 
     // Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
         let name = localizedString("widgets__\(id.rawValue)__name")
-        let fiatSymbol = currency.convert(sats: 1)?.symbol ?? "$"
+        let fiatSymbol = currency.symbol
         let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
         return (name: name, description: description, icon: icon)
@@ -34,9 +36,13 @@ struct WidgetEditView: View {
             blocksViewModel: blocksViewModel,
             factsViewModel: factsViewModel,
             newsViewModel: newsViewModel,
+            priceDataByPeriod: priceViewModel.dataByPeriod,
+            weatherViewModel: weatherViewModel,
             blocksOptions: editLogic.blocksOptions,
             factsOptions: editLogic.factsOptions,
-            newsOptions: editLogic.newsOptions
+            newsOptions: editLogic.newsOptions,
+            priceOptions: editLogic.priceOptions,
+            weatherOptions: editLogic.weatherOptions,
         )
     }
 
@@ -109,6 +115,10 @@ struct WidgetEditView: View {
                 editLogic = logic
             }
             editLogic?.loadCurrentOptions()
+
+            if id == .price {
+                priceViewModel.fetchForEditView()
+            }
         }
     }
 }

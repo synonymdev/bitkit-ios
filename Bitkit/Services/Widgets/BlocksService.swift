@@ -10,10 +10,34 @@ class BlocksService {
 
     private init() {}
 
-    /// Fetches the latest block data from mempool.space API
+    /// Fetches the latest block data using stale-while-revalidate strategy
+    /// - Parameter returnCachedImmediately: If true, returns cached data immediately if available
     /// - Returns: Block data
     /// - Throws: URLError or decoding error
-    func fetchBlockData() async throws -> BlockData {
+    @discardableResult
+    func fetchBlockData(returnCachedImmediately: Bool = true) async throws -> BlockData {
+        // If we want cached data and it exists, return it immediately
+        if returnCachedImmediately, let cachedData = getCachedData() {
+            // Start fresh fetch in background to update cache (don't await)
+            Task {
+                do {
+                    try await fetchFreshData()
+                    // Cache will be updated automatically in fetchFreshData
+                } catch {
+                    // Silent failure for background updates
+                    print("Background blocks data update failed: \(error)")
+                }
+            }
+            return cachedData
+        }
+
+        // No cache available or cache not requested - fetch fresh data
+        return try await fetchFreshData()
+    }
+
+    /// Fetches fresh data from API (always hits the network)
+    @discardableResult
+    private func fetchFreshData() async throws -> BlockData {
         // First get the tip hash
         guard let tipUrl = URL(string: "\(baseUrl)/blocks/tip/hash") else {
             throw URLError(.badURL)
@@ -51,7 +75,12 @@ class BlocksService {
         do {
             let decoder = JSONDecoder()
             let blockInfo = try decoder.decode(BlockInfo.self, from: blockData)
-            return formatBlockInfo(blockInfo)
+            let formattedData = formatBlockInfo(blockInfo)
+
+            // Cache the data
+            cacheData(formattedData)
+
+            return formattedData
         } catch {
             throw error
         }
@@ -92,7 +121,7 @@ class BlocksService {
         formatter.numberStyle = .decimal
         formatter.locale = Locale.current
 
-        let difficulty = (Double(blockInfo.difficulty) / 1_000_000_000_000).formatted(.number.precision(.fractionLength(2)))
+        let difficulty = (blockInfo.difficulty / 1_000_000_000_000).formatted(.number.precision(.fractionLength(2)))
         let size = Double(blockInfo.size) / 1024
         let weight = Double(blockInfo.weight) / 1024 / 1024
 
@@ -135,7 +164,7 @@ struct BlockInfo: Codable {
     let txCount: Int
     let size: Int
     let weight: Int
-    let difficulty: Int64
+    let difficulty: Double
     let merkleRoot: String
 
     enum CodingKeys: String, CodingKey {
