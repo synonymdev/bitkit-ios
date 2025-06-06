@@ -4,6 +4,17 @@ struct SecurityPrivacySettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
+    private var biometryTypeName: String {
+        switch Env.biometryType {
+        case .touchID:
+            return NSLocalizedString("security__bio_touch_id", comment: "")
+        case .faceID:
+            return NSLocalizedString("security__bio_face_id", comment: "")
+        default:
+            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+        }
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
@@ -76,14 +87,24 @@ struct SecurityPrivacySettingsView: View {
                         toggle: $settings.requirePinForPayments
                     )
 
+                    //TODO: add biometry type name from Env
+
+                    //                     "security__bio_face_id" = "Face ID";
+                    // "security__bio_touch_id" = "Touch ID";
+
                     SettingsListLabel(
-                        title: "Use Face ID instead",
-                        toggle: $settings.useFaceIDInstead
+                        title: localizedString(
+                            "settings__security__use_bio", comment: "",
+                            variables: ["biometryTypeName": biometryTypeName]),
+                        toggle: $settings.useBiometrics
                     )
 
-                    // Footer text for Face ID
+                    // Footer text for Biometrics
                     BodyMText(
-                        "When enabled, you can use Face ID instead of your PIN to unlock your wallet or send payments.", textColor: .textSecondary
+                        localizedString(
+                            "settings__security__footer", comment: "",
+                            variables: ["biometryTypeName": biometryTypeName]),
+                        textColor: .textSecondary
                     )
                     .padding(16)
                 }
