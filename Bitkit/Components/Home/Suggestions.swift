@@ -40,9 +40,6 @@ let cards: [SuggestionCardData] = [
         action: .none
     ),
     SuggestionCardData(
-        title: localizedString("cards__buyBitcoin__title"), description: localizedString("cards__buyBitcoin__description"), imageName: "b-emboss",
-        color: .brand24, action: .buyBitcoin),
-    SuggestionCardData(
         id: "pin",
         title: localizedString("cards__pin__title"),
         description: localizedString("cards__pin__description"),
@@ -56,7 +53,7 @@ let cards: [SuggestionCardData] = [
         description: localizedString("cards__buyBitcoin__description"),
         imageName: "b-emboss",
         color: .brand24,
-        action: .none
+        action: .buyBitcoin
     ),
     SuggestionCardData(
         id: "support",
@@ -67,10 +64,17 @@ let cards: [SuggestionCardData] = [
         action: .support
     ),
     SuggestionCardData(
-        title: localizedString("cards__shop__title"), description: localizedString("cards__shop__description"), imageName: "bag",
-        color: .yellow24, action: .shop),
+        id: "shop",
+        title: localizedString("cards__shop__title"),
+        description: localizedString("cards__shop__description"),
+        imageName: "bag",
+        color: .yellow24,
+        action: .shop
+    ),
     SuggestionCardData(
-        title: localizedString("cards__slashtagsProfile__title"), description: localizedString("cards__slashtagsProfile__description"),
+        id: "profile",
+        title: localizedString("cards__slashtagsProfile__title"),
+        description: localizedString("cards__slashtagsProfile__description"),
         imageName: "crown",
         color: .brand24,
         action: .profile
@@ -128,22 +132,21 @@ struct Suggestions: View {
                                 navigateToAction(.transferToSpending)
                             case .invite:
                                 break
-                            case .quickpay, .support:
-                                navigateToAction(.support)
-                            case .profile:
-                                break
                             case .setupPin:
                                 app.showSetupSecuritySheet = true
-                                case .quickpay:
-                            navigateToAction(.quickpay)
+                            case .quickpay:
+                                navigateToAction(.quickpay)
                             case .support:
                                 navigateToAction(.support)
                             case .profile:
                                 navigateToAction(.profile)
+                            case .buyBitcoin:
+                                navigateToAction(.buyBitcoin)
                             case .shop:
-                                navigateToAction(.shop)        
+                                navigateToAction(.shop)
                             case .none:
                                 break
+
                             }
                         }
                     }
@@ -217,7 +220,7 @@ struct Suggestions: View {
             screenToNavigate = app.hasSeenProfileIntro ? .profile : .profileIntro
         case .shop:
             screenToNavigate = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
-        case .invite, .none:
+        case .invite, .none, .setupPin:
             screenToNavigate = nil // These actions might not navigate, or could trigger sheets/other UI
             // Handle non-navigation actions here if needed, e.g.:
             // if action == .invite { self.showInviteSheet = true }
