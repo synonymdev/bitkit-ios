@@ -11,7 +11,8 @@ import Security
 enum KeychainEntryType {
     case bip39Mnemonic(index: Int)
     case bip39Passphrase(index: Int)
-    case pushNotificationPrivateKey  // For secp256k1 shared secret when decrypting push payload
+    case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
+    case securityPin
 
     // TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
 
@@ -23,6 +24,8 @@ enum KeychainEntryType {
             return "bip39_passphrase_\(index)"
         case .pushNotificationPrivateKey:
             return "push_notification_private_key"
+        case .securityPin:
+            return "security_pin"
         }
     }
 }
@@ -64,7 +67,7 @@ class Keychain {
             Logger.error("Saved \(key.storageKey) does not match loaded value", context: "Keychain")
             throw KeychainError.failedToSave
         }
-        storedValue = Data()  // Clear memory
+        storedValue = Data() // Clear memory
 
         Logger.info("Saved \(key.storageKey)", context: "Keychain")
     }
@@ -98,7 +101,7 @@ class Keychain {
     class func exists(key: KeychainEntryType) throws -> Bool {
         var value = try load(key: key)
         let exists = value != nil
-        value = Data()  // Clear memory
+        value = Data() // Clear memory
         return exists
     }
 

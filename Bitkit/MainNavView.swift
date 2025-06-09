@@ -3,9 +3,13 @@ import SwiftUI
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @Environment(\.scenePhase) var scenePhase
 
     // TODO: should be screen height - header height
-    private let sheetHeight = UIScreen.screenHeight - 150
+    private let defaultSheetHeight = UIScreen.screenHeight - 150
+    private let securitySheetHeight = CGFloat(600)
 
     // If scanned directly from home screen
     // TODO: These should be part of the SendSheetView
@@ -121,14 +125,14 @@ struct MainNavView: View {
                 isPresented: $app.showSendOptionsSheet,
                 content: {
                     SendOptionsView()
-                        .presentationDetents([.height(sheetHeight)])
+                        .presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
                 isPresented: $app.showReceiveSheet,
                 content: {
                     ReceiveView()
-                        .presentationDetents([.height(sheetHeight)])
+                        .presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
@@ -137,7 +141,7 @@ struct MainNavView: View {
                     ScannerView(
                         showSendAmountView: $showSendAmountView,
                         showSendConfirmationView: $showSendConfirmationView
-                    ).presentationDetents([.height(sheetHeight)])
+                    ).presentationDetents([.height(defaultSheetHeight)])
                 }
             )
             .sheet(
@@ -145,7 +149,7 @@ struct MainNavView: View {
                 content: {
                     NavigationStack {
                         SendAmountView()
-                            .presentationDetents([.height(sheetHeight)])
+                            .presentationDetents([.height(defaultSheetHeight)])
                     }
                 }
             )
@@ -154,8 +158,15 @@ struct MainNavView: View {
                 content: {
                     NavigationStack {
                         SendConfirmationView()
-                            .presentationDetents([.height(sheetHeight)])
+                            .presentationDetents([.height(defaultSheetHeight)])
                     }
+                }
+            )
+            .sheet(
+                isPresented: $app.showSetupSecuritySheet,
+                content: {
+                    SetupSecuritySheet()
+                        .presentationDetents([.height(securitySheetHeight)])
                 }
             )
             .onChange(of: app.resetSendStateToggle) { _ in
@@ -168,6 +179,37 @@ struct MainNavView: View {
         .overlay {
             TabBar()
             DrawerView()
+        }
+        .onChange(of: scenePhase) { newPhase in
+            guard wallet.walletExists == true && settings.readClipboard && newPhase == .active else {
+                return
+            }
+
+            handleClipboard()
+        }
+
+    }
+
+    private func handleClipboard() {
+        Task { @MainActor in
+            guard let uri = UIPasteboard.general.string else {
+                return
+            }
+
+            do {
+                await wallet.waitForNodeToRun()
+                try await app.handleScannedData(uri)
+
+                // If nil then it's not an invoice we're dealing with
+                if app.invoiceRequiresCustomAmount == true {
+                    showSendAmountView = true
+                } else if app.invoiceRequiresCustomAmount == false {
+                    showSendConfirmationView = true
+                }
+            } catch {
+                Logger.error(error, context: "Failed to read data from clipboard")
+                app.toast(error)
+            }
         }
     }
 }
