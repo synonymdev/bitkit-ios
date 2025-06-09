@@ -5,20 +5,20 @@ struct TransferIntroView: View {
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
-        VStack {
-            OnboardingContent(
-                imageName: "lightning",
-                title: localizedString("lightning__transfer_intro__title"),
-                text: localizedString("lightning__transfer_intro__text"),
-                accentColor: .purpleAccent
-            )
-
-            CustomButton(title: localizedString("lightning__transfer_intro__button")) {
+        OnboardingView(
+            title: localizedString("lightning__transfer_intro__title"),
+            description: localizedString("lightning__transfer_intro__text"),
+            imageName: "lightning",
+            buttonText: localizedString("lightning__transfer_intro__button"),
+            onButtonPress: {
                 app.hasSeenTransferToSpendingIntro = true
                 navigation.navigate(.fundingOptions)
-            }
-        }
-        .padding()
+            },
+            accentColor: .purpleAccent,
+            imagePosition: .center,
+            testID: "TransferIntro"
+        )
+        .backToWalletButton()
     }
 }
 
@@ -26,6 +26,7 @@ struct TransferIntroView: View {
     NavigationStack {
         TransferIntroView()
             .environmentObject(AppViewModel())
+            .environmentObject(NavigationViewModel())
             .preferredColorScheme(.dark)
     }
 }

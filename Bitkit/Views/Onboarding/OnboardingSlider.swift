@@ -51,7 +51,7 @@ struct Dots: View {
     }
 }
 
-struct OnboardingView: View {
+struct OnboardingSlider: View {
     @State var currentTab = 0
 
     var body: some View {
@@ -123,7 +123,7 @@ struct OnboardingView: View {
 
 #Preview {
     NavigationStack {
-        OnboardingView()
+        OnboardingSlider()
     }
     .preferredColorScheme(.dark)
 }
