@@ -5,20 +5,18 @@ struct SavingsIntroView: View {
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
-        VStack {
-            OnboardingContent(
-                imageName: "piggybank-right",
-                title: localizedString("lightning__savings_intro__title"),
-                text: localizedString("lightning__savings_intro__text"),
-                accentColor: .brandAccent
-            )
-
-            CustomButton(title: localizedString("lightning__savings_intro__button")) {
+        OnboardingView(
+            title: localizedString("lightning__savings_intro__title"),
+            description: localizedString("lightning__savings_intro__text"),
+            imageName: "piggybank-right",
+            buttonText: localizedString("lightning__savings_intro__button"),
+            onButtonPress: {
                 app.hasSeenTransferToSavingsIntro = true
                 navigation.navigate(.savingsAvailability)
-            }
-        }
-        .padding()
+            },
+            imagePosition: .center,
+            testID: "SavingsIntro"
+        )
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(localizedString("lightning__transfer__nav_title"))
         .backToWalletButton()
@@ -29,7 +27,7 @@ struct SavingsIntroView: View {
     NavigationStack {
         SavingsIntroView()
             .environmentObject(AppViewModel())
-            .environmentObject(TransferViewModel())
+            .environmentObject(NavigationViewModel())
             .preferredColorScheme(.dark)
     }
 }

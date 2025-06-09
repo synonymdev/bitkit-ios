@@ -131,7 +131,11 @@ struct HomeView: View {
 
     var leftNavigationItem: some View {
         Button {
-            navigation.navigate(.profile)
+            if app.hasSeenProfileIntro {
+                navigation.navigate(.profile)
+            } else {
+                navigation.navigate(.profileIntro)
+            }
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "person.circle.fill")

@@ -25,12 +25,33 @@ struct MainNavView: View {
                 case .activity:
                     AllActivityView()
                         .backToWalletButton()
+                case .contacts:
+                    if app.hasSeenContactsIntro {
+                        // ContactsView()
+                        Text("Coming Soon")
+                            .backToWalletButton()
+                    } else {
+                        ContactsIntroView()
+                    }
                 case .profile:
-                    ProfileView()
-                        .backToWalletButton()
+                    if app.hasSeenProfileIntro {
+                        // ProfileView()
+                        Text("Coming Soon")
+                            .backToWalletButton()
+                    } else {
+                        ProfileIntroView()
+                    }
                 case .settings:
                     SettingsListView()
                         .backToWalletButton()
+                case .shop:
+                    if app.hasSeenShopIntro {
+                        // ShopView()
+                        Text("Coming Soon")
+                            .backToWalletButton()
+                    } else {
+                        ShopIntroView()
+                    }
                 case .widgets:
                     if app.hasSeenWidgetsIntro {
                         WidgetsListView()
@@ -39,9 +60,6 @@ struct MainNavView: View {
                     }
                 case .appStatus:
                     AppStatusView()
-                        .backToWalletButton()
-                default:
-                    Text("Coming Soon")
                         .backToWalletButton()
                 }
             }
@@ -53,6 +71,14 @@ struct MainNavView: View {
                     ActivityItemView(item: activity)
                 case .activityExplorer(let activity):
                     ActivityExplorerView(item: activity)
+                case .buyBitcoin:
+                    BuyBitcoinView()
+                case .contacts:
+                    // ContactsView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                case .contactsIntro:
+                    ContactsIntroView()
                 case .savingsWallet:
                     SavingsWalletView()
                 case .spendingWallet:
@@ -66,7 +92,17 @@ struct MainNavView: View {
                 case .savingsAvailability:
                     SavingsAvailabilityView()
                 case .profile:
-                    ProfileView()
+                    // ProfileView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                case .profileIntro:
+                    ProfileIntroView()
+                case .quickpay:
+                    // QuickpayView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                case .quickpayIntro:
+                    QuickpayIntroView()
                 case .widgetsIntro:
                     WidgetsIntroView()
                 case .widgetsList:
@@ -77,6 +113,12 @@ struct MainNavView: View {
                     WidgetEditView(id: widgetType)
                 case .settings:
                     SettingsListView()
+                case .shopIntro:
+                    ShopIntroView()
+                case .shopDiscover:
+                    // ShopDiscoverView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
                 }
             }
             .sheet(
