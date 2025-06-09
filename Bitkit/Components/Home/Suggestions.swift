@@ -10,11 +10,13 @@ struct SuggestionCardData: Identifiable, Hashable {
 }
 
 enum SuggestionAction: Hashable {
-    case transferToSpending
+    case buyBitcoin
     case invite
-    case quickpay
-    case support
     case profile
+    case quickpay
+    case shop
+    case support
+    case transferToSpending
     case none
 }
 
@@ -31,7 +33,7 @@ let cards: [SuggestionCardData] = [
     ),
     SuggestionCardData(
         title: localizedString("cards__buyBitcoin__title"), description: localizedString("cards__buyBitcoin__description"), imageName: "b-emboss",
-        color: .brand24, action: .none),
+        color: .brand24, action: .buyBitcoin),
     SuggestionCardData(
         title: localizedString("cards__support__title"), description: localizedString("cards__support__description"), imageName: "lightbulb",
         color: .yellow24, action: .support),
@@ -41,6 +43,9 @@ let cards: [SuggestionCardData] = [
     SuggestionCardData(
         title: localizedString("cards__quickpay__title"), description: localizedString("cards__quickpay__description"), imageName: "fast-forward",
         color: .green24, action: .quickpay),
+    SuggestionCardData(
+        title: localizedString("cards__shop__title"), description: localizedString("cards__shop__description"), imageName: "bag",
+        color: .yellow24, action: .shop),
     SuggestionCardData(
         title: localizedString("cards__slashtagsProfile__title"), description: localizedString("cards__slashtagsProfile__description"),
         imageName: "crown",
@@ -70,14 +75,20 @@ struct Suggestions: View {
                 onItemTap: { card in
                     if !ignoringCardTaps && !hasRecentNavigationAction() {
                         switch card.action {
+                        case .buyBitcoin:
+                            navigateToAction(.buyBitcoin)
                         case .transferToSpending:
                             navigateToAction(.transferToSpending)
                         case .invite:
                             break
-                        case .quickpay, .support:
+                        case .quickpay:
+                            navigateToAction(.quickpay)
+                        case .support:
                             navigateToAction(.support)
                         case .profile:
-                            break
+                            navigateToAction(.profile)
+                        case .shop:
+                            navigateToAction(.shop)
                         case .none:
                             break
                         }
@@ -112,9 +123,17 @@ struct Suggestions: View {
             } else {
                 screenToNavigate = .transferIntro
             }
-        case .quickpay, .support:
+        case .buyBitcoin:
+            screenToNavigate = .buyBitcoin
+        case .quickpay:
+            screenToNavigate = app.hasSeenQuickpayIntro ? .settings : .quickpayIntro
+        case .support:
             screenToNavigate = .settings
-        case .invite, .profile, .none:
+        case .profile:
+            screenToNavigate = app.hasSeenProfileIntro ? .profile : .profileIntro
+        case .shop:
+            screenToNavigate = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
+        case .invite, .none:
             screenToNavigate = nil // These actions might not navigate, or could trigger sheets/other UI
             // Handle non-navigation actions here if needed, e.g.:
             // if action == .invite { self.showInviteSheet = true }
@@ -122,7 +141,7 @@ struct Suggestions: View {
         }
 
         if let screen = screenToNavigate {
-             navigation.navigate(screen)
+            navigation.navigate(screen)
         }
     }
 
