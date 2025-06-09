@@ -81,9 +81,9 @@ struct BaseWidget<Content: View>: View {
     @State private var showDeleteDialog = false
 
     @EnvironmentObject private var navigation: NavigationViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
 
     /// Widget metadata computed from type
     private var metadata: WidgetMetadata {
@@ -124,7 +124,7 @@ struct BaseWidget<Content: View>: View {
         Button {
         } label: {
             VStack(spacing: 0) {
-                if wallet.showWidgetTitles || isEditing {
+                if settings.showWidgetTitles || isEditing {
                     HStack {
                         HStack(spacing: 16) {
                             Image(metadata.icon)
@@ -175,7 +175,7 @@ struct BaseWidget<Content: View>: View {
                     }
 
                     // Add spacer only when showing title and not editing
-                    if wallet.showWidgetTitles && !isEditing {
+                    if settings.showWidgetTitles && !isEditing {
                         Spacer()
                             .frame(height: 16)
                     }
@@ -261,9 +261,9 @@ struct WidgetButtonStyle: ButtonStyle {
     }
     .padding()
     .background(Color.black)
-    .environmentObject(WalletViewModel())
     .environmentObject(WidgetsViewModel())
     .environmentObject(NavigationViewModel())
     .environmentObject(CurrencyViewModel())
+    .environmentObject(SettingsViewModel())
     .preferredColorScheme(.dark)
 }

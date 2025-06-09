@@ -9,7 +9,7 @@ struct MoneyStack: View {
     var enableSwipeGesture: Bool = false
 
     @EnvironmentObject var currency: CurrencyViewModel
-    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
 
     // MARK: - Constants
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
@@ -42,7 +42,7 @@ struct MoneyStack: View {
 
                     Spacer()
 
-                    if showEyeIcon && wallet.hideBalance {
+                    if showEyeIcon && settings.hideBalance {
                         eyeIconButton
                     }
                 }
@@ -77,7 +77,7 @@ struct MoneyStack: View {
 
                     Spacer()
 
-                    if showEyeIcon && wallet.hideBalance {
+                    if showEyeIcon && settings.hideBalance {
                         eyeIconButton
                     }
                 }
@@ -105,13 +105,13 @@ struct MoneyStack: View {
                     // Only trigger if horizontal swipe is more significant than vertical
                     if abs(horizontalAmount) > abs(verticalAmount) {
                         withAnimation(springAnimation) {
-                            wallet.hideBalance.toggle()
+                            settings.hideBalance.toggle()
                         }
                         Haptics.play(.medium)
                     }
                 }
         }
-        .animation(enableSwipeGesture ? springAnimation : nil, value: wallet.hideBalance)
+        .animation(enableSwipeGesture ? springAnimation : nil, value: settings.hideBalance)
     }
 }
 
@@ -132,7 +132,7 @@ extension MoneyStack {
 extension MoneyStack {
     fileprivate func revealBalance() {
         withAnimation(springAnimation) {
-            wallet.hideBalance = false
+            settings.hideBalance = false
         }
         Haptics.play(.medium)
     }
@@ -164,8 +164,8 @@ extension MoneyStack {
         return vm
     }
 
-    fileprivate static func previewWalletVM(hideBalance: Bool = false) -> WalletViewModel {
-        let vm = WalletViewModel()
+    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+        let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm
     }
@@ -177,12 +177,12 @@ extension MoneyStack {
             // With toggle enabled
             MoneyStack(sats: 123_456, prefix: "+", showSymbol: false)
                 .environmentObject(MoneyStack.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
-                .environmentObject(MoneyStack.previewWalletVM())
+                .environmentObject(MoneyStack.previewSettingsVM())
 
             // With symbol
             MoneyStack(sats: 123_456, prefix: "-", showSymbol: true)
                 .environmentObject(MoneyStack.previewCurrencyVM(primaryDisplay: .fiat, currency: "EUR"))
-                .environmentObject(MoneyStack.previewWalletVM())
+                .environmentObject(MoneyStack.previewSettingsVM())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
