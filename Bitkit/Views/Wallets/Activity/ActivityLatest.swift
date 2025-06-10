@@ -10,6 +10,7 @@ import SwiftUI
 struct ActivityLatest: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject private var activity: ActivityListViewModel
 
     var body: some View {
@@ -35,8 +36,7 @@ struct ActivityLatest: View {
                     if items.count == 0 {
                         Button(
                             action: {
-                                app.showReceiveSheet = true
-                                Haptics.play(.openSheet)
+                                sheets.showSheet(.receive)
                             },
                             label: {
                                 EmptyActivityRow()

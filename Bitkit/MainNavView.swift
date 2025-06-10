@@ -4,176 +4,34 @@ struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.scenePhase) var scenePhase
 
-    // TODO: should be screen height - header height
-    private let defaultSheetHeight = UIScreen.screenHeight - 150
-    private let securitySheetHeight = CGFloat(600)
-
-    // If scanned directly from home screen
-    // TODO: These should be part of the SendSheetView
-    @State private var showSendAmountView = false
-    @State private var showSendConfirmationView = false
-
     var body: some View {
         NavigationStack(path: $navigation.path) {
-            Group {
-                switch navigation.activeDrawerMenuItem {
-                case .wallet:
-                    HomeView()
-                case .activity:
-                    AllActivityView()
-                        .backToWalletButton()
-                case .contacts:
-                    if app.hasSeenContactsIntro {
-                        // ContactsView()
-                        Text("Coming Soon")
-                            .backToWalletButton()
-                    } else {
-                        ContactsIntroView()
-                    }
-                case .profile:
-                    if app.hasSeenProfileIntro {
-                        // ProfileView()
-                        Text("Coming Soon")
-                            .backToWalletButton()
-                    } else {
-                        ProfileIntroView()
-                    }
-                case .settings:
-                    SettingsListView()
-                        .backToWalletButton()
-                case .shop:
-                    if app.hasSeenShopIntro {
-                        // ShopView()
-                        Text("Coming Soon")
-                            .backToWalletButton()
-                    } else {
-                        ShopIntroView()
-                    }
-                case .widgets:
-                    if app.hasSeenWidgetsIntro {
-                        WidgetsListView()
-                    } else {
-                        WidgetsIntroView()
-                    }
-                case .appStatus:
-                    AppStatusView()
-                        .backToWalletButton()
-                }
-            }
-            .navigationDestination(for: Route.self) { screenValue in
-                switch screenValue {
-                case .activityList:
-                    AllActivityView()
-                case .activityDetail(let activity):
-                    ActivityItemView(item: activity)
-                case .activityExplorer(let activity):
-                    ActivityExplorerView(item: activity)
-                case .buyBitcoin:
-                    BuyBitcoinView()
-                case .contacts:
-                    // ContactsView()
-                    Text("Coming Soon")
-                        .backToWalletButton()
-                case .contactsIntro:
-                    ContactsIntroView()
-                case .savingsWallet:
-                    SavingsWalletView()
-                case .spendingWallet:
-                    SpendingWalletView()
-                case .transferIntro:
-                    TransferIntroView()
-                case .fundingOptions:
-                    FundingOptionsView()
-                case .savingsIntro:
-                    SavingsIntroView()
-                case .savingsAvailability:
-                    SavingsAvailabilityView()
-                case .profile:
-                    // ProfileView()
-                    Text("Coming Soon")
-                        .backToWalletButton()
-                case .profileIntro:
-                    ProfileIntroView()
-                case .quickpay:
-                    // QuickpayView()
-                    Text("Coming Soon")
-                        .backToWalletButton()
-                case .quickpayIntro:
-                    QuickpayIntroView()
-                case .widgetsIntro:
-                    WidgetsIntroView()
-                case .widgetsList:
-                    WidgetsListView()
-                case .widgetDetail(let widgetType):
-                    WidgetDetailView(id: widgetType)
-                case .widgetEdit(let widgetType):
-                    WidgetEditView(id: widgetType)
-                case .settings:
-                    SettingsListView()
-                case .shopIntro:
-                    ShopIntroView()
-                case .shopDiscover:
-                    // ShopDiscoverView()
-                    Text("Coming Soon")
-                        .backToWalletButton()
-                }
-            }
-            .sheet(
-                isPresented: $app.showSendOptionsSheet,
-                content: {
-                    SendOptionsView()
-                        .presentationDetents([.height(defaultSheetHeight)])
-                }
-            )
-            .sheet(
-                isPresented: $app.showReceiveSheet,
-                content: {
-                    ReceiveView()
-                        .presentationDetents([.height(defaultSheetHeight)])
-                }
-            )
-            .sheet(
-                isPresented: $app.showScannerSheet,
-                content: {
-                    ScannerView(
-                        showSendAmountView: $showSendAmountView,
-                        showSendConfirmationView: $showSendConfirmationView
-                    ).presentationDetents([.height(defaultSheetHeight)])
-                }
-            )
-            .sheet(
-                isPresented: $showSendAmountView,
-                content: {
-                    NavigationStack {
-                        SendAmountView()
-                            .presentationDetents([.height(defaultSheetHeight)])
-                    }
-                }
-            )
-            .sheet(
-                isPresented: $showSendConfirmationView,
-                content: {
-                    NavigationStack {
-                        SendConfirmationView()
-                            .presentationDetents([.height(defaultSheetHeight)])
-                    }
-                }
-            )
-            .sheet(
-                isPresented: $app.showSetupSecuritySheet,
-                content: {
-                    SetupSecuritySheet()
-                        .presentationDetents([.height(securitySheetHeight)])
-                }
-            )
-            .onChange(of: app.resetSendStateToggle) { _ in
-                // If this is triggered it means we had a successful send and need to drop the sheet
-                showSendAmountView = false
-                showSendConfirmationView = false
-            }
+            navigationContent
+        }
+        .sheet(item: $sheets.addTagSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in AddTagSheet(config: config)
+        }
+        .sheet(item: $sheets.backupSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in BackupSheet(config: config)
+        }
+        .sheet(item: $sheets.sendSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in SendSheet(config: config)
+        }
+        .sheet(item: $sheets.receiveSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in ReceiveSheet(config: config)
+        }
+        .sheet(item: $sheets.receivedTxSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in NewTransactionSheet(config: config)
+        }
+        .sheet(item: $sheets.scannerSheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in ScannerSheet(config: config)
+        }
+        .sheet(item: $sheets.securitySheetItem, onDismiss: { sheets.hideSheet() }) {
+            config in SetupSecuritySheet(config: config)
         }
         .accentColor(.white)
         .overlay {
@@ -184,10 +42,119 @@ struct MainNavView: View {
             guard wallet.walletExists == true && settings.readClipboard && newPhase == .active else {
                 return
             }
-
             handleClipboard()
         }
+    }
 
+    // MARK: - Computed Properties for Better Organization
+
+    @ViewBuilder
+    private var navigationContent: some View {
+        Group {
+            switch navigation.activeDrawerMenuItem {
+            case .wallet:
+                HomeView()
+            case .activity:
+                AllActivityView()
+                    .backToWalletButton()
+            case .contacts:
+                if app.hasSeenContactsIntro {
+                    // ContactsView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                } else {
+                    ContactsIntroView()
+                }
+            case .profile:
+                if app.hasSeenProfileIntro {
+                    // ProfileView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                } else {
+                    ProfileIntroView()
+                }
+            case .settings:
+                SettingsListView()
+                    .backToWalletButton()
+            case .shop:
+                if app.hasSeenShopIntro {
+                    // ShopView()
+                    Text("Coming Soon")
+                        .backToWalletButton()
+                } else {
+                    ShopIntroView()
+                }
+            case .widgets:
+                if app.hasSeenWidgetsIntro {
+                    WidgetsListView()
+                } else {
+                    WidgetsIntroView()
+                }
+            case .appStatus:
+                AppStatusView()
+                    .backToWalletButton()
+            }
+        }
+        .navigationDestination(for: Route.self) { screenValue in
+            switch screenValue {
+            case .activityList:
+                AllActivityView()
+            case .activityDetail(let activity):
+                ActivityItemView(item: activity)
+            case .activityExplorer(let activity):
+                ActivityExplorerView(item: activity)
+            case .buyBitcoin:
+                BuyBitcoinView()
+            case .contacts:
+                // ContactsView()
+                Text("Coming Soon")
+                    .backToWalletButton()
+            case .contactsIntro:
+                ContactsIntroView()
+            case .savingsWallet:
+                SavingsWalletView()
+            case .spendingWallet:
+                SpendingWalletView()
+            case .transferIntro:
+                TransferIntroView()
+            case .fundingOptions:
+                FundingOptionsView()
+            case .fundingAmount:
+                FundTransferView()
+            case .savingsIntro:
+                SavingsIntroView()
+            case .savingsAvailability:
+                SavingsAvailabilityView()
+            case .profile:
+                // ProfileView()
+                Text("Coming Soon")
+                    .backToWalletButton()
+            case .profileIntro:
+                ProfileIntroView()
+            case .quickpay:
+                // QuickpayView()
+                Text("Coming Soon")
+                    .backToWalletButton()
+            case .quickpayIntro:
+                QuickpayIntroView()
+            case .widgetsIntro:
+                WidgetsIntroView()
+            case .widgetsList:
+                WidgetsListView()
+            case .widgetDetail(let widgetType):
+                WidgetDetailView(id: widgetType)
+            case .widgetEdit(let widgetType):
+                WidgetEditView(id: widgetType)
+            case .settings:
+                SettingsListView()
+            case .shopIntro:
+                ShopIntroView()
+            case .shopDiscover:
+                // ShopDiscoverView()
+                Text("Coming Soon")
+                    .backToWalletButton()
+            }
+        }
     }
 
     private func handleClipboard() {
@@ -202,9 +169,9 @@ struct MainNavView: View {
 
                 // If nil then it's not an invoice we're dealing with
                 if app.invoiceRequiresCustomAmount == true {
-                    showSendAmountView = true
+                    sheets.showSheet(.send, data: SendConfig(view: .amount))
                 } else if app.invoiceRequiresCustomAmount == false {
-                    showSendConfirmationView = true
+                    sheets.showSheet(.send, data: SendConfig(view: .confirm))
                 }
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
@@ -248,5 +215,6 @@ extension View {
     MainNavView()
         .environmentObject(AppViewModel())
         .environmentObject(NavigationViewModel())
+        .environmentObject(SheetViewModel())
         .preferredColorScheme(.dark)
 }

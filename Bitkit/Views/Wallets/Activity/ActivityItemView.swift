@@ -5,14 +5,15 @@
 //  Created by Jason van den Berg on 2024/10/18.
 //
 
+import BitkitCore
 import LDKNode
 import SwiftUI
-import BitkitCore
 
 struct ActivityItemView: View {
     let item: Activity
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
@@ -103,8 +104,9 @@ struct ActivityItemView: View {
         .backToWalletButton()
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .onChange(of: app.showAddTagSheet) { isShowing in
-            if !isShowing {
+        .onChange(of: sheets.addTagSheetItem) { item in
+            if item == nil {
+                // Add tag sheet was closed, reload tags in case they were modified
                 Task {
                     await viewModel.loadTags()
                 }
@@ -321,13 +323,12 @@ struct ActivityItemView: View {
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 ) {
-                    switch item {
-                    case .lightning(let activity):
-                        app.selectedActivityIdForTag = activity.id
-                    case .onchain(let activity):
-                        app.selectedActivityIdForTag = activity.id
-                    }
-                    app.showAddTagSheet = true
+                    let activityId =
+                        switch item {
+                        case .lightning(let activity): activity.id
+                        case .onchain(let activity): activity.id
+                        }
+                    sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                 }
             }
             .frame(maxWidth: .infinity)

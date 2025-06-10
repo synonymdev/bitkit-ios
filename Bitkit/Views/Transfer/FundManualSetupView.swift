@@ -107,7 +107,7 @@ struct FundManualSetupView: View {
                     CustomButton(
                         title: NSLocalizedString("lightning__external_manual__scan", comment: ""),
                         variant: .secondary,
-                        destination: ScannerView(showSendAmountView: .constant(false), showSendConfirmationView: .constant(false))
+                        destination: ScannerView()
                     )
 
                     // Continue button

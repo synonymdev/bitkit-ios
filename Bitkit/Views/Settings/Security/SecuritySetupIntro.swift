@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SecuritySetupIntro: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
 
     var body: some View {
         VStack(spacing: 24) {
@@ -34,7 +35,7 @@ struct SecuritySetupIntro: View {
                     title: NSLocalizedString("common__later", comment: "Later button"),
                     variant: .secondary
                 ) {
-                    app.showSetupSecuritySheet = false
+                    sheets.hideSheet()
                 }
 
                 CustomButton(
@@ -54,4 +55,5 @@ struct SecuritySetupIntro: View {
 #Preview {
     SecuritySetupIntro()
         .environmentObject(AppViewModel())
+        .environmentObject(SheetViewModel())
 }

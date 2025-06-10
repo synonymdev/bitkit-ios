@@ -27,7 +27,7 @@ struct FundAdvancedOptions: View {
 
                     // Options
                     VStack(spacing: 8) {
-                        NavigationLink(destination: ScannerView(showSendAmountView: .constant(false), showSendConfirmationView: .constant(false))) {
+                        NavigationLink(destination: ScannerView()) {
                             RectangleButton(
                                 icon: Image("scan")
                                     .resizable()

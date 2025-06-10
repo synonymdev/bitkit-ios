@@ -16,6 +16,7 @@ enum Route: Hashable {
     case quickpayIntro
     case transferIntro
     case fundingOptions
+    case fundingAmount
     case savingsIntro
     case savingsAvailability
     case settings
@@ -39,8 +40,8 @@ class NavigationViewModel: ObservableObject {
         path.last
     }
 
-    func navigate(_ screen: Route) {
-        path.append(screen)
+    func navigate(_ route: Route) {
+        path.append(route)
     }
 
     func navigateBack() {

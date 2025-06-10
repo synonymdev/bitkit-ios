@@ -7,27 +7,18 @@ struct SuggestionCardData: Identifiable, Hashable {
     let imageName: String
     let color: Color
     let action: SuggestionAction
-
-    init(id: String, title: String, description: String, imageName: String, color: Color, action: SuggestionAction) {
-        self.id = id
-        self.title = title
-        self.description = description
-        self.imageName = imageName
-        self.color = color
-        self.action = action
-    }
 }
 
 enum SuggestionAction: Hashable {
+    case backup
     case buyBitcoin
     case invite
     case profile
-    case setupPin
     case quickpay
+    case secure
     case shop
     case support
     case transferToSpending
-    case none
 }
 
 let cards: [SuggestionCardData] = [
@@ -37,7 +28,7 @@ let cards: [SuggestionCardData] = [
         description: localizedString("cards__backupSeedPhrase__description"),
         imageName: "safe",
         color: .blue24,
-        action: .none
+        action: .backup
     ),
     SuggestionCardData(
         id: "pin",
@@ -45,7 +36,7 @@ let cards: [SuggestionCardData] = [
         description: localizedString("cards__pin__description"),
         imageName: "shield",
         color: .green24,
-        action: .setupPin
+        action: .secure
     ),
     SuggestionCardData(
         id: "buyBitcoin",
@@ -62,6 +53,22 @@ let cards: [SuggestionCardData] = [
         imageName: "lightbulb",
         color: .yellow24,
         action: .support
+    ),
+    SuggestionCardData(
+        id: "invite",
+        title: localizedString("cards__invite__title"),
+        description: localizedString("cards__invite__description"),
+        imageName: "group",
+        color: .blue24,
+        action: .invite
+    ),
+    SuggestionCardData(
+        id: "quickpay",
+        title: localizedString("cards__quickpay__title"),
+        description: localizedString("cards__quickpay__description"),
+        imageName: "fast-forward",
+        color: .green24,
+        action: .quickpay
     ),
     SuggestionCardData(
         id: "shop",
@@ -84,12 +91,14 @@ let cards: [SuggestionCardData] = [
 struct Suggestions: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
-    @State private var ignoringCardTaps = false
-    @State private var lastActionTime: Date? = nil
 
+    @State private var showShareSheet = false
     // In-memory set of dismissed card keys
     @State private var dismissedCards: Set<String> = []
+    // Prevent duplicate item taps when the card is dismissed
+    @State private var ignoringCardTaps = false
 
     let cardSize: CGFloat = 152
     let cardSpacing: CGFloat = 16
@@ -98,7 +107,7 @@ struct Suggestions: View {
     private var filteredCards: [SuggestionCardData] {
         cards.filter { card in
             // Filter out completed actions
-            if card.action == .setupPin && settings.pinEnabled {
+            if card.action == .secure && settings.pinEnabled {
                 return false
             }
 
@@ -126,36 +135,14 @@ struct Suggestions: View {
                     itemSize: cardSize,
                     itemSpacing: cardSpacing,
                     onItemTap: { card in
-                        if !ignoringCardTaps && !hasRecentNavigationAction() {
-                            switch card.action {
-                            case .transferToSpending:
-                                navigateToAction(.transferToSpending)
-                            case .invite:
-                                break
-                            case .setupPin:
-                                app.showSetupSecuritySheet = true
-                            case .quickpay:
-                                navigateToAction(.quickpay)
-                            case .support:
-                                navigateToAction(.support)
-                            case .profile:
-                                navigateToAction(.profile)
-                            case .buyBitcoin:
-                                navigateToAction(.buyBitcoin)
-                            case .shop:
-                                navigateToAction(.shop)
-                            case .none:
-                                break
-
-                            }
+                        if !ignoringCardTaps {
+                            onItemTap(card)
                         }
                     }
                 ) { card in
                     SuggestionCard(
                         data: card,
-                        onDismiss: {
-                            dismissCard(card)
-                        })
+                        onDismiss: { dismissCard(card) })
                 }
                 .id("suggestions-\(filteredCards.count)-\(dismissedCards.count)")
                 .frame(height: cardSize)
@@ -165,10 +152,47 @@ struct Suggestions: View {
             .onAppear {
                 loadDismissedCards()
             }
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(activityItems: [
+                    localizedString(
+                        "settings__about__shareText",
+                        variables: [
+                            "appStoreUrl": "https://apps.apple.com/app/bitkit-wallet/id6502440655",
+                            "playStoreUrl": "https://play.google.com/store/apps/details?id=to.bitkit",
+                        ])
+                ])
+            }
         }
     }
 
-    // MARK: - Dismissed Cards Management
+    private func onItemTap(_ card: SuggestionCardData) {
+        var route: Route?
+
+        switch card.action {
+        case .backup:
+            sheets.showSheet(.backup, data: BackupConfig())
+        case .buyBitcoin:
+            route = .buyBitcoin
+        case .invite:
+            showShareSheet = true
+        case .profile:
+            route = app.hasSeenProfileIntro ? .profile : .profileIntro
+        case .quickpay:
+            route = app.hasSeenQuickpayIntro ? .settings : .quickpayIntro
+        case .secure:
+            sheets.showSheet(.security, data: SecurityConfig(showLaterButton: true))
+        case .shop:
+            route = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
+        case .support:
+            route = .settings
+        case .transferToSpending:
+            route = app.hasSeenTransferToSpendingIntro ? .fundingOptions : .transferIntro
+        }
+
+        if let route = route {
+            navigation.navigate(route)
+        }
+    }
 
     private func loadDismissedCards() {
         let dismissedArray = UserDefaults.standard.stringArray(forKey: "dismissedSuggestionCards") ?? []
@@ -190,54 +214,9 @@ struct Suggestions: View {
 
         saveDismissedCards()
 
-        Logger.debug("Card dismissed: \(card.title) (ID: \(card.id))", context: "Suggestions")
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             ignoringCardTaps = false
         }
-    }
-
-    // Helper to track navigation actions with debouncing
-    private func navigateToAction(_ action: SuggestionAction) {
-        // Track navigation time to prevent rapid duplicate navigations
-        lastActionTime = Date()
-
-        let screenToNavigate: Route?
-        switch action {
-        case .transferToSpending:
-            if app.hasSeenTransferToSpendingIntro {
-                screenToNavigate = .fundingOptions
-            } else {
-                screenToNavigate = .transferIntro
-            }
-        case .buyBitcoin:
-            screenToNavigate = .buyBitcoin
-        case .quickpay:
-            screenToNavigate = app.hasSeenQuickpayIntro ? .settings : .quickpayIntro
-        case .support:
-            screenToNavigate = .settings
-        case .profile:
-            screenToNavigate = app.hasSeenProfileIntro ? .profile : .profileIntro
-        case .shop:
-            screenToNavigate = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
-        case .invite, .none, .setupPin:
-            screenToNavigate = nil // These actions might not navigate, or could trigger sheets/other UI
-            // Handle non-navigation actions here if needed, e.g.:
-            // if action == .invite { self.showInviteSheet = true }
-            print("SuggestionAction \(action) does not map to a main AppScreen or is not yet handled for navigation.")
-        }
-
-        if let screen = screenToNavigate {
-            navigation.navigate(screen)
-        }
-    }
-
-    // TODO: Why is this needed?
-    // Check if there was a recent navigation action to prevent duplicates
-    private func hasRecentNavigationAction() -> Bool {
-        guard let lastTime = lastActionTime else { return false }
-        // If the last action was less than 1 second ago, consider it recent
-        return Date().timeIntervalSince(lastTime) < 1.0
     }
 }
 
@@ -245,6 +224,7 @@ struct Suggestions: View {
     VStack {
         Suggestions()
     }
+    .environmentObject(SheetViewModel())
     .environmentObject(SettingsViewModel())
     .preferredColorScheme(.dark)
 }

@@ -21,17 +21,6 @@ class AppViewModel: ObservableObject {
     @Published var sendAmountSats: UInt64?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
 
-    // Bottom sheets
-    @Published var showReceiveSheet = false
-    @Published var showSendOptionsSheet = false
-    @Published var showScannerSheet = false
-    @Published var showSetupSecuritySheet = false
-    @Published var resetSendStateToggle = false
-    @Published var showNewTransaction = false
-    @Published var newTransaction: NewTransactionSheetDetails = .init(type: .lightning, direction: .received, sats: 0)
-    @Published var showAddTagSheet = false
-    @Published var selectedActivityIdForTag: String? = nil
-
     @Published var isGeoBlocked: Bool? = nil
 
     // Onboarding
@@ -68,10 +57,12 @@ class AppViewModel: ObservableObject {
 
     private let lightningService: LightningService
     private let coreService: CoreService
+    private let sheetViewModel: SheetViewModel
 
-    init(lightningService: LightningService = .shared, coreService: CoreService = .shared) {
+    init(lightningService: LightningService = .shared, coreService: CoreService = .shared, sheetViewModel: SheetViewModel) {
         self.lightningService = lightningService
         self.coreService = coreService
+        self.sheetViewModel = sheetViewModel
 
         // Start network monitoring
         networkMonitor.pathUpdateHandler = { [weak self] path in
@@ -97,6 +88,11 @@ class AppViewModel: ObservableObject {
         Task {
             await checkGeoStatus()
         }
+    }
+
+    // Convenience initializer for previews and testing
+    convenience init() {
+        self.init(sheetViewModel: SheetViewModel())
     }
 
     deinit {
@@ -152,24 +148,6 @@ extension AppViewModel {
         }
     }
 
-    func showNewTransactionSheet(details: NewTransactionSheetDetails) {
-        newTransaction = details
-
-        // Hide these first if they're visible
-        if showReceiveSheet || showSendOptionsSheet {
-            showReceiveSheet = false
-            showSendOptionsSheet = false
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                guard let self = self else { return }
-                self.showNewTransaction = true
-                Haptics.notify(.success)
-            }
-        } else {
-            showNewTransaction = true
-            Haptics.notify(.success)
-        }
-    }
 }
 
 // MARK: Scanning/pasting handling
@@ -253,8 +231,7 @@ extension AppViewModel {
     }
 
     func resetSendState() {
-        showSendOptionsSheet = false
-        resetSendStateToggle.toggle()
+        sheetViewModel.hideSheet()
 
         // After dropping the sheet reset displayed values
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
@@ -273,7 +250,7 @@ extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let customRecords):
-            showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: amountMsat / 1000))
+            sheetViewModel.showSheet(.receivedTx, data: NewTransactionSheetDetails(type: .lightning, direction: .received, sats: amountMsat / 1000))
             break
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
@@ -281,7 +258,8 @@ extension AppViewModel {
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                showNewTransactionSheet(details: .init(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
+                sheetViewModel.showSheet(
+                    .receivedTx, data: NewTransactionSheetDetails(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
             } else {
                 toast(type: .error, title: "Channel opened", description: "Ready to send")
             }
@@ -291,7 +269,6 @@ extension AppViewModel {
             break
         case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
             // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.
-            showNewTransactionSheet(details: .init(type: .lightning, direction: .sent, sats: (feePaidMsat ?? 0) / 1000))
             break
         case .paymentClaimable:
             break
