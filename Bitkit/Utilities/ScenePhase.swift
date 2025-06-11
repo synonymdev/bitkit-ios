@@ -12,11 +12,12 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
 
-    let sleepTime: UInt64 = 500_000_000  // 0.5 seconds
-    
+    let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
+
     // Store the background task identifier
     @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
 
@@ -46,11 +47,11 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                             backgroundTaskID = .invalid
                             Logger.debug("Ended background task on app becoming active")
                         }
-                        
+
                         if let transaction = NewTransactionSheetDetails.load() {
                             // Background extension received a transaction
                             NewTransactionSheetDetails.clear()
-                            app.showNewTransactionSheet(details: transaction)
+                            sheets.showSheet(.receivedTx, data: transaction)
                         }
 
                         do {
@@ -99,20 +100,20 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                 self.backgroundTaskID = .invalid
             }
         }
-        
+
         Logger.debug("Background task started with ID: \(backgroundTaskID.rawValue)")
         Logger.debug("App backgrounded Stopping node...")
 
         do {
             try await wallet.stopLightningNode()
-            
+
             // End the background task if completed successfully
             if backgroundTaskID != .invalid {
                 UIApplication.shared.endBackgroundTask(backgroundTaskID)
                 backgroundTaskID = .invalid
                 Logger.debug("Background task ended after successful node stop")
             }
-            
+
             //If we're stopped and we're not in the background, we need to start again
             if scenePhase == .active {
                 try await startNodeIfNeeded()

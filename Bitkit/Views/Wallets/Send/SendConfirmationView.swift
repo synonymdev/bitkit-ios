@@ -10,6 +10,7 @@ import SwiftUI
 
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -129,8 +130,8 @@ struct SendConfirmationView: View {
                 // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 app.resetSendState()
-                // TODO: once we have an onchain success event for ldk-node we don't need to trigger manually here
-                app.showNewTransactionSheet(details: .init(type: .onchain, direction: .sent, sats: sats))
+                // TODO: this shouldn't show a sheet, just navigate to send success screen
+                sheets.showSheet(.receivedTx, data: NewTransactionSheetDetails(type: .onchain, direction: .sent, sats: sats))
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
@@ -236,6 +237,7 @@ struct SendConfirmationView: View {
                 NavigationStack {
                     SendConfirmationView()
                         .environmentObject(AppViewModel())
+                        .environmentObject(SheetViewModel())
                         .environmentObject(WalletViewModel())
                         .environmentObject(SettingsViewModel())
                         .environmentObject(

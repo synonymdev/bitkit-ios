@@ -1,23 +1,47 @@
 import SwiftUI
 
+struct AddTagConfig {
+    let activityId: String
+}
+
+struct AddTagSheetItem: SheetItem, Equatable {
+    let id: SheetID = .addTag
+    let size: SheetSize = .small
+    let activityId: String
+
+    init(activityId: String) {
+        self.activityId = activityId
+    }
+
+    static func == (lhs: AddTagSheetItem, rhs: AddTagSheetItem) -> Bool {
+        return lhs.activityId == rhs.activityId
+    }
+}
+
 struct AddTagSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var activityListViewModel: ActivityListViewModel
-    let activityId: String
+    let config: AddTagSheetItem
     var previewTags: [String]? = nil
+
+    private var activityId: String {
+        config.activityId
+    }
 
     @State private var newTag: String = ""
     @State private var isLoading: Bool = false
 
     var body: some View {
-        NavigationStack {
+        Sheet(id: .addTag) {
             VStack(alignment: .leading, spacing: 0) {
+                SheetHeader(title: localizedString("wallet__tags_add"))
+
                 let tagsToShow = previewTags ?? activityListViewModel.recentlyUsedTags
 
                 if !tagsToShow.isEmpty {
                     CaptionText(localizedString("wallet__tags_previously"))
                         .textCase(.uppercase)
-                        .padding(.top, 24)
                         .padding(.bottom, 16)
 
                     WrappingHStack(spacing: 8) {
@@ -55,9 +79,6 @@ struct AddTagSheet: View {
                 .padding(.top, 16)
             }
             .padding(.horizontal)
-            .sheetBackground()
-            .navigationTitle(localizedString("wallet__tags_add"))
-            .navigationBarTitleDisplayMode(.inline)
         }
     }
 
@@ -66,7 +87,7 @@ struct AddTagSheet: View {
         isLoading = true
         do {
             try await activityListViewModel.appendTag(toActivity: activityId, tags: [tag])
-            app.showAddTagSheet = false
+            sheets.hideSheet()
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
         }
@@ -80,10 +101,11 @@ struct AddTagSheet: View {
             isPresented: .constant(true),
             content: {
                 AddTagSheet(
-                    activityId: "test-activity-id",
+                    config: AddTagSheetItem(activityId: "test-activity-id"),
                     previewTags: ["Lunch", "Mom", "Dad", "Conference", "Dinner", "Tip", "Friend", "Gift"]
                 )
                 .environmentObject(AppViewModel())
+                .environmentObject(SheetViewModel())
                 .environmentObject(ActivityListViewModel())
                 .presentationDetents([.height(400)])
             }

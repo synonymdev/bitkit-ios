@@ -9,20 +9,16 @@ import CodeScanner
 import SwiftUI
 
 struct ScannerView: View {
-    @Binding var showSendAmountView: Bool
-    @Binding var showSendConfirmationView: Bool
     var onResultDelay: TimeInterval = 0
 
     @EnvironmentObject private var app: AppViewModel
-    @Environment(\.presentationMode) private var presentationMode
+    @EnvironmentObject private var sheets: SheetViewModel
 
     var body: some View {
         ZStack {
             // Full screen scanner
             CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false) { response in
                 if case .success(let result) = response {
-                    presentationMode.wrappedValue.dismiss()
-
                     handleScan(result.string)
                 } else if case .failure(let error) = response {
                     Logger.error(error, context: "Failed to scan QR code")
@@ -32,14 +28,11 @@ struct ScannerView: View {
             .edgesIgnoringSafeArea(.all)
 
             // Scanner UI overlay - only the scanning area, not controls
-            ScannerUIOverlay(
-                onClose: {
-                    presentationMode.wrappedValue.dismiss()
-                }, onPaste: handlePaste)
+            ScannerUIOverlay(onPaste: handlePaste)
         }
-        .sheetBackground()
         .navigationTitle(localizedString("other__qr_scan"))
         .navigationBarTitleDisplayMode(.inline)
+        .sheetBackground()
     }
 
     func handleScan(_ uri: String) {
@@ -49,13 +42,11 @@ struct ScannerView: View {
             do {
                 try await app.handleScannedData(uri)
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + onResultDelay) {
-                    // If nil then it's not an invoice we're dealing with
-                    if app.invoiceRequiresCustomAmount == true {
-                        showSendAmountView = true
-                    } else if app.invoiceRequiresCustomAmount == false {
-                        showSendConfirmationView = true
-                    }
+                // If nil then it's not an invoice we're dealing with
+                if app.invoiceRequiresCustomAmount == true {
+                    sheets.showSheet(.send, data: SendConfig(view: .amount))
+                } else if app.invoiceRequiresCustomAmount == false {
+                    sheets.showSheet(.send, data: SendConfig(view: .confirm))
                 }
             } catch {
                 Logger.error(error, context: "Failed to read data from QR")
@@ -74,13 +65,11 @@ struct ScannerView: View {
         do {
             try await app.handleScannedData(uri)
 
-            presentationMode.wrappedValue.dismiss()
-
             // If nil then it's not an invoice we're dealing with
             if app.invoiceRequiresCustomAmount == true {
-                showSendAmountView = true
+                sheets.showSheet(.send, data: SendConfig(view: .amount))
             } else if app.invoiceRequiresCustomAmount == false {
-                showSendConfirmationView = true
+                sheets.showSheet(.send, data: SendConfig(view: .confirm))
             }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
@@ -91,7 +80,6 @@ struct ScannerView: View {
 
 // Scanner UI Overlay component for reuse in both actual and preview versions
 struct ScannerUIOverlay: View {
-    var onClose: () -> Void
     var onPaste: () async -> Void
 
     var body: some View {
@@ -124,7 +112,6 @@ struct ScannerUIOverlay: View {
 
 // Preview-friendly version of the scanner that uses an image instead of the actual camera
 struct ScannerPreview: View {
-    @Environment(\.presentationMode) private var presentationMode
     @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
@@ -137,9 +124,6 @@ struct ScannerPreview: View {
 
             // Scanner UI overlay
             ScannerUIOverlay(
-                onClose: {
-                    presentationMode.wrappedValue.dismiss()
-                },
                 onPaste: {
                     // No-op for preview
                 }

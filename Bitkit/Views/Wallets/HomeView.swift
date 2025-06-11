@@ -116,17 +116,6 @@ struct HomeView: View {
                     }
                 }
         )
-        .sheet(
-            isPresented: $app.showAddTagSheet,
-            content: {
-                if let activityId = app.selectedActivityIdForTag {
-                    AddTagSheet(activityId: activityId)
-                        .presentationDetents([.height(400)])
-                } else {
-                    EmptyView()
-                }
-            }
-        )
     }
 
     var leftNavigationItem: some View {
@@ -167,6 +156,7 @@ struct HomeView: View {
     HomeView()
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
+        .environmentObject(NavigationViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(ActivityListViewModel())
         .environmentObject(SettingsViewModel())

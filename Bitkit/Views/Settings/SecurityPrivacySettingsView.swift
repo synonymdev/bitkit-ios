@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SecurityPrivacySettingsView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
     private var biometryTypeName: String {
@@ -48,7 +49,7 @@ struct SecurityPrivacySettingsView: View {
                 // PIN Code Section
                 if !settings.pinEnabled {
                     Button {
-                        app.showSetupSecuritySheet = true
+                        sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
                     } label: {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__security__pin", comment: ""),
@@ -116,6 +117,7 @@ struct SecurityPrivacySettingsView: View {
 
 #Preview {
     SecurityPrivacySettingsView()
+        .environmentObject(SheetViewModel())
         .environmentObject(SettingsViewModel())
         .preferredColorScheme(.dark)
 }

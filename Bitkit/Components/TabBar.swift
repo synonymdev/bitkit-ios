@@ -16,6 +16,7 @@ struct NoAnimationButtonStyle: ButtonStyle {
 struct TabBar: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @State private var scaleEffect: CGFloat = 1.0
 
     var shouldShow: Bool {
@@ -43,8 +44,7 @@ struct TabBar: View {
                     Spacer()
                     Button(
                         action: {
-                            app.showSendOptionsSheet = true
-                            Haptics.play(.openSheet)
+                            sheets.showSheet(.send)
                         },
                         label: {
                             HStack(spacing: 4) {
@@ -62,8 +62,7 @@ struct TabBar: View {
                     Spacer()
                     Button(
                         action: {
-                            app.showReceiveSheet = true
-                            Haptics.play(.openSheet)
+                            sheets.showSheet(.receive)
                         },
                         label: {
                             HStack(spacing: 4) {
@@ -83,8 +82,7 @@ struct TabBar: View {
                 .overlay {
                     Button(
                         action: {
-                            Haptics.play(.openSheet)
-                            app.showScannerSheet = true
+                            sheets.showSheet(.scanner)
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
                                 scaleEffect = 1.1
                             }
@@ -132,6 +130,8 @@ struct TabBar: View {
     .overlay {
         TabBar()
             .environmentObject(AppViewModel())
+            .environmentObject(NavigationViewModel())
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)
 }
@@ -144,6 +144,8 @@ struct TabBar: View {
     .overlay {
         TabBar()
             .environmentObject(AppViewModel())
+            .environmentObject(NavigationViewModel())
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.light)
 }

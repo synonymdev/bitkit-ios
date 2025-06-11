@@ -8,8 +8,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var app = AppViewModel()
+    @StateObject private var app: AppViewModel
     @StateObject private var navigation = NavigationViewModel()
+    @StateObject private var sheets = SheetViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
@@ -23,6 +24,20 @@ struct ContentView: View {
 
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
+
+    init() {
+        let sheetViewModel = SheetViewModel()
+        _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel))
+        _sheets = StateObject(wrappedValue: sheetViewModel)
+        _navigation = StateObject(wrappedValue: NavigationViewModel())
+        _wallet = StateObject(wrappedValue: WalletViewModel())
+        _currency = StateObject(wrappedValue: CurrencyViewModel())
+        _blocktank = StateObject(wrappedValue: BlocktankViewModel())
+        _activity = StateObject(wrappedValue: ActivityListViewModel())
+        _transfer = StateObject(wrappedValue: TransferViewModel())
+        _widgets = StateObject(wrappedValue: WidgetsViewModel())
+        _settings = StateObject(wrappedValue: SettingsViewModel())
+    }
 
     var body: some View {
         ZStack {
@@ -65,9 +80,6 @@ struct ContentView: View {
             }
         }
         .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
-        .sheet(isPresented: $app.showNewTransaction) {
-            NewTransactionSheet(details: $app.newTransaction)
-        }
         .onChange(of: currency.hasStaleData) { _ in
             if currency.hasStaleData {
                 app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
@@ -159,6 +171,7 @@ struct ContentView: View {
         // Environment objects always at the end
         .environmentObject(app)
         .environmentObject(navigation)
+        .environmentObject(sheets)
         .environmentObject(wallet)
         .environmentObject(currency)
         .environmentObject(blocktank)

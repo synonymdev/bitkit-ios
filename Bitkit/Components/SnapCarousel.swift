@@ -46,20 +46,15 @@ struct SnapCarousel<Item: Identifiable, Content: View>: UIViewRepresentable {
         // Add each item
         for (index, item) in items.enumerated() {
             let hostingController = UIHostingController(
-                rootView: Button(action: {
-                    onItemTap(item)
-                }) {
-                    content(item)
-                        .frame(width: itemSize, height: itemSize)
-                }
-                .buttonStyle(PlainButtonStyle())
+                rootView: content(item)
+                    .frame(width: itemSize, height: itemSize)
             )
 
             hostingController.view.backgroundColor = .clear
             let itemView = hostingController.view!
             itemView.tag = index
 
-            // Add tap gesture for the button
+            // Add tap gesture for the item
             let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.itemTapped(_:)))
             itemView.addGestureRecognizer(tapGesture)
 

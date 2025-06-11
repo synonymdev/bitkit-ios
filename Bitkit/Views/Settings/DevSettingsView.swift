@@ -66,6 +66,11 @@ struct DevSettingsView: View {
                         app.hasSeenWidgetsIntro = false
                         widgets.clearWidgets()
 
+                        // Reset all user defaults
+                        if let bundleID = Bundle.main.bundleIdentifier {
+                            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+                        }
+
                         if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
                             || wallet.nodeLifecycleState == .stopping
                         {

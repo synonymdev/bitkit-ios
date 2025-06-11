@@ -43,13 +43,13 @@ struct ReceiveViewContent: View {
                     .padding()
             }
         }
+        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
+        .navigationBarTitleDisplayMode(.inline)
         .sheetBackground()
         .onAppear {
             // Set cjitActive based on cjitInvoice when the view appears
             cjitActive = cjitInvoice != nil
         }
-        .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder
@@ -187,37 +187,35 @@ struct ReceiveView: View {
     @State private var showCreateCjit = false
 
     var body: some View {
-        NavigationStack {
-            ReceiveViewContent(
-                bip21: wallet.bip21,
-                onchainAddress: wallet.onchainAddress,
-                bolt11: wallet.bolt11,
-                nodeLifecycleState: wallet.nodeLifecycleState,
-                channelsCount: wallet.channelCount,
-                cjitInvoice: cjitInvoice,
-                onCjitToggle: { active in
-                    if !active {
-                        cjitInvoice = nil
-                    } else if cjitInvoice == nil {
-                        showCreateCjit = true
-                    }
-                },
-                onCreateCjit: { invoice in
+        ReceiveViewContent(
+            bip21: wallet.bip21,
+            onchainAddress: wallet.onchainAddress,
+            bolt11: wallet.bolt11,
+            nodeLifecycleState: wallet.nodeLifecycleState,
+            channelsCount: wallet.channelCount,
+            cjitInvoice: cjitInvoice,
+            onCjitToggle: { active in
+                if !active {
+                    cjitInvoice = nil
+                } else if cjitInvoice == nil {
+                    showCreateCjit = true
+                }
+            },
+            onCreateCjit: { invoice in
+                cjitInvoice = invoice
+            }
+        )
+        .background(
+            NavigationLink(
+                destination: CreateCjitView { invoice in
                     cjitInvoice = invoice
-                }
-            )
-            .background(
-                NavigationLink(
-                    destination: CreateCjitView { invoice in
-                        cjitInvoice = invoice
-                        showCreateCjit = false
-                    },
-                    isActive: $showCreateCjit
-                ) {
-                    EmptyView()
-                }
-            )
-        }
+                    showCreateCjit = false
+                },
+                isActive: $showCreateCjit
+            ) {
+                EmptyView()
+            }
+        )
         .onDisappear {
             if wallet.invoiceAmountSats > 0 && !wallet.invoiceNote.isEmpty {
                 wallet.invoiceAmountSats = 0
