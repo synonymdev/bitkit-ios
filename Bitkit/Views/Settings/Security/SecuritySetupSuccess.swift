@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SecuritySetupSuccess: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
 
     private var biometryTypeName: String {
@@ -69,7 +70,7 @@ struct SecuritySetupSuccess: View {
                     title: NSLocalizedString("common__ok", comment: ""),
                     variant: .primary
                 ) {
-                    app.showSetupSecuritySheet = false
+                    sheets.hideSheet()
                 }
                 .padding(.horizontal, 32)
             }
@@ -84,5 +85,6 @@ struct SecuritySetupSuccess: View {
 #Preview {
     SecuritySetupSuccess()
         .environmentObject(AppViewModel())
+        .environmentObject(SheetViewModel())
         .environmentObject(SettingsViewModel())
 }

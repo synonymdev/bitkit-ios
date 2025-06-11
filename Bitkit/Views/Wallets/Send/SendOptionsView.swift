@@ -54,13 +54,13 @@ struct SendOptionsView: View {
     @State private var showSendConfirmationView = false
 
     var body: some View {
-        NavigationStack {
-            sendOptionsContent
-        }
+        sendOptionsContent
     }
 
     var sendOptionsContent: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 0) {
+            SheetHeader(title: localizedString("wallet__send_bitcoin"))
+
             VStack(alignment: .leading, spacing: 8) {
                 CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
                     .padding(.horizontal)
@@ -82,11 +82,7 @@ struct SendOptionsView: View {
 
                     SendOptionCard(
                         title: "Scan QR Code",
-                        destination: ScannerView(
-                            showSendAmountView: $showSendAmountView,
-                            showSendConfirmationView: $showSendConfirmationView,
-                            onResultDelay: 0.65
-                        ),
+                        destination: ScannerView(onResultDelay: 0.65),
                         iconName: "scan-brand"
                     )
                 }
@@ -104,8 +100,6 @@ struct SendOptionsView: View {
                 .padding(.bottom, 8)
         }
         .sheetBackground()
-        .navigationTitle(NSLocalizedString("wallet__send_bitcoin", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.all, edges: .bottom)
         .onAppear {
             wallet.syncState()

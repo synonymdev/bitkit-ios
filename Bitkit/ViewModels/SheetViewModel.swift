@@ -1,0 +1,146 @@
+import SwiftUI
+
+enum SheetID: String, CaseIterable {
+    case addTag
+    case backup
+    case receive
+    case receivedTx
+    case scanner
+    case security
+    case send
+}
+
+struct SheetConfiguration {
+    let id: SheetID
+    let data: Any?
+}
+
+class SheetViewModel: ObservableObject {
+    @Published var activeSheetConfiguration: SheetConfiguration? = nil
+
+    func showSheet(_ id: SheetID, data: Any? = nil) {
+        if isAnySheetOpen {
+            // If any other sheet is open, close it and delay before showing the new sheet
+            // to prevent the new sheet from closing immediately (bug)
+            hideSheet()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                guard let self = self else { return }
+                self.activeSheetConfiguration = SheetConfiguration(id: id, data: data)
+                self.playHaptics(for: id)
+            }
+        } else {
+            // If no sheet is open, show the new sheet immediately
+            activeSheetConfiguration = SheetConfiguration(id: id, data: data)
+            playHaptics(for: id)
+        }
+    }
+
+    func hideSheet() {
+        activeSheetConfiguration = nil
+    }
+
+    var isAnySheetOpen: Bool {
+        return activeSheetConfiguration != nil
+    }
+
+    private func playHaptics(for sheetId: SheetID) {
+        sheetId == .receivedTx ? Haptics.notify(.success) : Haptics.play(.openSheet)
+    }
+
+    // MARK: - Adapter Properties for SwiftUI Sheet Presentation
+
+    var addTagSheetItem: AddTagSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .addTag else { return nil }
+            let addTagConfig = config.data as? AddTagConfig
+            guard let activityId = addTagConfig?.activityId else { return nil }
+            return AddTagSheetItem(activityId: activityId)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var backupSheetItem: BackupSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .backup else { return nil }
+            let backupConfig = config.data as? BackupConfig
+            let initialView = backupConfig?.initialView ?? .main
+            return BackupSheetItem(initialView: initialView)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var receiveSheetItem: ReceiveSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
+            return ReceiveSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var receivedTxSheetItem: NewTransactionSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .receivedTx else { return nil }
+            let receivedTxConfig = config.data as? NewTransactionSheetDetails
+            guard let details = receivedTxConfig else { return nil }
+            return NewTransactionSheetItem(details: details)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var scannerSheetItem: ScannerSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .scanner else { return nil }
+            return ScannerSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var securitySheetItem: SecuritySheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .security else { return nil }
+            let securityConfig = config.data as? SecurityConfig
+            let showLaterButton = securityConfig?.showLaterButton ?? false
+            return SecuritySheetItem(showLaterButton: showLaterButton)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var sendSheetItem: SendSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .send else { return nil }
+            let sendConfig = config.data as? SendConfig
+            let initialView = sendConfig?.initialView ?? .options
+            return SendSheetItem(initialView: initialView)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+}

@@ -1,54 +1,42 @@
-//
-//  NewTransactionSheet.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/17.
-//
-
 import SwiftUI
 
-struct NewTransactionSheet: View {
-    @Binding var details: NewTransactionSheetDetails
+struct NewTransactionSheetItem: SheetItem {
+    let id: SheetID = .receivedTx
+    let size: SheetSize = .large
+    let details: NewTransactionSheetDetails
+}
 
-    @EnvironmentObject private var app: AppViewModel
+struct NewTransactionSheet: View {
+    let config: NewTransactionSheetItem
+
+    @EnvironmentObject private var sheets: SheetViewModel
+
+    // Keep in state so we don't get a new random text on each render
+    @State private var buttonText: String = localizedRandom("common__ok_random")
 
     var body: some View {
-        NavigationStack {
-            VStack {
-                //Values are currently all wrong
-                // VStack(alignment: .leading) {
-                //     Text("\(details.sats) sats")
-                //         .font(.title)
-                // }
-                // .frame(maxWidth: .infinity, alignment: .leading)
-                // .padding(.top)
+        let isOnchain = config.details.type == .onchain
+        let title = isOnchain ? localizedString("wallet__payment_received") : localizedString("wallet__instant_payment_received")
 
-                Spacer()
+        Sheet(id: .receivedTx, data: config) {
+            SheetHeader(title: title)
 
-                Image("check")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 300, height: 300)
+            MoneyStack(sats: Int(config.details.sats))
 
-                Spacer()
+            Spacer()
 
-                CustomButton(title: "Close") {
-                    app.showNewTransaction = false
-                }
-                .padding()
+            Image("check")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 300, height: 300)
+
+            Spacer()
+
+            CustomButton(title: buttonText) {
+                sheets.hideSheet()
             }
-            .sheetBackground()
-            .navigationTitle(getTitle())
-            .navigationBarTitleDisplayMode(.inline)
         }
-    }
-
-    private func getTitle() -> String {
-        if details.type == .lightning {
-            return details.direction == .sent ? "Sent Instant Bitcoin" : "Received Instant Bitcoin"
-        } else {
-            return details.direction == .sent ? "Sent Bitcoin" : "Received Bitcoin"
-        }
+        .padding(.horizontal)
     }
 }
 
@@ -57,8 +45,10 @@ struct NewTransactionSheet: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NewTransactionSheet(details: .constant(NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000)))
-                    .environmentObject(AppViewModel())
+                NewTransactionSheet(
+                    config: NewTransactionSheetItem(details: NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000))
+                )
+                .environmentObject(SheetViewModel())
             }
         )
         .presentationDetents([.height(UIScreen.screenHeight - 120)])

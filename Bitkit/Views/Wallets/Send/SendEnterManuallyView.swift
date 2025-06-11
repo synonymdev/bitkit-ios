@@ -30,7 +30,7 @@ struct SendEnterManuallyView: View {
                     TitleText(NSLocalizedString("wallet__send_address_placeholder", comment: ""), textColor: .textSecondary)
                         .padding(20)
                 }
-                
+
                 TextEditor(text: $text)
                     .focused($isTextEditorFocused)
                     .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
@@ -47,13 +47,14 @@ struct SendEnterManuallyView: View {
             Spacer()
 
             CustomButton(title: "Continue", isDisabled: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
-                await handleContinue()    
+                await handleContinue()
             }
             .padding(.top)
         }
         .padding()
         .navigationTitle("Send Bitcoin")
         .navigationBarTitleDisplayMode(.inline)
+        .sheetBackground()
         .onAppear {
             isTextEditorFocused = true
         }

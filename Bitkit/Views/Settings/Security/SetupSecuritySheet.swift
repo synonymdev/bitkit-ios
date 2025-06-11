@@ -1,8 +1,27 @@
 import SwiftUI
 
+struct SecurityConfig {
+    let showLaterButton: Bool
+
+    init(showLaterButton: Bool = false) {
+        self.showLaterButton = showLaterButton
+    }
+}
+
+struct SecuritySheetItem: SheetItem {
+    let id: SheetID = .security
+    let showLaterButton: Bool
+    let size: SheetSize = .medium
+
+    static let withLaterButton = SecuritySheetItem(showLaterButton: true)
+    static let withoutLaterButton = SecuritySheetItem(showLaterButton: false)
+}
+
 struct SetupSecuritySheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    let config: SecuritySheetItem
     @State private var pinEnabled: Bool = false
     @State private var useBiometrics: Bool = false
 
@@ -25,7 +44,7 @@ struct SetupSecuritySheet: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
-                        app.showSetupSecuritySheet = false
+                        sheets.hideSheet()
                     }) {
                         Image("x-mark")
                             .resizable()
@@ -39,11 +58,17 @@ struct SetupSecuritySheet: View {
                 useBiometrics = settings.useBiometrics
             }
         }
+        .presentationDetents([.height(config.size.height)])
+        .presentationDragIndicator(.hidden)
+        .presentationBackgroundInteraction(.enabled)
+        .presentationCompactAdaptation(.none)
+        .interactiveDismissDisabled(false)
+        .presentationCornerRadius(32)
     }
 }
 
 #Preview {
-    SetupSecuritySheet()
+    SetupSecuritySheet(config: .withLaterButton)
         .environmentObject(AppViewModel())
         .environmentObject(SettingsViewModel())
 }

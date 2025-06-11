@@ -2,6 +2,7 @@ import SwiftUI
 
 struct NoBiometricsSupport: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
 
     var body: some View {
@@ -28,7 +29,7 @@ struct NoBiometricsSupport: View {
                 ) {
                     // Set biometrics to false and continue
                     settings.useBiometrics = false
-                    app.showSetupSecuritySheet = false
+                    sheets.showSheet(.security)
                 }
 
                 // Phone Settings button
@@ -56,5 +57,6 @@ struct NoBiometricsSupport: View {
 #Preview {
     NoBiometricsSupport()
         .environmentObject(AppViewModel())
+        .environmentObject(SheetViewModel())
         .environmentObject(SettingsViewModel())
 }
