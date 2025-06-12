@@ -82,7 +82,7 @@ struct SendOptionsView: View {
 
                     SendOptionCard(
                         title: "Scan QR Code",
-                        destination: ScannerView(onResultDelay: 0.65),
+                        destination: ScannerView(),
                         iconName: "scan-brand"
                     )
                 }
