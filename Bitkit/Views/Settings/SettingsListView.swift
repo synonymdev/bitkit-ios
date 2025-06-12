@@ -14,7 +14,7 @@ struct SettingsListView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
 
-    @AppStorage("showDevSettings") private var showDevSettings = false
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @State private var cogTapCount = 0
 
     var body: some View {

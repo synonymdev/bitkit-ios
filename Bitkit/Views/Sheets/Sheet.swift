@@ -13,21 +13,20 @@ enum SheetSize {
 }
 
 struct SheetHeader: View {
+    @Environment(\.dismiss) var dismiss
     let title: String
     let showBackButton: Bool
-    let onBackTap: (() -> Void)?
 
-    init(title: String, showBackButton: Bool = false, onBackTap: (() -> Void)? = nil) {
+    init(title: String, showBackButton: Bool = false) {
         self.title = title
         self.showBackButton = showBackButton
-        self.onBackTap = onBackTap
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             if showBackButton {
                 Button(action: {
-                    onBackTap?()
+                    dismiss()
                 }) {
                     Image("arrow-left")
                         .resizable()
