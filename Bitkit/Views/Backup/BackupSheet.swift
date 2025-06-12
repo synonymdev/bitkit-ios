@@ -1,14 +1,14 @@
 import SwiftUI
 
 enum BackupView {
+    case intro
     case main
-    case detail
 }
 
 struct BackupConfig {
     let initialView: BackupView
 
-    init(view: BackupView = .main) {
+    init(view: BackupView = .intro) {
         self.initialView = view
     }
 }
@@ -18,7 +18,7 @@ struct BackupSheetItem: SheetItem {
     let size: SheetSize = .medium
     let initialView: BackupView
 
-    init(initialView: BackupView = .main) {
+    init(initialView: BackupView = .intro) {
         self.initialView = initialView
     }
 }
@@ -31,9 +31,9 @@ struct BackupSheet: View {
         Sheet(id: .backup, data: config) {
             NavigationStack {
                 switch config.initialView {
-                case .main:
+                case .intro:
                     BackupIntroView(config: config)
-                case .detail:
+                case .main:
                     BackupMnemonicView()
                 }
             }
