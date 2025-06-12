@@ -9,8 +9,6 @@ import CodeScanner
 import SwiftUI
 
 struct ScannerView: View {
-    var onResultDelay: TimeInterval = 0
-
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
 
