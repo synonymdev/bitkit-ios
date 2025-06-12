@@ -333,6 +333,21 @@ struct AppError: LocalizedError {
         case .InvalidFeeRate(message: let ldkMessage):
             message = "Invalid fee rate"
             debugMessage = ldkMessage
+        case .CannotRbfFundingTransaction(let ldkMessage):
+            message = "Cannot RBF funding transaction"
+            debugMessage = ldkMessage
+        case .TransactionNotFound(let ldkMessage):
+            message = "Transaction not found"
+            debugMessage = ldkMessage
+        case .TransactionAlreadyConfirmed(let ldkMessage):
+            message = "Transaction already confirmed"
+            debugMessage = ldkMessage
+        case .NoSpendableOutputs(let ldkMessage):
+            message = "No spendable outputs"
+            debugMessage = ldkMessage
+        case .CoinSelectionFailed(let ldkMessage):
+            message = "Coin selection failed"
+            debugMessage = ldkMessage
         }
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }
