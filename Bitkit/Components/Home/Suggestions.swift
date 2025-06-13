@@ -157,8 +157,8 @@ struct Suggestions: View {
                     localizedString(
                         "settings__about__shareText",
                         variables: [
-                            "appStoreUrl": "https://apps.apple.com/app/bitkit-wallet/id6502440655",
-                            "playStoreUrl": "https://play.google.com/store/apps/details?id=to.bitkit",
+                            "appStoreUrl": Env.appStoreUrl,
+                            "playStoreUrl": Env.playStoreUrl,
                         ])
                 ])
             }

@@ -27,7 +27,7 @@ struct DefaultUnitSettingsView: View {
                     }) {
                         SettingsListLabel(
                             title: rate,
-                            iconName: "fiat-unit",
+                            iconName: "globe",
                             rightIcon: currency.primaryDisplay == .fiat ? .checkmark : nil
                         )
                     }
