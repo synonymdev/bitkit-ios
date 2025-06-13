@@ -277,7 +277,7 @@ class LightningService {
         return .fromSatPerKwu(satKwu: max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
     }
 
-    func send(address: String, sats: UInt64, satsPerVbyte: UInt32) async throws -> Txid {
+    func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]? = nil) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -287,7 +287,11 @@ class LightningService {
         do {
             return try await ServiceQueue.background(.ldk) {
                 try node.onchainPayment().sendToAddress(
-                    address: address, amountSats: sats, feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte), utxosToSpend: nil) //TODO: pass utxos
+                    address: address,
+                    amountSats: sats,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    utxosToSpend: utxosToSpend
+                )
             }
         } catch {
             dumpLdkLogs()
@@ -486,6 +490,36 @@ extension LightningService {
                     break
                 }
             }
+        }
+    }
+}
+
+// MARK: UTXO selection
+
+extension LightningService {
+    func listSpendableOutputs() async throws -> [SpendableUtxo] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().listSpendableOutputs()
+        }
+    }
+    
+    func selectUtxosWithAlgorithm(targetAmountSats: UInt64, satsPerVbyte: UInt32, coinSelectionAlgorythm: CoinSelectionAlgorithm, utxos: [SpendableUtxo]?) async throws -> [SpendableUtxo] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .selectUtxosWithAlgorithm(
+                    targetAmountSats: targetAmountSats,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    algorithm: coinSelectionAlgorythm,
+                    utxos: utxos
+                )
         }
     }
 }
