@@ -199,6 +199,22 @@ enum Env {
         return .trace
     }
 
+    static var appStoreUrl: String {
+        "https://apps.apple.com/app/bitkit-wallet/id6502440655"
+    }
+
+    static var playStoreUrl: String {
+        "https://play.google.com/store/apps/details?id=to.bitkit"
+    }
+
+    static var githubUrl: String {
+        "https://www.github.com/synonymdev/bitkit"
+    }
+
+    static var githubReleasesUrl: String {
+        "https://www.github.com/synonymdev/bitkit/releases"
+    }
+
     static var termsOfServiceUrl: String {
         "https://www.bitkit.to/terms-of-use"
     }

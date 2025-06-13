@@ -54,17 +54,10 @@ struct SettingsListView: View {
                 )
             }
 
-            NavigationLink(destination: Text("Coming soon")) {
+            NavigationLink(destination: AboutView()) {
                 SettingsListLabel(
                     title: NSLocalizedString("settings__about_title", comment: ""),
                     iconName: "settings-info"
-                )
-            }
-
-            NavigationLink(destination: Text("Coming soon")) {
-                SettingsListLabel(
-                    title: NSLocalizedString("cards__discount__title", comment: ""),
-                    iconName: "settings-gift"
                 )
             }
 
@@ -103,7 +96,7 @@ struct SettingsListView: View {
             // }
         }
         .navigationTitle(NSLocalizedString("settings__settings", comment: ""))
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .overlay(
             VStack {
                 Spacer()
@@ -121,6 +114,8 @@ struct SettingsListView: View {
                             cogTapCount = 0
                         }
                     }
+                Spacer()
+                    .frame(height: 32)
             }
             .ignoresSafeArea(.container, edges: .bottom)
         )
