@@ -25,9 +25,6 @@ final class TxBumpingTests: XCTestCase {
         Logger.test("Wiping keychain before test", context: "TxBumpingTests")
         try Keychain.wipeEntireKeychain()
         Logger.test("Keychain wiped successfully", context: "TxBumpingTests")
-
-        try await blocktank.regtestMineBlocks(2) // Make sure bitcoind has enough utxos
-        try await Task.sleep(nanoseconds: 10_000_000_000)
     }
 
     override func tearDown() async throws {
@@ -74,6 +71,7 @@ final class TxBumpingTests: XCTestCase {
         // Fund the wallet with a single transaction
         let depositAmount: UInt64 = 100_000 // 100,000 sats
         Logger.test("Depositing \(depositAmount) sats to wallet", context: "TxBumpingTests")
+        try await blocktank.regtestMineBlocks(1)
         let fundingTxId = try await blocktank.regtestDepositFunds(address: depositAddress, amountSat: depositAmount)
         XCTAssertFalse(fundingTxId.isEmpty, "Funding transaction ID should not be empty")
         Logger.test("Funding transaction ID: \(fundingTxId)", context: "TxBumpingTests")
@@ -161,11 +159,6 @@ final class TxBumpingTests: XCTestCase {
         // The final balance should be less than the initial balance due to the sent amount and fees
         XCTAssertLessThan(finalBalance, totalBalance, "Final balance should be less than initial balance")
         Logger.test("✓ RBF fee bump test completed successfully", context: "TxBumpingTests")
-
-        // Clean up by stopping the lightning node
-        Logger.test("Stopping lightning node", context: "TxBumpingTests")
-        try await lightning.stop()
-        Logger.test("Lightning node stopped successfully", context: "TxBumpingTests")
     }
 
     func testAccelerateByCpfp() async throws {
@@ -203,11 +196,10 @@ final class TxBumpingTests: XCTestCase {
 
         // Sync to see the incoming transaction
         Logger.test("Syncing wallet to detect incoming transaction", context: "TxBumpingTests")
-        try await lightning.sync()
-        Logger.test("Wallet sync complete", context: "TxBumpingTests")
-        
+//        try await lightning.sync()
         try await Task.sleep(nanoseconds: 10_000_000_000)
         try await lightning.sync()
+        Logger.test("Wallet sync complete", context: "TxBumpingTests")
 
         // Check that we can see the balance from the incoming transaction
         let balances = lightning.balances
@@ -219,19 +211,16 @@ final class TxBumpingTests: XCTestCase {
         XCTAssertGreaterThan(currentBalance, 0, "Should have balance from incoming transaction")
         XCTAssertEqual(currentBalance, incomingAmount, "Balance should equal incoming amount")
 
-        // Generate a destination address for the CPFP transaction (where we'll send the funds)
-        Logger.test("Generating destination address for CPFP child transaction", context: "TxBumpingTests")
-        let cpfpDestinationAddress = try await lightning.newAddress()
-        Logger.test("CPFP destination address: \(cpfpDestinationAddress)", context: "TxBumpingTests")
-
         // Now use CPFP to spend from the incoming transaction with high fees
         // This demonstrates using CPFP to quickly move received funds
         let highFeeRate: UInt32 = 20 // 20 sat/vbyte (very high for fast confirmation)
         Logger.test(
             "Using CPFP to quickly spend from incoming transaction \(stuckIncomingTxId) with \(highFeeRate) sat/vbyte", context: "TxBumpingTests")
 
-        try await Task.sleep(nanoseconds: 5_000_000_000)
-        try await lightning.sync()
+        // Generate a destination address for the CPFP transaction (where we'll send the funds)
+        Logger.test("Generating destination address for CPFP child transaction", context: "TxBumpingTests")
+        let cpfpDestinationAddress = try await lightning.newAddress()
+        Logger.test("CPFP destination address: \(cpfpDestinationAddress)", context: "TxBumpingTests")
         
         let childTxId = try await lightning.accelerateByCpfp(
             txid: stuckIncomingTxId,
@@ -272,10 +261,5 @@ final class TxBumpingTests: XCTestCase {
 
         Logger.test("✓ CPFP test completed successfully", context: "TxBumpingTests")
         Logger.test("Successfully used CPFP to quickly spend from an incoming transaction", context: "TxBumpingTests")
-
-        // Clean up by stopping the lightning node
-        Logger.test("Stopping lightning node", context: "TxBumpingTests")
-        try await lightning.stop()
-        Logger.test("Lightning node stopped successfully", context: "TxBumpingTests")
     }
 }
