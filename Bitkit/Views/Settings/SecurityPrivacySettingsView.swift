@@ -72,21 +72,25 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
 
+                    //TODO: requires pin sheet to enable this
                     SettingsListLabel(
                         title: NSLocalizedString("settings__security__pin_launch", comment: ""),
                         toggle: $settings.requirePinOnLaunch
                     )
 
+                    //TODO: requires pin sheet to enable this
                     SettingsListLabel(
                         title: NSLocalizedString("settings__security__pin_idle", comment: ""),
                         toggle: $settings.requirePinWhenIdle
                     )
 
+                    //TODO: requires pin sheet to enable this
                     SettingsListLabel(
                         title: NSLocalizedString("settings__security__pin_payments", comment: ""),
                         toggle: $settings.requirePinForPayments
                     )
 
+                    //TODO: requires biometrics to be enabled
                     SettingsListLabel(
                         title: localizedString(
                             "settings__security__use_bio", comment: "",
