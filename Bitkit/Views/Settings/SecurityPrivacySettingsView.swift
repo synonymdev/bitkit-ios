@@ -57,7 +57,7 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
                 } else {
-                    NavigationLink(destination: Text("Disable pin TODO")) {
+                    NavigationLink(destination: DisablePinView()) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__security__pin", comment: ""),
                             rightText: NSLocalizedString("settings__security__pin_enabled", comment: "")
