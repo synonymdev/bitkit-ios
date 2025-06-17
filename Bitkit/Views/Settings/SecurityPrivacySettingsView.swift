@@ -57,8 +57,7 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
                 } else {
-                    //TODO: change to disable pin with a flag in the view
-                    NavigationLink(destination: PinChangeView()) {
+                    NavigationLink(destination: Text("Disable pin TODO")) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__security__pin", comment: ""),
                             rightText: NSLocalizedString("settings__security__pin_enabled", comment: "")
@@ -87,11 +86,6 @@ struct SecurityPrivacySettingsView: View {
                         title: NSLocalizedString("settings__security__pin_payments", comment: ""),
                         toggle: $settings.requirePinForPayments
                     )
-
-                    //TODO: add biometry type name from Env
-
-                    //                     "security__bio_face_id" = "Face ID";
-                    // "security__bio_touch_id" = "Touch ID";
 
                     SettingsListLabel(
                         title: localizedString(
