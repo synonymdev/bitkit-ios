@@ -11,59 +11,108 @@ import SwiftUI
 
 struct PinChangeView: View {
     @State private var pinInput: String = ""
-    @State private var firstPin: String = ""
-    @State private var isConfirmingPin: Bool = false
-    @State private var showSuccess: Bool = false
+    @State private var currentPin: String = ""
+    @State private var newPin: String = ""
+    @State private var step: PinChangeStep = .verifyCurrentPin
+    @State private var errorMessage: String = ""
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var settings: SettingsViewModel
+
+    enum PinChangeStep {
+        case verifyCurrentPin
+        case enterNewPin
+        case confirmNewPin
+        case success
+    }
 
     // Computed properties for title and description
     var title: String {
-        if showSuccess {
-            return "PIN Changed"
-        } else {
-            return "Set New PIN"
+        switch step {
+        case .verifyCurrentPin:
+            return NSLocalizedString("security__cp_title", comment: "Change PIN")
+        case .enterNewPin:
+            return NSLocalizedString("security__cp_setnew_title", comment: "Set new PIN title")
+        case .confirmNewPin:
+            return NSLocalizedString("security__cp_retype_title", comment: "Retype New PIN")
+        case .success:
+            return NSLocalizedString("security__cp_changed_title", comment: "PIN changed title")
         }
     }
 
     var description: String {
-        if showSuccess {
-            return "You have successfully changed your PIN to a new 4-digit combination."
-        } else if isConfirmingPin {
-            return "Please repeat your PIN to confirm."
-        } else {
-            return "Please use a PIN you will remember. If you forget your PIN you can reset it, but that will require restoring your wallet."
+        switch step {
+        case .verifyCurrentPin:
+            return NSLocalizedString("security__cp_text", comment: "Change PIN description")
+        case .enterNewPin:
+            return NSLocalizedString("security__cp_setnew_text", comment: "Set new PIN description")
+        case .confirmNewPin:
+            return NSLocalizedString("security__cp_retype_text", comment: "Retype PIN description")
+        case .success:
+            return NSLocalizedString("security__cp_changed_text", comment: "PIN changed description")
+        }
+    }
+
+    private func handlePinComplete(_ pin: String) {
+        switch step {
+        case .verifyCurrentPin:
+            // Verify the current PIN
+            if settings.pinCheck(pin: pin) {
+                currentPin = pin
+                step = .enterNewPin
+                pinInput = ""
+                errorMessage = ""
+                Haptics.notify(.success)
+            } else {
+                errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+                pinInput = ""
+                Haptics.notify(.error)
+            }
+
+        case .enterNewPin:
+            // Store the new PIN and move to confirmation
+            newPin = pin
+            step = .confirmNewPin
+            pinInput = ""
+            errorMessage = ""
+            Haptics.notify(.success)
+
+        case .confirmNewPin:
+            // Confirm the new PIN
+            if pin == newPin {
+                // PINs match, update the PIN
+                do {
+                    try settings.removePin(pin: currentPin)
+                    try settings.setPin(newPin)
+                    step = .success
+                    errorMessage = ""
+                    Haptics.notify(.success)
+                } catch {
+                    Logger.error("Failed to change PIN: \(error)", context: "PinChangeView")
+                    errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+                    pinInput = ""
+                    Haptics.notify(.error)
+                }
+            } else {
+                // PINs don't match, go back to enter new PIN
+                errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+                step = .enterNewPin
+                newPin = ""
+                pinInput = ""
+                Haptics.notify(.error)
+            }
+
+        case .success:
+            // Should not reach here as PIN input is hidden in success state
+            break
         }
     }
 
     private func handlePinChange(_ pin: String) {
-        // Handle PIN completion when 4 digits are entered
         if pin.count == 4 {
-            Haptics.notify(.success)
-
-            if !isConfirmingPin {
-                // First PIN entry complete
-                firstPin = pin
-                isConfirmingPin = true
-                pinInput = ""
-
-                // Delay to show filled circles briefly before clearing
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    // PIN input is already cleared above
-                }
-            } else {
-                // PIN confirmation
-                if pin == firstPin {
-                    // PINs match - show success
-                    showSuccess = true
-                    // TODO: Save PIN to settings
-                } else {
-                    // PINs don't match - reset
-                    isConfirmingPin = false
-                    firstPin = ""
-                    pinInput = ""
-                    // TODO: Show error message
-                }
-            }
+            handlePinComplete(pin)
+        } else if pin.count == 1 {
+            // Clear error message when user starts typing
+            errorMessage = ""
         }
     }
 
@@ -71,14 +120,28 @@ struct PinChangeView: View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 BodyMText(description, textColor: .textSecondary)
-                    .multilineTextAlignment(showSuccess ? .center : .leading)
-                    .frame(maxWidth: .infinity, alignment: showSuccess ? .center : .leading)
+                    .multilineTextAlignment(step == .success ? .center : .leading)
+                    .frame(maxWidth: .infinity, alignment: step == .success ? .center : .leading)
 
-                if !showSuccess {
+                if step == .success {
+                    // Success illustration
+                    Image("check")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 274, height: 274)
+                        .padding(.top, 32)
+                } else {
+                    // Error message
+                    if !errorMessage.isEmpty {
+                        CaptionText(errorMessage, textColor: .brandAccent)
+                            .padding(.bottom, 8)
+                    }
+
                     // PIN input component - only show when not in success state
                     PinInput(pinInput: $pinInput) { pin in
                         handlePinChange(pin)
                     }
+                    .padding(.top, 71)
                     .padding(.bottom, 32)
                 }
 
@@ -87,18 +150,30 @@ struct PinChangeView: View {
 
             Spacer()
 
+            if step == .success {
+                // OK button for success state
+                CustomButton(
+                    title: NSLocalizedString("common__ok", comment: "OK button")
+                ) {
+                    dismiss()
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 32)
+            }
+
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Cancel") {
-                    // TODO: Handle cancel action
+                if step != .success {
+                    Button(NSLocalizedString("common__cancel", comment: "Cancel button")) {
+                        dismiss()
+                    }
+                    .foregroundColor(.textPrimary)
                 }
-                .foregroundColor(.textPrimary)
             }
         }
-
     }
 }
 
