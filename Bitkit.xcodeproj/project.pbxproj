@@ -11,6 +11,7 @@
 		96204B762DE9A91A007BAA26 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B752DE9A91A007BAA26 /* SQLite */; };
 		96204B782DE9AA43007BAA26 /* SQLite in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B772DE9AA43007BAA26 /* SQLite */; };
 		96204B7B2DE9AABE007BAA26 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 96204B7A2DE9AABE007BAA26 /* LDKNode */; };
+		96648F452E005D18002F4885 /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
 		966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */ = {isa = PBXBuildFile; productRef = 966DE66F2C51210000A7B0EF /* LightningDevKit */; };
 		96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA0392DE8BBA1009932BF /* BitkitCore */; };
 		96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 96DEA03B2DE8BBAB009932BF /* BitkitCore */; };
@@ -146,6 +147,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				96648F452E005D18002F4885 /* LDKNode in Frameworks */,
 				96204B782DE9AA43007BAA26 /* SQLite in Frameworks */,
 				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
