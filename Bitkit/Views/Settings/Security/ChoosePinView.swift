@@ -19,8 +19,7 @@ struct ChoosePinView: View {
                     textAlignment: .left
                 )
             }
-            .padding(.top, 32)
-            .padding(.bottom, 48)
+            .padding(32)
 
             Spacer()
 
@@ -37,9 +36,7 @@ struct ChoosePinView: View {
                     errorMessage = ""
                 }
             }
-            .padding(.top, 32)
         }
-        .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheetBackground()
         .navigationTitle(
