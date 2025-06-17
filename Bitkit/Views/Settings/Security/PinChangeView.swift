@@ -118,49 +118,42 @@ struct PinChangeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                BodyMText(description, textColor: .textSecondary)
-                    .multilineTextAlignment(step == .success ? .center : .leading)
-                    .frame(maxWidth: .infinity, alignment: step == .success ? .center : .leading)
-
-                if step == .success {
-                    // Success illustration
-                    Image("check")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 274, height: 274)
-                        .padding(.top, 32)
-                } else {
-                    // Error message
-                    if !errorMessage.isEmpty {
-                        CaptionText(errorMessage, textColor: .brandAccent)
-                            .padding(.bottom, 8)
-                    }
-
-                    // PIN input component - only show when not in success state
-                    PinInput(pinInput: $pinInput) { pin in
-                        handlePinChange(pin)
-                    }
-                    .padding(.top, 71)
-                    .padding(.bottom, 32)
-                }
-
-            }
-            .padding(.horizontal, 16)
-
-            Spacer()
+            BodyMText(description, textColor: .textSecondary)
+                .multilineTextAlignment(step == .success ? .center : .leading)
+                .frame(maxWidth: .infinity, alignment: step == .success ? .center : .leading)
+                .padding(.horizontal, 16)
+                .padding(.top, 32)
+                .padding(.bottom, 49)
 
             if step == .success {
-                // OK button for success state
+                // Success illustration
+                Image("check")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 274, height: 274)
+                    .padding(.top, 32)
+            } else {
+                // Error message
+                if !errorMessage.isEmpty {
+                    CaptionText(errorMessage, textColor: .brandAccent)
+                        .padding(.bottom, 8)
+                }
+
+                // PIN input component - only show when not in success state
+                PinInput(pinInput: $pinInput, verticalSpace: true) { pin in
+                    handlePinChange(pin)
+                }
+            }
+
+            if step == .success {
+                Spacer()
                 CustomButton(
                     title: NSLocalizedString("common__ok", comment: "OK button")
                 ) {
                     dismiss()
                 }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 16)
             }
-
         }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)

@@ -29,45 +29,36 @@ struct PinOnLaunchView: View {
     }
 
     var body: some View {
-        ZStack {
-            // Dark background
-            Color.black
-                .ignoresSafeArea()
+        VStack(spacing: 0) {
+            Spacer()
 
-            VStack(spacing: 0) {
-                Spacer()
+            // Logo
+            Image("logo")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 279, height: 82)
+                .padding(.bottom, 47)
 
-                // Logo
-                Image("logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 200, height: 60)
-                    .padding(.bottom, 80)
+            // Title text
+            BodyMText(
+                NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
+                textColor: .textPrimary,
+                textAlignment: .center
+            )
+            .padding(.bottom, 40)
 
-                // Title text
-                BodyMText(
-                    NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
-                    textColor: .textPrimary,
-                    textAlignment: .center
-                )
-                .padding(.bottom, 40)
-
-                // Error message
-                if !errorMessage.isEmpty {
-                    CaptionText(errorMessage, textColor: .brandAccent)
-                        .padding(.bottom, 16)
-                }
-
-                // PIN input component
-                PinInput(pinInput: $pinInput) { pin in
-                    handlePinChange(pin)
-                }
-                .padding(.bottom, 100)
-
-                Spacer()
+            // Error message
+            if !errorMessage.isEmpty {
+                CaptionText(errorMessage, textColor: .brandAccent)
+                    .padding(.bottom, 16)
             }
-            .padding(.horizontal, 32)
+
+            // PIN input component
+            PinInput(pinInput: $pinInput) { pin in
+                handlePinChange(pin)
+            }
         }
+        .background(Color.black)
     }
 }
 
