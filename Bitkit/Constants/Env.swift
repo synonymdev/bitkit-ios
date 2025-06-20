@@ -39,6 +39,13 @@ enum Env {
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
     static let walletSyncIntervalSecs: UInt64 = 10 //TODO: play arond with this
+
+    // MARK: Security settings
+
+    static let pinAttempts = 8
+
+    // MARK: Server URLs
+
     static var esploraServerUrl: String {
         switch network {
         case .regtest:

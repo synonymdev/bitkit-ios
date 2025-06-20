@@ -35,6 +35,7 @@ class SettingsViewModel: ObservableObject {
 
     // PIN Management
     @Published private(set) var pinEnabled: Bool = false
+    @AppStorage("pinFailedAttempts") private var pinFailedAttempts: Int = 0
 
     private func updatePinEnabledState() {
         let newState = checkPinExists()
@@ -63,11 +64,40 @@ class SettingsViewModel: ObservableObject {
             guard let storedPin = try Keychain.loadString(key: .securityPin) else {
                 return false
             }
-            return storedPin == pin
+
+            let isCorrect = storedPin == pin
+
+            if isCorrect {
+                // Reset failed attempts on successful PIN entry
+                pinFailedAttempts = 0
+            } else {
+                // Increment failed attempts
+                pinFailedAttempts += 1
+            }
+
+            return isCorrect
         } catch {
             Logger.error("Failed to check PIN from keychain: \(error)", context: "SettingsViewModel")
             return false
         }
+    }
+
+    func getRemainingPinAttempts() -> Int {
+        return max(0, Env.pinAttempts - pinFailedAttempts)
+    }
+
+    func hasExceededPinAttempts() -> Bool {
+        return pinFailedAttempts >= Env.pinAttempts
+    }
+
+    func resetPinAttempts() {
+        pinFailedAttempts = 0
+    }
+
+    func resetPinSettings() {
+        pinFailedAttempts = 0
+        updatePinEnabledState()
+        Logger.debug("PIN settings reset after security wipe", context: "SettingsViewModel")
     }
 
     func removePin(pin: String) throws {

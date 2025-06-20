@@ -17,6 +17,8 @@ struct PinChangeView: View {
     @State private var errorMessage: String = ""
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var app: AppViewModel
 
     enum PinChangeStep {
         case verifyCurrentPin
@@ -63,9 +65,7 @@ struct PinChangeView: View {
                 errorMessage = ""
                 Haptics.notify(.success)
             } else {
-                errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
-                pinInput = ""
-                Haptics.notify(.error)
+                handleIncorrectCurrentPin()
             }
 
         case .enterNewPin:
@@ -104,6 +104,51 @@ struct PinChangeView: View {
         case .success:
             // Should not reach here as PIN input is hidden in success state
             break
+        }
+    }
+
+    private func handleIncorrectCurrentPin() {
+        pinInput = ""
+        Haptics.notify(.error)
+
+        if settings.hasExceededPinAttempts() {
+            // Exceeded maximum attempts - wipe wallet
+            Task {
+                do {
+                    try await wallet.wipeLightningWallet(includeKeychain: true)
+                    settings.resetPinSettings()
+
+                    // Show toast notification
+                    await MainActor.run {
+                        app.toast(
+                            type: .error,
+                            title: NSLocalizedString("security__wiped_title", comment: ""),
+                            description: NSLocalizedString(
+                                "security__wiped_message", comment: ""),
+                            autoHide: false
+                        )
+                    }
+                } catch {
+                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinChangeView")
+                    await MainActor.run {
+                        app.toast(error)
+                    }
+                }
+            }
+            return
+        }
+
+        let remainingAttempts = settings.getRemainingPinAttempts()
+
+        if remainingAttempts == 1 {
+            // Last attempt warning
+            errorMessage = NSLocalizedString(
+                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet.")
+        } else {
+            // Show remaining attempts
+            errorMessage = localizedString(
+                "security__pin_attempts", comment: "%d attempts remaining. Forgot your PIN?", variables: ["attemptsRemaining": "\(remainingAttempts)"]
+            )
         }
     }
 
@@ -176,4 +221,6 @@ struct PinChangeView: View {
     }
     .preferredColorScheme(.dark)
     .environmentObject(SettingsViewModel())
+    .environmentObject(WalletViewModel())
+    .environmentObject(AppViewModel())
 }
