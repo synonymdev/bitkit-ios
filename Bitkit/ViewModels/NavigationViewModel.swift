@@ -23,6 +23,7 @@ enum Route: Hashable {
     case shopIntro
     case shopDiscover
     case shopMain(page: String)
+    case support
     case widgetsIntro
     case widgetsList
     case widgetDetail(WidgetType)

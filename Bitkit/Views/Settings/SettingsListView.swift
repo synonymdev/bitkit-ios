@@ -47,7 +47,7 @@ struct SettingsListView: View {
                 )
             }
 
-            NavigationLink(destination: Text("Coming soon")) {
+            NavigationLink(destination: SupportView()) {
                 SettingsListLabel(
                     title: NSLocalizedString("settings__support_title", comment: ""),
                     iconName: "settings-chat"
