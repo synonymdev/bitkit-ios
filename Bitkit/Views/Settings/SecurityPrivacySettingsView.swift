@@ -72,23 +72,65 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
 
-                    //TODO: requires pin sheet to enable this
-                    SettingsListLabel(
-                        title: NSLocalizedString("settings__security__pin_launch", comment: ""),
-                        toggle: $settings.requirePinOnLaunch
-                    )
+                    NavigationLink(
+                        destination: PinCheckView(
+                            title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
+                            explanation: "",
+                            onCancel: {},
+                            onPinVerified: {
+                                settings.requirePinOnLaunch.toggle()
+                            }
+                        )
+                    ) {
+                        SettingsListLabel(
+                            title: NSLocalizedString("settings__security__pin_launch", comment: ""),
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { settings.requirePinOnLaunch },
+                                set: { _ in /* NavigationLink handles the tap */ }
+                            )
+                        )
+                    }
 
-                    //TODO: requires pin sheet to enable this
-                    SettingsListLabel(
-                        title: NSLocalizedString("settings__security__pin_idle", comment: ""),
-                        toggle: $settings.requirePinWhenIdle
-                    )
+                    NavigationLink(
+                        destination: PinCheckView(
+                            title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
+                            explanation: "",
+                            onCancel: {},
+                            onPinVerified: {
+                                settings.requirePinWhenIdle.toggle()
+                            }
+                        )
+                    ) {
+                        SettingsListLabel(
+                            title: NSLocalizedString("settings__security__pin_idle", comment: ""),
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { settings.requirePinWhenIdle },
+                                set: { _ in /* NavigationLink handles the tap */ }
+                            )
+                        )
+                    }
 
-                    //TODO: requires pin sheet to enable this
-                    SettingsListLabel(
-                        title: NSLocalizedString("settings__security__pin_payments", comment: ""),
-                        toggle: $settings.requirePinForPayments
-                    )
+                    NavigationLink(
+                        destination: PinCheckView(
+                            title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
+                            explanation: "",
+                            onCancel: {},
+                            onPinVerified: {
+                                settings.requirePinForPayments.toggle()
+                            }
+                        )
+                    ) {
+                        SettingsListLabel(
+                            title: NSLocalizedString("settings__security__pin_payments", comment: ""),
+                            rightIcon: nil,
+                            toggle: Binding(
+                                get: { settings.requirePinForPayments },
+                                set: { _ in /* NavigationLink handles the tap */ }
+                            )
+                        )
+                    }
 
                     //TODO: requires biometrics to be enabled
                     SettingsListLabel(
