@@ -4,7 +4,7 @@ struct PinCheckView: View {
     let title: String
     let explanation: String
     let onCancel: () -> Void
-    let onPinVerified: () -> Void
+    let onPinVerified: (String) -> Void
 
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
@@ -25,7 +25,7 @@ struct PinCheckView: View {
             // PIN is correct
             Haptics.notify(.success)
             dismiss()
-            onPinVerified()
+            onPinVerified(pin)
         } else {
             // PIN is incorrect
             handleIncorrectPin()
@@ -114,7 +114,7 @@ struct PinCheckView: View {
             onCancel: {
                 print("Cancelled")
             },
-            onPinVerified: {
+            onPinVerified: { _ in
                 print("PIN verified!")
             }
         )
