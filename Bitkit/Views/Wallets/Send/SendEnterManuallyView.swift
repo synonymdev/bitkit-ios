@@ -36,7 +36,7 @@ struct SendEnterManuallyView: View {
                     .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
                     .padding(20)
                     .frame(minHeight: 200, maxHeight: .infinity)
-                    .transparentScrolling()
+                    .scrollContentBackground(.hidden)
                     .font(.custom(Fonts.bold, size: 22))
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)

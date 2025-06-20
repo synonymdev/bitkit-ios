@@ -1,5 +1,5 @@
 {
-  "originHash" : "b2dc3b8b01a5346b2bff5d687f01109c4e59ca11db2d7d5ade11d233dc6a00b6",
+  "originHash" : "984aa05ff0e5ff1b17e73c422f779eb7caccb00d2b9addf7e1f3dc5f382fa091",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -53,6 +53,15 @@
       "state" : {
         "revision" : "9683e8e311c76d8114cd308b697dad2f9fc58fed",
         "version" : "0.17.0"
+      }
+    },
+    {
+      "identity" : "zip",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/marmelroy/Zip.git",
+      "state" : {
+        "revision" : "67fa55813b9e7b3b9acee9c0ae501def28746d76",
+        "version" : "2.1.2"
       }
     }
   ],

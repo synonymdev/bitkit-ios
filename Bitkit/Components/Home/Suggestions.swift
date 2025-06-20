@@ -184,7 +184,7 @@ struct Suggestions: View {
         case .shop:
             route = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support:
-            route = .settings
+            route = .support
         case .transferToSpending:
             route = app.hasSeenTransferToSpendingIntro ? .fundingOptions : .transferIntro
         }
