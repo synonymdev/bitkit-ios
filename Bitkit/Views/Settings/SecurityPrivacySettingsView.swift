@@ -77,7 +77,7 @@ struct SecurityPrivacySettingsView: View {
                             title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
                             explanation: "",
                             onCancel: {},
-                            onPinVerified: {
+                            onPinVerified: { _ in
                                 settings.requirePinOnLaunch.toggle()
                             }
                         )
@@ -97,7 +97,7 @@ struct SecurityPrivacySettingsView: View {
                             title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
                             explanation: "",
                             onCancel: {},
-                            onPinVerified: {
+                            onPinVerified: { _ in
                                 settings.requirePinWhenIdle.toggle()
                             }
                         )
@@ -117,7 +117,7 @@ struct SecurityPrivacySettingsView: View {
                             title: NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
                             explanation: "",
                             onCancel: {},
-                            onPinVerified: {
+                            onPinVerified: { _ in
                                 settings.requirePinForPayments.toggle()
                             }
                         )

@@ -105,6 +105,13 @@ class SettingsViewModel: ObservableObject {
             throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
         }
         try Keychain.delete(key: .securityPin)
+
+        // Reset all PIN-related settings when PIN is disabled
+        requirePinOnLaunch = false
+        requirePinWhenIdle = false
+        requirePinForPayments = false
+        useBiometrics = false
+
         updatePinEnabledState()
     }
 

@@ -105,7 +105,7 @@ struct SendConfirmationView: View {
                     pinCheckContinuation?.resume(returning: false)
                     pinCheckContinuation = nil
                 },
-                onPinVerified: {
+                onPinVerified: { _ in
                     pinCheckContinuation?.resume(returning: true)
                     pinCheckContinuation = nil
                 }

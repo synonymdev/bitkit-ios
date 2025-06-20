@@ -15,7 +15,7 @@ struct DisablePinView: View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 BodyMText(
-                    NSLocalizedString("security__pin_disable_text", comment: "PIN disable description"),
+                    NSLocalizedString("security__pin_disable_text", comment: ""),
                     textColor: .textSecondary
                 )
                 .multilineTextAlignment(.center)
@@ -37,14 +37,27 @@ struct DisablePinView: View {
 
             // Disable PIN button
             CustomButton(
-                title: NSLocalizedString("security__pin_disable_button", comment: "Disable PIN button")
-            ) {
-                // TODO: Implement disable PIN logic
-            }
+                title: NSLocalizedString("security__pin_disable_button", comment: ""),
+                destination: PinCheckView(
+                    title: NSLocalizedString("security__pin_enter", comment: ""),
+                    explanation: "",
+                    onCancel: {},
+                    onPinVerified: { pin in
+                        do {
+                            try settings.removePin(pin: pin)
+                            dismiss()
+                        } catch {
+                            Logger.error("Failed to remove PIN: \(error)", context: "DisablePinView")
+                            // Still dismiss even if there's an error, as the PIN was verified
+                            dismiss()
+                        }
+                    }
+                )
+            )
             .padding(.horizontal, 32)
             .padding(.bottom, 32)
         }
-        .navigationTitle(NSLocalizedString("security__pin_disable_title", comment: "Disable PIN title"))
+        .navigationTitle(NSLocalizedString("security__pin_disable_title", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
