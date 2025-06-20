@@ -17,6 +17,8 @@ struct SendConfirmationView: View {
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
+    @State private var showPinCheck = false
+    @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
 
     var body: some View {
         VStack {
@@ -59,9 +61,20 @@ struct SendConfirmationView: View {
                                 // User cancelled, throw error to reset SwipeButton
                                 throw CancellationError()
                             }
-                            // User confirmed, continue with payment
+                            // User confirmed, continue with PIN check if needed
                         }
                     }
+                }
+
+                // Check if PIN is required for payments
+                if settings.requirePinForPayments && settings.pinEnabled {
+                    showPinCheck = true
+                    let shouldProceed = try await waitForPinCheck()
+                    if !shouldProceed {
+                        // User cancelled PIN entry, throw error to reset SwipeButton
+                        throw CancellationError()
+                    }
+                    // PIN verified, continue with payment
                 }
 
                 // Proceed with payment
@@ -84,11 +97,33 @@ struct SendConfirmationView: View {
         } message: {
             Text(NSLocalizedString("wallet__send_dialog1", comment: ""))
         }
+        .navigationDestination(isPresented: $showPinCheck) {
+            PinCheckView(
+                title: NSLocalizedString("security__pin_send_title", comment: "Enter PIN Code"),
+                explanation: NSLocalizedString("security__pin_send", comment: "Please enter your PIN code to confirm and send out this payment."),
+                onCancel: {
+                    showPinCheck = false
+                    pinCheckContinuation?.resume(returning: false)
+                    pinCheckContinuation = nil
+                },
+                onPinVerified: {
+                    showPinCheck = false
+                    pinCheckContinuation?.resume(returning: true)
+                    pinCheckContinuation = nil
+                }
+            )
+        }
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
         return try await withCheckedThrowingContinuation { continuation in
             alertContinuation = continuation
+        }
+    }
+
+    private func waitForPinCheck() async throws -> Bool {
+        return try await withCheckedThrowingContinuation { continuation in
+            pinCheckContinuation = continuation
         }
     }
 
