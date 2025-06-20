@@ -99,8 +99,8 @@ struct SendConfirmationView: View {
         }
         .navigationDestination(isPresented: $showPinCheck) {
             PinCheckView(
-                title: NSLocalizedString("security__pin_send_title", comment: "Enter PIN Code"),
-                explanation: NSLocalizedString("security__pin_send", comment: "Please enter your PIN code to confirm and send out this payment."),
+                title: NSLocalizedString("security__pin_send_title", comment: ""),
+                explanation: NSLocalizedString("security__pin_send", comment: ""),
                 onCancel: {
                     pinCheckContinuation?.resume(returning: false)
                     pinCheckContinuation = nil

@@ -86,7 +86,7 @@ struct PinOnLaunchView: View {
 
             // Title text
             BodyMText(
-                NSLocalizedString("security__pin_enter", comment: "Please enter your PIN code"),
+                NSLocalizedString("security__pin_enter", comment: ""),
                 textColor: .textPrimary,
                 textAlignment: .center
             )
