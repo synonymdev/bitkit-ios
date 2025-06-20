@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftUI
 
 struct SecurityPrivacySettingsView: View {
@@ -8,6 +9,8 @@ struct SecurityPrivacySettingsView: View {
     @State private var showPinCheckForLaunch = false
     @State private var showPinCheckForIdle = false
     @State private var showPinCheckForPayments = false
+    @State private var showingBiometricError = false
+    @State private var biometricErrorMessage = ""
 
     private var biometryTypeName: String {
         switch Env.biometryType {
@@ -18,6 +21,12 @@ struct SecurityPrivacySettingsView: View {
         default:
             return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
         }
+    }
+
+    private var isBiometricAvailable: Bool {
+        let context = LAContext()
+        var error: NSError?
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
     var body: some View {
@@ -115,12 +124,17 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
 
-                    //TODO: requires biometrics to be enabled
+                    // Biometrics toggle with custom handling
                     SettingsListLabel(
                         title: localizedString(
                             "settings__security__use_bio", comment: "",
                             variables: ["biometryTypeName": biometryTypeName]),
-                        toggle: $settings.useBiometrics
+                        toggle: Binding(
+                            get: { settings.useBiometrics },
+                            set: { newValue in
+                                handleBiometricToggle(newValue)
+                            }
+                        )
                     )
 
                     // Footer text for Biometrics
@@ -165,6 +179,110 @@ struct SecurityPrivacySettingsView: View {
                 }
             )
         }
+        .alert(
+            NSLocalizedString("security__bio_error_title", comment: ""),
+            isPresented: $showingBiometricError
+        ) {
+            Button(NSLocalizedString("common__ok", comment: "")) {
+                // Error handled, user acknowledged
+            }
+        } message: {
+            Text(biometricErrorMessage)
+        }
+    }
+
+    private func handleBiometricToggle(_ newValue: Bool) {
+        if !isBiometricAvailable {
+            // Biometrics not available - show setup sheet
+            sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
+            return
+        }
+
+        if newValue {
+            // User wants to enable biometrics - request authentication
+            requestBiometricPermission { success in
+                if success {
+                    settings.useBiometrics = true
+                    Logger.debug("Biometric authentication enabled", context: "SecurityPrivacySettingsView")
+                } else {
+                    // Authentication failed - keep toggle off
+                    // The toggle will automatically revert since we're not setting the value
+                }
+            }
+        } else {
+            // User wants to disable biometrics - confirm with biometric authentication if already enabled
+            if settings.useBiometrics {
+                requestBiometricPermission { success in
+                    if success {
+                        settings.useBiometrics = false
+                        Logger.debug("Biometric authentication disabled", context: "SecurityPrivacySettingsView")
+                    } else {
+                        // Authentication failed - keep toggle on
+                        // The toggle will automatically revert since we're not setting the value
+                    }
+                }
+            } else {
+                // Already disabled, just update the setting
+                settings.useBiometrics = false
+            }
+        }
+    }
+
+    private func requestBiometricPermission(completion: @escaping (Bool) -> Void) {
+        let context = LAContext()
+        var error: NSError?
+
+        // Check if biometric authentication is available
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            handleBiometricError(error)
+            completion(false)
+            return
+        }
+
+        // Request biometric authentication
+        let reason = localizedString(
+            "security__bio_confirm", comment: "",
+            variables: ["biometricsName": biometryTypeName]
+        )
+
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
+            DispatchQueue.main.async {
+                if success {
+                    completion(true)
+                } else {
+                    if let error = authenticationError {
+                        handleBiometricError(error)
+                    }
+                    completion(false)
+                }
+            }
+        }
+    }
+
+    private func handleBiometricError(_ error: Error?) {
+        guard let error = error else { return }
+
+        let nsError = error as NSError
+
+        switch nsError.code {
+        case LAError.biometryNotAvailable.rawValue:
+            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            showingBiometricError = true
+        case LAError.biometryNotEnrolled.rawValue:
+            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            showingBiometricError = true
+        case LAError.userCancel.rawValue, LAError.userFallback.rawValue:
+            // User cancelled - don't show error, just keep current state
+            return
+        default:
+            biometricErrorMessage = localizedString(
+                "security__bio_error_message", comment: "",
+                variables: ["type": biometryTypeName]
+            )
+            showingBiometricError = true
+        }
+
+        Logger.error("Biometric authentication error: \(error)", context: "SecurityPrivacySettingsView")
     }
 }
 
