@@ -102,12 +102,10 @@ struct SendConfirmationView: View {
                 title: NSLocalizedString("security__pin_send_title", comment: "Enter PIN Code"),
                 explanation: NSLocalizedString("security__pin_send", comment: "Please enter your PIN code to confirm and send out this payment."),
                 onCancel: {
-                    showPinCheck = false
                     pinCheckContinuation?.resume(returning: false)
                     pinCheckContinuation = nil
                 },
                 onPinVerified: {
-                    showPinCheck = false
                     pinCheckContinuation?.resume(returning: true)
                     pinCheckContinuation = nil
                 }

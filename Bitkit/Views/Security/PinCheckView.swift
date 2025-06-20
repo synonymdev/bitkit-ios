@@ -24,6 +24,7 @@ struct PinCheckView: View {
         if settings.pinCheck(pin: pin) {
             // PIN is correct
             Haptics.notify(.success)
+            dismiss()
             onPinVerified()
         } else {
             // PIN is incorrect
@@ -92,7 +93,10 @@ struct PinCheckView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: onCancel) {
+                Button(action: {
+                    onCancel()
+                    dismiss()
+                }) {
                     Image(systemName: "arrow.left")
                         .foregroundColor(.white)
                         .font(.system(size: 18, weight: .medium))
