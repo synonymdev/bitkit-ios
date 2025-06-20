@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ShopIntroView: View {
+struct ShopIntro: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
@@ -24,7 +24,7 @@ struct ShopIntroView: View {
 
 #Preview {
     NavigationStack {
-        ShopIntroView()
+        ShopIntro()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .preferredColorScheme(.dark)
