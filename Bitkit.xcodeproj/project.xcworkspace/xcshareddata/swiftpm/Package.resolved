@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "branch" : "feat/coin-selection",
-        "revision" : "46e093df627f91f4eba07386f12508b284e3b1a6"
+        "branch" : "main",
+        "revision" : "207c2998d375763bee1d6685250e13b206d676f5"
       }
     },
     {

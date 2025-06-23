@@ -879,7 +879,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
-				branch = "feat/coin-selection";
+				branch = main;
 				kind = branch;
 			};
 		};
