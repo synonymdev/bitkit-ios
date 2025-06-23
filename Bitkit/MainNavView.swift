@@ -78,11 +78,9 @@ struct MainNavView: View {
                     .backToWalletButton()
             case .shop:
                 if app.hasSeenShopIntro {
-                    // ShopView()
-                    Text("Coming Soon")
-                        .backToWalletButton()
+                    ShopDiscover()
                 } else {
-                    ShopIntroView()
+                    ShopIntro()
                 }
             case .widgets:
                 if app.hasSeenWidgetsIntro {
@@ -148,11 +146,11 @@ struct MainNavView: View {
             case .settings:
                 SettingsListView()
             case .shopIntro:
-                ShopIntroView()
+                ShopIntro()
             case .shopDiscover:
-                // ShopDiscoverView()
-                Text("Coming Soon")
-                    .backToWalletButton()
+                ShopDiscover()
+            case .shopMain(let page):
+                ShopMain(page: page)
             }
         }
     }
