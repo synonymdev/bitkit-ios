@@ -16,7 +16,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     var icon: String {
         switch self {
         case .wallet: return "coins"
-        case .activity: return "heartbeat"
+        case .activity: return "activity"
         case .contacts: return "users"
         case .profile: return "user-square"
         case .widgets: return "stack"
