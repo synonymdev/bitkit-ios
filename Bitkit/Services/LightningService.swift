@@ -523,3 +523,41 @@ extension LightningService {
         }
     }
 }
+
+
+// MARK: Boost txs
+
+extension LightningService {
+//    
+//    - Add `bump_fee_by_rbf` to replace transactions with higher fee versions
+//    - Add `accelerate_by_cpfp` to create child transactions that pay for parent
+//    - Add `calculate_cpfp_fee_rate` helper for automatic fee calculation
+    func bumpFeeByRbf(txid: String, satsPerVbyte: UInt32) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .bumpFeeByRbf(
+                    txid: txid,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
+                )
+        }
+    }
+    
+    func accelerateByCpfp(txid: String, satsPerVbyte: UInt32, destinationAddress: String) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .accelerateByCpfp(
+                    txid: txid,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    destinationAddress: destinationAddress
+                )
+        }
+    }
+}
