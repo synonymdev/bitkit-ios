@@ -10,6 +10,8 @@ import LDKNode
 import LocalAuthentication
 
 enum Env {
+    static let appName = "bitkit"
+
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -206,33 +208,17 @@ enum Env {
         return .trace
     }
 
-    static var appStoreUrl: String {
-        "https://apps.apple.com/app/bitkit-wallet/id6502440655"
-    }
+    static let appStoreUrl = "https://apps.apple.com/app/bitkit-wallet/id6502440655"
+    static let playStoreUrl = "https://play.google.com/store/apps/details?id=to.bitkit"
+    static let githubUrl = "https://www.github.com/synonymdev/bitkit"
+    static let githubReleasesUrl = "https://www.github.com/synonymdev/bitkit/releases"
+    static let termsOfServiceUrl = "https://www.bitkit.to/terms-of-use"
+    static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
+    static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
+    static let bitrefillRef = "AL6dyZYt"
 
-    static var playStoreUrl: String {
-        "https://play.google.com/store/apps/details?id=to.bitkit"
-    }
-
-    static var githubUrl: String {
-        "https://www.github.com/synonymdev/bitkit"
-    }
-
-    static var githubReleasesUrl: String {
-        "https://www.github.com/synonymdev/bitkit/releases"
-    }
-
-    static var termsOfServiceUrl: String {
-        "https://www.bitkit.to/terms-of-use"
-    }
-
-    static var privacyPolicyUrl: String {
-        "https://www.bitkit.to/privacy-policy"
-    }
-
-    static var geoCheckUrl: String {
-        "https://api1.blocktank.to/api/geocheck"
-    }
+    static let helpUrl = "https://help.bitkit.to"
+    static let supportApiUrl = "https://synonym.to/api/chatwoot"
 
     // MARK: Biometric Authentication
 

@@ -1,6 +1,6 @@
 {
-  "originHash" : "b2dc3b8b01a5346b2bff5d687f01109c4e59ca11db2d7d5ade11d233dc6a00b6",
-  "pins" : [
+  "originHash" : "057fdc5b130007a95299a46dda0dc9215fcbaba988012f0a6fea075d24b4ec16",
+ "pins" : [
     {
       "identity" : "bitkit-core",
       "kind" : "remoteSourceControl",
@@ -22,10 +22,10 @@
     {
       "identity" : "ldk-node",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/lightningdevkit/ldk-node",
+      "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
         "branch" : "main",
-        "revision" : "7977b0429801c277f8dddabaa2c15011b64a00e0"
+        "revision" : "207c2998d375763bee1d6685250e13b206d676f5"
       }
     },
     {
@@ -53,6 +53,15 @@
       "state" : {
         "revision" : "9683e8e311c76d8114cd308b697dad2f9fc58fed",
         "version" : "0.17.0"
+      }
+    },
+    {
+      "identity" : "zip",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/marmelroy/Zip.git",
+      "state" : {
+        "revision" : "67fa55813b9e7b3b9acee9c0ae501def28746d76",
+        "version" : "2.1.2"
       }
     }
   ],
