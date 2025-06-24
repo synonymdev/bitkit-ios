@@ -2,8 +2,11 @@ import SwiftUI
 
 enum SendView {
     case options
+    case manual
     case amount
     case confirm
+    case quickpay
+    case success
 }
 
 struct SendConfig {
@@ -26,19 +29,34 @@ struct SendSheetItem: SheetItem {
 
 struct SendSheet: View {
     let config: SendSheetItem
+    @State private var navigationPath: [SendView] = []
 
     var body: some View {
         Sheet(id: .send, data: config) {
-            NavigationStack {
-                switch config.initialView {
-                case .options:
-                    SendOptionsView()
-                case .amount:
-                    SendAmountView()
-                case .confirm:
-                    SendConfirmationView()
-                }
+            NavigationStack(path: $navigationPath) {
+                viewForSendView(config.initialView)
+                    .navigationDestination(for: SendView.self) { view in
+                        viewForSendView(view)
+                    }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func viewForSendView(_ view: SendView) -> some View {
+        switch view {
+        case .options:
+            SendOptionsView(navigationPath: $navigationPath)
+        case .manual:
+            SendEnterManuallyView(navigationPath: $navigationPath)
+        case .amount:
+            SendAmountView(navigationPath: $navigationPath)
+        case .confirm:
+            SendConfirmationView(navigationPath: $navigationPath)
+        case .quickpay:
+            SendQuickpay(navigationPath: $navigationPath)
+        case .success:
+            SendSuccess()
         }
     }
 }
