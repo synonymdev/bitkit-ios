@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftUI
 
 struct PinOnLaunchView: View {
@@ -7,6 +8,23 @@ struct PinOnLaunchView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
     let onPinVerified: () -> Void
+
+    private var biometryTypeName: String {
+        switch Env.biometryType {
+        case .touchID:
+            return NSLocalizedString("security__bio_touch_id", comment: "")
+        case .faceID:
+            return NSLocalizedString("security__bio_face_id", comment: "")
+        default:
+            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+        }
+    }
+
+    private var isBiometricAvailable: Bool {
+        let context = LAContext()
+        var error: NSError?
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
 
     private func handlePinChange(_ pin: String) {
         if pin.count == 4 {
@@ -73,6 +91,37 @@ struct PinOnLaunchView: View {
         }
     }
 
+    private func handleBiometricAuthentication() {
+        let context = LAContext()
+        var error: NSError?
+
+        // Check if biometric authentication is available
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "PinOnLaunchView")
+            return
+        }
+
+        // Request biometric authentication
+        let reason = localizedString(
+            "security__bio_confirm", comment: "",
+            variables: ["biometricsName": biometryTypeName]
+        )
+
+        context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
+            DispatchQueue.main.async {
+                if success {
+                    Haptics.notify(.success)
+                    onPinVerified()
+                } else {
+                    if let error = authenticationError {
+                        Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "PinOnLaunchView")
+                    }
+                    Haptics.notify(.error)
+                }
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -96,6 +145,21 @@ struct PinOnLaunchView: View {
             if !errorMessage.isEmpty {
                 CaptionText(errorMessage, textColor: .brandAccent)
                     .padding(.bottom, 16)
+            }
+
+            // Biometric button (if enabled and available)
+            if settings.useBiometrics && isBiometricAvailable {
+                Button(action: handleBiometricAuthentication) {
+                    HStack(alignment: .center, spacing: 8) {
+                        Image(systemName: Env.biometryType == .touchID ? "touchid" : "faceid")
+                        Text(localizedString("security__pin_use_biometrics", comment: "", variables: ["biometricsName": biometryTypeName]))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white16)
+                    .cornerRadius(54)
+                }
+                .padding(.bottom, 32)
             }
 
             // PIN input component
