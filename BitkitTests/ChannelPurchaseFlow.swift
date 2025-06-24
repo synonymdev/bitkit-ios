@@ -192,26 +192,29 @@ final class PaymentFlowTests: XCTestCase {
         
         // Mine blocks to confirm the payment transaction
         Logger.test("Mining blocks to confirm payment", context: "PaymentFlowTests")
-        try await blocktank.regtestMineBlocks(6)
+        try await blocktank.regtestMineBlocks(1)
         Logger.test("Blocks mined successfully", context: "PaymentFlowTests")
         
         // Sync wallet again
         Logger.test("Syncing wallet after payment", context: "PaymentFlowTests")
         try await lightning.sync()
+        
+        try await Task.sleep(nanoseconds: 5_000_000_000)
+        
         Logger.test("Wallet sync complete", context: "PaymentFlowTests")
         
         // Check the order status
         Logger.test("Checking order status", context: "PaymentFlowTests")
-        let updatedOrders = try await blocktank.orders(orderIds: [order.id], filter: nil, refresh: true)
+        var updatedOrders = try await blocktank.orders(orderIds: [order.id], filter: nil, refresh: true)
         XCTAssertFalse(updatedOrders.isEmpty, "Updated orders should not be empty")
         
-        guard let updatedOrder = updatedOrders.first else {
-            XCTFail("Could not retrieve updated order")
-            return
+        if updatedOrders.first?.state2 != .paid {
+            try await Task.sleep(nanoseconds: 20_000_000_000)
+            updatedOrders = try await blocktank.orders(orderIds: [order.id], filter: nil, refresh: true)
         }
         
-        Logger.test("Updated order state: \(updatedOrder.state2)", context: "PaymentFlowTests")
-        XCTAssertEqual(updatedOrder.state2, .paid, "Order state should be paid after payment confirmation")
+        Logger.test("Updated order state: \(updatedOrders.first?.state2)", context: "PaymentFlowTests")
+        XCTAssertEqual(updatedOrders.first?.state2, .paid, "Order state should be paid after payment confirmation")
         
         // Request channel to be opened
         Logger.test("Requesting channel to be opened", context: "PaymentFlowTests")

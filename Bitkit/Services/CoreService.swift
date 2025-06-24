@@ -1,6 +1,6 @@
+import BitkitCore
 import Foundation
 import LDKNode
-import BitkitCore
 
 // MARK: - Activity Service
 
@@ -443,13 +443,36 @@ class BlocktankService {
 
     // MARK: Regtest only methods
 
+    private func executeWithRetry<T>(maxRetries: Int = 6, operation: @escaping () async throws -> T) async throws -> T {
+        var lastError: Error?
+
+        for attempt in 0 ..< maxRetries {
+            do {
+                return try await operation()
+            } catch {
+                lastError = error
+                Logger.warn("Regtest operation failed on attempt \(attempt + 1)/\(maxRetries): \(error)", context: "BlocktankService")
+
+                if attempt < maxRetries - 1 {
+                    let sleepDuration = UInt64(1 << attempt) // Exponential backoff: 1, 2, 4, 8, 16 seconds
+                    Logger.info("Retrying in \(sleepDuration) seconds...", context: "BlocktankService")
+                    try await Task.sleep(nanoseconds: sleepDuration * 2_000_000_000)
+                }
+            }
+        }
+
+        throw lastError ?? AppError(message: "Unknown error during retry", debugMessage: nil)
+    }
+
     func regtestMineBlocks(_ count: UInt32 = 1) async throws {
         guard Env.network == .regtest else {
             throw AppError(serviceError: .regtestOnlyMethod)
         }
 
-        try await ServiceQueue.background(.core) {
-            try await regtestMine(count: count)
+        try await executeWithRetry {
+            try await ServiceQueue.background(.core) {
+                try await regtestMine(count: count)
+            }
         }
     }
 
@@ -458,8 +481,10 @@ class BlocktankService {
             throw AppError(serviceError: .regtestOnlyMethod)
         }
 
-        return try await ServiceQueue.background(.core) {
-            try await regtestDeposit(address: address, amountSat: amountSat)
+        return try await executeWithRetry {
+            try await ServiceQueue.background(.core) {
+                try await regtestDeposit(address: address, amountSat: amountSat)
+            }
         }
     }
 
@@ -468,8 +493,10 @@ class BlocktankService {
             throw AppError(serviceError: .regtestOnlyMethod)
         }
 
-        return try await ServiceQueue.background(.core) {
-            try await regtestPay(invoice: invoice, amountSat: amountSat)
+        return try await executeWithRetry {
+            try await ServiceQueue.background(.core) {
+                try await regtestPay(invoice: invoice, amountSat: amountSat)
+            }
         }
     }
 
@@ -482,8 +509,10 @@ class BlocktankService {
             throw AppError(message: "Missing channel.fundingTxo", debugMessage: nil)
         }
 
-        return try await ServiceQueue.background(.core) {
-            try await regtestCloseChannel(fundingTxId: fundingTxo.txid, vout: fundingTxo.vout, forceCloseAfterS: forceCloseAfterSeconds)
+        return try await executeWithRetry {
+            try await ServiceQueue.background(.core) {
+                try await regtestCloseChannel(fundingTxId: fundingTxo.txid, vout: fundingTxo.vout, forceCloseAfterS: forceCloseAfterSeconds)
+            }
         }
     }
 }
