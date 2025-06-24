@@ -18,6 +18,7 @@ final class ActivityTests: XCTestCase {
         try await super.setUp()
         // Initialize the database before each test
         _ = try initDb(basePath: testDbPath)
+        try await Task.sleep(nanoseconds: 1_000_000_000)
     }
 
     override func tearDown() async throws {

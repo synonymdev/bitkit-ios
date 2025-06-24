@@ -22,7 +22,7 @@ class LightningService {
 
     func setup(walletIndex: Int) async throws {
         Logger.debug("Checking lightning process lock...")
-        try StateLocker.lock(.lightning, wait: 30)  // Wait 30 seconds to lock because maybe extension is still running
+        try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -46,20 +46,21 @@ class LightningService {
         )
 
         let builder = Builder.fromConfig(config: config)
-        
-        let esploraConfig = EsploraSyncConfig(backgroundSyncConfig: .init(
+
+        let esploraConfig = EsploraSyncConfig(
+            backgroundSyncConfig: .init(
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
             )
         )
-        
+
         Logger.info("LDK-node log path: \(ldkStoragePath)")
-        
+
         let logFilePath = generateLogFilePath()
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
-        
+
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
@@ -205,26 +206,45 @@ class LightningService {
         }
     }
 
-    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> Bolt11Invoice {
+    func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        return try await ServiceQueue.background(.ldk) {
+        let bip21 = try await ServiceQueue.background(.ldk) {
             if let amountSats {
                 try node
-                    .bolt11Payment()
+                    .unifiedQrPayment()
                     .receive(
-                        amountMsat: amountSats * 1000,
-                        description: .direct(description: description),
-                        expirySecs: expirySecs
+                        amountSats: amountSats,
+                        message: description,
+                        expirySec: expirySecs
                     )
             } else {
                 try node
-                    .bolt11Payment()
-                    .receiveVariableAmount(description: .direct(description: description), expirySecs: expirySecs)
+                    .unifiedQrPayment()
+                    .receive(
+                        amountSats: 0,
+                        message: description,
+                        expirySec: expirySecs
+                    )
             }
         }
+
+        // Temp fix to parse the BIP21 string to extract the lightning parameter until LDK-node exposes display from Bolt11 struct
+        guard let url = URL(string: bip21),
+            let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+        else {
+            throw NSError(domain: "LightningService", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Invalid BIP21 string format"])
+        }
+
+        guard let bolt11 = queryItems.first(where: { $0.name == "lightning" })?.value else {
+            throw NSError(
+                domain: "LightningService", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Lightning invoice parameter not found in BIP21 string"]
+            )
+        }
+
+        return bolt11
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
@@ -249,15 +269,15 @@ class LightningService {
 
         return true
     }
-    
+
     private static func convertVByteToKwu(satsPerVByte: UInt32) -> FeeRate {
         // 1 vbyte = 4 weight units, so 1 sats/vbyte = 250 sats/kwu
         let satPerKwu = UInt64(satsPerVByte * 250)
         // Ensure we're above the minimum relay fee
-        return .fromSatPerKwu(satKwu:  max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
+        return .fromSatPerKwu(satKwu: max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
     }
 
-    func send(address: String, sats: UInt64, satsPerVbyte: UInt32) async throws -> Txid {
+    func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]? = nil) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -266,7 +286,12 @@ class LightningService {
 
         do {
             return try await ServiceQueue.background(.ldk) {
-                try node.onchainPayment().sendToAddress(address: address, amountSats: sats, feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte))
+                try node.onchainPayment().sendToAddress(
+                    address: address,
+                    amountSats: sats,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    utxosToSpend: utxosToSpend
+                )
             }
         } catch {
             dumpLdkLogs()
@@ -274,7 +299,7 @@ class LightningService {
         }
     }
 
-    func send(bolt11: Bolt11Invoice, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -284,9 +309,9 @@ class LightningService {
         do {
             return try await ServiceQueue.background(.ldk) {
                 if let sats {
-                    try node.bolt11Payment().sendUsingAmount(invoice: bolt11, amountMsat: sats * 1000, sendingParameters: params)
+                    try node.bolt11Payment().sendUsingAmount(invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params)
                 } else {
-                    try node.bolt11Payment().send(invoice: bolt11, sendingParameters: params)
+                    try node.bolt11Payment().send(invoice: .fromStr(invoiceStr: bolt11), sendingParameters: params)
                 }
             }
         } catch {
@@ -358,7 +383,7 @@ class LightningService {
             Logger.error("No log file path available")
             return
         }
-        
+
         let fileURL = URL(fileURLWithPath: logFilePath)
 
         do {
@@ -380,11 +405,11 @@ class LightningService {
         dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
         let timestamp = dateFormatter.string(from: Date())
-        
+
         let baseDir = Env.logDirectory
         let contextPrefix = Env.currentExecutionContext.filenamePrefix
         let logFilePath = "\(baseDir)/ldk_\(contextPrefix)_\(timestamp).log"
-        
+
         // Create directory if it doesn't exist
         let directory = URL(fileURLWithPath: baseDir)
         if !FileManager.default.fileExists(atPath: directory.path) {
@@ -394,7 +419,7 @@ class LightningService {
                 Logger.error("Failed to create log directory: \(error)")
             }
         }
-        
+
         Logger.debug("Generated LDK log file path: \(logFilePath)")
         return logFilePath
     }
@@ -423,28 +448,30 @@ extension LightningService {
                 }
 
                 let event = await node.nextEventAsync()
-                
+
                 do {
                     try node.eventHandled()
                 } catch {
                     Logger.error(error, context: "node.eventHandled()")
                 }
-                
+
                 onEvent?(event)
-                
+
                 // TODO: actual event handler
                 switch event {
                 case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
                     break
                 case .paymentFailed(let paymentId, let paymentHash, let reason):
-                    Logger.info("❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
+                    Logger.info(
+                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
                     break
                 case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
                     break
                 case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline, let customRecords):
-                    Logger.info("🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
+                    Logger.info(
+                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
                     break
                 case .channelPending(let channelId, let userChannelId, let formerTemporaryChannelId, let counterpartyNodeId, let fundingTxo):
                     Logger.info(
@@ -463,6 +490,74 @@ extension LightningService {
                     break
                 }
             }
+        }
+    }
+}
+
+// MARK: UTXO selection
+
+extension LightningService {
+    func listSpendableOutputs() async throws -> [SpendableUtxo] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().listSpendableOutputs()
+        }
+    }
+    
+    func selectUtxosWithAlgorithm(targetAmountSats: UInt64, satsPerVbyte: UInt32, coinSelectionAlgorythm: CoinSelectionAlgorithm, utxos: [SpendableUtxo]?) async throws -> [SpendableUtxo] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .selectUtxosWithAlgorithm(
+                    targetAmountSats: targetAmountSats,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    algorithm: coinSelectionAlgorythm,
+                    utxos: utxos
+                )
+        }
+    }
+}
+
+
+// MARK: Boost txs
+
+extension LightningService {
+//    
+//    - Add `bump_fee_by_rbf` to replace transactions with higher fee versions
+//    - Add `accelerate_by_cpfp` to create child transactions that pay for parent
+//    - Add `calculate_cpfp_fee_rate` helper for automatic fee calculation
+    func bumpFeeByRbf(txid: String, satsPerVbyte: UInt32) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .bumpFeeByRbf(
+                    txid: txid,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
+                )
+        }
+    }
+    
+    func accelerateByCpfp(txid: String, satsPerVbyte: UInt32, destinationAddress: String) async throws -> Txid {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .accelerateByCpfp(
+                    txid: txid,
+                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                    destinationAddress: destinationAddress
+                )
         }
     }
 }

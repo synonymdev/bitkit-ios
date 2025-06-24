@@ -4,7 +4,7 @@ struct EmptyActivityRow: View {
     var body: some View {
         HStack(spacing: 16) {
             CircularIcon(
-                icon: "heartbeat",
+                icon: "activity",
                 iconColor: .yellowAccent,
                 backgroundColor: .yellow16
             )

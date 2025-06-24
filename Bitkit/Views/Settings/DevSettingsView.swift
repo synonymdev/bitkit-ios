@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct DevSettingsView: View {
     @EnvironmentObject var wallet: WalletViewModel
@@ -49,6 +50,31 @@ struct DevSettingsView: View {
                     title: "Generate Test Activities",
                     rightIcon: nil
                 )
+            }
+
+            Button {
+                Task {
+                    guard let zipURL = LogService.shared.zipLogs() else {
+                        app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
+                        return
+                    }
+
+                    // Present share sheet
+                    await MainActor.run {
+                        let activityViewController = UIActivityViewController(
+                            activityItems: [zipURL],
+                            applicationActivities: nil
+                        )
+
+                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                            let window = windowScene.windows.first
+                        {
+                            window.rootViewController?.present(activityViewController, animated: true)
+                        }
+                    }
+                }
+            } label: {
+                SettingsListLabel(title: "Export Logs", rightIcon: nil)
             }
 
             Button {
