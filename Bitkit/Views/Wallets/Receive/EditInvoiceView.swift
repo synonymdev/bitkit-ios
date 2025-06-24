@@ -39,13 +39,13 @@ struct EditInvoiceView: View {
                         BodySText(NSLocalizedString("wallet__receive_note_placeholder", comment: ""), textColor: .textSecondary)
                             .padding(20)
                     }
-                    
+
                     TextEditor(text: $noteText)
                         .focused($isNoteEditorFocused)
                         .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
                         .padding(20)
                         .frame(minHeight: 100)
-                        .transparentScrolling()
+                        .scrollContentBackground(.hidden)
                         .font(.custom(Fonts.bold, size: 22))
                         .foregroundColor(.textPrimary)
                         .accentColor(.brandAccent)
@@ -106,7 +106,7 @@ struct EditInvoiceView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var optionButtonsRow: some View {
         HStack(alignment: .bottom) {
@@ -136,4 +136,4 @@ struct EditInvoiceView: View {
             .environmentObject(AppViewModel())
             .environmentObject(CurrencyViewModel())
     }
-} 
+}

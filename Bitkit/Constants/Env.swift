@@ -210,6 +210,9 @@ enum Env {
     static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
     static let bitrefillRef = "AL6dyZYt"
 
+    static let helpUrl = "https://help.bitkit.to"
+    static let supportApiUrl = "https://synonym.to/api/chatwoot"
+
     // MARK: Biometric Authentication
 
     static var biometryType: LABiometryType {
