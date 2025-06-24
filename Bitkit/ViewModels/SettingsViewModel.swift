@@ -100,17 +100,19 @@ class SettingsViewModel: ObservableObject {
         Logger.debug("PIN settings reset after security wipe", context: "SettingsViewModel")
     }
 
-    func removePin(pin: String) throws {
+    func removePin(pin: String, resetSettings: Bool = true) throws {
         guard pinCheck(pin: pin) else {
             throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
         }
         try Keychain.delete(key: .securityPin)
 
-        // Reset all PIN-related settings when PIN is disabled
-        requirePinOnLaunch = false
-        requirePinWhenIdle = false
-        requirePinForPayments = false
-        useBiometrics = false
+        if resetSettings {
+            // Reset all PIN-related settings when PIN is disabled
+            requirePinOnLaunch = false
+            requirePinWhenIdle = false
+            requirePinForPayments = false
+            useBiometrics = false
+        }
 
         updatePinEnabledState()
     }

@@ -81,7 +81,7 @@ struct PinChangeView: View {
             if pin == newPin {
                 // PINs match, update the PIN
                 do {
-                    try settings.removePin(pin: currentPin)
+                    try settings.removePin(pin: currentPin, resetSettings: false)
                     try settings.setPin(newPin)
                     step = .success
                     errorMessage = ""
