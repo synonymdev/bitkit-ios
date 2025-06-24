@@ -151,6 +151,8 @@ struct MainNavView: View {
                 ShopDiscover()
             case .shopMain(let page):
                 ShopMain(page: page)
+            case .support:
+                SupportView()
             }
         }
     }
