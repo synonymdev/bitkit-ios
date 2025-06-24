@@ -9,6 +9,7 @@ struct SetupBiometricsView: View {
     @State private var showingError = false
     @State private var errorMessage = ""
     @State private var navigateToNoBiometricsSupport = false
+    @State private var navigateToSuccess = false
 
     private var biometryTypeName: String {
         switch Env.biometryType {
@@ -84,10 +85,12 @@ struct SetupBiometricsView: View {
                     if !useBiometrics {
                         // Navigate to NoBiometricsSupport view
                         navigateToNoBiometricsSupport = true
+                    } else {
+                        // Navigate to success view
+                        navigateToSuccess = true
                     }
                 }
                 .padding(.horizontal, 32)
-
             }
             .padding(.bottom, 32)
         }
@@ -96,6 +99,9 @@ struct SetupBiometricsView: View {
         .navigationTitle(NSLocalizedString(biometryTypeName, comment: ""))
         .navigationDestination(isPresented: $navigateToNoBiometricsSupport) {
             NoBiometricsSupport()
+        }
+        .navigationDestination(isPresented: $navigateToSuccess) {
+            SecuritySetupSuccess()
         }
         .alert(
             NSLocalizedString("security__bio_error_title", comment: ""),
