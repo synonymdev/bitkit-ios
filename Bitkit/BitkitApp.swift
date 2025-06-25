@@ -63,6 +63,9 @@ struct BitkitApp: App {
     init() {
         // Set dark mode as default
         UIWindow.appearance().overrideUserInterfaceStyle = .dark
+
+        // Initialize toast window manager early
+        _ = ToastWindowManager.shared
     }
 
     var body: some Scene {

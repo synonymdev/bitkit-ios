@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ToastView: View {
     let toast: Toast
@@ -14,68 +15,58 @@ struct ToastView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                VStack(alignment: .leading) {
-                    Text(toast.title)
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 2) {
+                    BodyMSBText(toast.title, textColor: accentColor)
                     if let description = toast.description {
-                        Text(description)
-                            .font(.subheadline)
+                        CaptionText(description, textColor: .textPrimary)
                     }
                 }
                 Spacer()
                 if !toast.autoHide {
                     Button(action: onDismiss) {
                         Image("x-mark")
+                            .foregroundColor(.white.opacity(0.6))
                     }
                 }
             }
         }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(color.opacity(0.8))
-        .foregroundColor(.white)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            ZStack {
+                // Colored background
+                accentColor.opacity(0.7)
+
+                // Black gradient overlay
+                LinearGradient(
+                    gradient: Gradient(colors: [
+                        Color.black.opacity(0.6),
+                        Color.black,
+                    ]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+        )
+        .background(.ultraThinMaterial)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(accentColor, lineWidth: 2)
+        )
         .cornerRadius(8)
-        .shadow(radius: 4)
+        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
     }
 
-    private var color: Color {
+    private var accentColor: Color {
         switch toast.type {
         case .success: return .greenAccent
         case .info: return .blueAccent
         case .lightning: return .purpleAccent
-        case .warning: return .orange
+        case .warning: return .brandAccent
         case .error: return .redAccent
         }
     }
-}
 
-struct ToastModifier: ViewModifier {
-    @Binding var toast: Toast?
-    let onDismiss: () -> Void
-
-    func body(content: Content) -> some View {
-        content
-            .overlay(
-                ZStack {
-                    if let toast {
-                        VStack {
-                            ToastView(toast: toast, onDismiss: onDismiss)
-                                .padding(.horizontal)
-                                .padding(.top)
-                            Spacer()
-                        }
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
-                .animation(.easeInOut(duration: 0.4), value: toast)
-            )
-    }
-}
-
-extension View {
-    func toastOverlay(toast: Binding<Toast?>, onDismiss: @escaping () -> Void) -> some View {
-        modifier(ToastModifier(toast: toast, onDismiss: onDismiss))
-    }
 }
 
 #Preview {
@@ -85,7 +76,7 @@ extension View {
             title: "Hey toast",
             description: "This is a toast message",
             autoHide: true,
-            visibilityTime: 3.0
+            visibilityTime: 4.0
         ), onDismiss: {}
     )
     .preferredColorScheme(.dark)
