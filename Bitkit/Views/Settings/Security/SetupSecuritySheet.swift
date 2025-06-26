@@ -22,8 +22,6 @@ struct SetupSecuritySheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     let config: SecuritySheetItem
-    @State private var pinEnabled: Bool = false
-    @State private var useBiometrics: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -31,7 +29,7 @@ struct SetupSecuritySheet: View {
                 if settings.pinEnabled && settings.useBiometrics {
                     //Replace current view with this so they can't go back in navigation stack
                     SecuritySetupSuccess()
-                } else if pinEnabled {
+                } else if settings.pinEnabled {
                     // PIN is enabled but biometrics is not - show biometrics setup
                     SetupBiometricsView()
                 } else {
@@ -52,10 +50,6 @@ struct SetupSecuritySheet: View {
                             .foregroundColor(.white)
                     }
                 }
-            }
-            .onAppear {
-                pinEnabled = settings.pinEnabled
-                useBiometrics = settings.useBiometrics
             }
         }
         .presentationDetents([.height(config.size.height)])
