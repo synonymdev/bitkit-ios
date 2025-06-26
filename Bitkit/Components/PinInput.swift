@@ -9,12 +9,11 @@ import SwiftUI
 
 struct PinInput: View {
     @Binding var pinInput: String
+    var verticalSpace = false
     let onPinChange: (String) -> Void
 
-    @FocusState private var isTextFieldFocused: Bool
-
     var body: some View {
-        VStack(spacing: 32) {
+        VStack {
             // PIN circles
             HStack(alignment: .top, spacing: 24) {
                 ForEach(0 ..< 4, id: \.self) { index in
@@ -27,51 +26,45 @@ struct PinInput: View {
                         .frame(width: 20, height: 20)
                 }
             }
-            .padding(0)
-            .onTapGesture {
-                isTextFieldFocused = true
+            .padding(.bottom, 60)
+
+            if verticalSpace {
+                Spacer()
             }
 
-            // Hidden TextField to capture keyboard input
-            TextField("", text: $pinInput)
-                .keyboardType(.numberPad)
-                .focused($isTextFieldFocused)
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .onChange(of: pinInput) { newValue in
-                    // Limit to 4 digits and only allow numbers
-                    let filtered = String(newValue.prefix(4).filter { $0.isNumber })
-                    if filtered != newValue {
-                        pinInput = filtered
-                    }
+            // NumPad
+            NumPad { key in
+                handleNumPadInput(key)
+            }
+        }
+    }
 
-                    // Call the callback whenever PIN changes
+    private func handleNumPadInput(_ key: String) {
+        if key == "delete" {
+            if !pinInput.isEmpty {
+                pinInput = String(pinInput.dropLast())
+            }
+            // Call the callback immediately for delete
+            onPinChange(pinInput)
+        } else if pinInput.count < 4 {
+            pinInput += key
+
+            // If it's the 4th number, add a delay before calling onPinChange
+            if pinInput.count == 4 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                     onPinChange(pinInput)
                 }
-        }
-        .onAppear {
-            isTextFieldFocused = true
-        }
-        .onChange(of: isTextFieldFocused) { newValue in
-            if !newValue {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    isTextFieldFocused = true
-                }
+            } else {
+                // Call the callback immediately for other inputs
+                onPinChange(pinInput)
             }
         }
     }
 }
 
 #Preview {
-    @State var pinInput = ""
-
-    return VStack {
-        PinInput(pinInput: $pinInput) { pin in
-            print("PIN changed: \(pin)")
-        }
-
-        Text("Current PIN: \(pinInput)")
-            .padding()
+    PinInput(pinInput: .constant("123")) { pin in
+        print("PIN changed: \(pin)")
     }
     .preferredColorScheme(.dark)
 }

@@ -8,9 +8,17 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.scenePhase) var scenePhase
 
+    @State private var isPinVerified: Bool = false
+
     var body: some View {
         NavigationStack(path: $navigation.path) {
-            navigationContent
+            if settings.requirePinOnLaunch && settings.pinEnabled && !isPinVerified {
+                PinOnLaunchView {
+                    isPinVerified = true
+                }
+            } else {
+                navigationContent
+            }
         }
         .sheet(item: $sheets.addTagSheetItem, onDismiss: { sheets.hideSheet() }) {
             config in AddTagSheet(config: config)
@@ -35,14 +43,27 @@ struct MainNavView: View {
         }
         .accentColor(.white)
         .overlay {
-            TabBar()
-            DrawerView()
+            if !settings.requirePinOnLaunch || !settings.pinEnabled || isPinVerified {
+                TabBar()
+                DrawerView()
+            }
         }
         .onChange(of: scenePhase) { newPhase in
+            // Reset PIN verification when app goes to background and comes back
+            if newPhase == .background && settings.requirePinWhenIdle && settings.pinEnabled {
+                isPinVerified = false
+            }
+
             guard wallet.walletExists == true && settings.readClipboard && newPhase == .active else {
                 return
             }
             handleClipboard()
+        }
+        .onAppear {
+            // Initialize PIN verification state based on settings
+            if !settings.requirePinOnLaunch || !settings.pinEnabled {
+                isPinVerified = true
+            }
         }
     }
 
@@ -216,5 +237,6 @@ extension View {
         .environmentObject(AppViewModel())
         .environmentObject(NavigationViewModel())
         .environmentObject(SheetViewModel())
+        .environmentObject(SettingsViewModel())
         .preferredColorScheme(.dark)
 }
