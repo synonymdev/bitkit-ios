@@ -32,6 +32,8 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = true //TODO: Feature needed
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false //TODO: Feature needed
     @AppStorage("useBiometrics") var useBiometrics: Bool = false //TODO: Checks in UX still need to be done
+    @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
+    @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
 
     // PIN Management
     @Published private(set) var pinEnabled: Bool = false

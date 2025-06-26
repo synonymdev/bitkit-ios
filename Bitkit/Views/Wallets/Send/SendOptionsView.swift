@@ -49,15 +49,9 @@ struct SendOptionCard<Destination: View>: View {
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
-
-    @State private var showSendAmountView = false
-    @State private var showSendConfirmationView = false
+    @Binding var navigationPath: [SendView]
 
     var body: some View {
-        sendOptionsContent
-    }
-
-    var sendOptionsContent: some View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("wallet__send_bitcoin"))
 
@@ -76,7 +70,7 @@ struct SendOptionsView: View {
 
                     SendOptionCard(
                         title: "Enter Manually",
-                        destination: SendEnterManuallyView(),
+                        destination: SendEnterManuallyView(navigationPath: $navigationPath),
                         iconName: "pencil"
                     )
 
@@ -104,18 +98,6 @@ struct SendOptionsView: View {
         .onAppear {
             wallet.syncState()
         }
-        .background(
-            NavigationLink(
-                destination: SendAmountView(),
-                isActive: $showSendAmountView
-            ) { EmptyView() }
-        )
-        .background(
-            NavigationLink(
-                destination: SendConfirmationView(),
-                isActive: $showSendConfirmationView
-            ) { EmptyView() }
-        )
     }
 
     func handlePaste() {
@@ -133,9 +115,9 @@ struct SendOptionsView: View {
 
                 // If nil then it's not an invoice we're dealing with
                 if app.invoiceRequiresCustomAmount == true {
-                    showSendAmountView = true
+                    navigationPath.append(.amount)
                 } else if app.invoiceRequiresCustomAmount == false {
-                    showSendConfirmationView = true
+                    navigationPath.append(.confirm)
                 }
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
@@ -151,7 +133,7 @@ struct SendOptionsView: View {
             isPresented: .constant(true),
             content: {
                 NavigationStack {
-                    SendOptionsView()
+                    SendOptionsView(navigationPath: .constant([]))
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
                 }

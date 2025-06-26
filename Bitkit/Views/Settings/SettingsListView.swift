@@ -19,7 +19,7 @@ struct SettingsListView: View {
 
     var body: some View {
         ScrollView {
-            NavigationLink(destination: GeneralSettingsView()) {
+            NavigationLink(value: Route.generalSettings) {
                 SettingsListLabel(
                     title: NSLocalizedString("settings__general_title", comment: ""),
                     iconName: "settings-gear"

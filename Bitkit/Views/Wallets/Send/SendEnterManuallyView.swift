@@ -9,18 +9,14 @@ import SwiftUI
 
 struct SendEnterManuallyView: View {
     @EnvironmentObject var app: AppViewModel
+    @Binding var navigationPath: [SendView]
     @State private var text = ""
     @FocusState private var isTextEditorFocused: Bool
 
-    @State private var showSendAmountView = false
-    @State private var showSendConfirmationView = false
-
-    init() {
-        UITextView.appearance().backgroundColor = .clear
-    }
-
     var body: some View {
         VStack {
+            SheetHeader(title: localizedString("wallet__send_bitcoin"), showBackButton: true)
+
             CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
@@ -51,25 +47,13 @@ struct SendEnterManuallyView: View {
             }
             .padding(.top)
         }
-        .padding()
-        .navigationTitle("Send Bitcoin")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .sheetBackground()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             isTextEditorFocused = true
         }
-        .background(
-            NavigationLink(
-                destination: SendAmountView(),
-                isActive: $showSendAmountView
-            ) { EmptyView() }
-        )
-        .background(
-            NavigationLink(
-                destination: SendConfirmationView(),
-                isActive: $showSendConfirmationView
-            ) { EmptyView() }
-        )
     }
 
     func handleContinue() async {
@@ -80,9 +64,9 @@ struct SendEnterManuallyView: View {
 
             // If nil then it's not an invoice we're dealing with
             if app.invoiceRequiresCustomAmount == true {
-                showSendAmountView = true
+                navigationPath.append(.amount)
             } else if app.invoiceRequiresCustomAmount == false {
-                showSendConfirmationView = true
+                navigationPath.append(.confirm)
             }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
@@ -92,7 +76,7 @@ struct SendEnterManuallyView: View {
 }
 
 #Preview {
-    SendEnterManuallyView()
+    SendEnterManuallyView(navigationPath: .constant([]))
         .environmentObject(AppViewModel())
         .preferredColorScheme(.dark)
 }

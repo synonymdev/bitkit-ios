@@ -202,7 +202,7 @@ struct ShopCategoryRow: View {
                     BodyMText(title, textColor: .textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Image("arrow-right")
+                    Image("chevron")
                         .resizable()
                         .foregroundColor(.textSecondary)
                         .frame(width: 24, height: 24)
