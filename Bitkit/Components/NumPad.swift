@@ -38,8 +38,7 @@ struct NumPad: View {
                     }
                     .buttonStyle(NumPadButtonStyle())
                 } else {
-                    // Number button
-                    NumberButton(text: item, height: buttonHeight) {
+                    NumPadButton(text: item, height: buttonHeight) {
                         Haptics.play(.buttonTap)
                         onPress(item)
                     }
@@ -49,7 +48,7 @@ struct NumPad: View {
     }
 }
 
-private struct NumberButton: View {
+private struct NumPadButton: View {
     let text: String
     let height: CGFloat
     let action: () -> Void
