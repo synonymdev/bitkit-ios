@@ -3,6 +3,7 @@ import SwiftUI
 struct GeneralSettingsView: View {
     @EnvironmentObject var walletViewModel: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var app: AppViewModel
 
     var body: some View {
         ScrollView {
@@ -40,13 +41,13 @@ struct GeneralSettingsView: View {
                 )
             }
 
-            NavigationLink(destination: WidgetsSettingsView()) {
+            NavigationLink(value: app.hasSeenWidgetsIntro ? Route.widgetsList : Route.widgetsIntro) {
                 SettingsListLabel(
                     title: localizedString("settings__widgets__nav_title")
                 )
             }
 
-            NavigationLink(destination: Text("Coming soon")) {
+            NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                 SettingsListLabel(
                     title: localizedString("settings__quickpay__nav_title")
                 )
@@ -61,6 +62,7 @@ struct GeneralSettingsView: View {
         GeneralSettingsView()
             .environmentObject(WalletViewModel())
             .environmentObject(CurrencyViewModel())
+            .environmentObject(AppViewModel())
     }
     .preferredColorScheme(.dark)
 }
