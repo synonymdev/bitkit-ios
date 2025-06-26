@@ -44,6 +44,8 @@ struct TabBar: View {
                     Spacer()
                     Button(
                         action: {
+                            // TODO: find a better place to reset send state
+                            app.resetSendState()
                             sheets.showSheet(.send)
                         },
                         label: {

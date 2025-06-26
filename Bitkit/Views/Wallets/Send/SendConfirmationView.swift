@@ -15,6 +15,7 @@ struct SendConfirmationView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @Binding var navigationPath: [SendView]
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
@@ -42,6 +43,8 @@ struct SendConfirmationView: View {
 
     var body: some View {
         VStack {
+            SheetHeader(title: localizedString("wallet__send_review"), showBackButton: true)
+
             VStack(alignment: .leading) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                     amountView(app.sendAmountSats ?? invoice.amountSatoshis)
@@ -113,10 +116,10 @@ struct SendConfirmationView: View {
                 try await performPayment()
             }
         }
-        .padding()
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .sheetBackground()
-        .navigationTitle(NSLocalizedString("wallet__send_review", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .alert(NSLocalizedString("common__are_you_sure", comment: ""), isPresented: $showWarningAlert) {
             Button(NSLocalizedString("common__dialog_cancel", comment: ""), role: .cancel) {
                 alertContinuation?.resume(returning: false)
@@ -239,9 +242,10 @@ struct SendConfirmationView: View {
                                 bolt11: bolt11,
                                 sats: app.sendAmountSats,
                                 onSuccess: {
-                                    app.resetSendState()
+                                    // app.resetSendState()
                                     Logger.info("Lightning payment successful")
                                     continuation.resume()
+                                    navigationPath.append(.success)
                                 },
                                 onFail: { reason in
                                     Logger.error("Lightning payment failed: \(reason)")
@@ -264,9 +268,8 @@ struct SendConfirmationView: View {
 
                 // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
-                app.resetSendState()
-                // TODO: this shouldn't show a sheet, just navigate to send success screen
-                sheets.showSheet(.receivedTx, data: NewTransactionSheetDetails(type: .onchain, direction: .sent, sats: sats))
+                // app.resetSendState()
+                navigationPath.append(.success)
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
@@ -370,7 +373,7 @@ struct SendConfirmationView: View {
             isPresented: .constant(true),
             content: {
                 NavigationStack {
-                    SendConfirmationView()
+                    SendConfirmationView(navigationPath: .constant([]))
                         .environmentObject(AppViewModel())
                         .environmentObject(SheetViewModel())
                         .environmentObject(WalletViewModel())

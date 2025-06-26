@@ -88,7 +88,7 @@ struct SettingsListLabel: View {
                     if let rightIcon = rightIcon {
                         switch rightIcon {
                         case .rightArrow:
-                            Image("arrow-right")
+                            Image("chevron")
                                 .foregroundColor(.textSecondary)
                         case .checkmark:
                             Image("checkmark")

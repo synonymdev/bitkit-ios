@@ -53,14 +53,18 @@ struct SwipeButton: View {
                         ZStack {
                             if isLoading {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray6))
                             } else {
-                                Image(systemName: "arrow.right")
-                                    .foregroundColor(.white)
+                                Image("arrow-right")
+                                    .resizable()
+                                    .frame(width: 24, height: 24)
+                                    .foregroundColor(.gray6)
                                     .opacity(Double(1.0 - (offset / (geometry.size.width / 2))))
 
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.white)
+                                Image("checkmark")
+                                    .resizable()
+                                    .frame(width: 32, height: 32)
+                                    .foregroundColor(.gray6)
                                     .opacity(Double(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2))))
                             }
                         }

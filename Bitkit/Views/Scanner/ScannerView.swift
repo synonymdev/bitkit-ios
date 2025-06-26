@@ -10,7 +10,9 @@ import SwiftUI
 
 struct ScannerView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
 
     var body: some View {
         ZStack {
@@ -39,13 +41,7 @@ struct ScannerView: View {
         Task { @MainActor in
             do {
                 try await app.handleScannedData(uri)
-
-                // If nil then it's not an invoice we're dealing with
-                if app.invoiceRequiresCustomAmount == true {
-                    sheets.showSheet(.send, data: SendConfig(view: .amount))
-                } else if app.invoiceRequiresCustomAmount == false {
-                    sheets.showSheet(.send, data: SendConfig(view: .confirm))
-                }
+                navigateToSendView()
             } catch {
                 Logger.error(error, context: "Failed to read data from QR")
                 app.toast(error)
@@ -62,16 +58,30 @@ struct ScannerView: View {
 
         do {
             try await app.handleScannedData(uri)
-
-            // If nil then it's not an invoice we're dealing with
-            if app.invoiceRequiresCustomAmount == true {
-                sheets.showSheet(.send, data: SendConfig(view: .amount))
-            } else if app.invoiceRequiresCustomAmount == false {
-                sheets.showSheet(.send, data: SendConfig(view: .confirm))
-            }
+            navigateToSendView()
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
             app.toast(error)
+        }
+    }
+
+    private func navigateToSendView() {
+        // TODO: find a better place to reset send state
+        app.resetSendState()
+
+        // If nil then it's not an invoice we're dealing with
+        if app.invoiceRequiresCustomAmount == true {
+            sheets.showSheet(.send, data: SendConfig(view: .amount))
+        } else if app.invoiceRequiresCustomAmount == false {
+            let invoiceAmount = app.scannedLightningInvoice?.amountSatoshis ?? 0
+            let quickpayAmountSats = currency.convert(fiatAmount: settings.quickpayAmount, from: "USD") ?? 0
+
+            // Decide which view to show based on the quickpay settings
+            if settings.enableQuickpay && quickpayAmountSats > 0 && invoiceAmount <= quickpayAmountSats {
+                sheets.showSheet(.send, data: SendConfig(view: .quickpay))
+            } else {
+                sheets.showSheet(.send, data: SendConfig(view: .confirm))
+            }
         }
     }
 }

@@ -20,6 +20,7 @@ enum Route: Hashable {
     case savingsIntro
     case savingsAvailability
     case settings
+    case generalSettings
     case shopIntro
     case shopDiscover
     case shopMain(page: String)
