@@ -79,7 +79,6 @@ struct ContentView: View {
                     .opacity(hideSplash ? 0 : 1)
             }
         }
-        .toastOverlay(toast: $app.currentToast, onDismiss: app.hideToast)
         .onChange(of: currency.hasStaleData) { _ in
             if currency.hasStaleData {
                 app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
