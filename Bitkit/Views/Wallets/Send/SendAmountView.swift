@@ -9,18 +9,19 @@ import SwiftUI
 
 struct SendAmountView: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
-
+    @EnvironmentObject var wallet: WalletViewModel
+    @Binding var navigationPath: [SendView]
     @State private var amount: String = ""
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @FocusState private var isAmountFocused: Bool
-    @State private var showSendConfirmationView = false
 
     var body: some View {
         VStack(spacing: 0) {
+            SheetHeader(title: localizedString("wallet__send_amount"), showBackButton: true)
+
             VStack(alignment: .leading, spacing: 16) {
                 // Use AmountInput component instead of TextField
                 AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
@@ -79,17 +80,10 @@ struct SendAmountView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
 
             Divider()
 
             Spacer()
-
-            // Navigation link and Continue button
-            NavigationLink(
-                destination: SendConfirmationView(),
-                isActive: $showSendConfirmationView
-            ) { EmptyView() }
 
             CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
                 Task { @MainActor in
@@ -103,19 +97,19 @@ struct SendAmountView: View {
                             return
                         }
 
-                        showSendConfirmationView = true
+                        navigationPath.append(.confirm)
                     } else {
                         Logger.error("Invalid amount: \(amount)")
                     }
                 }
             }
             .disabled(satsAmount == 0)
-            .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .sheetBackground()
-        .navigationTitle(NSLocalizedString("wallet__send_amount", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             // Set default primaryDisplay value
             primaryDisplay = currency.primaryDisplay
@@ -129,7 +123,7 @@ struct SendAmountView: View {
             isPresented: .constant(true),
             content: {
                 NavigationStack {
-                    SendAmountView()
+                    SendAmountView(navigationPath: .constant([]))
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
                         .environmentObject(CurrencyViewModel())

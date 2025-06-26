@@ -92,7 +92,7 @@ struct WidgetDetailView: View {
                             textColor: .textPrimary
                         )
 
-                        Image("arrow-right")
+                        Image("chevron")
                             .resizable()
                             .foregroundColor(.textSecondary)
                             .frame(width: 24, height: 24)

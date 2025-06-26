@@ -178,7 +178,7 @@ struct Suggestions: View {
         case .profile:
             route = app.hasSeenProfileIntro ? .profile : .profileIntro
         case .quickpay:
-            route = app.hasSeenQuickpayIntro ? .settings : .quickpayIntro
+            route = app.hasSeenQuickpayIntro ? .quickpay : .quickpayIntro
         case .secure:
             sheets.showSheet(.security, data: SecurityConfig(showLaterButton: true))
         case .shop:

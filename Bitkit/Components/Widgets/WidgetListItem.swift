@@ -43,7 +43,7 @@ struct WidgetListItem: View {
                     }
                     .padding(.trailing, 20)
 
-                    Image("arrow-right")
+                    Image("chevron")
                         .resizable()
                         .foregroundColor(.textSecondary)
                         .frame(width: 24, height: 24)

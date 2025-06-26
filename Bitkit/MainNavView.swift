@@ -151,9 +151,7 @@ struct MainNavView: View {
             case .profileIntro:
                 ProfileIntroView()
             case .quickpay:
-                // QuickpayView()
-                Text("Coming Soon")
-                    .backToWalletButton()
+                QuickpaySettings()
             case .quickpayIntro:
                 QuickpayIntroView()
             case .widgetsIntro:
@@ -166,6 +164,8 @@ struct MainNavView: View {
                 WidgetEditView(id: widgetType)
             case .settings:
                 SettingsListView()
+            case .generalSettings:
+                GeneralSettingsView()
             case .shopIntro:
                 ShopIntro()
             case .shopDiscover:
