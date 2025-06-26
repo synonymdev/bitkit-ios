@@ -91,20 +91,8 @@ struct DevSettingsView: View {
                         app.hasSeenTransferToSpendingIntro = false
                         app.hasSeenWidgetsIntro = false
                         widgets.clearWidgets()
-
-                        // Reset all user defaults
-                        if let bundleID = Bundle.main.bundleIdentifier {
-                            UserDefaults.standard.removePersistentDomain(forName: bundleID)
-                        }
-
-                        if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting
-                            || wallet.nodeLifecycleState == .stopping
-                        {
-                            try await wallet.wipeLightningWallet()
-                        }
-                        try await CoreService.shared.activity.removeAll()
-                        try Keychain.wipeEntireKeychain()
-                        try wallet.setWalletExistsState()
+                        
+                        try await wallet.wipeWallet()
                     } catch {
                         app.toast(error)
                     }

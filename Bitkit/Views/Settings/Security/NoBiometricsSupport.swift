@@ -4,6 +4,7 @@ struct NoBiometricsSupport: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    @State private var navigateToSuccess = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,7 +30,7 @@ struct NoBiometricsSupport: View {
                 ) {
                     // Set biometrics to false and continue
                     settings.useBiometrics = false
-                    sheets.showSheet(.security)
+                    navigateToSuccess = true
                 }
 
                 // Phone Settings button
@@ -45,6 +46,9 @@ struct NoBiometricsSupport: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheetBackground()
         .navigationTitle(NSLocalizedString("security__bio", comment: ""))
+        .navigationDestination(isPresented: $navigateToSuccess) {
+            SecuritySetupSuccess()
+        }
     }
 
     private func openPhoneSettings() {

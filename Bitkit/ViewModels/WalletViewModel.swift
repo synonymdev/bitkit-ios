@@ -130,7 +130,10 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
-    func wipeLightningWallet() async throws {
+    func wipeWallet() async throws {
+        Logger.warn("Starting lightning wallet wipe", context: "WalletViewModel")
+        _ = await waitForNodeToRun(timeoutSeconds: 5.0)
+
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
             try await stopLightningNode()
         }
@@ -141,10 +144,24 @@ class WalletViewModel: ObservableObject {
         totalBalanceSats = 0
         totalOnchainSats = 0
         totalLightningSats = 0
+        channelCount = 0
 
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
+        
+        try? await coreService.activity.removeAll()
+
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+        
+        // Wipe entire keychain (including PIN and mnemonic)
+        try Keychain.wipeEntireKeychain()
+
+        try setWalletExistsState()
+
+        Logger.warn("Lightning wallet wipe completed", context: "WalletViewModel")
     }
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
