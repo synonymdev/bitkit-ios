@@ -111,7 +111,7 @@ class AppViewModel: ObservableObject {
 // MARK: Toast notifications
 
 extension AppViewModel {
-    func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 3.0) {
+    func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 4.0) {
         switch type {
         case .error:
             Haptics.notify(.error)
@@ -125,17 +125,8 @@ extension AppViewModel {
             Haptics.notify(.warning)
         }
 
-        withAnimation {
-            currentToast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
-        }
-
-        if autoHide {
-            DispatchQueue.main.asyncAfter(deadline: .now() + visibilityTime) {
-                withAnimation {
-                    self.currentToast = nil
-                }
-            }
-        }
+        let toast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
+        ToastWindowManager.shared.showToast(toast)
     }
 
     func toast(_ error: Error) {
@@ -143,11 +134,8 @@ extension AppViewModel {
     }
 
     func hideToast() {
-        withAnimation {
-            currentToast = nil
-        }
+        ToastWindowManager.shared.hideToast()
     }
-
 }
 
 // MARK: Scanning/pasting handling
