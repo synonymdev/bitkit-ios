@@ -28,10 +28,10 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
     @AppStorage("showRecentlyPaidContacts") var showRecentlyPaidContacts: Bool = true //TODO: probably not going to be in anytime soon
-    @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = false //TODO: Feature needed
-    @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = true //TODO: Feature needed
-    @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false //TODO: Feature needed
-    @AppStorage("useBiometrics") var useBiometrics: Bool = false //TODO: Checks in UX still need to be done
+    @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = true
+    @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = false
+    @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
+    @AppStorage("useBiometrics") var useBiometrics: Bool = false
 
     // PIN Management
     @Published private(set) var pinEnabled: Bool = false
@@ -108,7 +108,7 @@ class SettingsViewModel: ObservableObject {
 
         if resetSettings {
             // Reset all PIN-related settings when PIN is disabled
-            requirePinOnLaunch = false
+            requirePinOnLaunch = true
             requirePinWhenIdle = false
             requirePinForPayments = false
             useBiometrics = false

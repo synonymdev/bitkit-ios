@@ -130,9 +130,9 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
-    func wipeLightningWallet(includeKeychain: Bool = false) async throws {
+    func wipeWallet() async throws {
         Logger.warn("Starting lightning wallet wipe", context: "WalletViewModel")
-        try await waitForNodeToRun()
+        _ = await waitForNodeToRun(timeoutSeconds: 5.0)
 
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
             try await stopLightningNode()
@@ -149,11 +149,15 @@ class WalletViewModel: ObservableObject {
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
+        
+        try? await coreService.activity.removeAll()
 
-        if includeKeychain {
-            // Wipe entire keychain (including PIN and mnemonic) for security breach
-            try Keychain.wipeEntireKeychain()
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
+        
+        // Wipe entire keychain (including PIN and mnemonic)
+        try Keychain.wipeEntireKeychain()
 
         try setWalletExistsState()
 

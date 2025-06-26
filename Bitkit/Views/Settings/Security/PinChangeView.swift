@@ -115,7 +115,7 @@ struct PinChangeView: View {
             // Exceeded maximum attempts - wipe wallet
             Task {
                 do {
-                    try await wallet.wipeLightningWallet(includeKeychain: true)
+                    try await wallet.wipeWallet()
                     settings.resetPinSettings()
 
                     // Show toast notification
