@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BackupConfirmMnemonic: View {
+    @Binding var navigationPath: [BackupRoute]
     let mnemonic: [String]
     let passphrase: String?
 
@@ -63,8 +64,13 @@ struct BackupConfirmMnemonic: View {
                     CustomButton(
                         title: localizedString("common__continue"),
                         isDisabled: selectedWords != mnemonic,
-                        destination: nextDestination()
-                    )
+                    ) {
+                        if let passphrase = passphrase, !passphrase.isEmpty {
+                            navigationPath.append(.confirmPassphrase(passphrase: passphrase))
+                        } else {
+                            navigationPath.append(.reminder)
+                        }
+                    }
                 }
                 .padding(.top, 32)
             }
@@ -108,14 +114,6 @@ struct BackupConfirmMnemonic: View {
             // Add word to selection
             selectedWords.append(word)
             pressedIndices.insert(index)
-        }
-    }
-
-    private func nextDestination() -> AnyView {
-        if let passphrase = passphrase, !passphrase.isEmpty {
-            return AnyView(BackupConfirmPassphrase(passphrase: passphrase))
-        } else {
-            return AnyView(BackupReminder())
         }
     }
 }

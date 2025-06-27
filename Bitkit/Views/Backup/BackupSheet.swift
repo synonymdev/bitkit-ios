@@ -1,42 +1,72 @@
 import SwiftUI
 
-enum BackupView {
+enum BackupRoute: Hashable {
     case intro
-    case main
+    case mnemonic
+    case passphrase(mnemonic: [String], passphrase: String)
+    case confirmMnemonic(mnemonic: [String], passphrase: String)
+    case confirmPassphrase(passphrase: String)
+    case reminder
+    case success
+    case devices
+    case metadata
 }
 
 struct BackupConfig {
-    let initialView: BackupView
+    let initialRoute: BackupRoute
 
-    init(view: BackupView = .intro) {
-        self.initialView = view
+    init(view: BackupRoute = .intro) {
+        self.initialRoute = view
     }
 }
 
 struct BackupSheetItem: SheetItem {
     let id: SheetID = .backup
     let size: SheetSize = .medium
-    let initialView: BackupView
+    let initialRoute: BackupRoute
 
-    init(initialView: BackupView = .intro) {
-        self.initialView = initialView
+    init(initialRoute: BackupRoute = .intro) {
+        self.initialRoute = initialRoute
     }
 }
 
 struct BackupSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
+    @State private var navigationPath: [BackupRoute] = []
     let config: BackupSheetItem
 
     var body: some View {
         Sheet(id: .backup, data: config) {
-            NavigationStack {
-                switch config.initialView {
-                case .intro:
-                    BackupIntroView(config: config)
-                case .main:
-                    BackupMnemonicView()
-                }
+            NavigationStack(path: $navigationPath) {
+                viewForRoute(config.initialRoute)
+                    .navigationDestination(for: BackupRoute.self) { route in
+                        viewForRoute(route)
+                    }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func viewForRoute(_ route: BackupRoute) -> some View {
+        switch route {
+        case .intro:
+            BackupIntroView(navigationPath: $navigationPath)
+        case .mnemonic:
+            BackupMnemonicView(navigationPath: $navigationPath)
+        case .passphrase(let mnemonic, let passphrase):
+            BackupPassphrase(navigationPath: $navigationPath, mnemonic: mnemonic, passphrase: passphrase)
+        case .confirmMnemonic(let mnemonic, let passphrase):
+            BackupConfirmMnemonic(navigationPath: $navigationPath, mnemonic: mnemonic, passphrase: passphrase)
+        case .confirmPassphrase(let passphrase):
+            BackupConfirmPassphrase(navigationPath: $navigationPath, passphrase: passphrase)
+        case .reminder:
+            BackupReminder(navigationPath: $navigationPath)
+        case .success:
+            BackupSuccess(navigationPath: $navigationPath)
+        case .devices:
+            BackupDevices(navigationPath: $navigationPath)
+        case .metadata:
+            BackupMetadata()
         }
     }
 }

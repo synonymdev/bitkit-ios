@@ -2,7 +2,11 @@ import SwiftUI
 
 enum SheetID: String, CaseIterable {
     case addTag
+    case appUpdate
     case backup
+    case highBalance
+    case notifications
+    case quickpay
     case receive
     case receivedTx
     case scanner
@@ -28,16 +32,31 @@ class SheetViewModel: ObservableObject {
                 guard let self = self else { return }
                 self.activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 self.playHaptics(for: id)
+
+                // Notify timed sheet manager
+                Task { @MainActor in
+                    TimedSheetManager.shared.onSheetShown()
+                }
             }
         } else {
             // If no sheet is open, show the new sheet immediately
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
             playHaptics(for: id)
+
+            // Notify timed sheet manager
+            Task { @MainActor in
+                TimedSheetManager.shared.onSheetShown()
+            }
         }
     }
 
     func hideSheet() {
         activeSheetConfiguration = nil
+
+        // Notify timed sheet manager
+        Task { @MainActor in
+            TimedSheetManager.shared.onSheetDismissed()
+        }
     }
 
     var isAnySheetOpen: Bool {
@@ -64,12 +83,60 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var appUpdateSheetItem: AppUpdateSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .appUpdate else { return nil }
+            return AppUpdateSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var backupSheetItem: BackupSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .backup else { return nil }
             let backupConfig = config.data as? BackupConfig
-            let initialView = backupConfig?.initialView ?? .main
-            return BackupSheetItem(initialView: initialView)
+            let initialRoute = backupConfig?.initialRoute ?? .intro
+            return BackupSheetItem(initialRoute: initialRoute)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var highBalanceSheetItem: HighBalanceSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .highBalance else { return nil }
+            return HighBalanceSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var notificationsSheetItem: NotificationsSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .notifications else { return nil }
+            return NotificationsSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var quickpaySheetItem: QuickpaySheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .quickpay else { return nil }
+            return QuickpaySheetItem()
         }
         set {
             if newValue == nil {
@@ -134,8 +201,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .send else { return nil }
             let sendConfig = config.data as? SendConfig
-            let initialView = sendConfig?.initialView ?? .options
-            return SendSheetItem(initialView: initialView)
+            let initialRoute = sendConfig?.initialRoute ?? .options
+            return SendSheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {
