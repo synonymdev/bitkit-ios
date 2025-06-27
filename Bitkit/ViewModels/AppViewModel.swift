@@ -90,6 +90,24 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    /// Handle deeplink URLs directly
+    func handleURL(_ url: URL) async {
+        Logger.info("Received deeplink: \(url.absoluteString)")
+
+        do {
+            try await handleScannedData(url.absoluteString)
+            // Navigate to appropriate send view based on the invoice
+            if invoiceRequiresCustomAmount == true {
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            } else if invoiceRequiresCustomAmount == false {
+                // Could add quickpay logic here too if needed
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
+            }
+        } catch {
+            toast(error)
+        }
+    }
+
     // Convenience initializer for previews and testing
     convenience init() {
         self.init(sheetViewModel: SheetViewModel())
@@ -145,12 +163,13 @@ extension AppViewModel {
         let data = try await decode(invoice: uri)
 
         switch data {
+        // BIP21 (Unified) invoice handling
         case .onChain(let invoice):
-            guard lightningService.status?.isRunning == true else {
-                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
-                return
-            }
-            if let lnInvoice = invoice.params?["lightning"] as? String {
+            if let lnInvoice = invoice.params?["lightning"] {
+                guard lightningService.status?.isRunning == true else {
+                    toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+                    return
+                }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
