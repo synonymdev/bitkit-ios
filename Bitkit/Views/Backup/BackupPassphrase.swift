@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BackupPassphrase: View {
+    @Binding var navigationPath: [BackupRoute]
     let mnemonic: [String]
     let passphrase: String
 
@@ -38,8 +39,9 @@ struct BackupPassphrase: View {
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
                         title: localizedString("common__continue"),
-                        destination: BackupConfirmMnemonic(mnemonic: mnemonic, passphrase: passphrase)
-                    )
+                    ) {
+                        navigationPath.append(.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase))
+                    }
                 }
                 .padding(.top, 32)
             }

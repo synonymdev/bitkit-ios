@@ -35,6 +35,20 @@ class AppViewModel: ObservableObject {
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
 
+    // App update tracking
+    @AppStorage("appUpdateIgnoreTimestamp") var appUpdateIgnoreTimestamp: TimeInterval = 0
+
+    // Backup warning tracking
+    @AppStorage("backupVerified") var backupVerified: Bool = false
+    @AppStorage("backupIgnoreTimestamp") var backupIgnoreTimestamp: TimeInterval = 0
+
+    // High balance warning tracking
+    @AppStorage("highBalanceIgnoreCount") var highBalanceIgnoreCount: Int = 0
+    @AppStorage("highBalanceIgnoreTimestamp") var highBalanceIgnoreTimestamp: TimeInterval = 0
+
+    // Notifications tracking
+    @AppStorage("notificationsIgnoreTimestamp") var notificationsIgnoreTimestamp: TimeInterval = 0
+
     // Drawer menu
     @Published var showDrawer = false
 
@@ -87,6 +101,8 @@ class AppViewModel: ObservableObject {
 
         Task {
             await checkGeoStatus()
+            // Check for app updates on startup
+            await AppUpdateService.shared.checkForAppUpdate()
         }
     }
 
@@ -106,6 +122,7 @@ class AppViewModel: ObservableObject {
             Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
         }
     }
+
 }
 
 // MARK: Toast notifications
@@ -263,5 +280,26 @@ extension AppViewModel {
         case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
             break
         }
+    }
+}
+
+// MARK: - Timed Sheets
+
+extension AppViewModel {
+    func ignoreAppUpdate() {
+        appUpdateIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreBackup() {
+        backupIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreHighBalance() {
+        highBalanceIgnoreCount += 1
+        highBalanceIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreNotifications() {
+        notificationsIgnoreTimestamp = Date().timeIntervalSince1970
     }
 }

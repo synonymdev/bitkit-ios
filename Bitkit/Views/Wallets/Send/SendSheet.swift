@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum SendView {
+enum SendRoute {
     case options
     case manual
     case amount
@@ -10,41 +10,41 @@ enum SendView {
 }
 
 struct SendConfig {
-    let initialView: SendView
+    let initialRoute: SendRoute
 
-    init(view: SendView = .options) {
-        self.initialView = view
+    init(view: SendRoute = .options) {
+        self.initialRoute = view
     }
 }
 
 struct SendSheetItem: SheetItem {
     let id: SheetID = .send
     let size: SheetSize = .large
-    let initialView: SendView
+    let initialRoute: SendRoute
 
-    init(initialView: SendView = .options) {
-        self.initialView = initialView
+    init(initialRoute: SendRoute = .options) {
+        self.initialRoute = initialRoute
     }
 }
 
 struct SendSheet: View {
     let config: SendSheetItem
-    @State private var navigationPath: [SendView] = []
+    @State private var navigationPath: [SendRoute] = []
 
     var body: some View {
         Sheet(id: .send, data: config) {
             NavigationStack(path: $navigationPath) {
-                viewForSendView(config.initialView)
-                    .navigationDestination(for: SendView.self) { view in
-                        viewForSendView(view)
+                viewForRoute(config.initialRoute)
+                    .navigationDestination(for: SendRoute.self) { route in
+                        viewForRoute(route)
                     }
             }
         }
     }
 
     @ViewBuilder
-    private func viewForSendView(_ view: SendView) -> some View {
-        switch view {
+    private func viewForRoute(_ route: SendRoute) -> some View {
+        switch route {
         case .options:
             SendOptionsView(navigationPath: $navigationPath)
         case .manual:
