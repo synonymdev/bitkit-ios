@@ -65,6 +65,11 @@ struct MainNavView: View {
                 isPinVerified = true
             }
         }
+        .onOpenURL { url in
+            Task {
+                await app.handleURL(url)
+            }
+        }
     }
 
     // MARK: - Computed Properties for Better Organization
@@ -230,13 +235,4 @@ extension View {
     func backToWalletButton() -> some View {
         self.modifier(BackToWalletToolbar())
     }
-}
-
-#Preview {
-    MainNavView()
-        .environmentObject(AppViewModel())
-        .environmentObject(NavigationViewModel())
-        .environmentObject(SheetViewModel())
-        .environmentObject(SettingsViewModel())
-        .preferredColorScheme(.dark)
 }
