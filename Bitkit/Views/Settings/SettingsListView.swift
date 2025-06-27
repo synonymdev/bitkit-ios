@@ -40,7 +40,7 @@ struct SettingsListView: View {
                 )
             }
 
-            NavigationLink(destination: Text("Coming soon")) {
+            NavigationLink(destination: AdvancedSettingsView()) {
                 SettingsListLabel(
                     title: NSLocalizedString("settings__advanced_title", comment: ""),
                     iconName: "settings-slider"
