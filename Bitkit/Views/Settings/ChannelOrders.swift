@@ -1,5 +1,5 @@
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct CopyableText: View {
     let text: String
