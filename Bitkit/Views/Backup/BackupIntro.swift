@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct BackupIntroView: View {
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
-    let config: BackupSheetItem
+    @Binding var navigationPath: [BackupRoute]
 
     var body: some View {
         let text = wallet.totalBalanceSats > 0 ? localizedString("security__backup_funds") : localizedString("security__backup_funds_no")
@@ -31,13 +32,15 @@ struct BackupIntroView: View {
                         title: localizedString("common__later"),
                         variant: .secondary,
                     ) {
+                        app.ignoreBackup()
                         sheets.hideSheet()
                     }
 
                     CustomButton(
                         title: localizedString("security__backup_button"),
-                        destination: BackupMnemonicView()
-                    )
+                    ) {
+                        navigationPath.append(.mnemonic)
+                    }
                 }
                 .padding(.top, 32)
             }

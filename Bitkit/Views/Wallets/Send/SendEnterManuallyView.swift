@@ -9,7 +9,7 @@ import SwiftUI
 
 struct SendEnterManuallyView: View {
     @EnvironmentObject var app: AppViewModel
-    @Binding var navigationPath: [SendView]
+    @Binding var navigationPath: [SendRoute]
     @State private var text = ""
     @FocusState private var isTextEditorFocused: Bool
 

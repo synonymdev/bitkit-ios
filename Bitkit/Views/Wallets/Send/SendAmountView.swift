@@ -11,7 +11,7 @@ struct SendAmountView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [SendView]
+    @Binding var navigationPath: [SendRoute]
     @State private var amount: String = ""
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?

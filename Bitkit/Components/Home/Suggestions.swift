@@ -15,6 +15,7 @@ enum SuggestionAction: Hashable {
     case invite
     case profile
     case quickpay
+    case notifications
     case secure
     case shop
     case support
@@ -71,6 +72,14 @@ let cards: [SuggestionCardData] = [
         action: .quickpay
     ),
     SuggestionCardData(
+        id: "notifications",
+        title: localizedString("cards__notifications__title"),
+        description: localizedString("cards__notifications__description"),
+        imageName: "bell",
+        color: .purple24,
+        action: .notifications
+    ),
+    SuggestionCardData(
         id: "shop",
         title: localizedString("cards__shop__title"),
         description: localizedString("cards__shop__description"),
@@ -107,6 +116,10 @@ struct Suggestions: View {
     private var filteredCards: [SuggestionCardData] {
         cards.filter { card in
             // Filter out completed actions
+            if card.action == .backup && app.backupVerified {
+                return false
+            }
+
             if card.action == .secure && settings.pinEnabled {
                 return false
             }
@@ -179,6 +192,8 @@ struct Suggestions: View {
             route = app.hasSeenProfileIntro ? .profile : .profileIntro
         case .quickpay:
             route = app.hasSeenQuickpayIntro ? .quickpay : .quickpayIntro
+        case .notifications:
+            sheets.showSheet(.notifications)
         case .secure:
             sheets.showSheet(.security, data: SecurityConfig(showLaterButton: true))
         case .shop:

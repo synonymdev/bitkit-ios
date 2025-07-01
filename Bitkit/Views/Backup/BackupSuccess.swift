@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct BackupSuccess: View {
+    @EnvironmentObject private var app: AppViewModel
+    @Binding var navigationPath: [BackupRoute]
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("security__mnemonic_result_header"), showBackButton: true)
@@ -18,11 +21,12 @@ struct BackupSuccess: View {
 
                 Spacer()
 
-                // TODO: dispatch(verifyBackup());
                 CustomButton(
                     title: localizedString("common__ok"),
-                    destination: BackupDevices()
-                )
+                ) {
+                    app.backupVerified = true
+                    navigationPath.append(.devices)
+                }
             }
             .padding(.horizontal, 16)
         }

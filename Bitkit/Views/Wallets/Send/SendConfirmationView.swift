@@ -15,7 +15,7 @@ struct SendConfirmationView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
-    @Binding var navigationPath: [SendView]
+    @Binding var navigationPath: [SendRoute]
     @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct BackupConfirmPassphrase: View {
+    @Binding var navigationPath: [BackupRoute]
     let passphrase: String
 
     @State private var enteredText: String = ""
@@ -28,8 +29,9 @@ struct BackupConfirmPassphrase: View {
                     CustomButton(
                         title: localizedString("common__continue"),
                         isDisabled: enteredText != passphrase,
-                        destination: BackupReminder()
-                    )
+                    ) {
+                        navigationPath.append(.reminder)
+                    }
                 }
                 .padding(.top, 32)
             }.padding(.horizontal, 16)
