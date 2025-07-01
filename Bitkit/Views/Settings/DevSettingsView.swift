@@ -85,13 +85,23 @@ struct DevSettingsView: View {
                         return
                     }
                     do {
-                        // TODO: reset all of app state
                         navigation.reset()
+
+                        // TODO: reset all of app state
+                        app.backupVerified = false
+                        app.appUpdateIgnoreTimestamp = 0
+                        app.backupIgnoreTimestamp = 0
                         app.hasSeenTransferToSavingsIntro = false
                         app.hasSeenTransferToSpendingIntro = false
                         app.hasSeenWidgetsIntro = false
+                        app.highBalanceIgnoreCount = 0
+                        app.highBalanceIgnoreTimestamp = 0
+                        app.notificationsIgnoreTimestamp = 0
+                        app.showHomeViewEmptyState = false
+                        app.showDrawer = false
+
                         widgets.clearWidgets()
-                        
+
                         try await wallet.wipeWallet()
                     } catch {
                         app.toast(error)

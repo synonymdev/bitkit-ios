@@ -212,6 +212,7 @@ enum Env {
     static let playStoreUrl = "https://play.google.com/store/apps/details?id=to.bitkit"
     static let githubUrl = "https://www.github.com/synonymdev/bitkit"
     static let githubReleasesUrl = "https://www.github.com/synonymdev/bitkit/releases"
+    static let updaterUrl = "https://github.com/synonymdev/bitkit/releases/download/updater/release.json"
     static let termsOfServiceUrl = "https://www.bitkit.to/terms-of-use"
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
     static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"

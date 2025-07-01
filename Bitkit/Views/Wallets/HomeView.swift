@@ -105,6 +105,13 @@ struct HomeView: View {
             if Env.isPreview {
                 app.showHomeViewEmptyState = true
             }
+
+            // Notify timed sheet manager that user is on home screen
+            TimedSheetManager.shared.onHomeScreenEntered()
+        }
+        .onDisappear {
+            // Notify timed sheet manager that user left home screen
+            TimedSheetManager.shared.onHomeScreenExited()
         }
         .gesture(
             DragGesture()

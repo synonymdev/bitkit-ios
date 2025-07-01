@@ -45,7 +45,7 @@ class StartupHandler {
     }
 
     @MainActor
-    static func requestPushNotificationPermision(completionHandler: @escaping (Bool, Error?) -> Void) {
+    static func requestPushNotificationPermission(completionHandler: @escaping (Bool, Error?) -> Void) {
         let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
         UNUserNotificationCenter.current().requestAuthorization(
             options: authOptions,
