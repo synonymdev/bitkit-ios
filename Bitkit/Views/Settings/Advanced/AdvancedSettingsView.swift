@@ -38,11 +38,11 @@ struct AdvancedSettingsView: View {
                         )
                     }
 
-                    NavigationLink(destination: Text("Coming soon")) {
-                        SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__payment_preference", comment: "")
-                        )
-                    }
+                    // NavigationLink(destination: Text("Coming soon")) {
+                    //     SettingsListLabel(
+                    //         title: NSLocalizedString("settings__adv__payment_preference", comment: "")
+                    //     )
+                    // }
 
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(
@@ -64,7 +64,7 @@ struct AdvancedSettingsView: View {
                         Spacer()
                     }
 
-                    NavigationLink(destination: Text("Coming soon")) {
+                    NavigationLink(destination: LightningConnectionsView()) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__lightning_connections", comment: "")
                         )

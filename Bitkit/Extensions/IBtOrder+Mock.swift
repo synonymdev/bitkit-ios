@@ -1,5 +1,5 @@
-import Foundation
 import BitkitCore
+import Foundation
 
 extension IBtOrder {
     static func mock(
@@ -21,8 +21,8 @@ extension IBtOrder {
             zeroReserve: false,
             clientNodeId: "node123",
             channelExpiryWeeks: 52,
-            channelExpiresAt: "2025-03-14",
-            orderExpiresAt: "2024-03-21",
+            channelExpiresAt: "2025-03-14T10:30:00Z",
+            orderExpiresAt: "2024-03-21T15:45:00Z",
             channel: channel,
             lspNode: .init(alias: "", pubkey: "", connectionStrings: [], readonly: nil),
             lnurl: nil,
@@ -33,8 +33,8 @@ extension IBtOrder {
                 bolt11Invoice: IBtBolt11Invoice(
                     request: "lnbc...",
                     state: .pending,
-                    expiresAt: "2024-03-21",
-                    updatedAt: "2024-03-14"
+                    expiresAt: "2024-03-21T15:45:00Z",
+                    updatedAt: "2024-03-14T08:20:00Z"
                 ),
                 onchain: IBtOnchainTransactions(
                     address: "bc1q...",
@@ -48,8 +48,8 @@ extension IBtOrder {
             couponCode: nil,
             source: nil,
             discount: nil,
-            updatedAt: "2024-03-14",
-            createdAt: "2024-03-14"
+            updatedAt: "2024-03-14T08:20:00Z",
+            createdAt: "2024-03-14T08:15:00Z"
         )
     }
 }
