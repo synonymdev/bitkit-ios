@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct BackupDevices: View {
+    @Binding var navigationPath: [BackupRoute]
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("security__mnemonic_multiple_header"), showBackButton: true)
@@ -20,8 +22,9 @@ struct BackupDevices: View {
 
                 CustomButton(
                     title: localizedString("common__ok"),
-                    destination: BackupMetadata()
-                )
+                ) {
+                    navigationPath.append(.metadata)
+                }
             }
             .padding(.horizontal, 16)
         }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BackupMnemonicView: View {
     @EnvironmentObject private var app: AppViewModel
+    @Binding var navigationPath: [BackupRoute]
     @State private var mnemonic: [String] = []
     @State private var passphrase: String = ""
     @State private var showMnemonic: Bool = false
@@ -67,8 +68,13 @@ struct BackupMnemonicView: View {
                     CustomButton(
                         title: localizedString("common__continue"),
                         isDisabled: !showMnemonic,
-                        destination: nextDestination()
-                    )
+                    ) {
+                        let route =
+                            passphrase.isEmpty
+                            ? BackupRoute.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase)
+                            : BackupRoute.passphrase(mnemonic: mnemonic, passphrase: passphrase)
+                        navigationPath.append(route)
+                    }
                 }
                 .padding(.top, 32)
             }
@@ -104,14 +110,6 @@ struct BackupMnemonicView: View {
                 title: localizedString("security__mnemonic_error"),
                 description: localizedString("security__mnemonic_error_description")
             )
-        }
-    }
-
-    private func nextDestination() -> AnyView {
-        if passphrase.isEmpty {
-            return AnyView(BackupConfirmMnemonic(mnemonic: mnemonic, passphrase: nil))
-        } else {
-            return AnyView(BackupPassphrase(mnemonic: mnemonic, passphrase: passphrase))
         }
     }
 }

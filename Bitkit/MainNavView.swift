@@ -20,26 +20,99 @@ struct MainNavView: View {
                 navigationContent
             }
         }
-        .sheet(item: $sheets.addTagSheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.addTagSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
             config in AddTagSheet(config: config)
         }
-        .sheet(item: $sheets.backupSheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.appUpdateSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.ignoreAppUpdate()
+            }
+        ) {
+            config in AppUpdateSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.backupSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.ignoreBackup()
+            }
+        ) {
             config in BackupSheet(config: config)
         }
-        .sheet(item: $sheets.sendSheetItem, onDismiss: { sheets.hideSheet() }) {
-            config in SendSheet(config: config)
+        .sheet(
+            item: $sheets.highBalanceSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.ignoreHighBalance()
+            }
+        ) {
+            config in HighBalanceSheet(config: config)
         }
-        .sheet(item: $sheets.receiveSheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.notificationsSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.ignoreNotifications()
+            }
+        ) {
+            config in NotificationsSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.receiveSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
             config in ReceiveSheet(config: config)
         }
-        .sheet(item: $sheets.receivedTxSheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.receivedTxSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
             config in NewTransactionSheet(config: config)
         }
-        .sheet(item: $sheets.scannerSheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.scannerSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
             config in ScannerSheet(config: config)
         }
-        .sheet(item: $sheets.securitySheetItem, onDismiss: { sheets.hideSheet() }) {
+        .sheet(
+            item: $sheets.securitySheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
             config in SetupSecuritySheet(config: config)
+        }
+        .sheet(
+            item: $sheets.quickpaySheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.hasSeenQuickpayIntro = true
+            }
+        ) {
+            config in QuickpaySheet(config: config)
+        }
+        .sheet(
+            item: $sheets.sendSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+                app.resetSendState()
+            }
+        ) {
+            config in SendSheet(config: config)
         }
         .accentColor(.white)
         .overlay {
@@ -63,6 +136,11 @@ struct MainNavView: View {
             // Initialize PIN verification state based on settings
             if !settings.requirePinOnLaunch || !settings.pinEnabled {
                 isPinVerified = true
+            }
+        }
+        .onOpenURL { url in
+            Task {
+                await app.handleURL(url)
             }
         }
     }
@@ -230,13 +308,4 @@ extension View {
     func backToWalletButton() -> some View {
         self.modifier(BackToWalletToolbar())
     }
-}
-
-#Preview {
-    MainNavView()
-        .environmentObject(AppViewModel())
-        .environmentObject(NavigationViewModel())
-        .environmentObject(SheetViewModel())
-        .environmentObject(SettingsViewModel())
-        .preferredColorScheme(.dark)
 }

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct BackupReminder: View {
+    @Binding var navigationPath: [BackupRoute]
+
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("security__mnemonic_keep_header"), showBackButton: true)
@@ -20,8 +22,9 @@ struct BackupReminder: View {
 
                 CustomButton(
                     title: localizedString("common__ok"),
-                    destination: BackupSuccess()
-                )
+                ) {
+                    navigationPath.append(.success)
+                }
             }
             .padding(.horizontal, 16)
         }

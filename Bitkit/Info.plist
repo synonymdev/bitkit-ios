@@ -2,6 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bitkit</string>
+				<string>bitcoin</string>
+				<string>BITCOIN</string>
+				<string>lightning</string>
+				<string>LIGHTNING</string>
+				<string>lnurl</string>
+				<string>lnurlw</string>
+				<string>lnurlp</string>
+				<string>lnurlc</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Bitkit uses Face ID to securely authenticate access to your wallet and protect your Bitcoin.</string>
 	<key>UIAppFonts</key>

@@ -49,7 +49,7 @@ struct SendOptionCard<Destination: View>: View {
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [SendView]
+    @Binding var navigationPath: [SendRoute]
 
     var body: some View {
         VStack(spacing: 0) {
