@@ -47,10 +47,10 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    amountView(app.sendAmountSats ?? invoice.amountSatoshis)
+                    amountView(wallet.sendAmountSats ?? invoice.amountSatoshis)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                    amountView(app.sendAmountSats ?? invoice.amountSatoshis)
+                    amountView(wallet.sendAmountSats ?? invoice.amountSatoshis)
                     onchainView(invoice)
                 }
             }
@@ -67,9 +67,9 @@ struct SendConfirmationView: View {
                 if settings.warnWhenSendingOver100 {
                     let sats: UInt64
                     if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                        sats = app.sendAmountSats ?? invoice.amountSatoshis
+                        sats = wallet.sendAmountSats ?? invoice.amountSatoshis
                     } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                        sats = app.sendAmountSats ?? invoice.amountSatoshis
+                        sats = wallet.sendAmountSats ?? invoice.amountSatoshis
                     } else {
                         sats = 0
                     }
@@ -240,7 +240,7 @@ struct SendConfirmationView: View {
                         do {
                             let paymentHash = try await wallet.send(
                                 bolt11: bolt11,
-                                sats: app.sendAmountSats,
+                                sats: wallet.sendAmountSats,
                                 onSuccess: {
                                     // app.resetSendState()
                                     Logger.info("Lightning payment successful")
@@ -261,7 +261,7 @@ struct SendConfirmationView: View {
                     }
                 }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                let sats = app.sendAmountSats ?? invoice.amountSatoshis
+                let sats = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let txid = try await wallet.send(address: invoice.address, sats: sats)
 
                 Logger.info("Onchain send result txid: \(txid)")

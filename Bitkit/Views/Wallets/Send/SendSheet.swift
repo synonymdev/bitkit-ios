@@ -4,6 +4,7 @@ enum SendRoute {
     case options
     case manual
     case amount
+    case utxoSelection
     case confirm
     case quickpay
     case success
@@ -51,6 +52,8 @@ struct SendSheet: View {
             SendEnterManuallyView(navigationPath: $navigationPath)
         case .amount:
             SendAmountView(navigationPath: $navigationPath)
+        case .utxoSelection:
+            SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
             SendConfirmationView(navigationPath: $navigationPath)
         case .quickpay:
