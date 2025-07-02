@@ -16,7 +16,7 @@ struct AboutView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             BodyMText(localizedString("settings__about__text"))
                 .padding(.vertical, 16)
                 .padding(.horizontal, 16)
@@ -48,12 +48,13 @@ struct AboutView: View {
 
             Spacer(minLength: 32)
 
-            VStack {
+            VStack(alignment: .center, spacing: 0) {
                 Image("logo")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 82)
             }
+            .frame(maxWidth: .infinity)
             .padding(.horizontal, 16)
 
             Spacer(minLength: 32)

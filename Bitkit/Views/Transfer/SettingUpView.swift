@@ -1,5 +1,5 @@
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct ProgressSteps: View {
     let steps: [String]
@@ -63,7 +63,7 @@ struct ProgressSteps: View {
                 }
             }
 
-            BodyMText(steps[currentStep], textColor: .textSecondary, textAlignment: .center)
+            BodyMText(steps[currentStep], textColor: .textSecondary)
         }
     }
 }

@@ -63,9 +63,13 @@ struct OnboardingView: View {
             .frame(maxHeight: .infinity)
             .layoutPriority(1)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 14) {
                 DisplayText(title, textColor: titleColor, accentColor: accentColor)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 BodyMText(description)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             CustomButton(title: buttonText) {

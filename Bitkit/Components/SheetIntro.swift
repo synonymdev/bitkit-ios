@@ -51,6 +51,7 @@ struct SheetIntro: View {
                     .padding(.bottom, 32)
 
                 DisplayText(title, accentColor: accentColor)
+                    .padding(.bottom, 14)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 BodyMText(description)

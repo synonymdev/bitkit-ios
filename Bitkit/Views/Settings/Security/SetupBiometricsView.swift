@@ -30,8 +30,7 @@ struct SetupBiometricsView: View {
                     localizedString(
                         "security__bio_ask", comment: "",
                         variables: ["biometricsName": biometryTypeName]
-                    ),
-                    textAlignment: .left
+                    )
                 )
                 .padding(.horizontal, 32)
             }

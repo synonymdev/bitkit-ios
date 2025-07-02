@@ -18,9 +18,7 @@ struct DisablePinView: View {
                     NSLocalizedString("security__pin_disable_text", comment: ""),
                     textColor: .textSecondary
                 )
-                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, alignment: .center)
-
             }
             .padding(.horizontal, 16)
 

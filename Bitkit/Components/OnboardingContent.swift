@@ -19,8 +19,7 @@ struct OnboardingContent: View {
 
             DisplayText(title, accentColor: accentColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                // TODO: fix line height and spacing
-                .padding(.bottom, 2)
+                .padding(.bottom, 14)
 
             BodyMText(text)
                 .frame(maxWidth: .infinity, alignment: .leading)
