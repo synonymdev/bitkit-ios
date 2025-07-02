@@ -11,6 +11,7 @@ struct SendAmountView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @Binding var navigationPath: [SendRoute]
     @State private var amount: String = ""
     @State private var satsAmount: UInt64 = 0
@@ -86,21 +87,42 @@ struct SendAmountView: View {
             Spacer()
 
             CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
-                Task { @MainActor in
+                do {
                     if satsAmount > 0 {
-                        app.sendAmountSats = satsAmount
-                        // Validate that we have enough funds in the selected wallet
-                        let availableSats = app.selectedWalletToPayFrom == .lightning ? wallet.totalLightningSats : wallet.totalOnchainSats
+                        wallet.sendAmountSats = satsAmount
 
-                        if UInt64(availableSats) < satsAmount {
-                            app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                        //Lightning tx
+                        if app.selectedWalletToPayFrom == .lightning {
+                            if UInt64(wallet.totalLightningSats) < satsAmount {
+                                app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                return
+                            }
+
+                            navigationPath.append(.confirm)
                             return
                         }
 
-                        navigationPath.append(.confirm)
+                        //Onchain tx
+                        if settings.coinSelectionMethod == .manual {
+                            navigationPath.append(.utxoSelection) //User needs to select utxos
+                        } else {
+                            try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                            try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
+                            
+                            let totalSelectedSats = wallet.selectedUtxo?.reduce(0) { $0 + $1.valueSats } ?? 0
+                            if totalSelectedSats < satsAmount {
+                                app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                return
+                            }
+                            
+                            navigationPath.append(.confirm)
+                        }
                     } else {
                         Logger.error("Invalid amount: \(amount)")
                     }
+                } catch {
+                    Logger.error(error, context: "Failed to set fee rate or send amount")
+                    app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
                 }
             }
             .disabled(satsAmount == 0)
@@ -127,6 +149,7 @@ struct SendAmountView: View {
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
                         .environmentObject(CurrencyViewModel())
+                        .environmentObject(SettingsViewModel())
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }

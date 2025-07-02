@@ -16,13 +16,17 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
-    @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
 
-    // Receiving
+    // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better aniticipate the receive flow UI
+
+    //Send flow
+    @Published var sendAmountSats: UInt64?
+    @Published var selectedFeeRateSatsPerVByte: UInt32?
+    @Published var selectedUtxo: [SpendableUtxo]?
 
     // For bolt11 details and bip21 params
     var invoiceAmountSats: UInt64 = 0
@@ -149,13 +153,13 @@ class WalletViewModel: ObservableObject {
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
-        
+
         try? await coreService.activity.removeAll()
 
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
-        
+
         // Wipe entire keychain (including PIN and mnemonic)
         try Keychain.wipeEntireKeychain()
 
@@ -224,10 +228,30 @@ class WalletViewModel: ObservableObject {
     /// - Parameters:
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
-    ///   - speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
     /// - Returns: The transaction ID (txid) of the sent transaction
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
-    func send(address: String, sats: UInt64, speed: TransactionSpeed? = nil) async throws -> Txid {
+    func send(address: String, sats: UInt64) async throws -> Txid {
+        guard let selectedFeeRateSatsPerVByte else {
+            throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
+        }
+        
+        if let selectedUtxo {
+            Logger.info("Using selected UTXO for send: \(selectedUtxo)")
+        } else {
+            Logger.warn("No UTXO selected, using default selection algorithm.")
+        }
+
+        let txid = try await lightningService.send(address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo)
+        Task {
+            // Best to auto sync on chain so we have latest state
+            try await sync()
+        }
+        return txid
+    }
+
+    /// Sets the fee rate for the send flow
+    /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
+    func setFeeRate(speed: TransactionSpeed) async throws {
         var fees = try? await coreService.blocktank.fees(refresh: true)
         if fees == nil {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
@@ -238,14 +262,31 @@ class WalletViewModel: ObservableObject {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
 
-        let satsPerVbyte = fees.getSatsPerVbyte(for: speed ?? defaultTransactionSpeed)
+        selectedFeeRateSatsPerVByte = fees.getSatsPerVbyte(for: speed)
+        
+        Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
+    }
 
-        let txid = try await lightningService.send(address: address, sats: sats, satsPerVbyte: satsPerVbyte)
-        Task {
-            // Best to auto sync on chain so we have latest state
-            try await sync()
+    /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
+    func setUtxoSelection(coinSelectionAlgorythm: CoinSelectionAlgorithm) async throws {
+        guard let selectedFeeRateSatsPerVByte else {
+            throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
-        return txid
+
+        guard let sendAmountSats else {
+            throw AppError(message: "Send amount not set", debugMessage: "Please set a send amount before selecting UTXOs.")
+        }
+        
+        Logger.info("Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte")
+
+        selectedUtxo = try await lightningService.selectUtxosWithAlgorithm(
+            targetAmountSats: sendAmountSats,
+            satsPerVbyte: selectedFeeRateSatsPerVByte,
+            coinSelectionAlgorythm: coinSelectionAlgorythm,
+            utxos: nil
+        )
+        
+        Logger.info("Selected UTXOs: \(String(describing: selectedUtxo))")
     }
 
     func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
