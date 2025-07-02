@@ -35,6 +35,20 @@ class AppViewModel: ObservableObject {
     // When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
 
+    // App update tracking
+    @AppStorage("appUpdateIgnoreTimestamp") var appUpdateIgnoreTimestamp: TimeInterval = 0
+
+    // Backup warning tracking
+    @AppStorage("backupVerified") var backupVerified: Bool = false
+    @AppStorage("backupIgnoreTimestamp") var backupIgnoreTimestamp: TimeInterval = 0
+
+    // High balance warning tracking
+    @AppStorage("highBalanceIgnoreCount") var highBalanceIgnoreCount: Int = 0
+    @AppStorage("highBalanceIgnoreTimestamp") var highBalanceIgnoreTimestamp: TimeInterval = 0
+
+    // Notifications tracking
+    @AppStorage("notificationsIgnoreTimestamp") var notificationsIgnoreTimestamp: TimeInterval = 0
+
     // Drawer menu
     @Published var showDrawer = false
 
@@ -87,6 +101,26 @@ class AppViewModel: ObservableObject {
 
         Task {
             await checkGeoStatus()
+            // Check for app updates on startup
+            await AppUpdateService.shared.checkForAppUpdate()
+        }
+    }
+
+    /// Handle deeplink URLs directly
+    func handleURL(_ url: URL) async {
+        Logger.info("Received deeplink: \(url.absoluteString)")
+
+        do {
+            try await handleScannedData(url.absoluteString)
+            // Navigate to appropriate send view based on the invoice
+            if invoiceRequiresCustomAmount == true {
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            } else if invoiceRequiresCustomAmount == false {
+                // Could add quickpay logic here too if needed
+                sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
+            }
+        } catch {
+            toast(error)
         }
     }
 
@@ -106,6 +140,7 @@ class AppViewModel: ObservableObject {
             Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
         }
     }
+
 }
 
 // MARK: Toast notifications
@@ -145,12 +180,13 @@ extension AppViewModel {
         let data = try await decode(invoice: uri)
 
         switch data {
+        // BIP21 (Unified) invoice handling
         case .onChain(let invoice):
-            guard lightningService.status?.isRunning == true else {
-                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
-                return
-            }
-            if let lnInvoice = invoice.params?["lightning"] as? String {
+            if let lnInvoice = invoice.params?["lightning"] {
+                guard lightningService.status?.isRunning == true else {
+                    toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+                    return
+                }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
@@ -263,5 +299,26 @@ extension AppViewModel {
         case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
             break
         }
+    }
+}
+
+// MARK: - Timed Sheets
+
+extension AppViewModel {
+    func ignoreAppUpdate() {
+        appUpdateIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreBackup() {
+        backupIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreHighBalance() {
+        highBalanceIgnoreCount += 1
+        highBalanceIgnoreTimestamp = Date().timeIntervalSince1970
+    }
+
+    func ignoreNotifications() {
+        notificationsIgnoreTimestamp = Date().timeIntervalSince1970
     }
 }

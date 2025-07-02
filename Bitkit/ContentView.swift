@@ -40,144 +40,193 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack {
-            if wallet.walletExists == true {
-                // Mnemonic found in keychain
-                if walletIsInitializing == true {
-                    // New wallet is being created or restored
-                    if case .errorStarting(let error) = wallet.nodeLifecycleState {
-                        WalletInitResultView(result: .failed(error))
-                    } else {
-                        InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
-                            Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
+        mainContent
+            .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
+            .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
+            .task(priority: .userInitiated, setupTask)
+            .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
+            .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
+            .onChange(of: wallet.totalBalanceSats, perform: handleBalanceChange)
+            .environmentObject(app)
+            .environmentObject(navigation)
+            .environmentObject(sheets)
+            .environmentObject(wallet)
+            .environmentObject(currency)
+            .environmentObject(blocktank)
+            .environmentObject(activity)
+            .environmentObject(transfer)
+            .environmentObject(widgets)
+            .environmentObject(settings)
+    }
 
-                            if wallet.nodeLifecycleState == .running {
-                                walletIsInitializing = false
-                            }
-                        }
-                    }
-                } else if wallet.isRestoringWallet {
-                    // Wallet exists and has been restored from backup. isRestoringWallet is to false inside below component
-                    WalletInitResultView(result: .restored)
-                } else {
-                    MainNavView()
-                }
-            } else if wallet.walletExists == false {
-                NavigationStack {
-                    TermsView()
-                }
-                .accentColor(.white)
-                .onAppear {
-                    // Reset these values if the wallet is wiped
-                    walletIsInitializing = nil
-                    walletInitShouldFinish = false
-                }
-            }
+    @ViewBuilder
+    private var mainContent: some View {
+        ZStack {
+            walletContent
 
             if !removeSplash {
                 SplashView()
                     .opacity(hideSplash ? 0 : 1)
             }
         }
-        .onChange(of: currency.hasStaleData) { _ in
-            if currency.hasStaleData {
-                app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
+    }
+
+    @ViewBuilder
+    private var walletContent: some View {
+        if wallet.walletExists == true {
+            // Mnemonic found in keychain
+            existingWalletContent
+        } else if wallet.walletExists == false {
+            newWalletContent
+        }
+    }
+
+    @ViewBuilder
+    private var existingWalletContent: some View {
+        if walletIsInitializing == true {
+            // New wallet is being created or restored
+            initializingContent
+        } else if wallet.isRestoringWallet {
+            // Wallet exists and has been restored from backup. isRestoringWallet is set to false inside below component
+            WalletInitResultView(result: .restored)
+        } else {
+            MainNavView()
+        }
+    }
+
+    @ViewBuilder
+    private var initializingContent: some View {
+        if case .errorStarting(let error) = wallet.nodeLifecycleState {
+            WalletInitResultView(result: .failed(error))
+        } else {
+            InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
+                Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
+
+                if wallet.nodeLifecycleState == .running {
+                    walletIsInitializing = false
+                }
             }
         }
-        .onChange(of: wallet.walletExists) { _ in
-            Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
+    }
 
-            if wallet.walletExists != nil {
-                withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
-                    hideSplash = true
-                }
+    @ViewBuilder
+    private var newWalletContent: some View {
+        NavigationStack {
+            TermsView()
+        }
+        .accentColor(.white)
+        .onAppear {
+            // Reset these values if the wallet is wiped
+            walletIsInitializing = nil
+            walletInitShouldFinish = false
+        }
+    }
 
-                // Remove splash view after animation completes
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    removeSplash = true
-                }
+    // MARK: - Event Handlers
+
+    private func handleCurrencyStaleData(_: Bool) {
+        if currency.hasStaleData {
+            app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
+        }
+    }
+
+    private func handleWalletExistsChange(_: Bool?) {
+        Logger.info("Wallet exists state changed: \(wallet.walletExists?.description ?? "nil")")
+
+        if wallet.walletExists != nil {
+            withAnimation(.easeInOut(duration: 0.2).delay(0.2)) {
+                hideSplash = true
             }
 
-            guard wallet.walletExists == true else { return }
-
-            wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
-                app?.handleLdkNodeEvent(lightningEvent)
+            // Remove splash view after animation completes
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                removeSplash = true
             }
+        }
 
-            wallet.addOnEvent(id: "activity-sync") { [weak activity] _ in
-                Task {
-                    // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
-                    try? await activity?.syncLdkNodePayments()
-                }
-            }
+        guard wallet.walletExists == true else { return }
 
+        wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
+            app?.handleLdkNodeEvent(lightningEvent)
+        }
+
+        wallet.addOnEvent(id: "activity-sync") { [weak activity] _ in
             Task {
-                do {
-                    try await wallet.start()
-                    try await activity.syncLdkNodePayments()
-                } catch {
-                    Logger.error("Failed to start wallet")
-                    Haptics.notify(.error)
+                // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
+                try? await activity?.syncLdkNodePayments()
+            }
+        }
+
+        Task {
+            await startWalletAndSetupNotifications()
+        }
+    }
+
+    private func startWalletAndSetupNotifications() async {
+        do {
+            try await wallet.start()
+            try await activity.syncLdkNodePayments()
+        } catch {
+            Logger.error("Failed to start wallet")
+            Haptics.notify(.error)
+        }
+
+        // TODO: should be move to onboarding or when creating first invoice
+        if UserDefaults.standard.string(forKey: "deviceToken") == nil {
+            StartupHandler.requestPushNotificationPermission { granted, error in
+                // If granted AppDelegate will receive the token and handle registration
+                if let error {
+                    Logger.error(error, context: "Failed to request push notification permission")
+                    app.toast(error)
+                    return
                 }
 
-                // TODO: should be move to onboarding or when creating first invoice
-                if UserDefaults.standard.string(forKey: "deviceToken") == nil {
-                    StartupHandler.requestPushNotificationPermision { granted, error in
-                        // If granted AppDelegate will receive the token and handle registration
-                        if let error {
-                            Logger.error(error, context: "Failed to request push notification permission")
-                            app.toast(error)
-                            return
-                        }
-
-                        if granted {
-                            Logger.debug("Push notification permission granted, requesting device token")
-                            Task {
-                                do {
-                                    // Sleep 1 second to ensure token is saved in AppDelegate
-                                    try await Task.sleep(nanoseconds: 1_000_000_000)
-                                    try await blocktank.registerDeviceForNotifications()
-                                } catch {
-                                    Logger.error(error, context: "Failed to register device for notifications, will retry on next app launch")
-                                }
-                            }
+                if granted {
+                    Logger.debug("Push notification permission granted, requesting device token")
+                    Task {
+                        do {
+                            // Sleep 1 second to ensure token is saved in AppDelegate
+                            try await Task.sleep(nanoseconds: 1_000_000_000)
+                            try await blocktank.registerDeviceForNotifications()
+                        } catch {
+                            Logger.error(error, context: "Failed to register device for notifications, will retry on next app launch")
                         }
                     }
                 }
             }
         }
-        .task {
-            do {
-                try wallet.setWalletExistsState()
-            } catch {
-                app.toast(error)
-            }
+    }
+
+    @Sendable
+    private func setupTask() async {
+        do {
+            try wallet.setWalletExistsState()
+
+            // Setup TimedSheetManager with all timed sheets
+            TimedSheetManager.shared.setup(
+                sheetViewModel: sheets,
+                appViewModel: app,
+                walletViewModel: wallet,
+                currencyViewModel: currency
+            )
+        } catch {
+            app.toast(error)
         }
-        .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
-        .onChange(of: wallet.nodeLifecycleState) { state in
-            if state == .initializing {
-                walletIsInitializing = true
-            } else if state == .running {
-                walletInitShouldFinish = true
-            } else if case .errorStarting = state {
-                walletInitShouldFinish = true
-            }
+    }
+
+    private func handleNodeLifecycleChange(_ state: NodeLifecycleState) {
+        if state == .initializing {
+            walletIsInitializing = true
+        } else if state == .running {
+            walletInitShouldFinish = true
+        } else if case .errorStarting = state {
+            walletInitShouldFinish = true
         }
-        .onChange(of: wallet.totalBalanceSats) { _ in
-            //Anytime we receive a balance update, we should sync the payments to activity list
-            Task { try? await activity.syncLdkNodePayments() }
-        }
-        // Environment objects always at the end
-        .environmentObject(app)
-        .environmentObject(navigation)
-        .environmentObject(sheets)
-        .environmentObject(wallet)
-        .environmentObject(currency)
-        .environmentObject(blocktank)
-        .environmentObject(activity)
-        .environmentObject(transfer)
-        .environmentObject(widgets)
-        .environmentObject(settings)
+    }
+
+    private func handleBalanceChange(_: Int) {
+        // Anytime we receive a balance update, we should sync the payments to activity list
+        Task { try? await activity.syncLdkNodePayments() }
     }
 }
 

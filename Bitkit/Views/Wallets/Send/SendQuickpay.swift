@@ -52,7 +52,7 @@ struct SendQuickpay: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    @Binding var navigationPath: [SendView]
+    @Binding var navigationPath: [SendRoute]
 
     var body: some View {
         VStack {
