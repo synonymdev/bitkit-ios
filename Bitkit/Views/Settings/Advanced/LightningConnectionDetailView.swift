@@ -163,11 +163,10 @@ struct LightningConnectionDetailView: View {
                     if channelStatus == .open {
                         CustomButton(
                             title: NSLocalizedString("lightning__close_conn", comment: ""),
-                            variant: .secondary,
-                            shouldExpand: true
-                        ) {
-                            // Handle close connection action
-                        }
+                            variant: .primary,
+                            shouldExpand: true,
+                            destination: CloseConnectionConfirmation(channel: channel)
+                        )
                     }
                 }
                 .padding(.horizontal, 16)

@@ -52,8 +52,8 @@ struct CustomButton: View {
 
         var horizontalPadding: CGFloat {
             switch self {
-            case .small: return 16
-            case .large: return 24
+            case .small: return 12
+            case .large: return 16
             }
         }
 
