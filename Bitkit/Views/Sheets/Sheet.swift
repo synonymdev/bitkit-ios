@@ -38,13 +38,15 @@ struct SheetHeader: View {
                 Spacer()
             }
 
-            Spacer()
+            SubtitleText(title)
+                .frame(maxWidth: .infinity, alignment: .center)
 
-            SubtitleText(title, textAlignment: .center)
-
-            Spacer()
-
-            Spacer()
+            if showBackButton {
+                Spacer()
+                    .frame(width: 24, height: 24)
+            } else {
+                Spacer()
+            }
         }
         .padding(.bottom, 32)
     }

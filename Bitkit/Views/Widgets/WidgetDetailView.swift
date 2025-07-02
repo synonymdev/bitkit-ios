@@ -80,7 +80,7 @@ struct WidgetDetailView: View {
                 Button(action: {
                     navigation.navigate(.widgetEdit(id))
                 }) {
-                    HStack(spacing: 0) {
+                    HStack(alignment: .center, spacing: 0) {
                         BodyMText(localizedString("widgets__widget__edit"), textColor: .textPrimary)
 
                         Spacer()
@@ -96,6 +96,7 @@ struct WidgetDetailView: View {
                             .resizable()
                             .foregroundColor(.textSecondary)
                             .frame(width: 24, height: 24)
+                            .padding(.leading, 5)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())

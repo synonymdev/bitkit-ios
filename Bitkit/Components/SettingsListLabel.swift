@@ -8,31 +8,8 @@
 import SwiftUI
 
 enum SettingsListRightIcon {
-    case rightArrow
+    case chevron
     case checkmark
-}
-
-struct SettingsListIcon: View {
-    let imageName: String
-    let iconColor: Color
-
-    init(_ imageName: String, iconColor: Color = .white) {
-        self.imageName = imageName
-        self.iconColor = iconColor
-    }
-
-    var body: some View {
-        Image(imageName)
-            .resizable()
-            .scaledToFit()
-            .foregroundColor(iconColor)
-            .frame(width: 14, height: 14)
-            .background(
-                Circle()
-                    .fill(Color.white10)
-                    .frame(width: 32, height: 32)
-            )
-    }
 }
 
 struct SettingsListLabel: View {
@@ -48,7 +25,7 @@ struct SettingsListLabel: View {
         iconName: String? = nil,
         iconColor: Color = .white,
         rightText: String? = nil,
-        rightIcon: SettingsListRightIcon? = .rightArrow,
+        rightIcon: SettingsListRightIcon? = .chevron,
         toggle: Binding<Bool>? = nil
     ) {
         self.title = title
@@ -60,14 +37,14 @@ struct SettingsListLabel: View {
     }
 
     var body: some View {
-        VStack {
-            HStack {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
                 if let iconName = iconName {
                     Label {
                         BodyMText(title, textColor: .textPrimary)
                     } icon: {
-                        SettingsListIcon(iconName, iconColor: iconColor)
-                            .padding(.trailing, 12)
+                        CircularIcon(icon: iconName, iconColor: iconColor)
+                            .padding(.trailing, 8)
                     }
                 } else {
                     BodyMText(title, textColor: .textPrimary)
@@ -81,15 +58,17 @@ struct SettingsListLabel: View {
                         .labelsHidden()
                 } else {
                     if let rightText = rightText {
-                        BodyMText(rightText, textColor: .textPrimary, textAlignment: .right)
-                            .padding(.trailing, 8)
+                        BodyMText(rightText, textColor: .textPrimary)
+                            .padding(.trailing, 5)
                     }
 
                     if let rightIcon = rightIcon {
                         switch rightIcon {
-                        case .rightArrow:
+                        case .chevron:
                             Image("chevron")
+                                .resizable()
                                 .foregroundColor(.textSecondary)
+                                .frame(width: 24, height: 24)
                         case .checkmark:
                             Image("checkmark")
                                 .foregroundColor(.brandAccent)
@@ -97,8 +76,12 @@ struct SettingsListLabel: View {
                     }
                 }
             }
-            .padding(.vertical, 8)
-            Divider()
+            .frame(height: 50)
+
+            // Bottom border
+            Rectangle()
+                .fill(Color.white10)
+                .frame(height: 1)
         }
         .padding(.horizontal, 16)
     }

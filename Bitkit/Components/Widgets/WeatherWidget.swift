@@ -98,9 +98,10 @@ struct WeatherWidget: View {
                     VStack(spacing: 16) {
                         // Status condition with icon
                         if options.showStatus {
-                            HStack(spacing: 0) {
+                            HStack(spacing: 16) {
                                 WeatherTitleText(data.condition.title)
-                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text(data.condition.icon)
                                     .font(.system(size: 100))
@@ -162,6 +163,22 @@ struct WeatherWidget: View {
             // Start data updates
             viewModel.startUpdates()
         }
+    }
+}
+
+struct WeatherTitleText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(Fonts.bold(size: 34))
+            .foregroundColor(.textPrimary)
+            .kerning(0)
+            .environment(\._lineHeightMultiple, 0.85)
     }
 }
 

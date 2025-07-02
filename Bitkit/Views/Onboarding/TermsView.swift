@@ -73,15 +73,15 @@ struct TermsView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    DisplayText(NSLocalizedString("onboarding__tos_header", comment: ""))
+                VStack(alignment: .leading, spacing: 16) {
+                    DisplayText(localizedString("onboarding__tos_header"))
 
                     TosContent()
                         .font(Fonts.regular(size: 17))
                         .foregroundColor(.textSecondary)
-                        .padding(.bottom, 300)  // Extra padding for keeping it scrollable past footer
+                        .padding(.bottom, 300) // Extra padding for keeping it scrollable past footer
                 }
-                .padding(.top, 52)
+                .padding(.top, 48)
             }
             .clipped()
 

@@ -15,7 +15,7 @@ struct MoneyStack: View {
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             if currency.primaryDisplay == .bitcoin {
                 MoneyText(
                     sats: sats,
