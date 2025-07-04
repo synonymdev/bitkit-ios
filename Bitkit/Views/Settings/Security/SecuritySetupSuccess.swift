@@ -29,7 +29,6 @@ struct SecuritySetupSuccess: View {
                         : NSLocalizedString("security__success_no_bio", comment: ""),
                     textColor: .textSecondary,
                 )
-                .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
             .padding(.top, 32)

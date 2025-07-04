@@ -20,6 +20,7 @@ struct OnboardingTab: View {
             VStack(spacing: 0) {
                 DisplayText(title, accentColor: accentColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 14)
 
                 BodyMText(text)
                     .frame(maxWidth: .infinity, alignment: .leading)

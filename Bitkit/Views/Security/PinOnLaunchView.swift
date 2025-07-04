@@ -134,16 +134,15 @@ struct PinOnLaunchView: View {
                 .padding(.bottom, 47)
 
             // Title text
-            BodyMText(
+            BodyMSBText(
                 NSLocalizedString("security__pin_enter", comment: ""),
                 textColor: .textPrimary,
-                textAlignment: .center
             )
             .padding(.bottom, 40)
 
             // Error message
             if !errorMessage.isEmpty {
-                CaptionText(errorMessage, textColor: .brandAccent)
+                BodySText(errorMessage, textColor: .brandAccent)
                     .padding(.bottom, 16)
             }
 

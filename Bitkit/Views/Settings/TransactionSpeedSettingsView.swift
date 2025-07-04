@@ -33,7 +33,7 @@ struct TransactionSpeedSettingsRow: View {
                 Spacer()
 
                 if let customSetSpeed {
-                    BodyMText(customSetSpeed, textColor: .textPrimary, textAlignment: .right)
+                    BodyMText(customSetSpeed, textColor: .textPrimary)
                         .padding(.trailing, 8)
                 }
 
