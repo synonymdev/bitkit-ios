@@ -94,7 +94,8 @@ struct SendAmountView: View {
                         //Lightning tx
                         if app.selectedWalletToPayFrom == .lightning {
                             if UInt64(wallet.totalLightningSats) < satsAmount {
-                                app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                app.toast(
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
                                 return
                             }
 
@@ -103,18 +104,32 @@ struct SendAmountView: View {
                         }
 
                         //Onchain tx
+                        try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
                         if settings.coinSelectionMethod == .manual {
-                            navigationPath.append(.utxoSelection) //User needs to select utxos
-                        } else {
-                            try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
-                            try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
-                            
-                            let totalSelectedSats = wallet.selectedUtxo?.reduce(0) { $0 + $1.valueSats } ?? 0
-                            if totalSelectedSats < satsAmount {
-                                app.toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                            try await wallet.loadAvailableUtxos()
+
+                            if wallet.availableUtxos.isEmpty {
+                                app.toast(type: .error, title: "No UTXOs", description: "You do not have any UTXOs to spend.")
                                 return
                             }
-                            
+
+                            if wallet.availableUtxos.reduce(0) { $0 + $1.valueSats } < satsAmount {
+                                app.toast(
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                return
+                            }
+
+                            navigationPath.append(.utxoSelection) //User needs to select utxos
+                        } else {
+                            try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
+
+                            let totalSelectedSats = wallet.selectedUtxo?.reduce(0) { $0 + $1.valueSats } ?? 0
+                            if totalSelectedSats < satsAmount {
+                                app.toast(
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                return
+                            }
+
                             navigationPath.append(.confirm)
                         }
                     } else {

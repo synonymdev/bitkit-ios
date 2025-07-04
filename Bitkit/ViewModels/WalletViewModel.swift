@@ -27,6 +27,7 @@ class WalletViewModel: ObservableObject {
     @Published var sendAmountSats: UInt64?
     @Published var selectedFeeRateSatsPerVByte: UInt32?
     @Published var selectedUtxo: [SpendableUtxo]?
+    @Published var availableUtxos: [SpendableUtxo] = []
 
     // For bolt11 details and bip21 params
     var invoiceAmountSats: UInt64 = 0
@@ -234,14 +235,15 @@ class WalletViewModel: ObservableObject {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
-        
+
         if let selectedUtxo {
             Logger.info("Using selected UTXO for send: \(selectedUtxo)")
         } else {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
-        let txid = try await lightningService.send(address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo)
+        let txid = try await lightningService.send(
+            address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo)
         Task {
             // Best to auto sync on chain so we have latest state
             try await sync()
@@ -263,8 +265,12 @@ class WalletViewModel: ObservableObject {
         }
 
         selectedFeeRateSatsPerVByte = fees.getSatsPerVbyte(for: speed)
-        
+
         Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
+    }
+
+    func loadAvailableUtxos() async throws {
+        availableUtxos = try await lightningService.listSpendableOutputs()
     }
 
     /// Sets the UTXO selection for the send flow using the specified coin selection algorithm.based on chosen fee and target amount
@@ -276,8 +282,10 @@ class WalletViewModel: ObservableObject {
         guard let sendAmountSats else {
             throw AppError(message: "Send amount not set", debugMessage: "Please set a send amount before selecting UTXOs.")
         }
-        
-        Logger.info("Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte")
+
+        Logger.info(
+            "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
+        )
 
         selectedUtxo = try await lightningService.selectUtxosWithAlgorithm(
             targetAmountSats: sendAmountSats,
@@ -285,7 +293,7 @@ class WalletViewModel: ObservableObject {
             coinSelectionAlgorythm: coinSelectionAlgorythm,
             utxos: nil
         )
-        
+
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxo))")
     }
 
