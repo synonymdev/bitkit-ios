@@ -25,7 +25,6 @@ struct SecuritySetupIntro: View {
                     NSLocalizedString("security__pin_security_text", comment: ""),
                     textColor: .textSecondary,
                 )
-                .multilineTextAlignment(.center)
             }
 
             Spacer()

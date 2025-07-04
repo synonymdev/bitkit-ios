@@ -14,7 +14,7 @@ struct AmountInput: View {
 
     init(
         defaultValue: UInt64 = 0, primaryDisplay: Binding<PrimaryDisplay>, overrideSats: Binding<UInt64?> = .constant(nil),
-        showConversion: Bool = false, 
+        showConversion: Bool = false,
         shouldAutoFocus: Bool = true,
         onSatsChange: @escaping (UInt64) -> Void
     ) {
@@ -30,12 +30,12 @@ struct AmountInput: View {
     private var sats: UInt64 {
         return !satsAmount.isEmpty ? UInt64(satsAmount) ?? 0 : 0
     }
-    
+
     private func triggerOnSatsChange(_ value: UInt64) {
         Haptics.play(.buttonTap)
         onSatsChange(value)
     }
-    
+
     private func focusTextField() {
         if primaryDisplay == .bitcoin {
             isSatsFocused = true
@@ -135,7 +135,7 @@ struct AmountInput: View {
                         focusTextField()
                     }
                 }
-                
+
                 if let converted = currency.convert(sats: sats) {
                     if primaryDisplay == .bitcoin {
                         let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
@@ -190,7 +190,7 @@ struct AmountInput: View {
                     isFiatFocused = true
                 }
             }
-            
+
             // Initialize fiat amount if we have a default sats value
             if sats > 0, let converted = currency.convert(sats: sats) {
                 fiatAmount = converted.formatted
@@ -212,7 +212,7 @@ struct AmountInput: View {
                     vm.displayUnit = .modern
                     return vm
                 }())
-        
+
         AmountInput(primaryDisplay: .constant(.bitcoin), showConversion: true) { _ in }
             .environmentObject(
                 {
@@ -230,7 +230,7 @@ struct AmountInput: View {
                     vm.selectedCurrency = "USD"
                     return vm
                 }())
-        
+
         AmountInput(primaryDisplay: .constant(.fiat), showConversion: true) { _ in }
             .environmentObject(
                 {

@@ -42,7 +42,10 @@ struct StyleGuideView: View {
                 BodySText("Body s style with <accent>bold accent</accent> over here")
                 BodySText("Body s style with <accent>colored accent</accent> over here", accentColor: .redAccent)
                 BodySText(
-                    "Click here to visit <accent>Google</accent> website", accentColor: .brandAccent, url: URL(string: "https://www.google.com"))
+                    "Click here to visit <accent>Google</accent> website", accentColor: .brandAccent,
+                    accentAction: {
+                        UIApplication.shared.open(URL(string: "https://www.google.com")!)
+                    })
 
                 Divider()
 
