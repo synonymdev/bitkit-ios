@@ -6,20 +6,54 @@ struct SeedTextField: View {
     let isLastField: Bool
     @FocusState.Binding var focusedField: Int?
 
+    private var isFocused: Bool {
+        focusedField == index
+    }
+
+    private var font: Font {
+        isFocused ? .custom(Fonts.semiBold, size: 17) : .custom(Fonts.regular, size: 17)
+    }
+
+    private var labelColor: Color {
+        let word = text.wrappedValue.trimmingCharacters(in: .whitespaces)
+        if !isFocused && !word.isEmpty && !BIP39.isValidWord(word) {
+            return .redAccent
+        }
+        return .textSecondary
+    }
+
+    private var textColor: Color {
+        let word = text.wrappedValue.trimmingCharacters(in: .whitespaces)
+        if !isFocused && !word.isEmpty && !BIP39.isValidWord(word) {
+            return .redAccent
+        }
+        return .textPrimary
+    }
+
     var body: some View {
-        TextField("", text: text)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .frame(height: 47)
-            .frame(maxWidth: .infinity)
-            .focused($focusedField, equals: index)
-            .submitLabel(isLastField ? .done : .next)
-            .onSubmit {
-                if isLastField {
-                    focusedField = nil
-                } else {
-                    focusedField = index + 1
+        HStack(spacing: 0) {
+            BodyMSBText("\(index + 1).", textColor: labelColor)
+                .frame(width: 26, alignment: .leading)
+
+            SwiftUI.TextField("", text: text)
+                .accentColor(.brandAccent)
+                .font(font)
+                .foregroundColor(textColor)
+                .kerning(0.4)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .frame(height: 47)
+                .focused($focusedField, equals: index)
+                .submitLabel(isLastField ? .done : .next)
+                .onSubmit {
+                    focusedField = isLastField ? nil : index + 1
                 }
-            }
+
+        }
+        .frame(minHeight: 46)
+        .padding(.horizontal, 16)
+        .background(Color.white10)
+        .cornerRadius(8)
+
     }
 }

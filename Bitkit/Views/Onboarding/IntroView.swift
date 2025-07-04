@@ -17,7 +17,7 @@ struct IntroView: View {
                 DisplayText(NSLocalizedString("onboarding__welcome_title", comment: ""))
 
                 BodyMText(NSLocalizedString("onboarding__welcome_text", comment: ""), textColor: .textSecondary, accentColor: .brandAccent)
-                    .padding(.top, 4)
+                    .padding(.top, 14)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

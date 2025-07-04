@@ -15,10 +15,12 @@ struct CreateWalletView: View {
                     .frame(maxWidth: 311, maxHeight: 311)
                     .frame(maxWidth: .infinity, alignment: .center)
 
-                VStack(spacing: 0) {
+                VStack(spacing: 14) {
                     DisplayText(NSLocalizedString("onboarding__slide4_header", comment: ""), accentColor: .brandAccent)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                     BodyMText(NSLocalizedString("onboarding__slide4_text", comment: ""), accentFont: Fonts.bold)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.top, 48)
             }

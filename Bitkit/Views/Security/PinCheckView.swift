@@ -66,13 +66,9 @@ struct PinCheckView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(
-                explanation,
-                textColor: .textSecondary,
-                textAlignment: .left
-            )
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.bottom, 40)
+            BodyMText(explanation, textColor: .textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 40)
 
             if !errorMessage.isEmpty {
                 CaptionText(errorMessage, textColor: .brandAccent)

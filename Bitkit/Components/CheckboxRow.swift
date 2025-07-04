@@ -15,7 +15,9 @@ struct CheckboxRow: View {
                     subtitle,
                     textColor: .textSecondary,
                     accentColor: .brandAccent,
-                    url: subtitleUrl
+                    accentAction: {
+                        UIApplication.shared.open(subtitleUrl!)
+                    }
                 )
             }
             .padding(.vertical, 3)
