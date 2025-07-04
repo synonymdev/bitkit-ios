@@ -212,7 +212,7 @@ struct LightningConnectionDetailView: View {
     private var statusText: String {
         switch channelStatus {
         case .pending:
-            return NSLocalizedString("lightning__order_state__pending", comment: "").capitalized
+            return NSLocalizedString("lightning__order_state__opening", comment: "").capitalized
         case .open:
             return NSLocalizedString("lightning__order_state__open", comment: "").capitalized
         case .closed:
