@@ -1,13 +1,14 @@
 import SwiftUI
 
 struct RestoreWalletView: View {
-    @State private var words: [String] = Array(repeating: "", count: 24)
-    @State private var bip39Passphrase: String? = nil
-    @State private var showingPassphraseAlert = false
-    @State private var tempPassphrase = ""
-    @State private var firstFieldText: String = ""
+    // TODO: add a way to switch between 12 and 24 words
     @State private var is24Words = false
+    @State private var words: [String] = Array(repeating: "", count: 24)
+    @State private var bip39Passphrase = ""
+    @State private var showingPassphrase = false
+    @State private var firstFieldText: String = ""
     @FocusState private var focusedField: Int?
+    @FocusState private var isPassphraseFocused: Bool
 
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
@@ -19,19 +20,15 @@ struct RestoreWalletView: View {
     private var isValidMnemonic: Bool {
         let wordCount = is24Words ? 24 : 12
         let currentWords = words[..<wordCount]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
 
-        // Check if any words are empty
-        guard !currentWords.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) else {
+        // Check if we have the correct number of words
+        guard currentWords.count == wordCount else {
             return false
         }
 
-        // Check if we have the correct number of words
-        let mnemonic =
-            currentWords
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .joined(separator: " ")
-
-        return mnemonic.split(separator: " ").count == wordCount
+        return BIP39.isValid(phrase: currentWords)
     }
 
     private var bip39Mnemonic: String {
@@ -42,128 +39,207 @@ struct RestoreWalletView: View {
             .trimmingCharacters(in: .whitespaces)
     }
 
-    var body: some View {
-        mainBody
-            .scrollDismissesKeyboard(.interactively)
+    private var validationError: BIP39.Error? {
+        let wordCount = is24Words ? 24 : 12
+        let currentWords = words[..<wordCount]
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        // Check if we have the correct number of words
+        guard currentWords.count == wordCount else {
+            return nil
+        }
+
+        // Check if all words are valid first
+        let invalidWords = currentWords.filter { !BIP39.isValidWord($0) }
+        if !invalidWords.isEmpty {
+            return .invalidMnemonic
+        }
+
+        // Now validate the full phrase
+        switch BIP39.validate(phrase: currentWords) {
+        case .success:
+            return nil
+        case .failure(let error):
+            return error
+        }
     }
 
-    private var mainBody: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(spacing: 0) {
-                    DisplayText(NSLocalizedString("onboarding__restore_header", comment: ""), accentColor: .blueAccent)
-                        .padding(.top, 40)
+    private var validationInfo: (message: String, color: Color)? {
+        guard let error = validationError else { return nil }
 
-                    BodyMText(NSLocalizedString("onboarding__restore_phrase", comment: ""))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+        switch error {
+        case .invalidMnemonic:
+            // Check if it's invalid words or checksum
+            let wordCount = is24Words ? 24 : 12
+            let currentWords = words[..<wordCount]
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
 
-                    HStack(alignment: .top, spacing: 4) {
-                        // First column (1-6 or 1-12)
-                        VStack(spacing: 4) {
-                            ForEach(0 ..< wordsPerColumn) { index in
-                                HStack(spacing: 4) {
-                                    BodyMSBText("\(index + 1).", textColor: .secondary)
-                                        .padding(.leading, 16)
-
-                                    SeedTextField(
-                                        index: index,
-                                        text: index == 0 ? $firstFieldText : $words[index],
-                                        isLastField: index == (wordsPerColumn * 2 - 1),
-                                        focusedField: $focusedField
-                                    )
-                                    .onChange(of: firstFieldText) { newValue in
-                                        if index == 0 && newValue.contains(" ") {
-                                            handlePastedWords(newValue)
-                                        } else if index == 0 {
-                                            words[index] = newValue
-                                        }
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 46)
-                                .background(Color.white10)
-                                .cornerRadius(8)
-                            }
-                        }
-
-                        // Second column (7-12 or 13-24)
-                        VStack(spacing: 4) {
-                            ForEach(wordsPerColumn ..< (wordsPerColumn * 2)) { index in
-                                HStack(spacing: 4) {
-                                    BodyMSBText("\(index + 1).", textColor: .secondary)
-                                        .padding(.leading, 16)
-
-                                    SeedTextField(
-                                        index: index,
-                                        text: $words[index],
-                                        isLastField: index == (wordsPerColumn * 2 - 1),
-                                        focusedField: $focusedField
-                                    )
-                                }
-                                .frame(maxWidth: .infinity, minHeight: 46)
-                                .background(Color.white10)
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .id(is24Words)
-                    .animation(.easeInOut, value: is24Words)
-                    .padding(.top, 44)
-
-                    // Add some padding at the bottom to ensure content doesn't hide behind buttons
-                    Spacer()
-                        .frame(height: 100)
-                }
+            let invalidWords = currentWords.filter { !BIP39.isValidWord($0) }
+            if !invalidWords.isEmpty {
+                return (localizedString("onboarding__restore_red_explain"), .textSecondary)
+            } else {
+                return (localizedString("onboarding__restore_inv_checksum"), .redAccent)
             }
+        case .invalidEntropy:
+            return (localizedString("onboarding__restore_inv_checksum"), .redAccent)
+        }
+    }
 
-            // Footer with buttons
-            VStack(spacing: 0) {
-                HStack(spacing: 16) {
-                    CustomButton(
-                        title: NSLocalizedString("onboarding__advanced", comment: ""),
-                        variant: .secondary,
-                        isDisabled: !isValidMnemonic
-                    ) {
-                        showingPassphraseAlert = true
-                    }
+    private var currentFocusedWord: String {
+        guard let focusedField = focusedField else { return "" }
+        if focusedField == 0 {
+            return firstFieldText
+        }
+        return words[focusedField]
+    }
 
-                    CustomButton(title: NSLocalizedString("onboarding__restore", comment: ""), isDisabled: !isValidMnemonic) {
-                        restoreWallet()
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        headerSection
+                        wordInputSection
+                        passphraseSection
+                        validationSection
+                        Spacer(minLength: 16)
+                        buttonSection
                     }
+                    .padding(.horizontal, 32)
+                    .frame(minHeight: geometry.size.height)
                 }
-                .background(
-                    Color(UIColor.systemBackground)
-                        .shadow(radius: 8, y: -4)
-                        .edgesIgnoringSafeArea(.bottom)
-                )
+                .scrollDismissesKeyboard(.interactively)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .padding(.horizontal, 32)
-        .bottomSafeAreaPadding()
-        .alert(NSLocalizedString("onboarding__passphrase", comment: ""), isPresented: $showingPassphraseAlert) {
-            TextField(NSLocalizedString("onboarding__restore_passphrase_placeholder", comment: ""), text: $tempPassphrase)
-                .autocapitalization(.none)
-                .autocorrectionDisabled()
-            Button("OK") {
-                bip39Passphrase = tempPassphrase.isEmpty ? nil : tempPassphrase
-                tempPassphrase = ""
+        .safeAreaInset(edge: .bottom) {
+            keyboardAccessory
+        }
+    }
+
+    private var headerSection: some View {
+        VStack(spacing: 0) {
+            DisplayText(localizedString("onboarding__restore_header"), accentColor: .blueAccent)
+                .padding(.top, 40)
+
+            BodyMText(localizedString("onboarding__restore_phrase"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var wordInputSection: some View {
+        HStack(alignment: .top, spacing: 4) {
+            // First column (1-6 or 1-12)
+            VStack(spacing: 4) {
+                ForEach(0 ..< wordsPerColumn) { index in
+                    SeedTextField(
+                        index: index,
+                        text: index == 0 ? $firstFieldText : $words[index],
+                        isLastField: index == (wordsPerColumn * 2 - 1),
+                        focusedField: $focusedField
+                    )
+                    .onChange(of: firstFieldText) { newValue in
+                        if index == 0 && newValue.contains(" ") {
+                            handlePastedWords(newValue)
+                        } else if index == 0 {
+                            words[index] = newValue
+                        }
+                    }
+                }
             }
-            Button("Cancel", role: .cancel) {
-                tempPassphrase = ""
+
+            // Second column (7-12 or 13-24)
+            VStack(spacing: 4) {
+                ForEach(wordsPerColumn ..< (wordsPerColumn * 2)) { index in
+                    SeedTextField(
+                        index: index,
+                        text: $words[index],
+                        isLastField: index == (wordsPerColumn * 2 - 1),
+                        focusedField: $focusedField
+                    )
+                }
             }
-        } message: {
-            Text(NSLocalizedString("onboarding__restore_passphrase_meaning", comment: ""))
+        }
+        .id(is24Words)
+        .animation(.easeInOut, value: is24Words)
+        .padding(.top, 44)
+    }
+
+    private var passphraseSection: some View {
+        Group {
+            if showingPassphrase {
+                VStack(spacing: 16) {
+                    TextField(localizedString("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .focused($isPassphraseFocused)
+                        .padding(.top, 4)
+
+                    BodySText(localizedString("onboarding__restore_passphrase_meaning"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private var validationSection: some View {
+        Group {
+            if let info = validationInfo {
+                BodyMText(info.message, textColor: info.color, accentColor: .redAccent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+            }
+        }
+    }
+
+    private var buttonSection: some View {
+        HStack(spacing: 16) {
+            if !showingPassphrase {
+                CustomButton(
+                    title: localizedString("onboarding__advanced"),
+                    variant: .secondary,
+                    isDisabled: !isValidMnemonic
+                ) {
+                    showingPassphrase.toggle()
+                    isPassphraseFocused = true
+                }
+            }
+
+            CustomButton(
+                title: showingPassphrase ? localizedString("onboarding__restore_wallet") : localizedString("onboarding__restore"),
+                isDisabled: !isValidMnemonic
+            ) {
+                restoreWallet()
+            }
+        }
+    }
+
+    private var keyboardAccessory: some View {
+        Group {
+            if focusedField != nil {
+                SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
+                    if let focusedField = focusedField {
+                        if focusedField == 0 {
+                            firstFieldText = selectedWord
+                        } else {
+                            words[focusedField] = selectedWord
+                        }
+
+                        // Move to next field
+                        if focusedField < (is24Words ? 23 : 11) {
+                            self.focusedField = focusedField + 1
+                        } else {
+                            self.focusedField = nil
+                        }
+                    }
+                }
+            }
         }
     }
 
     private func restoreWallet() {
-        // Validate mnemonic word count
-        let wordCount = bip39Mnemonic.split(separator: " ").count
-        guard wordCount == 12 || wordCount == 24 else {
-            app.toast(type: .error, title: "Please enter either 12 or 24 words")
-            return
-        }
-
         do {
             wallet.nodeLifecycleState = .initializing
             wallet.isRestoringWallet = true
@@ -204,6 +280,9 @@ struct RestoreWalletView: View {
 
         // Clear the first field's temporary text
         firstFieldText = words[0]
+
+        // Close the keyboard
+        focusedField = nil
     }
 }
 
