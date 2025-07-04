@@ -49,7 +49,7 @@ struct EmptyStateView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 100)
+            .padding(.bottom, 115)
             .overlay {
                 if let onClose = onClose {
                     VStack {

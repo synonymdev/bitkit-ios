@@ -18,82 +18,84 @@ struct SettingsListView: View {
     @State private var cogTapCount = 0
 
     var body: some View {
-        ScrollView {
-            NavigationLink(value: Route.generalSettings) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__general_title", comment: ""),
-                    iconName: "settings-gear"
-                )
-            }
-
-            NavigationLink(destination: SecurityPrivacySettingsView()) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__security_title", comment: ""),
-                    iconName: "settings-shield"
-                )
-            }
-
-            NavigationLink(destination: Text("Coming soon")) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__backup_title", comment: ""),
-                    iconName: "settings-clock"
-                )
-            }
-
-            NavigationLink(destination: Text("Coming soon")) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__advanced_title", comment: ""),
-                    iconName: "settings-slider"
-                )
-            }
-
-            NavigationLink(destination: SupportView()) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__support_title", comment: ""),
-                    iconName: "settings-chat"
-                )
-            }
-
-            NavigationLink(destination: AboutView()) {
-                SettingsListLabel(
-                    title: NSLocalizedString("settings__about_title", comment: ""),
-                    iconName: "settings-info"
-                )
-            }
-
-            if showDevSettings {
-                NavigationLink(destination: DevSettingsView()) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                NavigationLink(value: Route.generalSettings) {
                     SettingsListLabel(
-                        title: NSLocalizedString("settings__dev_title", comment: ""),
-                        iconName: "settings-gear" //TODO: find icon for this
+                        title: NSLocalizedString("settings__general_title", comment: ""),
+                        iconName: "settings-gear"
                     )
                 }
+
+                NavigationLink(destination: SecurityPrivacySettingsView()) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__security_title", comment: ""),
+                        iconName: "settings-shield"
+                    )
+                }
+
+                NavigationLink(destination: Text("Coming soon")) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__backup_title", comment: ""),
+                        iconName: "settings-clock"
+                    )
+                }
+
+                NavigationLink(destination: Text("Coming soon")) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__advanced_title", comment: ""),
+                        iconName: "settings-slider"
+                    )
+                }
+
+                NavigationLink(destination: SupportView()) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__support_title", comment: ""),
+                        iconName: "settings-chat"
+                    )
+                }
+
+                NavigationLink(destination: AboutView()) {
+                    SettingsListLabel(
+                        title: NSLocalizedString("settings__about_title", comment: ""),
+                        iconName: "settings-info"
+                    )
+                }
+
+                if showDevSettings {
+                    NavigationLink(destination: DevSettingsView()) {
+                        SettingsListLabel(
+                            title: NSLocalizedString("settings__dev_title", comment: ""),
+                            iconName: "settings-gear" //TODO: find icon for this
+                        )
+                    }
+                }
+
+                // TODO: add to subview
+                // NavigationLink(destination: LightningSettingsView()) {
+                //     Label {
+                //         Text("Lightning")
+                //     } icon: {
+                //         Image(systemName: "bolt.fill")
+                //     }
+                // }
+
+                // NavigationLink(destination: ChannelOrders()) {
+                //     Label {
+                //         Text("Channel Orders")
+                //     } icon: {
+                //         Image(systemName: "list.bullet.rectangle")
+                //     }
+                // }
+
+                // NavigationLink(destination: LogView()) {
+                //     Label {
+                //         Text("Logs")
+                //     } icon: {
+                //         Image(systemName: "doc.text.fill")
+                //     }
+                // }
             }
-
-            // TODO: add to subview
-            // NavigationLink(destination: LightningSettingsView()) {
-            //     Label {
-            //         Text("Lightning")
-            //     } icon: {
-            //         Image(systemName: "bolt.fill")
-            //     }
-            // }
-
-            // NavigationLink(destination: ChannelOrders()) {
-            //     Label {
-            //         Text("Channel Orders")
-            //     } icon: {
-            //         Image(systemName: "list.bullet.rectangle")
-            //     }
-            // }
-
-            // NavigationLink(destination: LogView()) {
-            //     Label {
-            //         Text("Logs")
-            //     } icon: {
-            //         Image(systemName: "doc.text.fill")
-            //     }
-            // }
         }
         .navigationTitle(NSLocalizedString("settings__settings", comment: ""))
         .navigationBarTitleDisplayMode(.inline)

@@ -15,8 +15,7 @@ struct ChoosePinView: View {
                 BodyMText(
                     pinToCheck == nil
                         ? NSLocalizedString("security__pin_choose_text", comment: "")
-                        : NSLocalizedString("security__pin_retype_text", comment: ""),
-                    textAlignment: .left
+                        : NSLocalizedString("security__pin_retype_text", comment: "")
                 )
             }
             .padding(32)
