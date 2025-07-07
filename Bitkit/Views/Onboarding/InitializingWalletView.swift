@@ -18,17 +18,6 @@ struct InitializingWalletView: View {
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
 
-    private static let standardDuration: Double = 2.5
-    private static let rocketDuration: Double = standardDuration - 0.01
-
-    private var rocket: some View {
-        Image("rocket")
-            .resizable()
-            .scaledToFit()
-            .frame(width: 300, height: 300)
-            .offset(rocketOffset)
-    }
-
     private func handleCompletion() {
         timer?.invalidate()
         hapticTimer?.invalidate()
@@ -36,6 +25,57 @@ struct InitializingWalletView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             Haptics.notify(.success)
             onComplete()
+        }
+    }
+
+    private func animateSpinnerSequence() {
+        // First animation: rotate to -180 degrees over 2.0 seconds
+        withAnimation(.easeInOut(duration: 2.0)) {
+            rotation = -180
+        }
+
+        // After 2.0 seconds, pause for 100ms, then continue to -360 degrees
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                withAnimation(.easeInOut(duration: 2.0)) {
+                    rotation = -360
+                }
+
+                // After the full rotation, reset and repeat
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    rotation = 0
+                    animateSpinnerSequence()
+                }
+            }
+        }
+    }
+
+    private func animateRocketSequence(geometry: GeometryProxy) {
+        // Initial haptic
+        Haptics.rocket(duration: 2.5)
+
+        // Single continuous animation with custom timing
+        let totalDuration: Double = 2.5
+        let finalX = geometry.size.width / 2 + 128
+        let finalY = -(geometry.size.height * 0.3)
+
+        withAnimation(.easeInOut(duration: totalDuration)) {
+            rocketOffset = CGSize(width: finalX, height: finalY)
+        }
+
+        // After rocket is off screen, pause then reset and repeat
+        DispatchQueue.main.asyncAfter(deadline: .now() + totalDuration) {
+            // Pause off screen for 1 second
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // Reset to starting position (instant, no animation)
+                rocketOffset = CGSize(
+                    width: -(geometry.size.width / 2) - 128,
+                    height: geometry.size.height * 0.5
+                )
+
+                // Start next loop
+                animateRocketSequence(geometry: geometry)
+            }
         }
     }
 
@@ -47,15 +87,13 @@ struct InitializingWalletView: View {
                 .frame(width: 192, height: 192)
                 .rotationEffect(.degrees(rotation))
                 .onAppear {
-                    withAnimation(.linear(duration: 2).repeatForever(autoreverses: false)) {
-                        rotation = 360
-                    }
+                    animateSpinnerSequence()
                 }
 
             Text("\(Int(percentage))%")
-                .font(.largeTitle)
-                .fontWeight(.black)
+                .font(.custom(Fonts.bold, size: 48))
                 .foregroundColor(.brandAccent)
+                .kerning(-1)
                 .onAppear {
                     timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
                         if percentage < 100 {
@@ -66,11 +104,11 @@ struct InitializingWalletView: View {
                             let increment: Double
                             if !shouldFinish {
                                 if percentage >= 80 {
-                                    increment = baseIncrement * 0.125  // Halved three times (0.5 * 0.5 * 0.5)
+                                    increment = baseIncrement * 0.125 // Halved three times (0.5 * 0.5 * 0.5)
                                 } else if percentage >= 70 {
-                                    increment = baseIncrement * 0.25  // Halved twice (0.5 * 0.5)
+                                    increment = baseIncrement * 0.25 // Halved twice (0.5 * 0.5)
                                 } else if percentage >= 60 {
-                                    increment = baseIncrement * 0.5  // Halved once
+                                    increment = baseIncrement * 0.5 // Halved once
                                 } else {
                                     increment = baseIncrement
                                 }
@@ -106,29 +144,29 @@ struct InitializingWalletView: View {
         GeometryReader { geometry in
             ZStack {
                 // Rocket first (back)
-                rocket
+                Image("rocket2")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 256, height: 256)
+                    .offset(rocketOffset)
                     .onAppear {
                         // Initial position setup
                         rocketOffset = CGSize(
-                            width: -(geometry.size.width / 2) - 150,
-                            height: geometry.size.height * 0.5
+                            width: -(geometry.size.width / 2) - 70,
+                            height: geometry.size.height * 0.4
                         )
 
-                        // Start repeating haptics
-                        hapticTimer = Timer.scheduledTimer(withTimeInterval: Self.standardDuration, repeats: true) { _ in
-                            Haptics.rocket(duration: Self.rocketDuration)
-                        }
-                        // Initial haptic
-                        Haptics.rocket(duration: Self.rocketDuration)
+                        // Small delay before starting animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                            // Start repeating haptics
+                            hapticTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
+                                Haptics.rocket(duration: 2.5)
+                            }
+                            // Initial haptic
+                            Haptics.rocket(duration: 2.5)
 
-                        withAnimation(
-                            .linear(duration: Self.standardDuration)
-                                .repeatForever(autoreverses: false)
-                        ) {
-                            rocketOffset = CGSize(
-                                width: geometry.size.width / 2 + 150,
-                                height: -(geometry.size.height * 0.3)
-                            )
+                            // Start the rocket animation sequence
+                            animateRocketSequence(geometry: geometry)
                         }
                     }
                     .onDisappear {
@@ -137,12 +175,12 @@ struct InitializingWalletView: View {
                     }
 
                 // Content second (front)
-                VStack(spacing: 24) {
+                VStack(spacing: 32) {
                     spinner
 
-                    DisplayText(NSLocalizedString("onboarding__loading_header", comment: ""))
-                        .padding()
+                    DisplayText(localizedString("onboarding__loading_header"))
                 }
+                .padding(.horizontal, 32)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
