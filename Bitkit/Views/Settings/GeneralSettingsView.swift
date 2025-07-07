@@ -25,7 +25,7 @@ struct GeneralSettingsView: View {
                 NavigationLink(destination: TransactionSpeedSettingsView()) {
                     SettingsListLabel(
                         title: localizedString("settings__general__speed"),
-                        rightText: walletViewModel.defaultTransactionSpeed.displayTitle
+                        rightText: settings.defaultTransactionSpeed.displayTitle
                     )
                 }
 
