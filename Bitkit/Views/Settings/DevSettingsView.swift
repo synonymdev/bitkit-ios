@@ -85,8 +85,6 @@ struct DevSettingsView: View {
                         return
                     }
                     do {
-                        navigation.reset()
-
                         // TODO: reset all of app state
                         app.backupVerified = false
                         app.appUpdateIgnoreTimestamp = 0
@@ -103,6 +101,9 @@ struct DevSettingsView: View {
                         widgets.clearWidgets()
 
                         try await wallet.wipeWallet()
+
+                        navigation.reset()
+                        navigation.activeDrawerMenuItem = .wallet
                     } catch {
                         app.toast(error)
                     }
