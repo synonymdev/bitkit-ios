@@ -49,7 +49,7 @@ struct TransactionSpeedSettingsRow: View {
 }
 
 struct TransactionSpeedSettingsView: View {
-    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @State private var showingCustomAlert = false
     @State private var customRate: String = ""
 
@@ -63,9 +63,9 @@ struct TransactionSpeedSettingsView: View {
                 VStack(spacing: 0) {
                     TransactionSpeedSettingsRow(
                         speed: .fast,
-                        isSelected: wallet.defaultTransactionSpeed == .fast,
+                        isSelected: settings.defaultTransactionSpeed == .fast,
                         onSelect: {
-                            wallet.defaultTransactionSpeed = .fast
+                            settings.defaultTransactionSpeed = .fast
                         }
                     )
                     .padding(.horizontal, 16)
@@ -75,9 +75,9 @@ struct TransactionSpeedSettingsView: View {
 
                     TransactionSpeedSettingsRow(
                         speed: .medium,
-                        isSelected: wallet.defaultTransactionSpeed == .medium,
+                        isSelected: settings.defaultTransactionSpeed == .medium,
                         onSelect: {
-                            wallet.defaultTransactionSpeed = .medium
+                            settings.defaultTransactionSpeed = .medium
                         }
                     )
                     .padding(.horizontal, 16)
@@ -87,9 +87,9 @@ struct TransactionSpeedSettingsView: View {
 
                     TransactionSpeedSettingsRow(
                         speed: .slow,
-                        isSelected: wallet.defaultTransactionSpeed == .slow,
+                        isSelected: settings.defaultTransactionSpeed == .slow,
                         onSelect: {
-                            wallet.defaultTransactionSpeed = .slow
+                            settings.defaultTransactionSpeed = .slow
                         }
                     )
                     .padding(.horizontal, 16)
@@ -100,7 +100,7 @@ struct TransactionSpeedSettingsView: View {
                     TransactionSpeedSettingsRow(
                         speed: .custom(satsPerVByte: 1), // Placeholder
                         isSelected: {
-                            if case .custom(_) = wallet.defaultTransactionSpeed {
+                            if case .custom(_) = settings.defaultTransactionSpeed {
                                 return true
                             }
                             return false
@@ -110,7 +110,7 @@ struct TransactionSpeedSettingsView: View {
                             customRate = ""
                             showingCustomAlert = true
                         },
-                        customSetSpeed: wallet.defaultTransactionSpeed.customSetSpeed
+                        customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed
                     )
                     .padding(.horizontal, 16)
                 }
@@ -124,7 +124,7 @@ struct TransactionSpeedSettingsView: View {
             Button("OK") {
                 // Only proceed if a value was entered and it's valid
                 if !customRate.isEmpty, let rate = UInt32(customRate), rate > 0 {
-                    wallet.defaultTransactionSpeed = .custom(satsPerVByte: rate)
+                    settings.defaultTransactionSpeed = .custom(satsPerVByte: rate)
                 }
             }
         } message: {
@@ -132,7 +132,7 @@ struct TransactionSpeedSettingsView: View {
         }
         .onAppear {
             // Initialize customRate from current setting if it's custom
-            if case .custom(let satsPerVByte) = wallet.defaultTransactionSpeed {
+            if case .custom(let satsPerVByte) = settings.defaultTransactionSpeed {
                 customRate = String(satsPerVByte)
             }
         }
@@ -142,7 +142,7 @@ struct TransactionSpeedSettingsView: View {
 #Preview {
     NavigationStack {
         TransactionSpeedSettingsView()
-            .environmentObject(WalletViewModel())
+            .environmentObject(SettingsViewModel())
     }
     .preferredColorScheme(.dark)
 }

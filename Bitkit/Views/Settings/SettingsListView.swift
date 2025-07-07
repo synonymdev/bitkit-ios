@@ -34,10 +34,10 @@ struct SettingsListView: View {
                     )
                 }
 
-                NavigationLink(destination: Text("Coming soon")) {
+                NavigationLink(destination: AdvancedSettingsView()) {
                     SettingsListLabel(
-                        title: NSLocalizedString("settings__backup_title", comment: ""),
-                        iconName: "settings-clock"
+                        title: NSLocalizedString("settings__advanced_title", comment: ""),
+                        iconName: "settings-slider"
                     )
                 }
 

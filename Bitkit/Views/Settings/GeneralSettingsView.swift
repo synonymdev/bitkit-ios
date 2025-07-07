@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @EnvironmentObject var walletViewModel: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var app: AppViewModel
 
@@ -25,7 +25,7 @@ struct GeneralSettingsView: View {
                 NavigationLink(destination: TransactionSpeedSettingsView()) {
                     SettingsListLabel(
                         title: localizedString("settings__general__speed"),
-                        rightText: walletViewModel.defaultTransactionSpeed.displayTitle
+                        rightText: settings.defaultTransactionSpeed.displayTitle
                     )
                 }
 
@@ -62,7 +62,7 @@ struct GeneralSettingsView: View {
 #Preview {
     NavigationStack {
         GeneralSettingsView()
-            .environmentObject(WalletViewModel())
+            .environmentObject(SettingsViewModel())
             .environmentObject(CurrencyViewModel())
             .environmentObject(AppViewModel())
     }

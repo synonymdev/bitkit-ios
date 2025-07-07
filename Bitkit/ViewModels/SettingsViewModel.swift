@@ -5,7 +5,43 @@
 //  Created by Jason van den Berg on 2024/12/19.
 //
 
+import LDKNode
 import SwiftUI
+
+enum CoinSelectionMethod: String, CaseIterable {
+    case manual = "manual"
+    case autopilot = "autopilot"
+}
+
+extension CoinSelectionAlgorithm {
+    var stringValue: String {
+        switch self {
+        case .branchAndBound:
+            return "branchAndBound"
+        case .largestFirst:
+            return "largestFirst"
+        case .oldestFirst:
+            return "oldestFirst"
+        case .singleRandomDraw:
+            return "singleRandomDraw"
+        }
+    }
+
+    static func from(stringValue: String) -> CoinSelectionAlgorithm {
+        switch stringValue {
+        case "branchAndBound":
+            return .branchAndBound
+        case "largestFirst":
+            return .largestFirst
+        case "oldestFirst":
+            return .oldestFirst
+        case "singleRandomDraw":
+            return .singleRandomDraw
+        default:
+            return .largestFirst // Default fallback
+        }
+    }
+}
 
 @MainActor
 class SettingsViewModel: ObservableObject {
@@ -22,7 +58,7 @@ class SettingsViewModel: ObservableObject {
             }
         }
     }
-
+    @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
     @AppStorage("hideBalance") var hideBalance: Bool = false
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
@@ -122,6 +158,28 @@ class SettingsViewModel: ObservableObject {
     // Widget Settings
     @AppStorage("showWidgets") var showWidgets: Bool = true
     @AppStorage("showWidgetTitles") var showWidgetTitles: Bool = false
+
+    // Coin Selection Settings
+    @AppStorage("coinSelectionMethod") private var _coinSelectionMethod: String = CoinSelectionMethod.autopilot.rawValue
+    @AppStorage("coinSelectionAlgorithm") private var _coinSelectionAlgorithm: String = CoinSelectionAlgorithm.largestFirst.stringValue
+
+    var coinSelectionMethod: CoinSelectionMethod {
+        get {
+            CoinSelectionMethod(rawValue: _coinSelectionMethod) ?? .autopilot
+        }
+        set {
+            _coinSelectionMethod = newValue.rawValue
+        }
+    }
+
+    var coinSelectionAlgorithm: CoinSelectionAlgorithm {
+        get {
+            CoinSelectionAlgorithm.from(stringValue: _coinSelectionAlgorithm)
+        }
+        set {
+            _coinSelectionAlgorithm = newValue.stringValue
+        }
+    }
 
     init() {
         if hideBalanceOnOpen {
