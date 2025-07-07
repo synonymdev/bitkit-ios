@@ -17,8 +17,8 @@ class AppViewModel: ObservableObject {
     // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
     @Published var scannedLightningBolt11Invoice: String?
 
+    //Send flow
     @Published var scannedOnchainInvoice: OnChainInvoice?
-    @Published var sendAmountSats: UInt64?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
 
     @Published var isGeoBlocked: Bool? = nil
@@ -260,7 +260,6 @@ extension AppViewModel {
             guard let self = self else { return }
             self.scannedLightningInvoice = nil
             self.scannedOnchainInvoice = nil
-            self.sendAmountSats = nil
             self.selectedWalletToPayFrom = .onchain // Reset to default
         }
     }

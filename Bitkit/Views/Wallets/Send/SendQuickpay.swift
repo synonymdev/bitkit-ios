@@ -89,7 +89,7 @@ struct SendQuickpay: View {
                         do {
                             let paymentHash = try await wallet.send(
                                 bolt11: bolt11,
-                                sats: app.sendAmountSats,
+                                sats: wallet.sendAmountSats,
                                 onSuccess: {
                                     Logger.info("Lightning payment successful")
                                     // app.resetSendState()

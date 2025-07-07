@@ -5,9 +5,9 @@
 //  Created by Jason van den Berg on 2025/03/12.
 //
 
+import BitkitCore
 import LDKNode
 import SwiftUI
-import BitkitCore
 
 struct TransferUiState {
     var order: IBtOrder? = nil
@@ -36,8 +36,8 @@ class TransferViewModel: ObservableObject {
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
-    private let retryInterval: TimeInterval = 60  // 1 min
-    private let giveUpInterval: TimeInterval = 30 * 60  // 30 min
+    private let retryInterval: TimeInterval = 60 // 1 min
+    private let giveUpInterval: TimeInterval = 30 * 60 // 30 min
     private var coopCloseRetryTask: Task<Void, Never>?
 
     init(
@@ -99,13 +99,13 @@ class TransferViewModel: ObservableObject {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
             fees = try await coreService.blocktank.fees(refresh: false)
         }
-        
+
         guard let fees else {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
-        
+
         let satsPerVbyte = fees.getSatsPerVbyte(for: speed)
-        
+
         let paymentHash = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
         lightningSetupStep = 0
         watchOrder(orderId: order.id)
@@ -316,7 +316,7 @@ class TransferViewModel: ObservableObject {
         return try await closeChannels(channels: channelsToClose)
     }
 
-    private func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
+    func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
         var failedChannels: [ChannelDetails] = []
 
         try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in
