@@ -59,6 +59,13 @@ struct BackupMnemonicView: View {
                 .cornerRadius(16)
                 .padding(.top, 16)
                 .padding(.bottom, 32)
+                .onLongPressGesture(minimumDuration: 1.0) {
+                    if Env.isDebug {
+                        let mnemonicString = mnemonic.joined(separator: " ")
+                        UIPasteboard.general.string = mnemonicString
+                        app.toast(type: .success, title: localizedString("common__copied"), description: "Mnemonic copied to clipboard")
+                    }
+                }
 
                 BodySText(localizedString("security__mnemonic_never_share"), accentColor: .brandAccent)
 

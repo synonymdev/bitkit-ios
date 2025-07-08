@@ -123,6 +123,7 @@ struct RestoreWalletView: View {
         VStack(spacing: 0) {
             DisplayText(localizedString("onboarding__restore_header"), accentColor: .blueAccent)
                 .padding(.top, 40)
+                .padding(.bottom, 14)
 
             BodyMText(localizedString("onboarding__restore_phrase"))
                 .frame(maxWidth: .infinity, alignment: .leading)
