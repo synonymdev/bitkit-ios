@@ -88,7 +88,7 @@ struct ContentView: View {
             initializingContent
         } else if wallet.isRestoringWallet {
             // Wallet exists and has been restored from backup. isRestoringWallet is set to false inside below component
-            WalletInitResultView(result: .restored)
+            WalletRestoreSuccess()
         } else {
             MainNavView()
         }
@@ -96,8 +96,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var initializingContent: some View {
-        if case .errorStarting(let error) = wallet.nodeLifecycleState {
-            WalletInitResultView(result: .failed(error))
+        if case .errorStarting(_) = wallet.nodeLifecycleState {
+            WalletRestoreError()
         } else {
             InitializingWalletView(shouldFinish: $walletInitShouldFinish) {
                 Logger.debug("Wallet finished initializing but node state is \(wallet.nodeLifecycleState)")
