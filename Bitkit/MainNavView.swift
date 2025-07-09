@@ -59,7 +59,7 @@ struct MainNavView: View {
             item: $sheets.notificationsSheetItem,
             onDismiss: {
                 sheets.hideSheet()
-                app.ignoreNotifications()
+                app.hasSeenNotificationsIntro = true
             }
         ) {
             config in NotificationsSheet(config: config)
@@ -222,6 +222,10 @@ struct MainNavView: View {
                 SavingsIntroView()
             case .savingsAvailability:
                 SavingsAvailabilityView()
+            case .notifications:
+                NotificationsSettings()
+            case .notificationsIntro:
+                NotificationsIntro()
             case .profile:
                 // ProfileView()
                 Text("Coming Soon")

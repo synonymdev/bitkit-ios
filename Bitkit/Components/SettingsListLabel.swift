@@ -19,6 +19,7 @@ struct SettingsListLabel: View {
     let rightText: String?
     let rightIcon: SettingsListRightIcon?
     let toggle: Binding<Bool>?
+    let disabled: Bool?
 
     init(
         title: String,
@@ -26,7 +27,8 @@ struct SettingsListLabel: View {
         iconColor: Color = .white,
         rightText: String? = nil,
         rightIcon: SettingsListRightIcon? = .chevron,
-        toggle: Binding<Bool>? = nil
+        toggle: Binding<Bool>? = nil,
+        disabled: Bool? = nil
     ) {
         self.title = title
         self.iconName = iconName
@@ -34,6 +36,7 @@ struct SettingsListLabel: View {
         self.rightText = rightText
         self.rightIcon = rightIcon
         self.toggle = toggle
+        self.disabled = disabled
     }
 
     var body: some View {
@@ -56,6 +59,7 @@ struct SettingsListLabel: View {
                     Toggle("", isOn: toggle)
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
+                        .disabled(disabled ?? false)
                 } else {
                     if let rightText = rightText {
                         BodyMText(rightText, textColor: .textPrimary)
@@ -83,6 +87,5 @@ struct SettingsListLabel: View {
                 .fill(Color.white10)
                 .frame(height: 1)
         }
-        .padding(.horizontal, 16)
     }
 }

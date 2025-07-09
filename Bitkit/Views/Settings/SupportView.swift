@@ -7,7 +7,6 @@ struct SupportView: View {
         VStack(spacing: 0) {
             BodyMText(localizedString("settings__support__text"))
                 .padding(.vertical, 16)
-                .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
                 NavigationLink(destination: ReportIssue()) {
@@ -35,14 +34,13 @@ struct SupportView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 256)
             }
-            .padding(.horizontal, 16)
 
             Spacer(minLength: 32)
 
             Social()
-                .padding(.horizontal, 16)
         }
         .padding(.top, 16)
+        .padding(.horizontal, 16)
         .navigationTitle(localizedString("settings__support__title"))
         .navigationBarTitleDisplayMode(.inline)
     }

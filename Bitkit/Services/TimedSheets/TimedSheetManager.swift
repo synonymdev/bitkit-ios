@@ -43,6 +43,7 @@ class TimedSheetManager: ObservableObject {
     func setup(
         sheetViewModel: SheetViewModel,
         appViewModel: AppViewModel,
+        settingsViewModel: SettingsViewModel,
         walletViewModel: WalletViewModel,
         currencyViewModel: CurrencyViewModel
     ) {
@@ -56,18 +57,22 @@ class TimedSheetManager: ObservableObject {
         let backupSheet = BackupTimedSheet(appViewModel: appViewModel, walletViewModel: walletViewModel)
         registerSheet(backupSheet)
 
-        let notificationsSheet = NotificationsTimedSheet(appViewModel: appViewModel)
-        registerSheet(notificationsSheet)
-
-        let quickpaySheet = QuickpayTimedSheet(appViewModel: appViewModel, walletViewModel: walletViewModel)
-        registerSheet(quickpaySheet)
-
         let highBalanceSheet = HighBalanceTimedSheet(
             appViewModel: appViewModel,
             walletViewModel: walletViewModel,
             currencyViewModel: currencyViewModel
         )
         registerSheet(highBalanceSheet)
+
+        let notificationsSheet = NotificationsTimedSheet(
+            appViewModel: appViewModel,
+            settingsViewModel: settingsViewModel,
+            walletViewModel: walletViewModel
+        )
+        registerSheet(notificationsSheet)
+
+        let quickpaySheet = QuickpayTimedSheet(appViewModel: appViewModel, walletViewModel: walletViewModel)
+        registerSheet(quickpaySheet)
 
         Logger.debug("TimedSheetManager setup complete with \(queuedSheets.count) registered sheets")
     }

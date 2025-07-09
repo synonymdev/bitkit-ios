@@ -75,7 +75,7 @@ let cards: [SuggestionCardData] = [
         id: "notifications",
         title: localizedString("cards__notifications__title"),
         description: localizedString("cards__notifications__description"),
-        imageName: "bell",
+        imageName: "bell-figure",
         color: .purple24,
         action: .notifications
     ),
@@ -121,6 +121,10 @@ struct Suggestions: View {
             }
 
             if card.action == .secure && settings.pinEnabled {
+                return false
+            }
+
+            if card.action == .notifications && settings.notificationServerRegistered {
                 return false
             }
 
@@ -193,7 +197,7 @@ struct Suggestions: View {
         case .quickpay:
             route = app.hasSeenQuickpayIntro ? .quickpay : .quickpayIntro
         case .notifications:
-            sheets.showSheet(.notifications)
+            route = app.hasSeenNotificationsIntro ? .notifications : .notificationsIntro
         case .secure:
             sheets.showSheet(.security, data: SecurityConfig(showLaterButton: true))
         case .shop:
