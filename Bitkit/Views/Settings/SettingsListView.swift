@@ -41,13 +41,6 @@ struct SettingsListView: View {
                     )
                 }
 
-                NavigationLink(destination: Text("Coming soon")) {
-                    SettingsListLabel(
-                        title: NSLocalizedString("settings__advanced_title", comment: ""),
-                        iconName: "settings-slider"
-                    )
-                }
-
                 NavigationLink(destination: SupportView()) {
                     SettingsListLabel(
                         title: NSLocalizedString("settings__support_title", comment: ""),
@@ -70,32 +63,8 @@ struct SettingsListView: View {
                         )
                     }
                 }
-
-                // TODO: add to subview
-                // NavigationLink(destination: LightningSettingsView()) {
-                //     Label {
-                //         Text("Lightning")
-                //     } icon: {
-                //         Image(systemName: "bolt.fill")
-                //     }
-                // }
-
-                // NavigationLink(destination: ChannelOrders()) {
-                //     Label {
-                //         Text("Channel Orders")
-                //     } icon: {
-                //         Image(systemName: "list.bullet.rectangle")
-                //     }
-                // }
-
-                // NavigationLink(destination: LogView()) {
-                //     Label {
-                //         Text("Logs")
-                //     } icon: {
-                //         Image(systemName: "doc.text.fill")
-                //     }
-                // }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__settings", comment: ""))
         .navigationBarTitleDisplayMode(.inline)

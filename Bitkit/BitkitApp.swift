@@ -37,8 +37,22 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        // BlocktankViewMode picks this up later to handle the registration
-        UserDefaults.standard.setValue(deviceToken.map { String(format: "%02hhx", $0) }.joined(), forKey: "deviceToken")
+        // Convert token to hex string and register immediately with server
+        let tokenString = deviceToken.map { String(format: "%02hhx", $0) }.joined()
+
+        // Register with server immediately when we get a new token
+        Task {
+            do {
+                try await NotificationService.shared.registerDeviceForNotifications(deviceToken: tokenString)
+            } catch {
+                Logger.error("Failed to register device token with server: \(error)")
+                // Notify via callback that registration failed
+                await MainActor.run {
+                    NotificationService.shared.onRegistrationStatusChanged?(false)
+                    NotificationService.shared.onRegistrationFailed?(error)
+                }
+            }
+        }
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {

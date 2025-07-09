@@ -44,24 +44,26 @@ struct LocalCurrencySettingsView: View {
             if !availableMostUsed.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     CaptionText(NSLocalizedString("settings__general__currency_most_used", comment: "").uppercased())
-                        .padding(16)
+                        .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     ForEach(availableMostUsed, id: \.quote) { rate in
                         currencyRow(rate)
                     }
                 }
+                .padding(.horizontal, 16)
             }
 
             VStack(alignment: .leading, spacing: 8) {
                 CaptionText(NSLocalizedString("settings__general__currency_other", comment: "").uppercased())
-                    .padding(16)
+                    .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 ForEach(otherCurrencies, id: \.quote) { rate in
                     currencyRow(rate)
                 }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__general__currency_local_title", comment: ""))
         .searchable(text: $searchText, prompt: NSLocalizedString("common__search", comment: ""))

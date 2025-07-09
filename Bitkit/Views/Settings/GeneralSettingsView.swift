@@ -29,20 +29,13 @@ struct GeneralSettingsView: View {
                     )
                 }
 
-                NavigationLink(destination: Text("Coming soon")) {
-                    SettingsListLabel(
-                        title: localizedString("settings__general__app_icon"),
-                        rightText: "Orange"
-                    )
-                }
-
                 NavigationLink(destination: TagSettingsView()) {
                     SettingsListLabel(
                         title: localizedString("settings__general__tags")
                     )
                 }
 
-                NavigationLink(value: app.hasSeenWidgetsIntro ? Route.widgetsList : Route.widgetsIntro) {
+                NavigationLink(destination: WidgetsSettingsView()) {
                     SettingsListLabel(
                         title: localizedString("settings__widgets__nav_title")
                     )
@@ -53,7 +46,14 @@ struct GeneralSettingsView: View {
                         title: localizedString("settings__quickpay__nav_title")
                     )
                 }
+
+                NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
+                    SettingsListLabel(
+                        title: localizedString("settings__notifications__nav_title")
+                    )
+                }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(localizedString("settings__general_title"))
     }

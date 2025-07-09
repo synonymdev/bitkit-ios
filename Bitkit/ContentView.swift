@@ -57,6 +57,16 @@ struct ContentView: View {
             .environmentObject(transfer)
             .environmentObject(widgets)
             .environmentObject(settings)
+            .onAppear {
+                // Set up failure callback to show toast
+                NotificationService.shared.onRegistrationFailed = { error in
+                    app.toast(
+                        type: .error,
+                        title: "Notification Registration Failed",
+                        description: "Bitkit was unable to register for push notifications."
+                    )
+                }
+            }
     }
 
     @ViewBuilder
@@ -158,42 +168,17 @@ struct ContentView: View {
         }
 
         Task {
-            await startWalletAndSetupNotifications()
+            await startWallet()
         }
     }
 
-    private func startWalletAndSetupNotifications() async {
+    private func startWallet() async {
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
         } catch {
             Logger.error("Failed to start wallet")
             Haptics.notify(.error)
-        }
-
-        // TODO: should be move to onboarding or when creating first invoice
-        if UserDefaults.standard.string(forKey: "deviceToken") == nil {
-            StartupHandler.requestPushNotificationPermission { granted, error in
-                // If granted AppDelegate will receive the token and handle registration
-                if let error {
-                    Logger.error(error, context: "Failed to request push notification permission")
-                    app.toast(error)
-                    return
-                }
-
-                if granted {
-                    Logger.debug("Push notification permission granted, requesting device token")
-                    Task {
-                        do {
-                            // Sleep 1 second to ensure token is saved in AppDelegate
-                            try await Task.sleep(nanoseconds: 1_000_000_000)
-                            try await blocktank.registerDeviceForNotifications()
-                        } catch {
-                            Logger.error(error, context: "Failed to register device for notifications, will retry on next app launch")
-                        }
-                    }
-                }
-            }
         }
     }
 
@@ -206,6 +191,7 @@ struct ContentView: View {
             TimedSheetManager.shared.setup(
                 sheetViewModel: sheets,
                 appViewModel: app,
+                settingsViewModel: settings,
                 walletViewModel: wallet,
                 currencyViewModel: currency
             )

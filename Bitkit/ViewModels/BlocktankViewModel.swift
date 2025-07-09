@@ -5,18 +5,18 @@
 //  Created by Jason van den Berg on 2024/09/12.
 //
 
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 @MainActor
 class BlocktankViewModel: ObservableObject {
     @Published var orders: [IBtOrder]? = nil
     @Published var cJitEntries: [IcJitEntry]? = nil
     @Published var info: IBtInfo? = nil
-    
+
     // Use -1 as a sentinel value to represent nil
     @AppStorage("minCjitSats") private var minCjitSatsStorage: Int = -1
-    
+
     var minCjitSats: UInt64? {
         get { minCjitSatsStorage == -1 ? nil : UInt64(minCjitSatsStorage) }
         set { minCjitSatsStorage = newValue == nil ? -1 : Int(newValue!) }
@@ -43,7 +43,6 @@ class BlocktankViewModel: ObservableObject {
         self.currencyService = currencyService
 
         Task { try? await refreshInfo() }
-        Task { try? await registerDeviceForNotifications() }  // Checks if we have a device token that may need to still be registered
         startPolling()
     }
 
@@ -82,7 +81,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     func refreshInfo() async throws {
-        info = try await getInfo(refresh: false)  // Instant set cached info to state before refreshing
+        info = try await getInfo(refresh: false) // Instant set cached info to state before refreshing
         info = try await getInfo(refresh: true)
     }
 
@@ -151,7 +150,8 @@ class BlocktankViewModel: ObservableObject {
         let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
 
         Logger.debug(
-            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(finalChannelExpiryWeeks) and options: \(options)")
+            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(finalChannelExpiryWeeks) and options: \(options)"
+        )
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
@@ -215,115 +215,50 @@ class BlocktankViewModel: ObservableObject {
         )
     }
 
-    func registerDeviceForNotifications(force: Bool = false) async throws {
-        // Token saved in AppDelegate
-        guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
-            Logger.debug("No device token found yet, skipping notification registration")
-            return
-        }
-
-        // Check if this token has already been registered (unless force flag is true)
-        if !force {
-            let lastRegisteredToken = UserDefaults.standard.string(forKey: "lastRegisteredDeviceToken")
-            if deviceToken == lastRegisteredToken {
-                Logger.debug("Device token already registered with Blocktank, skipping registration")
-                return
-            }
-        }
-
-        guard let nodeId = LightningService.shared.nodeId else {
-            throw AppError(serviceError: .nodeNotStarted)
-        }
-
-        Logger.info("Registering device for notifications")
-
-        let isoTimestamp = ISO8601DateFormatter().string(from: Date())
-        let messageToSign = "bitkit-notifications\(deviceToken)\(isoTimestamp)"
-
-        let signature = try await LightningService.shared.sign(message: messageToSign)
-
-        let keypair = try Crypto.generateKeyPair()
-
-        Logger.debug("Notification encryption public key: \(keypair.publicKey.hex)")
-
-        // New keypair for each token registration
-        if try Keychain.exists(key: .pushNotificationPrivateKey) {
-            try? Keychain.delete(key: .pushNotificationPrivateKey)
-        }
-
-        try Keychain.save(key: .pushNotificationPrivateKey, data: keypair.privateKey)
-
-        let _ = try await coreService.blocktank.registerDeviceForNotifications(
-            deviceToken: deviceToken,
-            publicKey: keypair.publicKey.hex,
-            features: Env.pushNotificationFeatures.map { $0.feature },
-            nodeId: nodeId,
-            isoTimestamp: isoTimestamp,
-            signature: signature
-        )
-
-        // Save this token as successfully registered
-        UserDefaults.standard.setValue(deviceToken, forKey: "lastRegisteredDeviceToken")
-        Logger.debug("Device successfully registered for notifications")
-    }
-
-    func pushNotificationTest() async throws {
-        guard let deviceToken = UserDefaults.standard.string(forKey: "deviceToken") else {
-            throw BlocktankError_deprecated.missingDeviceToken
-        }
-
-        Logger.debug("Sending test notification to self")
-
-        let _ = try await coreService.blocktank.pushNotificationTest(
-            deviceToken: deviceToken,
-            secretMessage: "hello",
-            notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue
-        )
-    }
-
     private func getDefaultLspBalance(clientBalance: UInt64) async throws -> UInt64 {
         if info == nil {
             try await refreshInfo()
         }
         let maxLspBalance = info?.options.maxChannelSizeSat ?? 0
-        
+
         // Get current rates
         guard let rates = currencyService.loadCachedRates(),
-              let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates) else {
+            let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
+        else {
             Logger.error("Failed to get EUR rate for lspBalance calculation")
             throw CustomServiceError.currencyRateUnavailable
         }
-        
+
         // Calculate thresholds in sats
         let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
         let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
         let defaultLspBalance = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
-        
+
         Logger.debug("getDefaultLspBalance - clientBalance: \(clientBalance)")
         Logger.debug("getDefaultLspBalance - maxLspBalance: \(maxLspBalance)")
         Logger.debug("getDefaultLspBalance - defaultLspBalance: \(defaultLspBalance)")
-        
+
         // Safely calculate lspBalance to avoid arithmetic overflow
         var lspBalance: UInt64 = 0
         if defaultLspBalance > clientBalance {
             lspBalance = defaultLspBalance - clientBalance
         }
-        
+
         if clientBalance > threshold1 {
             lspBalance = clientBalance
         }
-        
+
         if clientBalance > threshold2 {
             lspBalance = maxLspBalance
         }
-        
+
         return min(lspBalance, maxLspBalance)
     }
 
     func refreshMinCjitSats() async throws {
-        do {            
+        do {
             let lspBalance = try await getDefaultLspBalance(clientBalance: 0)
-            
+
             // Get fees and calculate minimum
             let fees = try await estimateOrderFee(spendingBalanceSats: 0, receivingBalanceSats: lspBalance)
             let minimum = UInt64(ceil(Double(fees.feeSat) * 1.1 / 1000) * 1000)

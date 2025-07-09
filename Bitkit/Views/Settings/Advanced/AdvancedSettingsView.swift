@@ -9,8 +9,8 @@ import SwiftUI
 
 struct AdvancedSettingsView: View {
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
                 // PAYMENTS Section
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
@@ -18,9 +18,9 @@ struct AdvancedSettingsView: View {
                             NSLocalizedString("settings__adv__section_payments", comment: ""),
                             textColor: .textSecondary
                         )
-                        .padding(.horizontal, 16)
                         .padding(.top, 24)
                         .padding(.bottom, 8)
+
                         Spacer()
                     }
 
@@ -58,9 +58,9 @@ struct AdvancedSettingsView: View {
                             NSLocalizedString("settings__adv__section_networks", comment: ""),
                             textColor: .textSecondary
                         )
-                        .padding(.horizontal, 16)
                         .padding(.top, 24)
                         .padding(.bottom, 8)
+
                         Spacer()
                     }
 
@@ -96,7 +96,6 @@ struct AdvancedSettingsView: View {
                             NSLocalizedString("settings__adv__section_other", comment: ""),
                             textColor: .textSecondary
                         )
-                        .padding(.horizontal, 16)
                         .padding(.top, 24)
                         .padding(.bottom, 8)
                         Spacer()
@@ -126,6 +125,7 @@ struct AdvancedSettingsView: View {
                         .frame(height: 32)
                 }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__advanced_title", comment: ""))
     }
