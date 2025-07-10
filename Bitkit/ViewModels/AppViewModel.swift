@@ -26,6 +26,7 @@ class AppViewModel: ObservableObject {
     // Onboarding
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
+    @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
     @AppStorage("hasSeenQuickpayIntro") var hasSeenQuickpayIntro: Bool = false
     @AppStorage("hasSeenShopIntro") var hasSeenShopIntro: Bool = false
     @AppStorage("hasSeenTransferToSpendingIntro") var hasSeenTransferToSpendingIntro: Bool = false
@@ -45,9 +46,6 @@ class AppViewModel: ObservableObject {
     // High balance warning tracking
     @AppStorage("highBalanceIgnoreCount") var highBalanceIgnoreCount: Int = 0
     @AppStorage("highBalanceIgnoreTimestamp") var highBalanceIgnoreTimestamp: TimeInterval = 0
-
-    // Notifications tracking
-    @AppStorage("notificationsIgnoreTimestamp") var notificationsIgnoreTimestamp: TimeInterval = 0
 
     // Drawer menu
     @Published var showDrawer = false
@@ -315,9 +313,5 @@ extension AppViewModel {
     func ignoreHighBalance() {
         highBalanceIgnoreCount += 1
         highBalanceIgnoreTimestamp = Date().timeIntervalSince1970
-    }
-
-    func ignoreNotifications() {
-        notificationsIgnoreTimestamp = Date().timeIntervalSince1970
     }
 }

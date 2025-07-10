@@ -7,8 +7,8 @@ struct QuickpayTimedSheet: TimedSheetItem {
     let priority = TimedSheetPriority.low
     let sheetItem: any SheetItem = QuickpaySheetItem()
 
-    private let walletViewModel: WalletViewModel
     private let appViewModel: AppViewModel
+    private let walletViewModel: WalletViewModel
 
     init(appViewModel: AppViewModel, walletViewModel: WalletViewModel) {
         self.appViewModel = appViewModel

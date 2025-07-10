@@ -5,14 +5,13 @@ struct TagSettingsView: View {
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 if !activityViewModel.recentlyUsedTags.isEmpty {
                     CaptionText(NSLocalizedString("settings__general__tags_previously", comment: ""))
                         .textCase(.uppercase)
                         .padding(.top, 24)
                         .padding(.bottom, 16)
-                        .padding(.horizontal, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     WrappingHStack(spacing: 8) {
@@ -26,19 +25,17 @@ struct TagSettingsView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 16)
                 } else {
                     CaptionText(NSLocalizedString("wallet__tags_no", comment: ""))
                         .textCase(.uppercase)
                         .padding(.top, 24)
                         .padding(.bottom, 16)
-                        .padding(.horizontal, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__general__tags", comment: ""))
-        .navigationBarTitleDisplayMode(.large)
         .task {
             await activityViewModel.syncState()
         }

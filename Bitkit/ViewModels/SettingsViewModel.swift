@@ -7,6 +7,7 @@
 
 import LDKNode
 import SwiftUI
+import UserNotifications
 
 enum CoinSelectionMethod: String, CaseIterable {
     case manual = "manual"
@@ -181,11 +182,27 @@ class SettingsViewModel: ObservableObject {
         }
     }
 
+    @Published var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @Published var notificationServerRegistered: Bool = false
+    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
+
+    func checkNotificationPermission() {
+        NotificationService.shared.checkNotificationPermission { status in
+            self.notificationAuthorizationStatus = status
+        }
+    }
+
     init() {
         if hideBalanceOnOpen {
             hideBalance = true
         }
 
         updatePinEnabledState()
+        checkNotificationPermission()
+
+        // Set up callback for registration status changes
+        NotificationService.shared.onRegistrationStatusChanged = { [weak self] registered in
+            self?.notificationServerRegistered = registered
+        }
     }
 }
