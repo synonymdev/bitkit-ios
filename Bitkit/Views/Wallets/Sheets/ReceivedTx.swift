@@ -1,3 +1,4 @@
+import Lottie
 import SwiftUI
 
 struct ReceivedTxSheetItem: SheetItem {
@@ -14,31 +15,47 @@ struct ReceivedTx: View {
     // Keep in state so we don't get a new random text on each render
     @State private var buttonText: String = localizedRandom("common__ok_random")
 
+    // Load the confetti animation
+    private var confettiAnimation: LottieAnimation? {
+        let isOnchain = config.details.type == .onchain
+        let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
+
+        guard let filepathURL = Bundle.main.url(forResource: animationName, withExtension: "json") else {
+            print("Could not find \(animationName).json in bundle")
+            return nil
+        }
+
+        return LottieAnimation.filepath(filepathURL.path)
+    }
+
     var body: some View {
         let isOnchain = config.details.type == .onchain
         let title = isOnchain ? localizedString("wallet__payment_received") : localizedString("wallet__instant_payment_received")
 
         Sheet(id: .receivedTx, data: config) {
-            VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: title)
+            ZStack {
+                if let animation = confettiAnimation {
+                    LottieView(animation: animation)
+                        .playing(loopMode: .loop)
+                        // Scale the animation to fill the sheet
+                        .scaleEffect(1.9)
+                        .frame(width: .infinity, height: .infinity)
+                }
 
-                MoneyStack(sats: Int(config.details.sats))
-
-                Spacer()
-
-                Image("check")
+                Image("coins-received")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(width: 300, height: 300)
                     .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: 50)
 
-                Spacer()
-
-                CustomButton(title: buttonText) {
-                    sheets.hideSheet()
+                VStack(alignment: .leading, spacing: 0) {
+                    SheetHeader(title: title)
+                    MoneyStack(sats: Int(config.details.sats))
+                    Spacer()
+                    CustomButton(title: buttonText) { sheets.hideSheet() }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
         }
     }
 }
