@@ -5,6 +5,7 @@
 //  Created by Jason van den Berg on 2024/07/01.
 //
 
+import BitkitCore
 import Foundation
 import LDKNode
 import LocalAuthentication
@@ -41,6 +42,20 @@ enum Env {
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
     static let walletSyncIntervalSecs: UInt64 = 10 //TODO: play arond with this
+
+    /// Converts the LDKNode.Network to BitkitCore.Network for use with bitkitcore functions
+    static var bitkitCoreNetwork: BitkitCore.Network {
+        switch network {
+        case .bitcoin:
+            return .bitcoin
+        case .testnet:
+            return .testnet
+        case .signet:
+            return .signet
+        case .regtest:
+            return .regtest
+        }
+    }
 
     // MARK: Security settings
 

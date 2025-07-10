@@ -41,13 +41,6 @@ struct SettingsListView: View {
                     )
                 }
 
-                NavigationLink(destination: Text("Coming soon")) {
-                    SettingsListLabel(
-                        title: NSLocalizedString("settings__advanced_title", comment: ""),
-                        iconName: "settings-slider"
-                    )
-                }
-
                 NavigationLink(destination: SupportView()) {
                     SettingsListLabel(
                         title: NSLocalizedString("settings__support_title", comment: ""),
