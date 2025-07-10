@@ -69,6 +69,7 @@ struct CustomButton: View {
         case primary
         case secondary
         case tertiary
+        case accent
     }
 
     let title: String
@@ -166,6 +167,12 @@ struct CustomButton: View {
             }
         case .secondary, .tertiary:
             return .clear
+        case .accent:
+            if isPressed {
+                return .brandAccent.opacity(0.8)
+            } else {
+                return .brandAccent
+            }
         }
     }
 
@@ -183,6 +190,8 @@ struct CustomButton: View {
             } else {
                 return .white80
             }
+        case .accent:
+            return .white
         }
     }
 
@@ -201,6 +210,8 @@ struct CustomButton: View {
                 return .white16
             }
         case .tertiary:
+            return nil
+        case .accent:
             return nil
         }
     }
