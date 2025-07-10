@@ -1,13 +1,13 @@
 import SwiftUI
 
-struct NewTransactionSheetItem: SheetItem {
+struct ReceivedTxSheetItem: SheetItem {
     let id: SheetID = .receivedTx
     let size: SheetSize = .large
-    let details: NewTransactionSheetDetails
+    let details: ReceivedTxSheetDetails
 }
 
-struct NewTransactionSheet: View {
-    let config: NewTransactionSheetItem
+struct ReceivedTx: View {
+    let config: ReceivedTxSheetItem
 
     @EnvironmentObject private var sheets: SheetViewModel
 
@@ -19,24 +19,27 @@ struct NewTransactionSheet: View {
         let title = isOnchain ? localizedString("wallet__payment_received") : localizedString("wallet__instant_payment_received")
 
         Sheet(id: .receivedTx, data: config) {
-            SheetHeader(title: title)
+            VStack(alignment: .leading, spacing: 0) {
+                SheetHeader(title: title)
 
-            MoneyStack(sats: Int(config.details.sats))
+                MoneyStack(sats: Int(config.details.sats))
 
-            Spacer()
+                Spacer()
 
-            Image("check")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 300, height: 300)
+                Image("check")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 300, height: 300)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
-            Spacer()
+                Spacer()
 
-            CustomButton(title: buttonText) {
-                sheets.hideSheet()
+                CustomButton(title: buttonText) {
+                    sheets.hideSheet()
+                }
             }
+            .padding(.horizontal, 16)
         }
-        .padding(.horizontal)
     }
 }
 
@@ -45,10 +48,8 @@ struct NewTransactionSheet: View {
         .sheet(
             isPresented: .constant(true),
             content: {
-                NewTransactionSheet(
-                    config: NewTransactionSheetItem(details: NewTransactionSheetDetails(type: .lightning, direction: .sent, sats: 1000))
-                )
-                .environmentObject(SheetViewModel())
+                ReceivedTx(config: ReceivedTxSheetItem(details: ReceivedTxSheetDetails(type: .lightning, sats: 1000)))
+                    .environmentObject(SheetViewModel())
             }
         )
         .presentationDetents([.height(UIScreen.screenHeight - 120)])

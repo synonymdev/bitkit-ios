@@ -8,6 +8,7 @@ struct SheetIntro: View {
     let continueText: String
     let cancelText: String?
     let accentColor: Color
+    let accentFont: ((CGFloat) -> Font)?
     let testID: String?
     let onCancel: (() -> Void)?
     let onContinue: () -> Void
@@ -20,6 +21,7 @@ struct SheetIntro: View {
         continueText: String,
         cancelText: String? = nil,
         accentColor: Color = .brandAccent,
+        accentFont: ((CGFloat) -> Font)? = nil,
         testID: String? = nil,
         onCancel: (() -> Void)? = nil,
         onContinue: @escaping () -> Void
@@ -31,6 +33,7 @@ struct SheetIntro: View {
         self.continueText = continueText
         self.cancelText = cancelText
         self.accentColor = accentColor
+        self.accentFont = accentFont
         self.testID = testID
         self.onCancel = onCancel
         self.onContinue = onContinue
@@ -54,7 +57,7 @@ struct SheetIntro: View {
                     .padding(.bottom, 14)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                BodyMText(description)
+                BodyMText(description, accentFont: accentFont)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 

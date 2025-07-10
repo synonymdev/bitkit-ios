@@ -78,7 +78,7 @@ struct MainNavView: View {
                 sheets.hideSheet()
             }
         ) {
-            config in NewTransactionSheet(config: config)
+            config in ReceivedTx(config: config)
         }
         .sheet(
             item: $sheets.scannerSheetItem,
