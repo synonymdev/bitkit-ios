@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		4AFCA3702E05933800205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA36F2E05933800205CAE /* Zip */; };
 		4AFCA3722E0596D900205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA3712E0596D900205CAE /* Zip */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -157,6 +158,7 @@
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
 				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
 				96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */,
+				4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -261,6 +263,7 @@
 				96DEA0392DE8BBA1009932BF /* BitkitCore */,
 				96204B772DE9AA43007BAA26 /* SQLite */,
 				4AFCA36F2E05933800205CAE /* Zip */,
+				4AAB08C92E1FE77600BA63DF /* Lottie */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -369,6 +372,7 @@
 				96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */,
 				4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */,
 				968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */,
+				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -858,6 +862,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/airbnb/lottie-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 4.5.2;
+			};
+		};
 		4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/marmelroy/Zip.git";
@@ -925,6 +937,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		4AAB08C92E1FE77600BA63DF /* Lottie */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */;
+			productName = Lottie;
+		};
 		4AFCA36F2E05933800205CAE /* Zip */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */;
