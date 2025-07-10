@@ -269,7 +269,7 @@ extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let customRecords):
-            sheetViewModel.showSheet(.receivedTx, data: NewTransactionSheetDetails(type: .lightning, direction: .received, sats: amountMsat / 1000))
+            sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
             break
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
@@ -277,8 +277,7 @@ extension AppViewModel {
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                sheetViewModel.showSheet(
-                    .receivedTx, data: NewTransactionSheetDetails(type: .lightning, direction: .received, sats: channel.inboundCapacityMsat / 1000))
+                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: channel.inboundCapacityMsat / 1000))
             } else {
                 toast(type: .error, title: "Channel opened", description: "Ready to send")
             }

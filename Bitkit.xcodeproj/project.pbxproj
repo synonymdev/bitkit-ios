@@ -105,7 +105,7 @@
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
-				Models/NewTransactionSheetDetails.swift,
+				Models/ReceivedTxSheetDetails.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
 				Services/LightningService.swift,
