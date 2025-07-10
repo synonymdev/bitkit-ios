@@ -101,11 +101,11 @@ struct AdvancedSettingsView: View {
                         Spacer()
                     }
 
-                    // NavigationLink(destination: Text("Coming soon")) {
-                    //     SettingsListLabel(
-                    //         title: NSLocalizedString("settings__adv__address_viewer", comment: "")
-                    //     )
-                    // }
+                    NavigationLink(destination: AddressViewer()) {
+                        SettingsListLabel(
+                            title: NSLocalizedString("settings__adv__address_viewer", comment: "")
+                        )
+                    }
 
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(

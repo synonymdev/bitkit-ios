@@ -517,6 +517,116 @@ class BlocktankService {
     }
 }
 
+// MARK: - Utility Service
+
+class UtilityService {
+    private let coreService: CoreService
+
+    init(coreService: CoreService) {
+        self.coreService = coreService
+    }
+
+    func getAccountAddresses(
+        walletIndex: Int = 0,
+        isChange: Bool? = nil,
+        startIndex: UInt32? = nil,
+        count: UInt32? = nil
+    ) async throws -> AccountAddresses {
+        return try await ServiceQueue.background(.core) {
+            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+                throw AppError(message: "Mnemonic not found", debugMessage: "Unable to load mnemonic for wallet index \(walletIndex)")
+            }
+
+            let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+
+            // Create the correct derivation path based on network
+            let coinType = Env.network == .bitcoin ? "0" : "1"
+            let derivationPath = "m/84'/\(coinType)'/0'/0"
+
+            let response = try deriveBitcoinAddresses(
+                mnemonicPhrase: mnemonic,
+                derivationPathStr: derivationPath,
+                network: Env.bitkitCoreNetwork,
+                bip39Passphrase: passphrase,
+                isChange: isChange,
+                startIndex: startIndex,
+                count: count
+            )
+
+            // Convert GetAddressesResponse to AccountAddresses
+            let usedAddresses = response.addresses.compactMap { addr -> BitkitCore.AddressInfo? in
+                // You would determine if an address is used based on your logic
+                // For now, we'll create a basic conversion
+                return BitkitCore.AddressInfo(
+                    address: addr.address,
+                    path: addr.path,
+                    transfers: 0 // This would need to be determined from blockchain data
+                )
+            }
+
+            let unusedAddresses = response.addresses.compactMap { addr -> BitkitCore.AddressInfo? in
+                return BitkitCore.AddressInfo(
+                    address: addr.address,
+                    path: addr.path,
+                    transfers: 0
+                )
+            }
+
+            let changeAddresses: [BitkitCore.AddressInfo] = []
+
+            return AccountAddresses(
+                used: usedAddresses,
+                unused: unusedAddresses,
+                change: changeAddresses
+            )
+        }
+    }
+
+    /// Get balance for a specific address in satoshis using AddressChecker utility
+    /// - Parameter address: The Bitcoin address to check
+    /// - Returns: The current balance in satoshis
+    func getAddressBalance(address: String) async throws -> UInt64 {
+        let addressInfo = try await AddressChecker.getAddressInfo(address: address)
+
+        // Calculate current balance: received - spent
+        let received = UInt64(addressInfo.chain_stats.funded_txo_sum)
+        let spent = UInt64(addressInfo.chain_stats.spent_txo_sum)
+
+        // Handle potential underflow
+        return received >= spent ? received - spent : 0
+    }
+
+    /// Get balances for multiple addresses using AddressChecker utility
+    /// - Parameter addresses: Array of Bitcoin addresses to check
+    /// - Returns: Dictionary mapping addresses to their balances in satoshis
+    func getMultipleAddressBalances(addresses: [String]) async throws -> [String: UInt64] {
+        var balances: [String: UInt64] = [:]
+
+        // Fetch balances concurrently for better performance
+        await withTaskGroup(of: (String, UInt64?).self) { group in
+            for address in addresses {
+                group.addTask {
+                    do {
+                        let balance = try await self.getAddressBalance(address: address)
+                        return (address, balance)
+                    } catch {
+                        Logger.error("Failed to get balance for address \(address): \(error)", context: "UtilityService")
+                        return (address, nil)
+                    }
+                }
+            }
+
+            for await (address, balance) in group {
+                if let balance = balance {
+                    balances[address] = balance
+                }
+            }
+        }
+
+        return balances
+    }
+}
+
 // MARK: - Core Service requires shared init for both activity and blocktank services
 
 class CoreService {
@@ -525,6 +635,7 @@ class CoreService {
 
     lazy var activity: ActivityService = .init(coreService: self)
     lazy var blocktank: BlocktankService = .init(coreService: self)
+    lazy var utility: UtilityService = .init(coreService: self)
 
     private init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
