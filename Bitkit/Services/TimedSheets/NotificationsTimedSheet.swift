@@ -8,22 +8,27 @@ struct NotificationsTimedSheet: TimedSheetItem {
     let sheetItem: any SheetItem = NotificationsSheetItem()
 
     private let appViewModel: AppViewModel
+    private let settingsViewModel: SettingsViewModel
+    private let walletViewModel: WalletViewModel
 
-    // Notifications prompt constants
-    private static let ASK_INTERVAL: TimeInterval = 7 * 24 * 60 * 60 // 7 days - how long this prompt will not show after user dismisses
-
-    init(appViewModel: AppViewModel) {
+    init(appViewModel: AppViewModel, settingsViewModel: SettingsViewModel, walletViewModel: WalletViewModel) {
         self.appViewModel = appViewModel
+        self.settingsViewModel = settingsViewModel
+        self.walletViewModel = walletViewModel
     }
 
     @MainActor
     func shouldShow() async -> Bool {
-        // Check if user hasn't seen this prompt
-        let notificationsIgnoreTimestamp = appViewModel.notificationsIgnoreTimestamp
-        let currentTime = Date().timeIntervalSince1970
-        let isTimeoutOver = currentTime - notificationsIgnoreTimestamp > Self.ASK_INTERVAL
+        // Check if user hasn't been asked for permission yet
+        let isPermissionUndetermined = settingsViewModel.notificationAuthorizationStatus == .notDetermined
 
-        return isTimeoutOver
+        // Check if user hasn't seen this prompt
+        let hasSeenNotificationsIntro = appViewModel.hasSeenNotificationsIntro
+
+        // Check if user has spending balance
+        let hasSpendingBalance = walletViewModel.totalLightningSats > 0
+
+        return isPermissionUndetermined && !hasSeenNotificationsIntro && hasSpendingBalance
     }
 
     func onShown() {

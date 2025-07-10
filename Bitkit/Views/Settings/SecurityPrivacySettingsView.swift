@@ -30,8 +30,8 @@ struct SecurityPrivacySettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
                 // Privacy Settings Section
                 SettingsListLabel(
                     title: NSLocalizedString("settings__security__swipe_balance_to_hide", comment: ""),
@@ -144,9 +144,10 @@ struct SecurityPrivacySettingsView: View {
                             variables: ["biometryTypeName": biometryTypeName]),
                         textColor: .textSecondary
                     )
-                    .padding(16)
+                    .padding(.top, 16)
                 }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__security__title", comment: ""))
         .navigationDestination(isPresented: $showPinCheckForLaunch) {

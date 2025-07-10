@@ -20,7 +20,6 @@ struct QuickpaySettings: View {
                     BodyMText(
                         localizedString("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
                     )
-                    .padding(.horizontal, 16)
                     .padding(.top, 16)
 
                     VStack(alignment: .leading, spacing: 16) {
@@ -30,7 +29,6 @@ struct QuickpaySettings: View {
 
                         CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
                     }
-                    .padding(.horizontal, 16)
                     .padding(.top, 32)
 
                     VStack {
@@ -51,9 +49,9 @@ struct QuickpaySettings: View {
                         localizedString("settings__quickpay__settings__note"),
                         textColor: .textSecondary
                     )
-                    .padding(.horizontal, 16)
                 }
                 .frame(minHeight: geometry.size.height)
+                .padding(.horizontal, 16)
             }
         }
         .navigationTitle(localizedString("settings__quickpay__nav_title"))

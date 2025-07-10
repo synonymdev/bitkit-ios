@@ -43,14 +43,4 @@ class StartupHandler {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)
         }
     }
-
-    @MainActor
-    static func requestPushNotificationPermission(completionHandler: @escaping (Bool, Error?) -> Void) {
-        let authOptions: UNAuthorizationOptions = [.alert, .badge, .sound]
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: authOptions,
-            completionHandler: completionHandler
-        )
-        UIApplication.shared.registerForRemoteNotifications()
-    }
 }

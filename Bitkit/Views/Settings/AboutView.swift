@@ -19,7 +19,6 @@ struct AboutView: View {
         VStack(alignment: .leading, spacing: 0) {
             BodyMText(localizedString("settings__about__text"))
                 .padding(.vertical, 16)
-                .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
                 Button(action: {
@@ -55,14 +54,13 @@ struct AboutView: View {
                     .frame(maxHeight: 82)
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
 
             Spacer(minLength: 32)
 
             Social()
-                .padding(.horizontal, 16)
         }
         .padding(.top, 16)
+        .padding(.horizontal, 16)
         .navigationTitle(localizedString("settings__about__title"))
         .navigationBarTitleDisplayMode(.inline)
     }

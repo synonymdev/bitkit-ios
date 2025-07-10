@@ -7,7 +7,7 @@ struct DefaultUnitSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 CaptionText(NSLocalizedString("settings__general__unit_display", comment: "").uppercased())
-                    .padding(16)
+                    .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Button(action: {
@@ -35,12 +35,13 @@ struct DefaultUnitSettingsView: View {
                 }
 
                 BodyMText(localizedString("settings__general__unit_note", comment: "", variables: ["currency": currency.selectedCurrency]))
-                    .padding(16)
+                    .padding(.vertical, 16)
             }
+            .padding(.horizontal, 16)
 
             VStack(alignment: .leading, spacing: 8) {
                 CaptionText(NSLocalizedString("settings__general__denomination_label", comment: "").uppercased())
-                    .padding(16)
+                    .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 ForEach(BitcoinDisplayUnit.allCases, id: \.self) { unit in
@@ -55,6 +56,7 @@ struct DefaultUnitSettingsView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
+            .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__general__unit_title", comment: ""))
     }

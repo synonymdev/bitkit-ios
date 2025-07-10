@@ -10,6 +10,8 @@ enum Route: Hashable {
     case buyBitcoin
     case contacts
     case contactsIntro
+    case notifications
+    case notificationsIntro
     case profile
     case profileIntro
     case quickpay
