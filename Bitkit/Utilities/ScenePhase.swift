@@ -48,9 +48,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                             Logger.debug("Ended background task on app becoming active")
                         }
 
-                        if let transaction = NewTransactionSheetDetails.load() {
+                        if let transaction = ReceivedTxSheetDetails.load() {
                             // Background extension received a transaction
-                            NewTransactionSheetDetails.clear()
+                            ReceivedTxSheetDetails.clear()
                             sheets.showSheet(.receivedTx, data: transaction)
                         }
 

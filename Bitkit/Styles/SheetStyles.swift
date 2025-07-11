@@ -6,7 +6,7 @@ extension View {
         self
             .background(
                 LinearGradient(
-                    gradient: Gradient(colors: [Color.white.opacity(0.08), Color.black]),
+                    gradient: Gradient(colors: [Color.white.opacity(0.1), Color.black]),
                     startPoint: .top,
                     endPoint: .bottom
                 )

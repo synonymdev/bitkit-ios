@@ -9,7 +9,7 @@ import LDKNode
 import UserNotifications
 
 class NotificationService: UNNotificationServiceExtension {
-    let walletIndex = 0  // Assume first wallet for now
+    let walletIndex = 0 // Assume first wallet for now
 
     var contentHandler: ((UNNotificationContent) -> Void)?
     var bestAttemptContent: UNMutableNotificationContent?
@@ -46,7 +46,7 @@ class NotificationService: UNNotificationServiceExtension {
             }
 
             do {
-                try await LightningService.shared.setup(walletIndex: self.walletIndex)  // Assume first wallet for now
+                try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)
@@ -146,11 +146,11 @@ class NotificationService: UNNotificationServiceExtension {
     /// - Parameter event
     func handleLdkEvent(event: Event) {
         switch event {
-        case .paymentReceived(paymentId: let paymentId, paymentHash: let paymentHash, amountMsat: let amountMsat, customRecords: let customRecords):
+        case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let customRecords):
             self.bestAttemptContent?.title = "Payment Received"
             let sats = amountMsat / 1000
             self.bestAttemptContent?.body = "⚡ \(sats)"
-            NewTransactionSheetDetails(type: .lightning, direction: .received, sats: sats).save()  // Save for UI to pick up
+            ReceivedTxSheetDetails(type: .lightning, sats: sats).save() // Save for UI to pick up
 
             if self.notificationType == .incomingHtlc {
                 self.deliver()
@@ -167,7 +167,7 @@ class NotificationService: UNNotificationServiceExtension {
                 if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
                     let sats = channel.inboundCapacityMsat / 1000
                     self.bestAttemptContent?.title = "Received ⚡ \(sats) sats"
-                    NewTransactionSheetDetails(type: .lightning, direction: .received, sats: sats).save()  // Save for UI to pick u
+                    ReceivedTxSheetDetails(type: .lightning, sats: sats).save() // Save for UI to pick u
                 }
             } else if self.notificationType == .orderPaymentConfirmed {
                 self.bestAttemptContent?.title = "Channel opened"

@@ -48,6 +48,7 @@ struct SheetHeader: View {
                 Spacer()
             }
         }
+        .padding(.top, 32) // Make room for the drag indicator
         .padding(.bottom, 32)
     }
 }
@@ -77,26 +78,16 @@ struct Sheet<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .center, spacing: 0) {
-            // Custom drag indicator
+        ZStack(alignment: .top) {
+            content()
+                .sheetBackground()
+                .bottomSafeAreaPadding()
+
+            // Custom drag indicator - always on top
             RoundedRectangle(cornerRadius: 2)
                 .fill(Color.white32)
                 .frame(width: 32, height: 4)
                 .padding(.top, 12)
-                .padding(.bottom, 16)
-                .frame(maxWidth: .infinity)
-                .background(
-                    LinearGradient(
-                        gradient: Gradient(colors: [Color.white.opacity(0.1), Color.white.opacity(0.08)]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-
-            content()
-                .sheetBackground()
-                .bottomSafeAreaPadding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .presentationBackgroundInteraction(.disabled)
         .presentationDetents([.height(sheetSize.height)])
