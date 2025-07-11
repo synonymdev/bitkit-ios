@@ -157,12 +157,12 @@ class SheetViewModel: ObservableObject {
         }
     }
 
-    var receivedTxSheetItem: NewTransactionSheetItem? {
+    var receivedTxSheetItem: ReceivedTxSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .receivedTx else { return nil }
-            let receivedTxConfig = config.data as? NewTransactionSheetDetails
+            let receivedTxConfig = config.data as? ReceivedTxSheetDetails
             guard let details = receivedTxConfig else { return nil }
-            return NewTransactionSheetItem(details: details)
+            return ReceivedTxSheetItem(details: details)
         }
         set {
             if newValue == nil {

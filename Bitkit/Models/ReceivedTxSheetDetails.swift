@@ -1,5 +1,5 @@
 //
-//  NewTransactionSheetDetails.swift
+//  ReceivedTxSheetDetails.swift
 //  Bitkit
 //
 //  Created by Jason van den Berg on 2024/10/18.
@@ -7,19 +7,13 @@
 
 import Foundation
 
-struct NewTransactionSheetDetails: Codable {
-    enum NewTransactionSheetType: Codable {
+struct ReceivedTxSheetDetails: Codable {
+    enum ReceivedTxType: Codable {
         case onchain
         case lightning
     }
 
-    enum NewTransactionSheetDirection: Codable {
-        case sent
-        case received
-    }
-
-    let type: NewTransactionSheetType
-    let direction: NewTransactionSheetDirection
+    let type: ReceivedTxType
     let sats: UInt64
 
     private static let appGroupUserDefaults = UserDefaults(suiteName: "group.bitkit")
@@ -34,14 +28,14 @@ struct NewTransactionSheetDetails: Codable {
         }
     }
 
-    static func load() -> NewTransactionSheetDetails? {
+    static func load() -> ReceivedTxSheetDetails? {
         guard let data = appGroupUserDefaults?.data(forKey: "backgroundTransaction") else {
             return nil
         }
 
         do {
             let decoder = JSONDecoder()
-            return try decoder.decode(NewTransactionSheetDetails.self, from: data)
+            return try decoder.decode(ReceivedTxSheetDetails.self, from: data)
         } catch {
             Logger.error(error, context: "Failed to load cached transaction")
             return nil
