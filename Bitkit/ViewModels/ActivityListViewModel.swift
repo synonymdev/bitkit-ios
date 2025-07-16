@@ -229,6 +229,20 @@ class ActivityListViewModel: ObservableObject {
         recentlyUsedTags.removeAll { $0 == tag }
         saveRecentlyUsedTags()
     }
+
+    // MARK: - Boost Methods
+
+    func boost(activityId: String, feeRate: UInt32) async throws -> String {
+        do {
+            let txid = try await coreService.activity.boostOnchainTransaction(activityId: activityId, feeRate: feeRate)
+            // Refresh the activities after boosting
+            await syncState()
+            return txid
+        } catch {
+            Logger.error(error, context: "Failed to boost activity \(activityId)")
+            throw error
+        }
+    }
 }
 
 // MARK: - Activity Grouping

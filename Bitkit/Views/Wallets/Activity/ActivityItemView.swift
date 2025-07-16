@@ -23,7 +23,7 @@ struct ActivityItemView: View {
     }
 
     private var isSent: Bool {
-        switch item {
+        switch viewModel.activity {
         case .lightning(let activity):
             return activity.txType == .sent
         case .onchain(let activity):
@@ -32,7 +32,7 @@ struct ActivityItemView: View {
     }
 
     private var isLightning: Bool {
-        switch item {
+        switch viewModel.activity {
         case .lightning:
             return true
         case .onchain:
@@ -41,7 +41,7 @@ struct ActivityItemView: View {
     }
 
     private var isTransfer: Bool {
-        switch item {
+        switch viewModel.activity {
         case .lightning:
             return false
         case .onchain(let activity):
@@ -54,7 +54,7 @@ struct ActivityItemView: View {
     }
 
     private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64) {
-        switch item {
+        switch viewModel.activity {
         case .lightning(let activity):
             return (activity.timestamp, activity.fee, activity.value)
         case .onchain(let activity):
@@ -83,13 +83,13 @@ struct ActivityItemView: View {
     }
 
     private var shouldDisableBoostButton: Bool {
-        switch item {
+        switch viewModel.activity {
         case .lightning:
             // Lightning transactions can never be boosted
             return true
         case .onchain(let activity):
-            // Disable boost for onchain if transaction is confirmed
-            return activity.confirmed == true
+            // Disable boost for onchain if transaction is confirmed or already boosted
+            return activity.confirmed == true || activity.isBoosted
         }
     }
 
@@ -123,11 +123,19 @@ struct ActivityItemView: View {
                 }
             }
         }
+        .onChange(of: sheets.boostSheetItem) { item in
+            if item == nil {
+                // Boost sheet was closed, reload activity in case it was boosted
+                Task {
+                    await viewModel.refreshActivity()
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private var amountView: some View {
-        switch item {
+        switch viewModel.activity {
         case .lightning(let activity):
             MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
         case .onchain(let activity):
@@ -137,7 +145,7 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var activityTypeIcon: some View {
-        ActivityIcon(activity: item, size: 48)
+        ActivityIcon(activity: viewModel.activity, size: 48)
     }
 
     @ViewBuilder
@@ -148,7 +156,7 @@ struct ActivityItemView: View {
                 .padding(.bottom, 8)
 
             HStack(spacing: 4) {
-                switch item {
+                switch viewModel.activity {
                 case .lightning(let activity):
                     switch activity.status {
                     case .pending:
@@ -173,6 +181,11 @@ struct ActivityItemView: View {
                             .foregroundColor(.greenAccent)
                             .frame(width: 16, height: 16)
                         BodySSBText(localizedString("wallet__activity_confirmed"), textColor: .greenAccent)
+                    } else if activity.isBoosted {
+                        Image("hourglass-simple")
+                            .foregroundColor(.yellowAccent)
+                            .frame(width: 16, height: 16)
+                        BodySSBText(localizedString("wallet__activity_confirms_in_boosted", variables: ["feeRateDescription": localizedString("fee__fast__shortDescription")]), textColor: .yellowAccent)
                     } else {
                         Image("hourglass-simple")
                             .foregroundColor(.brandAccent)
@@ -297,7 +310,7 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var note: some View {
-        if case .lightning(let activity) = item {
+        if case .lightning(let activity) = viewModel.activity {
             if !activity.message.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     CaptionText(localizedString("wallet__activity_invoice_note"))
@@ -335,7 +348,7 @@ struct ActivityItemView: View {
                     shouldExpand: true
                 ) {
                     let activityId =
-                        switch item {
+                        switch viewModel.activity {
                         case .lightning(let activity): activity.id
                         case .onchain(let activity): activity.id
                         }
@@ -353,7 +366,7 @@ struct ActivityItemView: View {
                     shouldExpand: true
                 ) {
                     // Only show boost sheet for onchain activities
-                    if case .onchain(let onchainActivity) = item {
+                    if case .onchain(let onchainActivity) = viewModel.activity {
                         sheets.showSheet(.boost, data: BoostConfig(onchainActivity: onchainActivity))
                     }
                 }
@@ -364,7 +377,7 @@ struct ActivityItemView: View {
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 ) {
-                    navigation.navigate(.activityExplorer(item))
+                    navigation.navigate(.activityExplorer(viewModel.activity))
                 }
             }
             .frame(maxWidth: .infinity)
