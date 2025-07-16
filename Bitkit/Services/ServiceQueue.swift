@@ -9,10 +9,10 @@ import Foundation
 
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
-    private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .utility)
-    private static let coreQueue = DispatchQueue(label: "core-queue", qos: .utility)
-    private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
-    private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .utility)
+    private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .userInteractive)
+    private static let coreQueue = DispatchQueue(label: "core-queue", qos: .userInteractive)
+    private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .userInteractive)
+    private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .userInteractive)
 
     private init() {}
 
