@@ -72,17 +72,30 @@ class ActivityService {
                             confirmedTimestamp = timestamp
                         }
 
+                        // Get existing activity to preserve certain flags like isBoosted
+                        let existingActivity = try getActivityById(activityId: payment.id)
+                        let preservedIsBoosted = if case .onchain(let existing) = existingActivity {
+                            existing.isBoosted
+                        } else {
+                            false
+                        }
+                        
+                        guard let value = payment.amountSats else {
+                            Logger.warn("Ignoring payment with missing value, probably additional boosted tx")
+                            return
+                        }
+
                         let onchain = OnchainActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
                             txId: txid,
-                            value: payment.amountSats ?? 0,
+                            value: value,
                             fee: (payment.feePaidMsat ?? 0) / 1000,
                             feeRate: 1, //TODO: get from somewhere
                             address: "todo_find_address",
                             confirmed: isConfirmed,
                             timestamp: timestamp,
-                            isBoosted: false, //TODO:
+                            isBoosted: preservedIsBoosted, // Preserve existing boost status
                             isTransfer: false, //TODO: handle when paying for order
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
@@ -92,7 +105,7 @@ class ActivityService {
                             updatedAt: timestamp
                         )
 
-                        if (try getActivityById(activityId: payment.id)) != nil {
+                        if existingActivity != nil {
                             try updateActivity(activityId: payment.id, activity: .onchain(onchain))
                             updatedCount += 1
                         } else {
@@ -207,6 +220,56 @@ class ActivityService {
     func allPossibleTags() async throws -> [String] {
         try await ServiceQueue.background(.core) {
             try getAllUniqueTags()
+        }
+    }
+
+    func boostOnchainTransaction(activityId: String, feeRate: UInt32) async throws -> String {
+        return try await ServiceQueue.background(.core) {
+            // Get the existing activity
+            guard let existingActivity = try getActivityById(activityId: activityId) else {
+                throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(activityId) not found")
+            }
+            
+            // Only onchain activities can be boosted
+            guard case .onchain(var onchainActivity) = existingActivity else {
+                throw AppError(message: "Only onchain activities can be boosted", debugMessage: "Activity \(activityId) is not an onchain activity")
+            }
+            
+            let txid: String
+            
+            if onchainActivity.txType == .received {
+                Logger.info("Executing CPFP boost for incoming transaction", context: "CoreService.boostOnchainTransaction")
+                Logger.debug("Parent transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
+                
+                // Use CPFP for incoming transactions
+                txid = try await LightningService.shared.accelerateByCpfp(
+                    txid: onchainActivity.txId,
+                    satsPerVbyte: feeRate
+                )
+                
+                Logger.info("CPFP transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
+            } else {
+                Logger.info("Executing RBF boost for outgoing transaction", context: "CoreService.boostOnchainTransaction")
+                Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
+                
+                // Use RBF for outgoing transactions
+                txid = try await LightningService.shared.bumpFeeByRbf(
+                    txid: onchainActivity.txId,
+                    satsPerVbyte: feeRate
+                )
+                
+                Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
+            }
+            
+            // Mark the original activity as boosted
+            onchainActivity.isBoosted = true
+            
+            // Update the activity in the database
+            try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
+            
+            Logger.info("Successfully marked activity \(activityId) as boosted", context: "CoreService.boostOnchainTransaction")
+            
+            return txid
         }
     }
 

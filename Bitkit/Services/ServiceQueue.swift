@@ -69,8 +69,7 @@ class ServiceQueue {
     ///   - execute: The function
     ///   - functionName: The name of the function for logging
     /// - Returns: The result of the async function
-    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function) async throws -> T
-    {
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function) async throws -> T {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         return try await withCheckedThrowingContinuation { continuation in

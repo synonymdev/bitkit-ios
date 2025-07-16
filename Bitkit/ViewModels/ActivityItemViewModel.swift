@@ -3,14 +3,14 @@ import BitkitCore
 
 @MainActor
 class ActivityItemViewModel: ObservableObject {
-    private let item: Activity
     private let coreService: CoreService = .shared
 
+    @Published private(set) var activity: Activity
     @Published private(set) var tags: [String] = []
     @Published private(set) var activityId: String
 
     init(item: Activity) {
-        self.item = item
+        self.activity = item
         self.activityId = {
             switch item {
             case .lightning(let activity):
@@ -39,6 +39,16 @@ class ActivityItemViewModel: ObservableObject {
             await loadTags() // Reload tags after removal
         } catch {
             Logger.error(error, context: "Failed to remove tag \(tag) from activity \(activityId)")
+        }
+    }
+
+    func refreshActivity() async {
+        do {
+            if let updatedActivity = try await coreService.activity.getActivity(id: activityId) {
+                activity = updatedActivity
+            }
+        } catch {
+            Logger.error(error, context: "Failed to refresh activity \(activityId)")
         }
     }
 }
