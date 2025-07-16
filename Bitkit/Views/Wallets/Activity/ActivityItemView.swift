@@ -82,6 +82,17 @@ struct ActivityItemView: View {
         return DateFormatterHelpers.formatActivityDetail(activity.timestamp)
     }
 
+    private var shouldDisableBoostButton: Bool {
+        switch item {
+        case .lightning:
+            // Lightning transactions can never be boosted
+            return true
+        case .onchain(let activity):
+            // Disable boost for onchain if transaction is confirmed
+            return activity.confirmed == true
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .bottom) {
@@ -338,7 +349,14 @@ struct ActivityItemView: View {
                     title: localizedString("wallet__activity_boost"), size: .small,
                     icon: Image("timer-alt")
                         .foregroundColor(accentColor),
-                    shouldExpand: true)
+                    isDisabled: shouldDisableBoostButton,
+                    shouldExpand: true
+                ) {
+                    // Only show boost sheet for onchain activities
+                    if case .onchain(let onchainActivity) = item {
+                        sheets.showSheet(.boost, data: BoostConfig(onchainActivity: onchainActivity))
+                    }
+                }
 
                 CustomButton(
                     title: localizedString("wallet__activity_explore"), size: .small,

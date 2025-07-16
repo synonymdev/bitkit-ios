@@ -4,6 +4,7 @@ enum SheetID: String, CaseIterable {
     case addTag
     case appUpdate
     case backup
+    case boost
     case highBalance
     case lnurlWithdraw
     case notifications
@@ -102,6 +103,20 @@ class SheetViewModel: ObservableObject {
             let backupConfig = config.data as? BackupConfig
             let initialRoute = backupConfig?.initialRoute ?? .intro
             return BackupSheetItem(initialRoute: initialRoute)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var boostSheetItem: BoostSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .boost else { return nil }
+            let boostConfig = config.data as? BoostConfig
+            guard let onchainActivity = boostConfig?.onchainActivity else { return nil }
+            return BoostSheetItem(onchainActivity: onchainActivity)
         }
         set {
             if newValue == nil {
