@@ -18,14 +18,13 @@ struct CreateCjitView: View {
 
     @State private var amountSats: UInt64 = 0
     @State private var overrideSats: UInt64?
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var createdEntry: IcJitEntry?
     @State private var navigateToConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
+                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
                     Haptics.play(.buttonTap)
                     amountSats = newSats
                     overrideSats = nil
@@ -39,7 +38,7 @@ struct CreateCjitView: View {
                         BodySText(NSLocalizedString("fee__minimum__title", comment: ""), textColor: .textSecondary)
                         if let minSats = blocktank.minCjitSats {
                             if let converted = currency.convert(sats: minSats) {
-                                if primaryDisplay == .bitcoin {
+                                if currency.primaryDisplay == .bitcoin {
                                     let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
                                     BodySText("\(btcComponents.symbol) \(btcComponents.value)")
                                 } else {
@@ -95,7 +94,6 @@ struct CreateCjitView: View {
         .navigationTitle(NSLocalizedString("wallet__receive_bitcoin", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            primaryDisplay = currency.primaryDisplay
             try? await blocktank.refreshMinCjitSats()
         }
         .background(
@@ -115,12 +113,12 @@ struct CreateCjitView: View {
     private var amountButtons: some View {
         HStack(spacing: 16) {
             NumberPadActionButton(
-                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
+                text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                 imageName: "transfer-brand",
                 color: Color.brandAccent
             ) {
                 withAnimation {
-                    primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                    currency.togglePrimaryDisplay()
                 }
             }
 

@@ -115,7 +115,7 @@ struct SendOptionsView: View {
             do {
                 try await app.handleScannedData(uri)
 
-                let route = SendNavigationHelper.appropriateSendRoute(
+                let route = PaymentNavigationHelper.appropriateSendRoute(
                     app: app,
                     currency: currency,
                     settings: settings

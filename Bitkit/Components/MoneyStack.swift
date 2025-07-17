@@ -35,7 +35,7 @@ struct MoneyStack: View {
                         sats: sats,
                         unitType: .primary,
                         size: .display,
-                        symbol: true,
+                        symbol: showSymbol,
                         prefix: prefix,
                         color: .textPrimary
                     )
