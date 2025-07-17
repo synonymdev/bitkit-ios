@@ -41,7 +41,7 @@ struct ScannerView: View {
         Task { @MainActor in
             do {
                 try await app.handleScannedData(uri)
-                SendNavigationHelper.navigateToAppropriateSendView(
+                PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
                     settings: settings,
@@ -63,7 +63,7 @@ struct ScannerView: View {
 
         do {
             try await app.handleScannedData(uri)
-            SendNavigationHelper.navigateToAppropriateSendView(
+            PaymentNavigationHelper.openPaymentSheet(
                 app: app,
                 currency: currency,
                 settings: settings,

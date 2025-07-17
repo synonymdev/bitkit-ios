@@ -57,6 +57,14 @@ struct MainNavView: View {
             config in HighBalanceSheet(config: config)
         }
         .sheet(
+            item: $sheets.lnurlWithdrawSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in LnurlWithdrawSheet(config: config)
+        }
+        .sheet(
             item: $sheets.notificationsSheetItem,
             onDismiss: {
                 sheets.hideSheet()
@@ -273,7 +281,7 @@ struct MainNavView: View {
                 await wallet.waitForNodeToRun()
                 try await app.handleScannedData(uri)
 
-                SendNavigationHelper.navigateToAppropriateSendView(
+                PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
                     settings: settings,

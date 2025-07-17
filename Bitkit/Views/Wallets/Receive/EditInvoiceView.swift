@@ -15,7 +15,6 @@ struct EditInvoiceView: View {
 
     @State private var amountSats: UInt64 = 0
     @State private var overrideSats: UInt64?
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var noteText = ""
     @FocusState private var isNoteEditorFocused: Bool
     @FocusState private var isAmountInputFocused: Bool
@@ -23,7 +22,8 @@ struct EditInvoiceView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true, shouldAutoFocus: false) { newSats in
+                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true, shouldAutoFocus: false) {
+                    newSats in
                     Haptics.play(.buttonTap)
                     amountSats = newSats
                     overrideSats = nil
@@ -95,7 +95,6 @@ struct EditInvoiceView: View {
         .navigationTitle(NSLocalizedString("wallet__receive_specify", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            primaryDisplay = currency.primaryDisplay
             // Initialize with existing values from wallet model
             if wallet.invoiceAmountSats > 0 {
                 amountSats = wallet.invoiceAmountSats
@@ -113,12 +112,12 @@ struct EditInvoiceView: View {
             Spacer()
             HStack(spacing: 16) {
                 NumberPadActionButton(
-                    text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
+                    text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                     imageName: "transfer-brand",
                     color: Color.brandAccent
                 ) {
                     withAnimation {
-                        primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                        currency.togglePrimaryDisplay()
                     }
                 }
             }

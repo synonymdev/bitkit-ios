@@ -85,7 +85,7 @@ struct FundTransferView: View {
     private var amountButtons: some View {
         HStack(spacing: 16) {
             NumberPadActionButton(
-                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
+                text: primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                 imageName: "transfer-purple"
             ) {
                 withAnimation {

@@ -27,6 +27,9 @@ struct FundManualAmountView: View {
 
                 HStack(alignment: .bottom) {
                     AvailableAmount(label: localizedString("wallet__send_available"), amount: wallet.totalOnchainSats)
+                        .onTapGesture {
+                            overrideSats = UInt64(wallet.totalOnchainSats)
+                        }
 
                     Spacer()
 
@@ -56,7 +59,7 @@ struct FundManualAmountView: View {
     private var amountButtons: some View {
         HStack(spacing: 8) {
             NumberPadActionButton(
-                text: currency.primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
+                text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                 imageName: "transfer-purple"
             ) {
                 withAnimation {

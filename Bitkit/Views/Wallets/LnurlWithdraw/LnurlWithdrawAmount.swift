@@ -1,26 +1,29 @@
 import SwiftUI
 
-struct LnurlPayAmount: View {
+struct LnurlWithdrawAmount: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [SendRoute]
+    @Binding var navigationPath: [LnurlWithdrawRoute]
     @State private var amount: UInt64 = 0
     @State private var overrideSats: UInt64?
     @FocusState private var isAmountFocused: Bool
 
-    var maxAmount: UInt64 {
-        // TODO: subtract fee
-        min(app.lnurlPayData!.maxSendable, UInt64(wallet.totalLightningSats))
+    var minAmount: Int {
+        Int((app.lnurlWithdrawData!.minWithdrawable ?? 1000) / 1000)
+    }
+
+    var maxAmount: Int {
+        Int((app.lnurlWithdrawData!.maxWithdrawable) / 1000)
     }
 
     var isValid: Bool {
-        amount >= 0 && amount <= maxAmount
+        amount <= maxAmount
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__lnurl_p_title"), showBackButton: true)
+            SheetHeader(title: localizedString("wallet__lnurl_w_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newAmount in
@@ -31,21 +34,17 @@ struct LnurlPayAmount: View {
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    AvailableAmount(label: localizedString("wallet__send_available_spending"), amount: wallet.totalLightningSats)
+                    AvailableAmount(label: localizedString("wallet__lnurl_w_max"), amount: maxAmount)
                         .onTapGesture {
-                            overrideSats = UInt64(wallet.totalLightningSats)
+                            overrideSats = UInt64(maxAmount)
                         }
 
                     Spacer()
 
-                    NumberPadActionButton(text: localizedString("common__max"), color: .brandAccent) {
-                        overrideSats = maxAmount
-                    }
-
                     NumberPadActionButton(
                         text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                         imageName: "transfer-brand",
-                        color: Color.brandAccent
+                        color: .brandAccent
                     ) {
                         withAnimation {
                             currency.togglePrimaryDisplay()
@@ -70,18 +69,14 @@ struct LnurlPayAmount: View {
     }
 
     private func onContinue() {
-        let minSendable = app.lnurlPayData!.minSendable
-
-        if amount < minSendable {
-            app.toast(
-                type: .error, title: localizedString("wallet__lnurl_pay__error_min__title"),
-                description: localizedString("wallet__lnurl_pay__error_min__description", variables: ["amount": "\(minSendable)"])
-            )
-            return
+        // If minimum is above the amount the user entered, automatically set amount to that minimum
+        if amount < minAmount {
+            amount = UInt64(minAmount)
         }
 
+        wallet.lnurlWithdrawAmount = amount
+
         // TODO: hide number pad
-        wallet.sendAmountSats = amount
-        navigationPath.append(.lnurlPayConfirm)
+        navigationPath.append(.confirm)
     }
 }

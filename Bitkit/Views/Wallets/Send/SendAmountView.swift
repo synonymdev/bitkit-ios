@@ -13,11 +13,13 @@ struct SendAmountView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @Binding var navigationPath: [SendRoute]
-    @State private var amount: String = ""
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @FocusState private var isAmountFocused: Bool
+
+    var availableAmount: UInt64 {
+        app.selectedWalletToPayFrom == .lightning ? UInt64(wallet.totalLightningSats) : UInt64(wallet.totalOnchainSats)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,10 +27,9 @@ struct SendAmountView: View {
 
             VStack(alignment: .leading, spacing: 16) {
                 // Use AmountInput component instead of TextField
-                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
+                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
                     satsAmount = newSats
                     overrideSats = nil
-                    amount = String(newSats)
                 }
                 .padding(.vertical, 16)
 
@@ -38,7 +39,11 @@ struct SendAmountView: View {
                 HStack(alignment: .bottom) {
                     AvailableAmount(
                         label: localizedString("wallet__send_available"),
-                        amount: app.selectedWalletToPayFrom == .lightning ? wallet.totalLightningSats : wallet.totalOnchainSats)
+                        amount: Int(availableAmount)
+                    )
+                    .onTapGesture {
+                        overrideSats = availableAmount
+                    }
 
                     Spacer()
 
@@ -59,12 +64,12 @@ struct SendAmountView: View {
                     }
 
                     NumberPadActionButton(
-                        text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
+                        text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                         imageName: "transfer-brand",
                         color: Color.brandAccent
                     ) {
                         withAnimation {
-                            primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                            currency.togglePrimaryDisplay()
                         }
                     }
                 }
@@ -122,7 +127,7 @@ struct SendAmountView: View {
                             navigationPath.append(.confirm)
                         }
                     } else {
-                        Logger.error("Invalid amount: \(amount)")
+                        Logger.error("Invalid amount: \(satsAmount)")
                     }
                 } catch {
                     Logger.error(error, context: "Failed to set fee rate or send amount")
@@ -135,11 +140,6 @@ struct SendAmountView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            // Set default primaryDisplay value
-            primaryDisplay = currency.primaryDisplay
-        }
     }
 }
 

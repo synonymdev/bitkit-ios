@@ -52,7 +52,7 @@ struct ShopMain: View {
             do {
                 try await app.handleScannedData(paymentUri)
 
-                SendNavigationHelper.navigateToAppropriateSendView(
+                PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
                     settings: settings,

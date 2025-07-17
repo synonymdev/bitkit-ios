@@ -2,7 +2,7 @@ import BitkitCore
 import Foundation
 
 @MainActor
-struct SendNavigationHelper {
+struct PaymentNavigationHelper {
     /// Determines if quickpay should be used for the current app state
     /// - Parameters:
     ///   - app: The app view model containing the current invoice state
@@ -44,13 +44,24 @@ struct SendNavigationHelper {
         return false
     }
 
-    /// Centralized method to navigate to the appropriate send view based on the current state
-    static func navigateToAppropriateSendView(
+    /// Centralized method to open the appropriate sheet based on the current state
+    static func openPaymentSheet(
         app: AppViewModel,
         currency: CurrencyViewModel,
         settings: SettingsViewModel,
         sheetViewModel: SheetViewModel
     ) {
+        // Handle LNURL withdraw
+        if let lnurlWithdrawData = app.lnurlWithdrawData {
+            Logger.info("LNURL withdraw data: \(lnurlWithdrawData)")
+            if lnurlWithdrawData.minWithdrawable == lnurlWithdrawData.maxWithdrawable {
+                sheetViewModel.showSheet(.lnurlWithdraw, data: LnurlWithdrawConfig(view: .confirm))
+            } else {
+                sheetViewModel.showSheet(.lnurlWithdraw, data: LnurlWithdrawConfig(view: .amount))
+            }
+            return
+        }
+
         let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
 
         // Handle Lightning address / LNURL pay
