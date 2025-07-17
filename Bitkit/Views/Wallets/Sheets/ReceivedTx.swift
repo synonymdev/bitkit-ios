@@ -50,7 +50,7 @@ struct ReceivedTx: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: title)
-                    MoneyStack(sats: Int(config.details.sats))
+                    MoneyStack(sats: Int(config.details.sats), showSymbol: true)
                     Spacer()
                     CustomButton(title: buttonText) { sheets.hideSheet() }
                 }

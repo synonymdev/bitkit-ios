@@ -5,6 +5,7 @@ enum SheetID: String, CaseIterable {
     case appUpdate
     case backup
     case highBalance
+    case lnurlWithdraw
     case notifications
     case quickpay
     case receive
@@ -113,6 +114,20 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .highBalance else { return nil }
             return HighBalanceSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var lnurlWithdrawSheetItem: LnurlWithdrawSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .lnurlWithdraw else { return nil }
+            let lnurlWithdrawConfig = config.data as? LnurlWithdrawConfig
+            let initialRoute = lnurlWithdrawConfig?.initialRoute ?? .amount
+            return LnurlWithdrawSheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {
