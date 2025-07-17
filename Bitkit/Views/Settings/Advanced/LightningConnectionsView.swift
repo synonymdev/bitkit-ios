@@ -10,55 +10,47 @@ struct LightningConnectionsView: View {
     @State private var isRefreshing = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
                 // Header section with spending balance and receiving capacity
-                VStack(spacing: 16) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            CaptionText(
-                                NSLocalizedString("lightning__spending_label", comment: "").uppercased(),
-                                textColor: .textSecondary
-                            )
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up")
-                                    .font(.caption)
-                                    .foregroundColor(.purpleAccent)
-                                TitleText(formatNumber(spendingBalance), textColor: .purpleAccent)
-                            }
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        CaptionMText(NSLocalizedString("lightning__spending_label", comment: ""))
+                        HStack(spacing: 4) {
+                            Image("arrow-up")
+                                .resizable()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(.purpleAccent)
+                            TitleText(formatNumber(spendingBalance), textColor: .purpleAccent)
                         }
-                        .frame(maxWidth: .infinity)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            CaptionText(
-                                NSLocalizedString("lightning__receiving_label", comment: "").uppercased(),
-                                textColor: .textSecondary
-                            )
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down")
-                                    .font(.caption)
-                                    .foregroundColor(.white)
-                                TitleText(formatNumber(receivingCapacity), textColor: .white)
-                            }
-                        }
-                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        CaptionMText(NSLocalizedString("lightning__receiving_label", comment: ""))
+                        HStack(spacing: 4) {
+                            Image("arrow-down")
+                                .resizable()
+                                .frame(width: 22, height: 22)
+                                .foregroundColor(.white)
+                            TitleText(formatNumber(receivingCapacity), textColor: .white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                 }
+                .padding(.top, 24)
                 .padding(.bottom, 16)
+
+                Divider()
 
                 // Pending Connections section
                 if !pendingChannels.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionText(
-                                NSLocalizedString("lightning__conn_pending", comment: "").uppercased(),
-                                textColor: .textSecondary
-                            )
-                            .padding(.horizontal, 16)
-                            .padding(.top, 32)
-                            .padding(.bottom, 16)
+                            CaptionMText(NSLocalizedString("lightning__conn_pending", comment: ""))
+                                .padding(.top, 32)
+                                .padding(.bottom, 16)
                             Spacer()
                         }
 
@@ -74,9 +66,10 @@ struct LightningConnectionsView: View {
                                     HStack {
                                         SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
+                                        Image("chevron")
+                                            .resizable()
                                             .foregroundColor(.textSecondary)
+                                            .frame(width: 24, height: 24)
                                     }
                                     .padding(.bottom, 12)
 
@@ -94,7 +87,6 @@ struct LightningConnectionsView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
 
@@ -102,12 +94,9 @@ struct LightningConnectionsView: View {
                 if !openChannels.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionText(
-                                NSLocalizedString("lightning__conn_open", comment: "").uppercased(),
-                                textColor: .textSecondary
-                            )
-                            .padding(.top, 16)
-                            .padding(.bottom, 16)
+                            CaptionMText(NSLocalizedString("lightning__conn_open", comment: ""))
+                                .padding(.top, 16)
+                                .padding(.bottom, 16)
                             Spacer()
                         }
 
@@ -123,9 +112,10 @@ struct LightningConnectionsView: View {
                                     HStack {
                                         SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
                                         Spacer()
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption)
+                                        Image("chevron")
+                                            .resizable()
                                             .foregroundColor(.textSecondary)
+                                            .frame(width: 24, height: 24)
                                     }
                                     .padding(.bottom, 12)
 
@@ -143,19 +133,15 @@ struct LightningConnectionsView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
                 }
 
                 // Closed Connections section
                 if showClosedConnections && !closedConnections.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionText(
-                                NSLocalizedString("lightning__conn_closed", comment: "").uppercased(),
-                                textColor: .textSecondary
-                            )
-                            .padding(.top, 16)
-                            .padding(.bottom, 16)
+                            CaptionMText(NSLocalizedString("lightning__conn_closed", comment: ""))
+                                .padding(.top, 16)
+                                .padding(.bottom, 16)
                             Spacer()
                         }
 
@@ -164,9 +150,10 @@ struct LightningConnectionsView: View {
                                 HStack {
                                     SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
                                     Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption)
+                                    Image("chevron")
+                                        .resizable()
                                         .foregroundColor(.textSecondary)
+                                        .frame(width: 24, height: 24)
                                 }
                                 .padding(.bottom, 12)
 
@@ -187,28 +174,26 @@ struct LightningConnectionsView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
 
-                // Show Closed & Failed button
-                Button(action: {
-                    showClosedConnections.toggle()
-                }) {
-                    BodyMSBText(
-                        showClosedConnections
-                            ? NSLocalizedString("lightning__conn_closed_hide", comment: "")
-                            : NSLocalizedString("lightning__conn_closed_show", comment: "")
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
-                    .background(Color.clear)
+                if !closedConnections.isEmpty {
+                    // Show Closed & Failed button
+                    CustomButton(
+                        title: showClosedConnections
+                            ? localizedString("lightning__conn_closed_hide")
+                            : localizedString("lightning__conn_closed_show"),
+                        variant: .tertiary,
+                    ) {
+                        showClosedConnections.toggle()
+                    }
+                    .padding(.top, 16)
                 }
-                .padding(.top, 16)
 
                 Spacer()
                     .frame(height: 32)
             }
+            .padding(.horizontal, 16)
         }
         .background(Color.black)
         .navigationTitle(NSLocalizedString("lightning__connections", comment: ""))

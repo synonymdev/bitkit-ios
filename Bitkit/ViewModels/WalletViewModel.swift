@@ -174,7 +174,8 @@ class WalletViewModel: ObservableObject {
 
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
-        return try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+        let invoice = try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
+        return invoice.lowercased()
     }
 
     func waitForNodeToRun(timeoutSeconds: Double = 10.0) async -> Bool {

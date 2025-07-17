@@ -113,24 +113,6 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    /// Handle deeplink URLs directly
-    func handleURL(_ url: URL) async {
-        Logger.info("Received deeplink: \(url.absoluteString)")
-
-        do {
-            try await handleScannedData(url.absoluteString)
-            // Navigate to appropriate send view based on the invoice
-            if invoiceRequiresCustomAmount == true {
-                sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
-            } else if invoiceRequiresCustomAmount == false {
-                // Could add quickpay logic here too if needed
-                sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
-            }
-        } catch {
-            toast(error)
-        }
-    }
-
     // Convenience initializer for previews and testing
     convenience init() {
         self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
@@ -230,7 +212,7 @@ extension AppViewModel {
             break
         case .lnurlChannel(data: let lnurlChannelData):
             Logger.debug("LNURL: \(lnurlChannelData)")
-            // TODO: Handle LNURL channel
+            handleLnurlChannel(lnurlChannelData)
             break
         case .lnurlAuth(data: let lnurlAuthData):
             Logger.debug("LNURL: \(lnurlAuthData)")
@@ -328,6 +310,17 @@ extension AppViewModel {
         }
 
         lnurlWithdrawData = data
+    }
+
+    private func handleLnurlChannel(_ data: LnurlChannelData) {
+        // Check if lightning service is running
+        guard lightningService.status?.isRunning == true else {
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+            return
+        }
+
+        sheetViewModel.hideSheet()
+        navigationViewModel.navigate(.lnurlChannel(channelData: data))
     }
 
     private func handleNodeUri(_ url: String, _ network: NetworkType) {

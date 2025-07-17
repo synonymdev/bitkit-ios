@@ -149,7 +149,24 @@ struct MainNavView: View {
         }
         .onOpenURL { url in
             Task {
-                await app.handleURL(url)
+                Logger.info("Received deeplink: \(url.absoluteString)")
+
+                do {
+                    try await app.handleScannedData(url.absoluteString)
+                    PaymentNavigationHelper.openPaymentSheet(
+                        app: app,
+                        currency: currency,
+                        settings: settings,
+                        sheetViewModel: sheets
+                    )
+                } catch {
+                    Logger.error(error, context: "Failed to handle deeplink")
+                    app.toast(
+                        type: .error,
+                        title: localizedString("other__qr_error_header"),
+                        description: localizedString("other__qr_error_text")
+                    )
+                }
             }
         }
     }
@@ -229,6 +246,10 @@ struct MainNavView: View {
                 FundTransferView()
             case .fundManual(let nodeUri):
                 FundManualSetupView(initialNodeUri: nodeUri)
+            case .fundManualSuccess:
+                FundManualSuccessView()
+            case .lnurlChannel(let channelData):
+                LnurlChannel(channelData: channelData)
             case .savingsIntro:
                 SavingsIntroView()
             case .savingsAvailability:
@@ -289,7 +310,11 @@ struct MainNavView: View {
                 )
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
-                app.toast(error)
+                app.toast(
+                    type: .error,
+                    title: localizedString("other__qr_error_header"),
+                    description: localizedString("other__qr_error_text")
+                )
             }
         }
     }
