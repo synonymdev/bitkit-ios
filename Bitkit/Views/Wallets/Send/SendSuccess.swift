@@ -4,6 +4,7 @@ import SwiftUI
 struct SendSuccess: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     // Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
@@ -33,8 +34,8 @@ struct SendSuccess: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: localizedString("wallet__send_sent"), showBackButton: false)
 
-                    if let invoice = app.scannedLightningInvoice {
-                        MoneyStack(sats: Int(invoice.amountSatoshis))
+                    if let sendAmountSats = wallet.sendAmountSats {
+                        MoneyStack(sats: Int(sendAmountSats))
                     }
 
                     Spacer()

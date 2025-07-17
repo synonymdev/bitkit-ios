@@ -63,6 +63,19 @@ enum Env {
 
     // MARK: Server URLs
 
+    static var electrumServerUrl: String {
+        switch network {
+        case .regtest:
+            return "34.65.252.32:18483"
+        case .bitcoin:
+            fatalError("Bitcoin network not implemented")
+        case .testnet:
+            fatalError("Testnet network not implemented")
+        case .signet:
+            fatalError("Signet network not implemented")
+        }
+    }
+
     static var esploraServerUrl: String {
         switch network {
         case .regtest:
@@ -232,7 +245,6 @@ enum Env {
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
     static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
     static let bitrefillRef = "AL6dyZYt"
-
     static let helpUrl = "https://help.bitkit.to"
     static let supportApiUrl = "https://synonym.to/api/chatwoot"
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -218,6 +219,8 @@ struct MainNavView: View {
                 FundingOptionsView()
             case .fundingAmount:
                 FundTransferView()
+            case .fundManual(let nodeUri):
+                FundManualSetupView(initialNodeUri: nodeUri)
             case .savingsIntro:
                 SavingsIntroView()
             case .savingsAvailability:
@@ -270,12 +273,12 @@ struct MainNavView: View {
                 await wallet.waitForNodeToRun()
                 try await app.handleScannedData(uri)
 
-                // If nil then it's not an invoice we're dealing with
-                if app.invoiceRequiresCustomAmount == true {
-                    sheets.showSheet(.send, data: SendConfig(view: .amount))
-                } else if app.invoiceRequiresCustomAmount == false {
-                    sheets.showSheet(.send, data: SendConfig(view: .confirm))
-                }
+                SendNavigationHelper.navigateToAppropriateSendView(
+                    app: app,
+                    currency: currency,
+                    settings: settings,
+                    sheetViewModel: sheets
+                )
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
                 app.toast(error)

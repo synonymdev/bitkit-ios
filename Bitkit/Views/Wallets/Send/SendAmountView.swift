@@ -36,20 +36,9 @@ struct SendAmountView: View {
 
                 // Available balance section
                 HStack(alignment: .bottom) {
-                    VStack(alignment: .leading) {
-                        BodySText(NSLocalizedString("wallet__send_available", comment: "").uppercased(), textColor: .textSecondary)
-
-                        if let converted = currency.convert(
-                            sats: UInt64(app.selectedWalletToPayFrom == .lightning ? wallet.totalLightningSats : wallet.totalOnchainSats))
-                        {
-                            if primaryDisplay == .bitcoin {
-                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                                BodySText("\(btcComponents.symbol) \(btcComponents.value)")
-                            } else {
-                                BodySText("\(converted.symbol) \(converted.formatted)")
-                            }
-                        }
-                    }
+                    AvailableAmount(
+                        label: localizedString("wallet__send_available"),
+                        amount: app.selectedWalletToPayFrom == .lightning ? wallet.totalLightningSats : wallet.totalOnchainSats)
 
                     Spacer()
 
@@ -70,7 +59,7 @@ struct SendAmountView: View {
                     }
 
                     NumberPadActionButton(
-                        text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                        text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
                         imageName: "transfer-brand",
                         color: Color.brandAccent
                     ) {

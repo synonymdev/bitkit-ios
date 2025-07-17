@@ -85,7 +85,7 @@ struct FundTransferView: View {
     private var amountButtons: some View {
         HStack(spacing: 16) {
             NumberPadActionButton(
-                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
                 imageName: "transfer-purple"
             ) {
                 withAnimation {
@@ -98,7 +98,7 @@ struct FundTransferView: View {
             }
 
             NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
-                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9)  // TODO: can't actually use max, need to estimate fees
+                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }
     }

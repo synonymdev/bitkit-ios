@@ -18,7 +18,7 @@ struct FundManualSuccessView: View {
 
                 BodyMText(
                     NSLocalizedString("lightning__external_success__text", comment: ""),
-                    textColor: .textSecondary, accentColor: .white)
+                    textColor: .textSecondary, accentColor: .white, accentFont: Fonts.bold)
 
                 Spacer()
 

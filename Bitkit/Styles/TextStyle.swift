@@ -409,6 +409,42 @@ struct CaptionBText: View {
     }
 }
 
+struct CaptionMText: View {
+    let text: String
+    var textColor: Color = .textSecondary
+    var accentColor: Color = .brandAccent
+    var accentFont: ((CGFloat) -> Font)? = nil
+    var accentAction: (() -> Void)? = nil
+
+    private let fontSize: CGFloat = 13
+
+    init(
+        _ text: String,
+        textColor: Color = .textSecondary,
+        accentColor: Color = .brandAccent,
+        accentFont: ((CGFloat) -> Font)? = nil,
+        accentAction: (() -> Void)? = nil
+    ) {
+        self.text = text
+        self.textColor = textColor
+        self.accentColor = accentColor
+        self.accentFont = accentFont
+    }
+
+    var body: some View {
+        AccentedText(
+            text,
+            font: Fonts.medium(size: fontSize),
+            fontColor: textColor,
+            accentColor: accentColor,
+            accentFont: accentFont?(fontSize),
+            accentAction: accentAction
+        )
+        .kerning(0.8)
+        .textCase(.uppercase)
+    }
+}
+
 struct FootnoteText: View {
     let text: String
     var textColor: Color = .textSecondary
