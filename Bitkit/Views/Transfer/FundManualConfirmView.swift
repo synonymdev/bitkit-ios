@@ -11,10 +11,10 @@ struct FundManualConfirmView: View {
 
     let lnPeer: LnPeer
     let satsAmount: UInt64
-    
+
     // Placeholder values - in a real implementation these would be calculated
     @State private var networkFeeSat: UInt64 = 0
-    
+
     private func loadFees(refresh: Bool) async {
         do {
             let coreService = CoreService.shared
@@ -34,7 +34,7 @@ struct FundManualConfirmView: View {
                 DisplayText(NSLocalizedString("lightning__transfer__confirm", comment: ""), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
-                VStack(spacing: 24) {
+                VStack(spacing: 16) {
                     HStack {
                         FeeDisplayRow(
                             label: NSLocalizedString("lightning__spending_confirm__network_fee", comment: ""),
@@ -64,23 +64,23 @@ struct FundManualConfirmView: View {
                     }
                 }
                 .padding(.vertical, 16)
-                
+
                 Spacer()
 
                 if !hideSwipeButton {
                     SwipeButton(
                         title: NSLocalizedString("lightning__transfer__swipe", comment: ""),
                         accentColor: .purpleAccent
-                    ) {                        
+                    ) {
                         do {
                             let lightningService = LightningService.shared
-                            
+
                             // Open a channel with the given peer and amount
                             try await lightningService.openChannel(
                                 peer: lnPeer,
                                 channelAmountSats: satsAmount
                             )
-                            
+
                             Logger.info("Channel opened successfully")
                             try await Task.sleep(nanoseconds: 1_000_000_000)
                             showSuccess = true
@@ -126,4 +126,4 @@ struct FundManualConfirmView: View {
         .environmentObject(TransferViewModel())
     }
     .preferredColorScheme(.dark)
-} 
+}

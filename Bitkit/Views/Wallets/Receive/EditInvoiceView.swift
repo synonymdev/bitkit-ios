@@ -113,7 +113,7 @@ struct EditInvoiceView: View {
             Spacer()
             HStack(spacing: 16) {
                 NumberPadActionButton(
-                    text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "BTC",
+                    text: primaryDisplay == .bitcoin ? currency.selectedCurrency : "Bitcoin",
                     imageName: "transfer-brand",
                     color: Color.brandAccent
                 ) {

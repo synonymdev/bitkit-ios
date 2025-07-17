@@ -32,7 +32,7 @@ struct NumberPadActionButton: View {
                         .frame(height: 12)
                 }
 
-                CaptionText(text.uppercased(), textColor: color)
+                CaptionMText(text.uppercased(), textColor: color)
             }
             .padding(.vertical, 5)
             .padding(.horizontal, 8)
@@ -52,12 +52,12 @@ struct NumberPadActionButton: View {
             NumberPadActionButton(text: "PRIMARY", variant: .primary) {
                 print("PRIMARY tapped")
             }
-            
+
             NumberPadActionButton(text: "SECONDARY", variant: .secondary) {
                 print("SECONDARY tapped")
             }
         }
-        
+
         HStack(spacing: 16) {
             NumberPadActionButton(text: "MIN") {
                 print("MIN tapped")
@@ -72,7 +72,7 @@ struct NumberPadActionButton: View {
             }
 
             NumberPadActionButton(
-                text: "BTC",
+                text: "Bitcoin",
                 imageName: "transfer-purple"
             ) {
                 print("Currency toggle tapped")

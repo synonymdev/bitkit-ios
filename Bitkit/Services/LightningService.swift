@@ -47,7 +47,7 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
 
-        let esploraConfig = EsploraSyncConfig(
+        let electrumConfig = ElectrumSyncConfig(
             backgroundSyncConfig: .init(
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
@@ -61,7 +61,7 @@ class LightningService {
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
 
-        builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
+        builder.setChainSourceElectrum(serverUrl: Env.electrumServerUrl, config: electrumConfig)
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
         } else {
@@ -309,7 +309,8 @@ class LightningService {
         do {
             return try await ServiceQueue.background(.ldk) {
                 if let sats {
-                    try node.bolt11Payment().sendUsingAmount(invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params)
+                    try node.bolt11Payment().sendUsingAmount(
+                        invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params)
                 } else {
                     try node.bolt11Payment().send(invoice: .fromStr(invoiceStr: bolt11), sendingParameters: params)
                 }
@@ -506,8 +507,10 @@ extension LightningService {
             try node.onchainPayment().listSpendableOutputs()
         }
     }
-    
-    func selectUtxosWithAlgorithm(targetAmountSats: UInt64, satsPerVbyte: UInt32, coinSelectionAlgorythm: CoinSelectionAlgorithm, utxos: [SpendableUtxo]?) async throws -> [SpendableUtxo] {
+
+    func selectUtxosWithAlgorithm(
+        targetAmountSats: UInt64, satsPerVbyte: UInt32, coinSelectionAlgorythm: CoinSelectionAlgorithm, utxos: [SpendableUtxo]?
+    ) async throws -> [SpendableUtxo] {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -524,14 +527,13 @@ extension LightningService {
     }
 }
 
-
 // MARK: Boost txs
 
 extension LightningService {
-//    
-//    - Add `bump_fee_by_rbf` to replace transactions with higher fee versions
-//    - Add `accelerate_by_cpfp` to create child transactions that pay for parent
-//    - Add `calculate_cpfp_fee_rate` helper for automatic fee calculation
+    //
+    //    - Add `bump_fee_by_rbf` to replace transactions with higher fee versions
+    //    - Add `accelerate_by_cpfp` to create child transactions that pay for parent
+    //    - Add `calculate_cpfp_fee_rate` helper for automatic fee calculation
     func bumpFeeByRbf(txid: String, satsPerVbyte: UInt32) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -545,7 +547,7 @@ extension LightningService {
                 )
         }
     }
-    
+
     func accelerateByCpfp(txid: String, satsPerVbyte: UInt32, destinationAddress: String) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

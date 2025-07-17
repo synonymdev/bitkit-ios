@@ -40,8 +40,7 @@ struct SwipeButton: View {
                     }
 
                 // Title text
-                Text(title)
-                    .bold()
+                BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .opacity(Double(1.0 - (offset / (geometry.size.width - buttonHeight))))
 

@@ -8,6 +8,9 @@ enum SendRoute {
     case confirm
     case quickpay
     case success
+    case failure
+    case lnurlPayAmount
+    case lnurlPayConfirm
 }
 
 struct SendConfig {
@@ -60,6 +63,13 @@ struct SendSheet: View {
             SendQuickpay(navigationPath: $navigationPath)
         case .success:
             SendSuccess()
+        case .failure:
+            // SendFailure()
+            Text("Failure")
+        case .lnurlPayAmount:
+            LnurlPayAmount(navigationPath: $navigationPath)
+        case .lnurlPayConfirm:
+            LnurlPayConfirm(navigationPath: $navigationPath)
         }
     }
 }

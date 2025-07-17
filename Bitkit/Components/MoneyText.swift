@@ -4,6 +4,7 @@ import SwiftUI
 enum MoneySize {
     case display
     case bodyMSB
+    case bodySSB
     case caption
 }
 
@@ -70,15 +71,16 @@ extension MoneyText {
                 text, textColor: color, accentColor: symbolColor ?? .textSecondary, accentFont: size == .display ? Fonts.extraBold : nil)
         case .bodyMSB:
             BodyMSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+        case .bodySSB:
+            BodySSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .caption:
-            CaptionBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+            CaptionMText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         }
     }
 }
 
 // MARK: - Helper Methods
 extension MoneyText {
-
     private var fiatSymbol: String {
         guard let converted = currency.convert(sats: UInt64(abs(sats))) else { return "$" }
         return converted.symbol

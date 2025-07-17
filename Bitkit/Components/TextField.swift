@@ -21,7 +21,7 @@ struct TextField: View {
                     .font(font)
             }
 
-            SwiftUI.TextField("", text: $text)
+            SwiftUI.TextField("", text: $text, axis: .vertical)
                 .accentColor(.brandAccent)
                 .font(font)
         }

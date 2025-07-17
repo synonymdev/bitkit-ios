@@ -19,6 +19,7 @@ enum Route: Hashable {
     case transferIntro
     case fundingOptions
     case fundingAmount
+    case fundManual(nodeUri: String?)
     case savingsIntro
     case savingsAvailability
     case settings

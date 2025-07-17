@@ -118,39 +118,34 @@ struct AmountInput: View {
                 }
 
             // Visible balance display
-            VStack(spacing: 6) {
-                if showConversion, let converted = currency.convert(sats: sats) {
+            VStack(spacing: 16) {
+                if showConversion {
                     VStack {
-                        if primaryDisplay == .bitcoin {
-                            CaptionText("\(converted.symbol) \(converted.formatted)")
-                        } else {
-                            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                            CaptionText("\(btcComponents.symbol) \(btcComponents.value)")
-                        }
+                        MoneyText(
+                            sats: Int(sats),
+                            unitType: .secondary,
+                            size: .caption,
+                            symbol: true,
+                            color: .textSecondary
+                        )
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 4)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         focusTextField()
                     }
                 }
 
-                if let converted = currency.convert(sats: sats) {
-                    if primaryDisplay == .bitcoin {
-                        let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                        DisplayText("<accent>\(btcComponents.symbol)</accent> \(btcComponents.value)", accentColor: .textSecondary)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                focusTextField()
-                            }
-                    } else {
-                        DisplayText("<accent>\(converted.symbol)</accent> \(fiatAmount.isEmpty ? "0" : fiatAmount)", accentColor: .textSecondary)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                focusTextField()
-                            }
-                    }
+                MoneyText(
+                    sats: Int(sats),
+                    unitType: .primary,
+                    size: .display,
+                    symbol: true,
+                    color: .textPrimary
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    focusTextField()
                 }
             }
             .contentShape(Rectangle())
