@@ -15,8 +15,13 @@ struct SavingsWalletView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            MoneyStack(sats: wallet.totalOnchainSats, showEyeIcon: false, enableSwipeGesture: true)
-                .padding(.top)
+            MoneyStack(
+                sats: wallet.totalOnchainSats,
+                showSymbol: true,
+                showEyeIcon: false,
+                enableSwipeGesture: true
+            )
+            .padding(.top)
 
             Divider()
                 .padding(.top, 8)

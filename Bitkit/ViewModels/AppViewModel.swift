@@ -21,8 +21,9 @@ class AppViewModel: ObservableObject {
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
 
-    // LNURL Pay
+    // LNURL
     @Published var lnurlPayData: LnurlPayData?
+    @Published var lnurlWithdrawData: LnurlWithdrawData?
 
     @Published var isGeoBlocked: Bool? = nil
 
@@ -225,7 +226,7 @@ extension AppViewModel {
             break
         case .lnurlWithdraw(data: let lnurlWithdrawData):
             Logger.debug("LNURL: \(lnurlWithdrawData)")
-            // TODO: Handle LNURL withdraw
+            handleLnurlWithdraw(lnurlWithdrawData)
             break
         case .lnurlChannel(data: let lnurlChannelData):
             Logger.debug("LNURL: \(lnurlChannelData)")
@@ -243,7 +244,7 @@ extension AppViewModel {
 
             // TODO: add network check
 
-            handleNodeId(url, network)
+            handleNodeUri(url, network)
             break
         default:
             Logger.warn("Unhandled invoice type: \(data)")
@@ -298,7 +299,38 @@ extension AppViewModel {
         lnurlPayData = data
     }
 
-    private func handleNodeId(_ url: String, _ network: NetworkType) {
+    private func handleLnurlWithdraw(_ data: LnurlWithdrawData) {
+        // Check if lightning service is running
+        guard lightningService.status?.isRunning == true else {
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+            return
+        }
+
+        // Check if minWithdrawable > maxWithdrawable
+        if (data.minWithdrawable ?? 1000) > data.maxWithdrawable {
+            toast(
+                type: .warning,
+                title: localizedString("other__lnurl_withdr_error"),
+                description: localizedString("other__lnurl_withdr_error_minmax")
+            )
+            return
+        }
+
+        // Check if we have enough receiving capacity
+        let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+        if lightningBalance < (data.minWithdrawable ?? 1000) / 1000 {
+            toast(
+                type: .warning,
+                title: localizedString("other__lnurl_withdr_error"),
+                description: localizedString("other__lnurl_withdr_error_no_capacity")
+            )
+            return
+        }
+
+        lnurlWithdrawData = data
+    }
+
+    private func handleNodeUri(_ url: String, _ network: NetworkType) {
         sheetViewModel.hideSheet()
         navigationViewModel.navigate(.fundManual(nodeUri: url))
     }
@@ -318,6 +350,7 @@ extension AppViewModel {
         self.scannedOnchainInvoice = nil
         self.selectedWalletToPayFrom = .onchain // Reset to default
         self.lnurlPayData = nil
+        self.lnurlWithdrawData = nil
         self.scannedLightningBolt11Invoice = nil
     }
 }

@@ -23,11 +23,14 @@ class WalletViewModel: ObservableObject {
     @AppStorage("bip21") var bip21 = ""
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better aniticipate the receive flow UI
 
-    //Send flow
+    // Send flow
     @Published var sendAmountSats: UInt64?
     @Published var selectedFeeRateSatsPerVByte: UInt32?
     @Published var selectedUtxo: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
+
+    // LNURL withdraw flow
+    @Published var lnurlWithdrawAmount: UInt64?
 
     // For bolt11 details and bip21 params
     var invoiceAmountSats: UInt64 = 0
