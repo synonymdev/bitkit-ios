@@ -3,8 +3,10 @@ import WebKit
 
 struct ShopMain: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
 
     let page: String
 
@@ -49,7 +51,13 @@ struct ShopMain: View {
         Task { @MainActor in
             do {
                 try await app.handleScannedData(paymentUri)
-                sheets.showSheet(.send, data: SendConfig(view: .confirm))
+
+                SendNavigationHelper.navigateToAppropriateSendView(
+                    app: app,
+                    currency: currency,
+                    settings: settings,
+                    sheetViewModel: sheets
+                )
             } catch {
                 app.toast(error)
             }

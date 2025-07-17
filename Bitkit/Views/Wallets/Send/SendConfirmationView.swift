@@ -242,7 +242,6 @@ struct SendConfirmationView: View {
                                 bolt11: bolt11,
                                 sats: wallet.sendAmountSats,
                                 onSuccess: {
-                                    // app.resetSendState()
                                     Logger.info("Lightning payment successful")
                                     continuation.resume()
                                     navigationPath.append(.success)
@@ -268,7 +267,6 @@ struct SendConfirmationView: View {
 
                 // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
-                // app.resetSendState()
                 navigationPath.append(.success)
             } else {
                 throw NSError(

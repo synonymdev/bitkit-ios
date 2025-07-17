@@ -1,5 +1,5 @@
 {
-  "originHash" : "56a54d8a5a7f602428bec3f262f93140592326d6ef6fc102151041867cee5512",
+  "originHash" : "91f19a52875e12cc0608cfb264edf6948026e2ab58fc15514e863c2ffffe0be7",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
         "branch" : "master",
-        "revision" : "b25b48c1468bd004801a2793196c6cc0d228dd73"
+        "revision" : "836c23a5c3baa5f8297f0cbe99d4b19579f0339c"
       }
     },
     {

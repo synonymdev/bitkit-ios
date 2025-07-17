@@ -27,9 +27,11 @@ struct ContentView: View {
 
     init() {
         let sheetViewModel = SheetViewModel()
-        _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel))
+        let navigationViewModel = NavigationViewModel()
+
+        _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
-        _navigation = StateObject(wrappedValue: NavigationViewModel())
+        _navigation = StateObject(wrappedValue: navigationViewModel)
         _wallet = StateObject(wrappedValue: WalletViewModel())
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())

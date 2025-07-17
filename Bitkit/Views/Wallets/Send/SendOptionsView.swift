@@ -49,6 +49,8 @@ struct SendOptionCard<Destination: View>: View {
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @Binding var navigationPath: [SendRoute]
 
     var body: some View {
@@ -113,12 +115,12 @@ struct SendOptionsView: View {
             do {
                 try await app.handleScannedData(uri)
 
-                // If nil then it's not an invoice we're dealing with
-                if app.invoiceRequiresCustomAmount == true {
-                    navigationPath.append(.amount)
-                } else if app.invoiceRequiresCustomAmount == false {
-                    navigationPath.append(.confirm)
-                }
+                let route = SendNavigationHelper.appropriateSendRoute(
+                    app: app,
+                    currency: currency,
+                    settings: settings
+                )
+                navigationPath.append(route)
             } catch {
                 Logger.error(error, context: "Failed to read data from clipboard")
                 app.toast(error)
