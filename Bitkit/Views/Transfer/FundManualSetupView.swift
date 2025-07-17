@@ -5,6 +5,8 @@ struct FundManualSetupView: View {
     @EnvironmentObject var app: AppViewModel
     @Environment(\.dismiss) private var dismiss
 
+    let initialNodeUri: String?
+
     @State private var nodeId: String = ""
     @State private var host: String = ""
     @State private var port: String = ""
@@ -12,8 +14,12 @@ struct FundManualSetupView: View {
     @State private var alertMessage: String = ""
     @State private var alertTitle: String = ""
 
+    init(initialNodeUri: String? = nil) {
+        self.initialNodeUri = initialNodeUri
+    }
+
     //Test uri 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
-    func pasteLightningNodeURI() {
+    func pasteLightningNodeUri() {
         guard let pastedText = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             alertTitle = NSLocalizedString("wallet__send_clipboard_empty_title", comment: "")
             alertMessage = NSLocalizedString("wallet__send_clipboard_empty_text", comment: "")
@@ -21,8 +27,12 @@ struct FundManualSetupView: View {
             return
         }
 
+        parseNodeUrl(pastedText)
+    }
+
+    func parseNodeUrl(_ uri: String) {
         do {
-            let lnPeer = try LnPeer(connection: pastedText)
+            let lnPeer = try LnPeer(connection: uri)
             nodeId = lnPeer.nodeId
             host = lnPeer.host
             port = String(lnPeer.port)
@@ -43,7 +53,6 @@ struct FundManualSetupView: View {
                             NSLocalizedString("lightning__external_manual__title", comment: ""),
                             accentColor: .purpleAccent
                         )
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         // Description
                         BodyMText(NSLocalizedString("lightning__external_manual__text", comment: ""))
@@ -52,28 +61,20 @@ struct FundManualSetupView: View {
 
                         // Node ID field
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(NSLocalizedString("lightning__external_manual__node_id", comment: ""))
-                                .font(.caption)
-                                .foregroundColor(.gray)
-
-                            TextField("0000000000000000000000000000000", text: $nodeId)
+                            CaptionText(NSLocalizedString("lightning__external_manual__node_id", comment: "").uppercased())
+                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
+                                .lineLimit(2 ... 2)
                         }
 
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(NSLocalizedString("lightning__external_manual__host", comment: ""))
-                                .font(.caption)
-                                .foregroundColor(.gray)
-
+                            CaptionText(NSLocalizedString("lightning__external_manual__host", comment: "").uppercased())
                             TextField("00.00.00.00", text: $host)
                         }
 
                         // Port field
                         VStack(alignment: .leading, spacing: 8) {
-                            Text(NSLocalizedString("lightning__external_manual__port", comment: ""))
-                                .font(.caption)
-                                .foregroundColor(.gray)
-
+                            CaptionText(NSLocalizedString("lightning__external_manual__port", comment: "").uppercased())
                             TextField("1234", text: $port)
                         }
 
@@ -86,7 +87,7 @@ struct FundManualSetupView: View {
                                 .foregroundColor(.white),
                             shouldExpand: false
                         ) {
-                            pasteLightningNodeURI()
+                            pasteLightningNodeUri()
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -132,6 +133,11 @@ struct FundManualSetupView: View {
                 message: Text(alertMessage),
                 dismissButton: .default(Text(NSLocalizedString("common__ok", comment: "")))
             )
+        }
+        .onAppear {
+            if let initialNodeUri = initialNodeUri {
+                parseNodeUrl(initialNodeUri)
+            }
         }
     }
 }

@@ -310,6 +310,7 @@ class WalletViewModel: ObservableObject {
                     onSuccess()
                 }
             case .paymentFailed(paymentId: _, let paymentHash, let reason):
+                // TODO: this is not working for routeNotFound
                 if paymentHash == hash {
                     self.removeOnEvent(id: eventId)
                     onFail(reason.debugDescription)

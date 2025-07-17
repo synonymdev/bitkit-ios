@@ -17,9 +17,12 @@ class AppViewModel: ObservableObject {
     // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
     @Published var scannedLightningBolt11Invoice: String?
 
-    //Send flow
+    // Send flow
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
+
+    // LNURL Pay
+    @Published var lnurlPayData: LnurlPayData?
 
     @Published var isGeoBlocked: Bool? = nil
 
@@ -70,11 +73,16 @@ class AppViewModel: ObservableObject {
     private let lightningService: LightningService
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
+    private let navigationViewModel: NavigationViewModel
 
-    init(lightningService: LightningService = .shared, coreService: CoreService = .shared, sheetViewModel: SheetViewModel) {
+    init(
+        lightningService: LightningService = .shared, coreService: CoreService = .shared, sheetViewModel: SheetViewModel,
+        navigationViewModel: NavigationViewModel
+    ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
+        self.navigationViewModel = navigationViewModel
 
         // Start network monitoring
         networkMonitor.pathUpdateHandler = { [weak self] path in
@@ -124,7 +132,7 @@ class AppViewModel: ObservableObject {
 
     // Convenience initializer for previews and testing
     convenience init() {
-        self.init(sheetViewModel: SheetViewModel())
+        self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
     }
 
     deinit {
@@ -175,6 +183,9 @@ extension AppViewModel {
 
 extension AppViewModel {
     func handleScannedData(_ uri: String) async throws {
+        // Reset send state before handling new data
+        resetSendState()
+
         let data = try await decode(invoice: uri)
 
         switch data {
@@ -188,7 +199,6 @@ extension AppViewModel {
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
-                        selectedWalletToPayFrom = .lightning
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
@@ -196,7 +206,6 @@ extension AppViewModel {
             }
 
             // No LN invoice found, proceed with onchain payment
-            selectedWalletToPayFrom = .onchain
             handleScannedOnchainInvoice(invoice)
         case .lightning(let invoice):
             guard lightningService.status?.isRunning == true else {
@@ -206,11 +215,36 @@ extension AppViewModel {
 
             Logger.debug("Lightning: \(invoice)")
             if lightningService.canSend(amountSats: invoice.amountSatoshis) {
-                selectedWalletToPayFrom = .lightning
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
             }
+        case .lnurlPay(data: let lnurlPayData):
+            Logger.debug("LNURL: \(lnurlPayData)")
+            handleLnurlPayInvoice(lnurlPayData)
+            break
+        case .lnurlWithdraw(data: let lnurlWithdrawData):
+            Logger.debug("LNURL: \(lnurlWithdrawData)")
+            // TODO: Handle LNURL withdraw
+            break
+        case .lnurlChannel(data: let lnurlChannelData):
+            Logger.debug("LNURL: \(lnurlChannelData)")
+            // TODO: Handle LNURL channel
+            break
+        case .lnurlAuth(data: let lnurlAuthData):
+            Logger.debug("LNURL: \(lnurlAuthData)")
+            // TODO: Handle LNURL
+            break
+        case .nodeId(let url, let network):
+            guard lightningService.status?.isRunning == true else {
+                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+                return
+            }
+
+            // TODO: add network check
+
+            handleNodeId(url, network)
+            break
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
@@ -242,6 +276,33 @@ extension AppViewModel {
         }
     }
 
+    private func handleLnurlPayInvoice(_ data: LnurlPayData) {
+        // Check if lightning service is running
+        guard lightningService.status?.isRunning == true else {
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+            return
+        }
+
+        // Check if user has enough lightning balance to pay the minimum amount
+        let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+        if lightningBalance < data.minSendable {
+            toast(
+                type: .warning,
+                title: localizedString("other__lnurl_pay_error"),
+                description: localizedString("other__lnurl_pay_error_no_capacity")
+            )
+            return
+        }
+
+        selectedWalletToPayFrom = .lightning
+        lnurlPayData = data
+    }
+
+    private func handleNodeId(_ url: String, _ network: NetworkType) {
+        sheetViewModel.hideSheet()
+        navigationViewModel.navigate(.fundManual(nodeUri: url))
+    }
+
     var invoiceRequiresCustomAmount: Bool? {
         if let invoice = scannedLightningInvoice {
             return invoice.amountSatoshis == 0
@@ -253,13 +314,11 @@ extension AppViewModel {
     }
 
     func resetSendState() {
-        // After dropping the sheet reset displayed values
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self else { return }
-            self.scannedLightningInvoice = nil
-            self.scannedOnchainInvoice = nil
-            self.selectedWalletToPayFrom = .onchain // Reset to default
-        }
+        self.scannedLightningInvoice = nil
+        self.scannedOnchainInvoice = nil
+        self.selectedWalletToPayFrom = .onchain // Reset to default
+        self.lnurlPayData = nil
+        self.scannedLightningBolt11Invoice = nil
     }
 }
 

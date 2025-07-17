@@ -69,7 +69,6 @@ struct SendQuickpay: View {
             Spacer()
 
             DisplayText(localizedString("wallet__send_quickpay__title"), accentColor: .purpleAccent)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal)
         .onAppear {
@@ -80,42 +79,59 @@ struct SendQuickpay: View {
     }
 
     private func performPayment() async throws {
+        var bolt11Invoice: String?
+
+        // Handle LNURL Pay
+        if let lnurlPayData = app.lnurlPayData {
+            let amount = lnurlPayData.minSendable
+
+            // Set the amount for the success screen
+            wallet.sendAmountSats = amount
+
+            bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
+                callbackUrl: lnurlPayData.callback,
+                amount: amount
+            )
+        } else if let scannedInvoice = app.scannedLightningBolt11Invoice {
+            wallet.sendAmountSats = app.scannedLightningInvoice?.amountSatoshis ?? 0
+            bolt11Invoice = scannedInvoice
+        }
+
+        guard let bolt11 = bolt11Invoice else {
+            throw NSError(
+                domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"])
+        }
+
         do {
-            if let bolt11 = app.scannedLightningBolt11Invoice {
-                // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
-                // So we need to handle all these cases here.
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    Task {
-                        do {
-                            let paymentHash = try await wallet.send(
-                                bolt11: bolt11,
-                                sats: wallet.sendAmountSats,
-                                onSuccess: {
-                                    Logger.info("Lightning payment successful")
-                                    // app.resetSendState()
-                                    continuation.resume()
-                                    navigationPath.append(.success)
-                                },
-                                onFail: { reason in
-                                    Logger.error("Lightning payment failed: \(reason)")
-                                    app.toast(type: .error, title: "Payment failed", description: reason)
-                                    continuation.resume(
-                                        throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
-                                }
-                            )
-                            Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
-                        } catch {
-                            continuation.resume(throwing: error)
-                        }
+            // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
+            // So we need to handle all these cases here.
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                Task {
+                    do {
+                        let paymentHash = try await wallet.send(
+                            bolt11: bolt11,
+                            sats: wallet.sendAmountSats,
+                            onSuccess: {
+                                Logger.info("Quickpay payment successful")
+                                continuation.resume()
+                                navigationPath.append(.success)
+                            },
+                            onFail: { reason in
+                                Logger.error("Quickpay payment failed: \(reason)")
+                                continuation.resume(
+                                    throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                navigationPath.append(.failure)
+                            }
+                        )
+                        Logger.info("Quickpay send initiated with payment hash: \(paymentHash)")
+                    } catch {
+                        continuation.resume(throwing: error)
                     }
                 }
-            } else {
-                throw NSError(
-                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"])
             }
         } catch {
-            app.toast(error)
             Logger.error("Error sending: \(error)")
+            navigationPath.append(.failure)
             throw error // Passing error up to SwipeButton so it knows to reset state
         }
     }
