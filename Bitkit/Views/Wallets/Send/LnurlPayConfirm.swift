@@ -275,7 +275,7 @@ struct LnurlPayConfirm: View {
 
     private func performPayment() async throws {
         guard let lnurlPayData = app.lnurlPayData else {
-            throw NSError(domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
+            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
         let amount = wallet.sendAmountSats ?? lnurlPayData.minSendable
