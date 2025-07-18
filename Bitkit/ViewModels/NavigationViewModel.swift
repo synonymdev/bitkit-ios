@@ -20,6 +20,8 @@ enum Route: Hashable {
     case fundingOptions
     case fundingAmount
     case fundManual(nodeUri: String?)
+    case fundManualSuccess
+    case lnurlChannel(channelData: LnurlChannelData)
     case savingsIntro
     case savingsAvailability
     case settings
