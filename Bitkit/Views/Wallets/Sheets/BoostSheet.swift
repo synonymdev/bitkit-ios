@@ -104,26 +104,23 @@ struct BoostSheet: View {
                                     let newRate = max(minFeeRate, currentFeeRate - 1)
                                     editedFeeRate = newRate
                                 }) {
-                                    Image(systemName: "minus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundColor(currentFeeRate <= minFeeRate ? .gray : .white)
+                                    ZStack {
+                                        Image(systemName: "minus")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(currentFeeRate <= minFeeRate ? .gray : Color.redAccent)
+                                    }
+                                    .frame(width: 32, height: 32)
+                                    .background(currentFeeRate <= minFeeRate ? Color.gray6 : Color.red16)
+                                    .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate <= minFeeRate)
                                 
                                 Spacer()
                                 
                                 VStack(spacing: 4) {
-                                    TitleText("\(currentFeeRate) sat/vbyte")
-                                    
+                                    BodySSBText("₿ \(currentFeeRate)/vbyte (\(fiatFeeString))")
                                     if currentFeeRate > 0 {
-                                        BodySSBText("₿ \(estimatedFeeSats)")
-                                        BodySSBText(
-                                            fiatFeeString,
-                                            textColor: .textSecondary
-                                        )
-                                    } else {
-                                        BodySSBText("--")
-                                        BodySSBText("--", textColor: .textSecondary)
+                                        BodySSBText("₿ \(estimatedFeeSats)", textColor: Color.textSecondary)
                                     }
                                 }
                                 
@@ -133,19 +130,25 @@ struct BoostSheet: View {
                                     let newRate = min(maxFeeRate, currentFeeRate + 1)
                                     editedFeeRate = newRate
                                 }) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundColor(currentFeeRate >= maxFeeRate ? .gray : .white)
+                                    ZStack {
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 16, weight: .medium))
+                                            .foregroundColor(currentFeeRate >= maxFeeRate ? .gray : Color.greenAccent)
+                                    }
+                                    .frame(width: 32, height: 32)
+                                    .background(currentFeeRate >= maxFeeRate ? Color.gray6 : Color.green16)
+                                    .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate >= maxFeeRate)
                             }
                             
-                            Button(action: {
+                            CustomButton(
+                                title: "Use Suggested Fee",
+                                variant: .primary,
+                                size: .small
+                            ) {
                                 isEditingFee = false
                                 editedFeeRate = nil
-                            }) {
-                                BodyMSBText("Use Suggested Fee")
-                                    .foregroundColor(.yellowAccent)
                             }
                         }
                         .padding(.vertical, 12)
@@ -193,13 +196,16 @@ struct BoostSheet: View {
                                         )
                                     }
                                     
-                                    Image("pencil")
-                                        .resizable()
-                                        .frame(width: 16, height: 16)
-                                        .foregroundColor(.textSecondary)
+                                    if !fetchingFees {
+                                        Image("pencil")
+                                            .resizable()
+                                            .frame(width: 16, height: 16)
+                                            .foregroundColor(feeRate != nil ? .textSecondary : .gray)
+                                    }
                                 }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .disabled(feeRate == nil || fetchingFees)
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
@@ -416,6 +422,7 @@ struct BoostSheet: View {
                 .environmentObject(WalletViewModel())
                 .environmentObject(CurrencyViewModel())
                 .environmentObject(ActivityListViewModel())
+                .presentationDetents([.height(400)])
             }
         )
         .preferredColorScheme(.dark)
