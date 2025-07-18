@@ -18,7 +18,7 @@ struct FundManualSetupView: View {
         self.initialNodeUri = initialNodeUri
     }
 
-    //Test uri 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
+    // Test URI: 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
     func pasteLightningNodeUri() {
         guard let pastedText = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) else {
             alertTitle = NSLocalizedString("wallet__send_clipboard_empty_title", comment: "")
@@ -27,10 +27,10 @@ struct FundManualSetupView: View {
             return
         }
 
-        parseNodeUrl(pastedText)
+        parseNodeUri(pastedText)
     }
 
-    func parseNodeUrl(_ uri: String) {
+    func parseNodeUri(_ uri: String) {
         do {
             let lnPeer = try LnPeer(connection: uri)
             nodeId = lnPeer.nodeId
@@ -136,7 +136,7 @@ struct FundManualSetupView: View {
         }
         .onAppear {
             if let initialNodeUri = initialNodeUri {
-                parseNodeUrl(initialNodeUri)
+                parseNodeUri(initialNodeUri)
             }
         }
     }

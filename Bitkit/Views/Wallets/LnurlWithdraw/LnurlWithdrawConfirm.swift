@@ -2,9 +2,9 @@ import SwiftUI
 
 struct LnurlWithdrawConfirm: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @Binding var navigationPath: [LnurlWithdrawRoute]
     @State private var isLoading = false
 
@@ -61,14 +61,20 @@ struct LnurlWithdrawConfirm: View {
         Task {
             do {
                 guard let withdrawData = app.lnurlWithdrawData else {
-                    throw NSError(domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL withdraw data"])
+                    throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL withdraw data"])
                 }
+
+                // Create a Lightning invoice for the withdraw
+                let invoice = try await wallet.createInvoice(
+                    amountSats: amount,
+                    note: withdrawData.defaultDescription,
+                    expirySecs: 3600
+                )
 
                 // Perform the LNURL withdraw
                 try await LnurlHelper.handleLnurlWithdraw(
-                    amount: amount,
                     params: withdrawData,
-                    wallet: wallet
+                    invoice: invoice
                 )
 
                 await MainActor.run {

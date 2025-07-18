@@ -86,31 +86,33 @@ struct LightningChannel: View {
         VStack(spacing: 8) {
             if showLabels {
                 HStack {
-                    CaptionText(NSLocalizedString("lightning__spending_label", comment: "").uppercased())
+                    CaptionMText(NSLocalizedString("lightning__spending_label", comment: ""))
 
                     Spacer()
 
-                    CaptionText(NSLocalizedString("lightning__receiving_label", comment: "").uppercased())
+                    CaptionMText(NSLocalizedString("lightning__receiving_label", comment: ""))
                 }
             }
 
             HStack {
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.up")
-                        .font(.caption)
+                    Image("arrow-up")
+                        .resizable()
+                        .frame(width: 14, height: 14)
                         .foregroundColor(spendingAvailableColor)
 
-                    CaptionText(formatNumber(localBalance), textColor: spendingAvailableColor)
+                    CaptionBText(formatNumber(localBalance), textColor: spendingAvailableColor)
                 }
 
                 Spacer()
 
                 HStack(spacing: 4) {
-                    Image(systemName: "arrow.down")
-                        .font(.caption)
+                    Image("arrow-down")
+                        .resizable()
+                        .frame(width: 14, height: 14)
                         .foregroundColor(receivingAvailableColor)
 
-                    CaptionText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                    CaptionBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
                 }
             }
 

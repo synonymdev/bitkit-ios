@@ -49,7 +49,11 @@ struct ScannerView: View {
                 )
             } catch {
                 Logger.error(error, context: "Failed to read data from QR")
-                app.toast(error)
+                app.toast(
+                    type: .error,
+                    title: localizedString("other__qr_error_header"),
+                    description: localizedString("other__qr_error_text")
+                )
             }
         }
     }
@@ -71,7 +75,11 @@ struct ScannerView: View {
             )
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
-            app.toast(error)
+            app.toast(
+                type: .error,
+                title: localizedString("other__qr_error_header"),
+                description: localizedString("other__qr_error_text")
+            )
         }
     }
 }
