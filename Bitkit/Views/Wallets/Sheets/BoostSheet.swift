@@ -175,10 +175,19 @@ struct BoostSheet: View {
                     // For outgoing transactions, use fast fee rate
                     await MainActor.run {
                         let selectedFeeRate = wallet.selectedFeeRateSatsPerVByte
-                        feeRate = selectedFeeRate
                         
-                        Logger.info("RBF fee rate set: \(selectedFeeRate ?? 0) sat/vbyte", context: "BoostSheet.fetchFeeRate")
-                        Logger.debug("Estimated fee cost: \(estimatedFeeSats) sats (\(selectedFeeRate ?? 0) sat/vbyte × \(estimatedTxSize) vbytes)", context: "BoostSheet.fetchFeeRate")
+                        // Ensure we have a valid fee rate with a minimum of 2 sat/vbyte for RBF
+                        // RBF requires the new fee rate to be higher than the original transaction
+                        let originalFeeRate = onchainActivity.feeRate
+                        let baseFeeRate = selectedFeeRate ?? 10
+                        
+                        // For RBF, use at least the original fee rate + 1 sat/vbyte, with a minimum of 2 sat/vbyte
+                        let minRbfFeeRate = max(UInt32(originalFeeRate) + 1, 2)
+                        let validatedFeeRate = max(baseFeeRate, minRbfFeeRate)
+                        feeRate = validatedFeeRate
+                        
+                        Logger.info("RBF fee rate set: \(validatedFeeRate) sat/vbyte (selected: \(selectedFeeRate ?? 0), original: \(originalFeeRate), min RBF: \(minRbfFeeRate))", context: "BoostSheet.fetchFeeRate")
+                        Logger.debug("Estimated fee cost: \(estimatedFeeSats) sats (\(validatedFeeRate) sat/vbyte × \(estimatedTxSize) vbytes)", context: "BoostSheet.fetchFeeRate")
                         
                         fetchingFees = false
                     }
@@ -206,14 +215,27 @@ struct BoostSheet: View {
         Logger.info("Starting boost transaction", context: "BoostSheet.performBoost")
         Logger.debug("Transaction details - ID: \(onchainActivity.txId), Type: \(onchainActivity.txType), IsIncoming: \(isIncoming)", context: "BoostSheet.performBoost")
         
-        guard let feeRate = feeRate else {
-            Logger.error("Fee rate not set when attempting boost", context: "BoostSheet.performBoost")
+        guard let feeRate = feeRate, feeRate > 0 else {
+            Logger.error("Fee rate not set or invalid when attempting boost: \(feeRate ?? 0)", context: "BoostSheet.performBoost")
             app.toast(
                 type: .error,
                 title: localizedString("common__error"),
                 description: localizedString("wallet__boost_fee_not_set")
             )
-            throw AppError(message: "Fee rate not set", debugMessage: "Fee rate not set when attempting boost")
+            throw AppError(message: "Fee rate not set", debugMessage: "Fee rate not set or invalid when attempting boost: \(feeRate ?? 0)")
+        }
+        
+        // Additional validation: RBF requires a higher fee rate than the original transaction
+        // LDK expects a minimum fee rate to meet network relay requirements
+        let minValidFeeRate: UInt32 = 2 // Minimum 2 sat/vbyte
+        guard feeRate >= minValidFeeRate else {
+            Logger.error("Fee rate too low for boost: \(feeRate) < \(minValidFeeRate) sat/vbyte", context: "BoostSheet.performBoost")
+            app.toast(
+                type: .error,
+                title: localizedString("common__error"),
+                description: localizedString("wallet__min_possible_fee_rate_msg")
+            )
+            throw AppError(message: "Fee rate too low", debugMessage: "Fee rate \(feeRate) is below minimum \(minValidFeeRate) sat/vbyte")
         }
         
         Logger.info("Using fee rate: \(feeRate) sat/vbyte for boost", context: "BoostSheet.performBoost")
