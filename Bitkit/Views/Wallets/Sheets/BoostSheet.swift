@@ -30,6 +30,8 @@ struct BoostSheet: View {
 
     @State private var feeRate: UInt32?
     @State private var fetchingFees = false
+    @State private var isEditingFee = false
+    @State private var editedFeeRate: UInt32?
 
     private var onchainActivity: OnchainActivity {
         config.onchainActivity
@@ -42,9 +44,35 @@ struct BoostSheet: View {
     // TODO: get real estimation
     private var estimatedTxSize: UInt64 { 250 }
     
+    private var currentFeeRate: UInt32 {
+        return isEditingFee ? (editedFeeRate ?? feeRate ?? 0) : (feeRate ?? 0)
+    }
+    
+    private var minFeeRate: UInt32 {
+        if isIncoming {
+            // CPFP minimum - can be quite high to ensure effectiveness
+            return 10
+        } else {
+            // RBF minimum - must be higher than original
+            let originalFeeRate = onchainActivity.feeRate
+            return max(UInt32(originalFeeRate) + 1, 2)
+        }
+    }
+    
+    private var maxFeeRate: UInt32 {
+        if isIncoming {
+            // CPFP maximum - can be very high for urgent transactions
+            return 1000
+        } else {
+            // RBF maximum - reasonable limit to prevent accidental high fees
+            return 500
+        }
+    }
+    
     private var estimatedFeeSats: UInt64 {
-        guard let feeRate = feeRate else { return 0 }
-        return UInt64(feeRate) * estimatedTxSize
+        let rate = currentFeeRate
+        guard rate > 0 else { return 0 }
+        return UInt64(rate) * estimatedTxSize
     }
     
     private var fiatFeeString: String {
@@ -68,44 +96,114 @@ struct BoostSheet: View {
                     .multilineTextAlignment(.center)
                     
                     // Fee display section
-                    HStack {
-                        Image("timer-alt")
-                            .resizable()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(.yellowAccent)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            BodyMSBText(
-                                localizedString("wallet__boost"),
-                                textColor: .white
-                            )
-                            
-                            FootnoteText(
-                                "\(localizedString("settings__fee__fast__description"))",
-                                textColor: .textSecondary
-                            )
-                        }
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .trailing, spacing: 2) {
-                            if let feeRate = feeRate {
-                                BodySSBText("₿ \(estimatedFeeSats)")
-                            } else if fetchingFees {
-                                ProgressView()
-                                    .scaleEffect(0.8)
-                            } else {
-                                BodySSBText("--")
+                    if isEditingFee {
+                        // Edit mode UI
+                        VStack(spacing: 16) {
+                            HStack {
+                                Button(action: {
+                                    let newRate = max(minFeeRate, currentFeeRate - 1)
+                                    editedFeeRate = newRate
+                                }) {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(currentFeeRate <= minFeeRate ? .gray : .white)
+                                }
+                                .disabled(currentFeeRate <= minFeeRate)
+                                
+                                Spacer()
+                                
+                                VStack(spacing: 4) {
+                                    TitleText("\(currentFeeRate) sat/vbyte")
+                                    
+                                    if currentFeeRate > 0 {
+                                        BodySSBText("₿ \(estimatedFeeSats)")
+                                        BodySSBText(
+                                            fiatFeeString,
+                                            textColor: .textSecondary
+                                        )
+                                    } else {
+                                        BodySSBText("--")
+                                        BodySSBText("--", textColor: .textSecondary)
+                                    }
+                                }
+                                
+                                Spacer()
+                                
+                                Button(action: {
+                                    let newRate = min(maxFeeRate, currentFeeRate + 1)
+                                    editedFeeRate = newRate
+                                }) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundColor(currentFeeRate >= maxFeeRate ? .gray : .white)
+                                }
+                                .disabled(currentFeeRate >= maxFeeRate)
                             }
                             
-                            BodySSBText(
-                                fiatFeeString,
-                                textColor: .textSecondary
-                            )
+                            Button(action: {
+                                isEditingFee = false
+                                editedFeeRate = nil
+                            }) {
+                                BodyMSBText("Use Suggested Fee")
+                                    .foregroundColor(.yellowAccent)
+                            }
                         }
+                        .padding(.vertical, 12)
+                        .cornerRadius(12)
+                    } else {
+                        // Normal display mode
+                        HStack {
+                            Image("timer-alt")
+                                .resizable()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.yellowAccent)
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                BodyMSBText(
+                                    localizedString("wallet__boost"),
+                                    textColor: .white
+                                )
+                                
+                                FootnoteText(
+                                    "\(localizedString("settings__fee__fast__description"))",
+                                    textColor: .textSecondary
+                                )
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                isEditingFee = true
+                                editedFeeRate = feeRate
+                            }) {
+                                HStack(spacing: 8) {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        if let feeRate = feeRate {
+                                            BodySSBText("₿ \(estimatedFeeSats)")
+                                        } else if fetchingFees {
+                                            ProgressView()
+                                                .scaleEffect(0.8)
+                                        } else {
+                                            BodySSBText("--")
+                                        }
+                                        
+                                        BodySSBText(
+                                            fiatFeeString,
+                                            textColor: .textSecondary
+                                        )
+                                    }
+                                    
+                                    Image("pencil")
+                                        .resizable()
+                                        .frame(width: 16, height: 16)
+                                        .foregroundColor(.textSecondary)
+                                }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                        }
+                        .padding(.vertical, 12)
+                        .cornerRadius(12)
                     }
-                    .padding(.vertical, 12)
-                    .cornerRadius(12)
                 }
                 
                 Spacer()
@@ -215,35 +313,34 @@ struct BoostSheet: View {
         Logger.info("Starting boost transaction", context: "BoostSheet.performBoost")
         Logger.debug("Transaction details - ID: \(onchainActivity.txId), Type: \(onchainActivity.txType), IsIncoming: \(isIncoming)", context: "BoostSheet.performBoost")
         
-        guard let feeRate = feeRate, feeRate > 0 else {
-            Logger.error("Fee rate not set or invalid when attempting boost: \(feeRate ?? 0)", context: "BoostSheet.performBoost")
+        let feeRateToUse = currentFeeRate
+        guard feeRateToUse > 0 else {
+            Logger.error("Fee rate not set or invalid when attempting boost: \(feeRateToUse)", context: "BoostSheet.performBoost")
             app.toast(
                 type: .error,
                 title: localizedString("common__error"),
                 description: localizedString("wallet__boost_fee_not_set")
             )
-            throw AppError(message: "Fee rate not set", debugMessage: "Fee rate not set or invalid when attempting boost: \(feeRate ?? 0)")
+            throw AppError(message: "Fee rate not set", debugMessage: "Fee rate not set or invalid when attempting boost: \(feeRateToUse)")
         }
         
-        // Additional validation: RBF requires a higher fee rate than the original transaction
-        // LDK expects a minimum fee rate to meet network relay requirements
-        let minValidFeeRate: UInt32 = 2 // Minimum 2 sat/vbyte
-        guard feeRate >= minValidFeeRate else {
-            Logger.error("Fee rate too low for boost: \(feeRate) < \(minValidFeeRate) sat/vbyte", context: "BoostSheet.performBoost")
+        // Additional validation: Check against minimum fee rate
+        guard feeRateToUse >= minFeeRate else {
+            Logger.error("Fee rate too low for boost: \(feeRateToUse) < \(minFeeRate) sat/vbyte", context: "BoostSheet.performBoost")
             app.toast(
                 type: .error,
                 title: localizedString("common__error"),
                 description: localizedString("wallet__min_possible_fee_rate_msg")
             )
-            throw AppError(message: "Fee rate too low", debugMessage: "Fee rate \(feeRate) is below minimum \(minValidFeeRate) sat/vbyte")
+            throw AppError(message: "Fee rate too low", debugMessage: "Fee rate \(feeRateToUse) is below minimum \(minFeeRate) sat/vbyte")
         }
         
-        Logger.info("Using fee rate: \(feeRate) sat/vbyte for boost", context: "BoostSheet.performBoost")
+        Logger.info("Using fee rate: \(feeRateToUse) sat/vbyte for boost", context: "BoostSheet.performBoost")
         Logger.debug("Estimated transaction size: \(estimatedTxSize) vbytes, Estimated fee: \(estimatedFeeSats) sats", context: "BoostSheet.performBoost")
 
         do {
             // Perform the boost operation via CoreService
-            let txid = try await activityList.boost(activityId: onchainActivity.id, feeRate: feeRate)
+            let txid = try await activityList.boost(activityId: onchainActivity.id, feeRate: feeRateToUse)
             
             Logger.info("Boost transaction completed successfully: \(txid)", context: "BoostSheet.performBoost")
             
@@ -270,7 +367,7 @@ struct BoostSheet: View {
         } catch {
             Logger.error("Failed to boost transaction: \(error)", context: "BoostSheet.performBoost")
             Logger.debug("Boost error details - Type: \(type(of: error)), Description: \(error.localizedDescription)", context: "BoostSheet.performBoost")
-            Logger.debug("Failed boost parameters - TxID: \(onchainActivity.txId), FeeRate: \(feeRate) sat/vbyte, IsIncoming: \(isIncoming)", context: "BoostSheet.performBoost")
+            Logger.debug("Failed boost parameters - TxID: \(onchainActivity.txId), FeeRate: \(feeRateToUse) sat/vbyte, IsIncoming: \(isIncoming)", context: "BoostSheet.performBoost")
             
             app.toast(
                 type: .error,
