@@ -70,10 +70,6 @@ class ActivityService {
                             continue
                         }
                         
-                        if payment.direction == .outbound {
-                            Logger.test("SENT PAYMENT")
-                        }
-                        
                         var isConfirmed = false
                         var confirmedTimestamp: UInt64?
                         if case .confirmed(let blockHash, let height, let timestamp) = txStatus {

@@ -347,11 +347,13 @@ struct ActivityItemView: View {
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 ) {
-                    let activityId =
-                        switch viewModel.activity {
-                        case .lightning(let activity): activity.id
-                        case .onchain(let activity): activity.id
-                        }
+                    let activityId: String
+                    switch viewModel.activity {
+                    case .lightning(let activity):
+                        activityId = activity.id
+                    case .onchain(let activity):
+                        activityId = activity.id
+                    }
                     sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                 }
             }
