@@ -55,7 +55,7 @@ struct BoostSheet: View {
         } else {
             // RBF minimum - must be higher than original
             let originalFeeRate = onchainActivity.feeRate
-            return max(UInt32(originalFeeRate) + 1, 2)
+            return max(UInt32(originalFeeRate) + 2, 2)
         }
     }
     
@@ -279,8 +279,8 @@ struct BoostSheet: View {
                         let originalFeeRate = onchainActivity.feeRate
                         let baseFeeRate = selectedFeeRate ?? 10
                         
-                        // For RBF, use at least the original fee rate + 1 sat/vbyte, with a minimum of 2 sat/vbyte
-                        let minRbfFeeRate = max(UInt32(originalFeeRate) + 1, 2)
+                        // For RBF, use at least the original fee rate + 2 sat/vbyte, with a minimum of 2 sat/vbyte
+                        let minRbfFeeRate = max(UInt32(originalFeeRate) + 2, 2)
                         let validatedFeeRate = max(baseFeeRate, minRbfFeeRate)
                         feeRate = validatedFeeRate
                         
@@ -344,13 +344,6 @@ struct BoostSheet: View {
             
             Logger.info("Boost transaction completed successfully: \(txid)", context: "BoostSheet.performBoost")
             
-            // Show success message
-            app.toast(
-                type: .success,
-                title: localizedString("wallet__boost_success_title"),
-                description: localizedString("wallet__boost_success_msg")
-            )
-            
             Logger.debug("Starting wallet sync after boost", context: "BoostSheet.performBoost")
             // Sync wallet to refresh state
             try await wallet.sync()
@@ -363,6 +356,13 @@ struct BoostSheet: View {
             // Refresh activity list state
             await activityList.syncState()
             Logger.debug("Activity list state synced after boost", context: "BoostSheet.performBoost")
+            
+            // Show success message after everything is synced
+            app.toast(
+                type: .success,
+                title: localizedString("wallet__boost_success_title"),
+                description: localizedString("wallet__boost_success_msg")
+            )
             
             Logger.info("Boost transaction completed successfully, hiding sheet", context: "BoostSheet.performBoost")
             sheets.hideSheet()
