@@ -6,6 +6,12 @@ import LDKNode
 
 class ActivityService {
     private let coreService: CoreService
+    
+    // Track replacement transactions (RBF) to mark them as boosted
+    private static var replacementTransactions: Set<String> = []
+    
+    // Track replaced transactions that should be ignored during sync
+    private static var replacedTransactions: Set<String> = []
 
     init(coreService: CoreService) {
         self.coreService = coreService
@@ -58,6 +64,12 @@ class ActivityService {
                     }
 
                     if case .onchain(let txid, let txStatus) = payment.kind {
+                        // Check if this transaction was replaced by RBF and should be ignored
+                        if ActivityService.replacedTransactions.contains(txid) {
+                            Logger.debug("Ignoring replaced transaction \(txid) during sync", context: "CoreService.syncLdkNodePayments")
+                            continue
+                        }
+                        
                         if payment.direction == .outbound {
                             Logger.test("SENT PAYMENT")
                         }
@@ -84,6 +96,23 @@ class ActivityService {
                             false
                         }
                         
+                        // Check if this is a replacement transaction (RBF) that should be marked as boosted
+                        let isReplacementTransaction = ActivityService.replacementTransactions.contains(txid)
+                        let shouldMarkAsBoosted = preservedIsBoosted || isReplacementTransaction
+                        
+                        if isReplacementTransaction {
+                            Logger.debug("Found replacement transaction \(txid), marking as boosted", context: "CoreService.syncLdkNodePayments")
+                            // Remove from tracking set since we've processed it
+                            ActivityService.replacementTransactions.remove(txid)
+                            
+                            // Also clean up any old replaced transactions that might be lingering
+                            // This helps prevent the replacedTransactions set from growing indefinitely
+                            if ActivityService.replacedTransactions.count > 10 {
+                                Logger.debug("Cleaning up old replaced transactions", context: "CoreService.syncLdkNodePayments")
+                                ActivityService.replacedTransactions.removeAll()
+                            }
+                        }
+                        
                         guard let value = payment.amountSats, value > 0 else {
                             Logger.warn("Ignoring payment with missing value, probably additional boosted tx")
                             return
@@ -99,7 +128,7 @@ class ActivityService {
                             address: "todo_find_address",
                             confirmed: isConfirmed,
                             timestamp: timestamp,
-                            isBoosted: preservedIsBoosted, // Preserve existing boost status
+                            isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
                             isTransfer: false, //TODO: handle when paying for order
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
@@ -254,6 +283,11 @@ class ActivityService {
                 )
                 
                 Logger.info("CPFP transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
+                
+                // For CPFP, mark the original activity as boosted (parent transaction still exists)
+                onchainActivity.isBoosted = true
+                try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
+                Logger.info("Successfully marked activity \(activityId) as boosted via CPFP", context: "CoreService.boostOnchainTransaction")
             } else {
                 Logger.info("Executing RBF boost for outgoing transaction", context: "CoreService.boostOnchainTransaction")
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
@@ -265,15 +299,31 @@ class ActivityService {
                 )
                 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
+                
+                // Track the replacement transaction so we can mark it as boosted when it syncs
+                ActivityService.replacementTransactions.insert(txid)
+                Logger.debug("Added replacement transaction \(txid) to tracking list", context: "CoreService.boostOnchainTransaction")
+                
+                // Track the original transaction ID so we can ignore it during sync
+                ActivityService.replacedTransactions.insert(onchainActivity.txId)
+                Logger.debug("Added original transaction \(onchainActivity.txId) to replaced transactions list", context: "CoreService.boostOnchainTransaction")
+                
+                // For RBF, delete the original activity since it's been replaced
+                // The new transaction will be synced automatically from LDK
+                Logger.debug("Attempting to delete original activity \(activityId) before RBF replacement", context: "CoreService.boostOnchainTransaction")
+                
+                // Use the proper delete function that returns a Bool
+                let deleteResult = try deleteActivityById(activityId: activityId)
+                Logger.info("Delete result for original activity \(activityId): \(deleteResult)", context: "CoreService.boostOnchainTransaction")
+                
+                // Double-check that the activity was deleted
+                let checkActivity = try getActivityById(activityId: activityId)
+                if checkActivity == nil {
+                    Logger.info("Confirmed: Original activity \(activityId) was successfully deleted", context: "CoreService.boostOnchainTransaction")
+                } else {
+                    Logger.error("Warning: Original activity \(activityId) still exists after deletion attempt", context: "CoreService.boostOnchainTransaction")
+                }
             }
-            
-            // Mark the original activity as boosted
-            onchainActivity.isBoosted = true
-            
-            // Update the activity in the database
-            try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
-            
-            Logger.info("Successfully marked activity \(activityId) as boosted", context: "CoreService.boostOnchainTransaction")
             
             return txid
         }
