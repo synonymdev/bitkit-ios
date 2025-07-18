@@ -58,6 +58,10 @@ class ActivityService {
                     }
 
                     if case .onchain(let txid, let txStatus) = payment.kind {
+                        if payment.direction == .outbound {
+                            Logger.test("SENT PAYMENT")
+                        }
+                        
                         var isConfirmed = false
                         var confirmedTimestamp: UInt64?
                         if case .confirmed(let blockHash, let height, let timestamp) = txStatus {
@@ -80,7 +84,7 @@ class ActivityService {
                             false
                         }
                         
-                        guard let value = payment.amountSats else {
+                        guard let value = payment.amountSats, value > 0 else {
                             Logger.warn("Ignoring payment with missing value, probably additional boosted tx")
                             return
                         }
@@ -107,9 +111,11 @@ class ActivityService {
 
                         if existingActivity != nil {
                             try updateActivity(activityId: payment.id, activity: .onchain(onchain))
+                            print(payment)
                             updatedCount += 1
                         } else {
                             try upsertActivity(activity: .onchain(onchain))
+                            print(payment)
                             addedCount += 1
                         }
                     } else if case .bolt11(let hash, let preimage, let secret) = payment.kind {
