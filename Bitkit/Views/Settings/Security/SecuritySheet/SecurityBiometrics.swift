@@ -1,9 +1,9 @@
 import LocalAuthentication
 import SwiftUI
 
-struct SetupBiometricsView: View {
-    @EnvironmentObject private var app: AppViewModel
+struct SecurityBiometrics: View {
     @EnvironmentObject private var settings: SettingsViewModel
+    @Binding var navigationPath: [SecurityRoute]
 
     @State private var useBiometrics = false
     @State private var showingError = false
@@ -23,92 +23,51 @@ struct SetupBiometricsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            VStack(spacing: 16) {
-                BodyMText(
-                    localizedString(
-                        "security__bio_ask", comment: "",
-                        variables: ["biometricsName": biometryTypeName]
-                    )
-                )
-                .padding(.horizontal, 32)
-            }
-            .padding(.top, 32)
-            .padding(.bottom, 48)
+        VStack(alignment: .leading, spacing: 0) {
+            SheetHeader(title: biometryTypeName)
 
-            Spacer()
+            VStack(spacing: 0) {
+                BodyMText(localizedString("security__bio_ask", variables: ["biometricsName": biometryTypeName]))
 
-            Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 133, height: 133)
+                Spacer()
 
-            Spacer()
+                Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 133, height: 133)
 
-            // Biometrics toggle
-            VStack(spacing: 24) {
-                VStack {
-                    HStack {
-                        BodyMSBText(
-                            localizedString(
-                                "security__bio_use", comment: "",
-                                variables: ["biometricsName": biometryTypeName]
-                            ),
-                            textColor: .textPrimary
-                        )
+                Spacer()
 
-                        Spacer()
+                HStack(alignment: .center, spacing: 0) {
+                    BodyMSBText(localizedString("security__bio_use", variables: ["biometricsName": biometryTypeName]))
 
-                        Toggle("", isOn: $useBiometrics)
-                            .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
-                            .labelsHidden()
-                    }
-                    .padding(.vertical, 8)
+                    Spacer()
+
+                    Toggle("", isOn: $useBiometrics)
+                        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                        .labelsHidden()
                 }
-                .padding(.horizontal, 16)
-                .padding(.horizontal, 32)
-                .onChange(of: useBiometrics) { newValue in
-                    if newValue {
+                .padding(.bottom, 32)
+
+                CustomButton(title: localizedString("common__continue")) {
+                    if useBiometrics {
                         requestBiometricPermission()
-                    }
-                }
-
-                CustomButton(
-                    title: NSLocalizedString("common__continue", comment: ""),
-                    isDisabled: false
-                ) {
-                    // Save the biometric setting
-                    settings.useBiometrics = useBiometrics
-
-                    if !useBiometrics {
-                        // Navigate to NoBiometricsSupport view
-                        navigateToNoBiometricsSupport = true
                     } else {
-                        // Navigate to success view
-                        navigateToSuccess = true
+                        navigationPath.append(.success)
                     }
                 }
-                .padding(.horizontal, 32)
             }
-            .padding(.bottom, 32)
+            .padding(.horizontal, 16)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .sheetBackground()
-        .navigationTitle(NSLocalizedString(biometryTypeName, comment: ""))
-        .navigationDestination(isPresented: $navigateToNoBiometricsSupport) {
-            NoBiometricsSupport()
-        }
-        .navigationDestination(isPresented: $navigateToSuccess) {
-            SecuritySetupSuccess()
-        }
         .alert(
             NSLocalizedString("security__bio_error_title", comment: ""),
             isPresented: $showingError
         ) {
             Button(NSLocalizedString("common__ok", comment: "")) {
                 useBiometrics = false
-                // Navigate to NoBiometricsSupport view when there's an error
                 navigateToNoBiometricsSupport = true
             }
         } message: {
@@ -127,16 +86,13 @@ struct SetupBiometricsView: View {
         }
 
         // Request biometric authentication
-        let reason = localizedString(
-            "security__bio_confirm", comment: "",
-            variables: ["biometricsName": biometryTypeName]
-        )
+        let reason = localizedString("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
                 if success {
-                    // Authentication successful - keep the toggle on
-                    Logger.debug("Biometric authentication successful", context: "SetupBiometricsView")
+                    settings.useBiometrics = useBiometrics
+                    navigationPath.append(.success)
                 } else {
                     // Authentication failed - turn off the toggle and show error
                     useBiometrics = false
@@ -180,7 +136,6 @@ struct SetupBiometricsView: View {
 }
 
 #Preview {
-    SetupBiometricsView()
-        .environmentObject(AppViewModel())
+    SecurityBiometrics(navigationPath: .constant([.biometrics]))
         .environmentObject(SettingsViewModel())
 }

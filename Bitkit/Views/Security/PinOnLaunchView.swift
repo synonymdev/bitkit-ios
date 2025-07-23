@@ -4,9 +4,11 @@ import SwiftUI
 struct PinOnLaunchView: View {
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
-    @EnvironmentObject private var settings: SettingsViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
+    @State private var biometricFailedOnce = false
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
     let onPinVerified: () -> Void
 
     private var biometryTypeName: String {
@@ -102,10 +104,7 @@ struct PinOnLaunchView: View {
         }
 
         // Request biometric authentication
-        let reason = localizedString(
-            "security__bio_confirm", comment: "",
-            variables: ["biometricsName": biometryTypeName]
-        )
+        let reason = localizedString("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
@@ -117,6 +116,7 @@ struct PinOnLaunchView: View {
                         Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "PinOnLaunchView")
                     }
                     Haptics.notify(.error)
+                    biometricFailedOnce = true
                 }
             }
         }
@@ -126,47 +126,49 @@ struct PinOnLaunchView: View {
         VStack(spacing: 0) {
             Spacer()
 
-            // Logo
             Image("logo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 279, height: 82)
                 .padding(.bottom, 47)
 
-            // Title text
-            BodyMSBText(
-                NSLocalizedString("security__pin_enter", comment: ""),
-                textColor: .textPrimary,
-            )
-            .padding(.bottom, 40)
+            BodyMSBText(localizedString("security__pin_enter"))
 
-            // Error message
+            // Biometric button (if enabled and available, and failed once)
+            if settings.useBiometrics && isBiometricAvailable && biometricFailedOnce {
+                CustomButton(
+                    title: localizedString("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
+                    size: .small,
+                    icon: Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                ) {
+                    handleBiometricAuthentication()
+                }
+                .padding(.top, 12)
+            }
+
             if !errorMessage.isEmpty {
                 BodySText(errorMessage, textColor: .brandAccent)
-                    .padding(.bottom, 16)
-            }
-
-            // Biometric button (if enabled and available)
-            if settings.useBiometrics && isBiometricAvailable {
-                Button(action: handleBiometricAuthentication) {
-                    HStack(alignment: .center, spacing: 8) {
-                        Image(systemName: Env.biometryType == .touchID ? "touchid" : "faceid")
-                        Text(localizedString("security__pin_use_biometrics", comment: "", variables: ["biometricsName": biometryTypeName]))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 12)
+                    .onTapGesture {
+                        sheets.showSheet(.forgotPin)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.white16)
-                    .cornerRadius(54)
-                }
-                .padding(.bottom, 32)
             }
 
-            // PIN input component
             PinInput(pinInput: $pinInput) { pin in
                 handlePinChange(pin)
             }
+            .padding(.top, 16)
         }
         .background(Color.black)
+        .onAppear {
+            // Automatically request biometric authentication if enabled and available
+            if settings.useBiometrics && isBiometricAvailable {
+                handleBiometricAuthentication()
+            }
+        }
     }
 }
 

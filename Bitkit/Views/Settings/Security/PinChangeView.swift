@@ -7,8 +7,7 @@
 
 import SwiftUI
 
-//Used for changing the PIN or disabling it
-
+/// View for changing the PIN or disabling it
 struct PinChangeView: View {
     @State private var pinInput: String = ""
     @State private var currentPin: String = ""
@@ -16,9 +15,10 @@ struct PinChangeView: View {
     @State private var step: PinChangeStep = .verifyCurrentPin
     @State private var errorMessage: String = ""
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var settings: SettingsViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     enum PinChangeStep {
         case verifyCurrentPin
@@ -28,7 +28,7 @@ struct PinChangeView: View {
     }
 
     // Computed properties for title and description
-    var title: String {
+    var navTitle: String {
         switch step {
         case .verifyCurrentPin:
             return NSLocalizedString("security__cp_title", comment: "Change PIN")
@@ -57,54 +57,73 @@ struct PinChangeView: View {
     private func handlePinComplete(_ pin: String) {
         switch step {
         case .verifyCurrentPin:
-            // Verify the current PIN
-            if settings.pinCheck(pin: pin) {
-                currentPin = pin
-                step = .enterNewPin
-                pinInput = ""
-                errorMessage = ""
-                Haptics.notify(.success)
-            } else {
-                handleIncorrectCurrentPin()
-            }
-
+            handleCurrentPinVerification(pin)
         case .enterNewPin:
-            // Store the new PIN and move to confirmation
-            newPin = pin
-            step = .confirmNewPin
-            pinInput = ""
-            errorMessage = ""
-            Haptics.notify(.success)
-
+            handleNewPinEntry(pin)
         case .confirmNewPin:
-            // Confirm the new PIN
-            if pin == newPin {
-                // PINs match, update the PIN
-                do {
-                    try settings.removePin(pin: currentPin, resetSettings: false)
-                    try settings.setPin(newPin)
-                    step = .success
-                    errorMessage = ""
-                    Haptics.notify(.success)
-                } catch {
-                    Logger.error("Failed to change PIN: \(error)", context: "PinChangeView")
-                    errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
-                    pinInput = ""
-                    Haptics.notify(.error)
-                }
-            } else {
-                // PINs don't match, go back to enter new PIN
-                errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
-                step = .enterNewPin
-                newPin = ""
-                pinInput = ""
-                Haptics.notify(.error)
-            }
-
+            handleNewPinConfirmation(pin)
         case .success:
             // Should not reach here as PIN input is hidden in success state
             break
         }
+    }
+
+    private func handleCurrentPinVerification(_ pin: String) {
+        if settings.pinCheck(pin: pin) {
+            // Current PIN is correct - proceed to new PIN entry
+            currentPin = pin
+            step = .enterNewPin
+            resetPinInput()
+            Haptics.notify(.success)
+        } else {
+            handleIncorrectCurrentPin()
+        }
+    }
+
+    private func handleNewPinEntry(_ pin: String) {
+        // Store the new PIN and move to confirmation
+        newPin = pin
+        step = .confirmNewPin
+        resetPinInput()
+        Haptics.notify(.success)
+    }
+
+    private func handleNewPinConfirmation(_ pin: String) {
+        if pin == newPin {
+            // PINs match - update the PIN
+            updatePin()
+        } else {
+            // PINs don't match - go back to enter new PIN
+            handlePinMismatch()
+        }
+    }
+
+    private func updatePin() {
+        do {
+            try settings.removePin(pin: currentPin, resetSettings: false)
+            try settings.setPin(newPin)
+            step = .success
+            resetPinInput()
+            Haptics.notify(.success)
+        } catch {
+            Logger.error("Failed to change PIN: \(error)", context: "PinChangeView")
+            errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+            pinInput = ""
+            Haptics.notify(.error)
+        }
+    }
+
+    private func handlePinMismatch() {
+        errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+        step = .enterNewPin
+        newPin = ""
+        resetPinInput()
+        Haptics.notify(.error)
+    }
+
+    private func resetPinInput() {
+        pinInput = ""
+        errorMessage = ""
     }
 
     private func handleIncorrectCurrentPin() {
@@ -112,42 +131,52 @@ struct PinChangeView: View {
         Haptics.notify(.error)
 
         if settings.hasExceededPinAttempts() {
-            // Exceeded maximum attempts - wipe wallet
-            Task {
-                do {
-                    try await wallet.wipeWallet()
-                    settings.resetPinSettings()
-
-                    // Show toast notification
-                    await MainActor.run {
-                        app.toast(
-                            type: .error,
-                            title: NSLocalizedString("security__wiped_title", comment: ""),
-                            description: NSLocalizedString(
-                                "security__wiped_message", comment: ""),
-                            autoHide: false
-                        )
-                    }
-                } catch {
-                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinChangeView")
-                    await MainActor.run {
-                        app.toast(error)
-                    }
-                }
-            }
+            handleWalletWipe()
             return
         }
 
+        updateErrorMessageForRemainingAttempts()
+    }
+
+    private func handleWalletWipe() {
+        Task {
+            do {
+                try await wallet.wipeWallet()
+                settings.resetPinSettings()
+
+                // Show toast notification
+                await MainActor.run {
+                    app.toast(
+                        type: .error,
+                        title: NSLocalizedString("security__wiped_title", comment: ""),
+                        description: NSLocalizedString("security__wiped_message", comment: ""),
+                        autoHide: false
+                    )
+                }
+            } catch {
+                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinChangeView")
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
+        }
+    }
+
+    private func updateErrorMessageForRemainingAttempts() {
         let remainingAttempts = settings.getRemainingPinAttempts()
 
         if remainingAttempts == 1 {
             // Last attempt warning
             errorMessage = NSLocalizedString(
-                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet.")
+                "security__pin_last_attempt",
+                comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
+            )
         } else {
             // Show remaining attempts
             errorMessage = localizedString(
-                "security__pin_attempts", comment: "%d attempts remaining. Forgot your PIN?", variables: ["attemptsRemaining": "\(remainingAttempts)"]
+                "security__pin_attempts",
+                comment: "%d attempts remaining. Forgot your PIN?",
+                variables: ["attemptsRemaining": "\(remainingAttempts)"]
             )
         }
     }
@@ -163,55 +192,66 @@ struct PinChangeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(description, textColor: .textSecondary)
-                .multilineTextAlignment(step == .success ? .center : .leading)
-                .frame(maxWidth: .infinity, alignment: step == .success ? .center : .leading)
-                .padding(.horizontal, 16)
-                .padding(.top, 32)
-                .padding(.bottom, 49)
 
             if step == .success {
-                // Success illustration
-                Image("check")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 274, height: 274)
-                    .padding(.top, 32)
+                successScreen
             } else {
-                // Error message
-                if !errorMessage.isEmpty {
-                    CaptionText(errorMessage, textColor: .brandAccent)
-                        .padding(.bottom, 8)
-                }
-
-                // PIN input component - only show when not in success state
-                PinInput(pinInput: $pinInput, verticalSpace: true) { pin in
-                    handlePinChange(pin)
-                }
-            }
-
-            if step == .success {
-                Spacer()
-                CustomButton(
-                    title: NSLocalizedString("common__ok", comment: "OK button")
-                ) {
-                    dismiss()
-                }
-                .padding(.horizontal, 16)
+                descriptionSection
+                errorSection
+                pinInputSection
             }
         }
-        .navigationTitle(title)
+        .padding(.horizontal, 16)
+        .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                if step != .success {
-                    Button(NSLocalizedString("common__cancel", comment: "Cancel button")) {
-                        dismiss()
-                    }
-                    .foregroundColor(.textPrimary)
-                }
+        .navigationBarBackButtonHidden(step == .success)
+    }
+
+    private var descriptionSection: some View {
+        BodyMText(description)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 32)
+            .padding(.bottom, 49)
+    }
+
+    private var successScreen: some View {
+        VStack(spacing: 0) {
+            BodyMText(localizedString("security__cp_changed_text"))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 32)
+
+            Spacer()
+
+            Image("check")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 274, height: 274)
+
+            Spacer()
+
+            CustomButton(title: localizedString("common__ok")) {
+                dismiss()
             }
         }
+    }
+
+    private var errorSection: some View {
+        Group {
+            if !errorMessage.isEmpty {
+                BodySText(errorMessage, textColor: .brandAccent)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .onTapGesture {
+                        sheets.showSheet(.forgotPin)
+                    }
+            }
+        }
+    }
+
+    private var pinInputSection: some View {
+        PinInput(pinInput: $pinInput, verticalSpace: true) { pin in
+            handlePinChange(pin)
+        }
+        .padding(.top, 16)
     }
 }
 
@@ -220,7 +260,8 @@ struct PinChangeView: View {
         PinChangeView()
     }
     .preferredColorScheme(.dark)
-    .environmentObject(SettingsViewModel())
-    .environmentObject(WalletViewModel())
     .environmentObject(AppViewModel())
+    .environmentObject(SettingsViewModel())
+    .environmentObject(SheetViewModel())
+    .environmentObject(WalletViewModel())
 }

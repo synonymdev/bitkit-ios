@@ -53,12 +53,6 @@ struct SecurityPrivacySettingsView: View {
                     toggle: $settings.warnWhenSendingOver100
                 )
 
-                //TODO: Place back when contacts are implemented
-                // SettingsListLabel(
-                //     title: "Show recently paid contacts",
-                //     toggle: $settings.showRecentlyPaidContacts
-                // )
-
                 // PIN Code Section
                 if !settings.pinEnabled {
                     Button {
@@ -138,13 +132,8 @@ struct SecurityPrivacySettingsView: View {
                     )
 
                     // Footer text for Biometrics
-                    BodyMText(
-                        localizedString(
-                            "settings__security__footer", comment: "",
-                            variables: ["biometryTypeName": biometryTypeName]),
-                        textColor: .textSecondary
-                    )
-                    .padding(.top, 16)
+                    BodySText(localizedString("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
+                        .padding(.top, 16)
                 }
             }
             .padding(.horizontal, 16)

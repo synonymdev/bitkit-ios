@@ -56,6 +56,14 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
+            item: $sheets.forgotPinSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in ForgotPinSheet(config: config)
+        }
+        .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
                 sheets.hideSheet()
@@ -111,7 +119,7 @@ struct MainNavView: View {
                 sheets.hideSheet()
             }
         ) {
-            config in SetupSecuritySheet(config: config)
+            config in SecuritySheet(config: config)
         }
         .sheet(
             item: $sheets.quickpaySheetItem,
