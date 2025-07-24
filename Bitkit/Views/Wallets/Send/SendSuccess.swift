@@ -35,7 +35,7 @@ struct SendSuccess: View {
                     SheetHeader(title: localizedString("wallet__send_sent"), showBackButton: false)
 
                     if let sendAmountSats = wallet.sendAmountSats {
-                        MoneyStack(sats: Int(sendAmountSats))
+                        MoneyStack(sats: Int(sendAmountSats), showSymbol: true)
                     }
 
                     Spacer()

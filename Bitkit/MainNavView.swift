@@ -30,6 +30,14 @@ struct MainNavView: View {
             config in AddTagSheet(config: config)
         }
         .sheet(
+            item: $sheets.boostSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in BoostSheet(config: config)
+        }
+        .sheet(
             item: $sheets.appUpdateSheetItem,
             onDismiss: {
                 sheets.hideSheet()

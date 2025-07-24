@@ -154,6 +154,10 @@ struct CustomButton: View {
             return .gray6
         }
 
+        if isDisabled && icon != nil {
+            return .white06
+        }
+
         if isDisabled {
             return .clear
         }
