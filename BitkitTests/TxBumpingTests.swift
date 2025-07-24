@@ -109,15 +109,15 @@ final class TxBumpingTests: XCTestCase {
             sats: sendAmount,
             satsPerVbyte: lowFeeRate
         )
-        
+
         try await lightning.sync()
 
         XCTAssertFalse(originalTxId.isEmpty, "Original transaction ID should not be empty")
         Logger.test("Original transaction sent with txid: \(originalTxId)", context: "TxBumpingTests")
 
         // Wait a moment before attempting to bump the fee
-        Logger.test("Waiting 2 seconds before bumping fee", context: "TxBumpingTests")
-        try await Task.sleep(nanoseconds: 2_000_000_000)
+        Logger.test("Waiting 10 seconds before bumping fee", context: "TxBumpingTests")
+        try await Task.sleep(nanoseconds: 10_000_000_000)
         Logger.test("Wait completed", context: "TxBumpingTests")
 
         // Bump the fee using RBF with a higher fee rate
@@ -128,7 +128,7 @@ final class TxBumpingTests: XCTestCase {
             txid: originalTxId,
             satsPerVbyte: highFeeRate
         )
-        
+
         lightning.dumpLdkLogs()
 
         XCTAssertFalse(replacementTxId.isEmpty, "Replacement transaction ID should not be empty")
@@ -196,7 +196,7 @@ final class TxBumpingTests: XCTestCase {
 
         // Sync to see the incoming transaction
         Logger.test("Syncing wallet to detect incoming transaction", context: "TxBumpingTests")
-//        try await lightning.sync()
+        // try await lightning.sync()
         try await Task.sleep(nanoseconds: 10_000_000_000)
         try await lightning.sync()
         Logger.test("Wallet sync complete", context: "TxBumpingTests")
@@ -221,7 +221,7 @@ final class TxBumpingTests: XCTestCase {
         Logger.test("Generating destination address for CPFP child transaction", context: "TxBumpingTests")
         let cpfpDestinationAddress = try await lightning.newAddress()
         Logger.test("CPFP destination address: \(cpfpDestinationAddress)", context: "TxBumpingTests")
-        
+
         let childTxId = try await lightning.accelerateByCpfp(
             txid: stuckIncomingTxId,
             satsPerVbyte: highFeeRate,
