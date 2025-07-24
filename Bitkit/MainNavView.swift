@@ -28,7 +28,6 @@ struct MainNavView: View {
             }
         ) {
             config in AddTagSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.boostSheetItem,
@@ -37,7 +36,6 @@ struct MainNavView: View {
             }
         ) {
             config in BoostSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.appUpdateSheetItem,
@@ -47,7 +45,6 @@ struct MainNavView: View {
             }
         ) {
             config in AppUpdateSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.backupSheetItem,
@@ -57,7 +54,6 @@ struct MainNavView: View {
             }
         ) {
             config in BackupSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.highBalanceSheetItem,
@@ -67,7 +63,6 @@ struct MainNavView: View {
             }
         ) {
             config in HighBalanceSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
@@ -85,7 +80,6 @@ struct MainNavView: View {
             }
         ) {
             config in NotificationsSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.receiveSheetItem,
@@ -94,7 +88,6 @@ struct MainNavView: View {
             }
         ) {
             config in ReceiveSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.receivedTxSheetItem,
@@ -103,7 +96,6 @@ struct MainNavView: View {
             }
         ) {
             config in ReceivedTx(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.scannerSheetItem,
@@ -112,7 +104,6 @@ struct MainNavView: View {
             }
         ) {
             config in ScannerSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.securitySheetItem,
@@ -121,7 +112,6 @@ struct MainNavView: View {
             }
         ) {
             config in SetupSecuritySheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.quickpaySheetItem,
@@ -131,7 +121,6 @@ struct MainNavView: View {
             }
         ) {
             config in QuickpaySheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .sheet(
             item: $sheets.sendSheetItem,
@@ -141,7 +130,6 @@ struct MainNavView: View {
             }
         ) {
             config in SendSheet(config: config)
-                .presentationDetents([.height(config.size.height)])
         }
         .accentColor(.white)
         .overlay {

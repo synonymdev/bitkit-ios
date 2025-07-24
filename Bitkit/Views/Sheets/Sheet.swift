@@ -90,6 +90,7 @@ struct Sheet<Content: View>: View {
                 .padding(.top, 12)
         }
         .presentationBackgroundInteraction(.disabled)
+        .presentationDetents([.height(sheetSize.height)])
         .presentationDragIndicator(.hidden)
         .presentationCornerRadius(32)
         .presentationBackground { Color.black }
