@@ -9,10 +9,10 @@ import Foundation
 
 /// Handles app services each on it's own dedicated queue
 class ServiceQueue {
-    private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .utility)
-    private static let coreQueue = DispatchQueue(label: "core-queue", qos: .utility)
-    private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .utility)
-    private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .utility)
+    private static let ldkQueue = DispatchQueue(label: "ldk-queue", qos: .userInteractive)
+    private static let coreQueue = DispatchQueue(label: "core-queue", qos: .userInteractive)
+    private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .userInteractive)
+    private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .userInteractive)
 
     private init() {}
 
@@ -69,8 +69,7 @@ class ServiceQueue {
     ///   - execute: The function
     ///   - functionName: The name of the function for logging
     /// - Returns: The result of the async function
-    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function) async throws -> T
-    {
+    static func background<T>(_ service: ServiceTypes, _ execute: @escaping () async throws -> T, functionName: String = #function) async throws -> T {
         let startTime = CFAbsoluteTimeGetCurrent()
 
         return try await withCheckedThrowingContinuation { continuation in
