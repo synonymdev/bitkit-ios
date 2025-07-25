@@ -5,6 +5,7 @@ enum SheetID: String, CaseIterable {
     case appUpdate
     case backup
     case boost
+    case forgotPin
     case highBalance
     case lnurlWithdraw
     case notifications
@@ -117,6 +118,18 @@ class SheetViewModel: ObservableObject {
             let boostConfig = config.data as? BoostConfig
             guard let onchainActivity = boostConfig?.onchainActivity else { return nil }
             return BoostSheetItem(onchainActivity: onchainActivity)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var forgotPinSheetItem: ForgotPinSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .forgotPin else { return nil }
+            return ForgotPinSheetItem()
         }
         set {
             if newValue == nil {
