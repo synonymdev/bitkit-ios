@@ -47,7 +47,6 @@ struct NumPad: View {
         }
     }
 }
-
 private struct NumPadButton: View {
     let text: String
     let height: CGFloat
@@ -56,8 +55,9 @@ private struct NumPadButton: View {
     var body: some View {
         Button(action: action) {
             Text(text)
-                .font(.title)
+                .font(.custom(Fonts.medium, size: 24))
                 .foregroundColor(.white)
+                .kerning(-0.1)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
         }

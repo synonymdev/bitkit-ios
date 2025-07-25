@@ -13,7 +13,7 @@ struct PinInput: View {
     let onPinChange: (String) -> Void
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
             // PIN circles
             HStack(alignment: .top, spacing: 24) {
                 ForEach(0 ..< 4, id: \.self) { index in
@@ -26,16 +26,16 @@ struct PinInput: View {
                         .frame(width: 20, height: 20)
                 }
             }
-            .padding(.bottom, 60)
+            .padding(.bottom, 32)
 
             if verticalSpace {
                 Spacer()
             }
 
-            // NumPad
             NumPad { key in
                 handleNumPadInput(key)
             }
+            .background(Color.black)
         }
     }
 
