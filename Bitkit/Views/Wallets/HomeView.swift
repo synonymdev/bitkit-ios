@@ -28,7 +28,7 @@ struct HomeView: View {
 
             if !app.showHomeViewEmptyState {
                 VStack(spacing: 0) {
-                    HStack {
+                    HStack(spacing: 0) {
                         NavigationLink(value: Route.savingsWallet) {
                             WalletBalanceView(
                                 type: .onchain,
@@ -37,7 +37,10 @@ struct HomeView: View {
                         }
 
                         Divider()
-                            .frame(height: 50)
+                            .frame(width: 1, height: 50)
+                            .background(Color.white16)
+                            .padding(.trailing, 16)
+                            .padding(.leading, 16)
 
                         NavigationLink(value: Route.spendingWallet) {
                             WalletBalanceView(
@@ -138,16 +141,15 @@ struct HomeView: View {
                 navigation.navigate(.profileIntro)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 16) {
                 Image(systemName: "person.circle.fill")
                     .font(.title2)
                     .foregroundColor(.secondary)
+                    .frame(width: 32, height: 32)
 
-                Text("Your Name")
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                TitleText(localizedString("slashtags__your_name_capital"))
             }
+            .frame(height: 46)
         }
     }
 
@@ -161,6 +163,7 @@ struct HomeView: View {
                 Image("burger")
             }
         }
+        .frame(height: 46)
     }
 }
 

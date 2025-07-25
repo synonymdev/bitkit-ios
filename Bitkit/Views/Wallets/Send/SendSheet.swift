@@ -55,7 +55,7 @@ struct SendSheet: View {
         case .manual:
             SendEnterManuallyView(navigationPath: $navigationPath)
         case .scan:
-            ScannerView()
+            ScannerView(showBackButton: true)
         case .amount:
             SendAmountView(navigationPath: $navigationPath)
         case .utxoSelection:
