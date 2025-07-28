@@ -9,7 +9,7 @@
 
 ## About
 
-This repository contains a **new native Android app** which is **not ready for production**.
+This repository contains a **new native iOS app** which is **not ready for production**.
 
 
 ## How to build
