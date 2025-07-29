@@ -5,16 +5,37 @@ enum SheetSize {
 
     var height: CGFloat {
         let screenHeight = UIScreen.screenHeight
+        let safeAreaInsets =
+            UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows.first?.safeAreaInsets ?? .zero
+        let headerHeight: CGFloat = 46
+        let balanceHeight: CGFloat = 70
+        let spacing: CGFloat = 32
+        let adjustment: CGFloat = -21
+
+        let safeArea = safeAreaInsets.top + safeAreaInsets.bottom
+        let headerSpacing = safeArea + headerHeight + spacing + adjustment
+        let balanceSpacing = headerSpacing + balanceHeight + spacing
 
         switch self {
         case .small:
             return 400
         case .medium:
-            let preferredHeight = screenHeight - 273 // Header + Balance visible
-            return UIScreen.main.isSmall ? 600 : preferredHeight
+            let minHeight: CGFloat = 600
+            // Header + Balance visible
+            let preferredHeight = screenHeight - balanceSpacing
+            if preferredHeight < minHeight {
+                // Use large sheet size when medium is too small
+                let largePreferredHeight = screenHeight - headerSpacing
+                return max(minHeight, largePreferredHeight)
+            }
+            return preferredHeight
         case .large:
-            let preferredHeight = screenHeight - 153 // Only Header visible
-            return UIScreen.main.isSmall ? 600 : preferredHeight
+            let minHeight: CGFloat = 600
+            // Only Header visible
+            let preferredHeight = screenHeight - headerSpacing
+            return max(minHeight, preferredHeight)
         }
     }
 }

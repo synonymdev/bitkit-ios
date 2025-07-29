@@ -62,7 +62,7 @@ struct SendOptionsView: View {
                     SendOptionCard(
                         title: localizedString("wallet__recipient_invoice"),
                         action: handlePaste,
-                        iconName: "clipboard-brand",
+                        iconName: "clipboard",
                         testID: "RecipientInvoice"
                     )
 
@@ -82,20 +82,16 @@ struct SendOptionsView: View {
                 }
 
                 if !UIScreen.main.isSmall {
-                    // Spacer()
-                    //     .frame(minHeight: 16)
+                    Spacer(minLength: 0)
 
                     Image("coin-stack-logo")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 256, height: 256)
                         .frame(maxWidth: .infinity, alignment: .center)
-
-                    // Spacer()
-                    //     .frame(minHeight: 16)
-                } else {
-                    Spacer()
                 }
+
+                Spacer(minLength: 0)
             }
         }
         .sheetBackground()
@@ -113,8 +109,10 @@ struct SendOptionsView: View {
 
     func handlePaste() {
         guard let uri = UIPasteboard.general.string else {
-            Logger.error("No data in clipboard")
-            app.toast(type: .warning, title: "No data in clipboard", description: "")
+            app.toast(
+                type: .warning,
+                title: localizedString("wallet__send_clipboard_empty_title"),
+                description: localizedString("wallet__send_clipboard_empty_text"))
             return
         }
 
