@@ -26,6 +26,6 @@ extension View {
 
 extension UIScreen {
     var isSmall: Bool {
-        return UIScreen.screenHeight < 700
+        return UIScreen.screenHeight < 800
     }
 }

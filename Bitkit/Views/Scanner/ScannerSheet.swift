@@ -11,8 +11,6 @@ struct ScannerSheet: View {
 
     var body: some View {
         Sheet(id: .scanner, data: config) {
-            // SheetHeader(title: localizedString("other__qr_scan"))
-
             ScannerView()
         }
     }

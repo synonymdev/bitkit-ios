@@ -1,23 +1,28 @@
-//
-//  ScannerView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import CodeScanner
+import PhotosUI
 import SwiftUI
+import Vision
+
+let headerHeight: CGFloat = 60
+let buttonHeight: CGFloat = 56
+let spacing: CGFloat = 16
+let headerSpace = headerHeight + spacing
+let buttonSpace = buttonHeight + spacing
 
 struct ScannerView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    var showBackButton: Bool = false
+
+    @State private var isFlashlightOn = false
+    @State private var selectedItem: PhotosPickerItem?
 
     var body: some View {
         ZStack {
             // Full screen scanner
-            CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false) { response in
+            CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false, isTorchOn: isFlashlightOn) { response in
                 if case .success(let result) = response {
                     handleScan(result.string)
                 } else if case .failure(let error) = response {
@@ -25,14 +30,85 @@ struct ScannerView: View {
                     app.toast(error)
                 }
             }
-            .edgesIgnoringSafeArea(.all)
 
-            // Scanner UI overlay - only the scanning area, not controls
-            ScannerUIOverlay(onPaste: handlePaste)
+            // Sheet background with hole
+            GeometryReader { geometry in
+                let availableHeight = geometry.size.height - headerSpace - buttonSpace
+
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            gradient: Gradient(colors: [Color.white.opacity(0.08), Color.white.opacity(0.012)]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .background(Color.black)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .frame(
+                                width: geometry.size.width - spacing * 2,
+                                height: availableHeight
+                            )
+                            .position(
+                                x: geometry.size.width / 2,
+                                y: headerSpace + availableHeight / 2
+                            )
+                            .blendMode(.destinationOut)
+                    )
+                    .edgesIgnoringSafeArea(.all)
+            }
+
+            // UI Elements on top of camera
+            VStack {
+                SheetHeader(title: localizedString("other__qr_scan"), showBackButton: showBackButton)
+
+                Spacer()
+
+                CustomButton(
+                    title: localizedString("other__qr_paste"),
+                    icon: Image("clipboard")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 16, height: 16),
+                ) {
+                    await handlePaste()
+                }
+            }
+            .padding(.horizontal, 16)
+
+            // Corner buttons
+            GeometryReader { _ in
+                HStack {
+                    PhotosPicker(selection: $selectedItem, matching: .images) {
+                        Image("picture")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Color.white16)
+                            .clipShape(Circle())
+                    }
+                    .onChange(of: selectedItem) { item in
+                        Task {
+                            await handleImageSelection(item)
+                        }
+                    }
+
+                    Spacer()
+
+                    IconButton(icon: Image("flashlight")) {
+                        isFlashlightOn.toggle()
+                    }
+                    .background(isFlashlightOn ? Color.white32 : Color.clear)
+                    .clipShape(Circle())
+                }
+                .padding(.top, headerSpace + spacing)
+                .padding(.horizontal, spacing * 2)
+            }
         }
-        .navigationTitle(localizedString("other__qr_scan"))
-        .navigationBarTitleDisplayMode(.inline)
-        .sheetBackground()
+        .navigationBarHidden(true)
     }
 
     func handleScan(_ uri: String) {
@@ -60,170 +136,104 @@ struct ScannerView: View {
 
     func handlePaste() async {
         guard let uri = UIPasteboard.general.string else {
-            Logger.error("No data in clipboard")
-            app.toast(type: .warning, title: "No data in clipboard", description: "")
+            app.toast(
+                type: .warning,
+                title: localizedString("wallet__send_clipboard_empty_title"),
+                description: localizedString("wallet__send_clipboard_empty_text"))
             return
         }
 
+        handleScan(uri)
+    }
+
+    func handleImageSelection(_ item: PhotosPickerItem?) async {
+        guard let item = item else { return }
+
         do {
-            try await app.handleScannedData(uri)
-            PaymentNavigationHelper.openPaymentSheet(
-                app: app,
-                currency: currency,
-                settings: settings,
-                sheetViewModel: sheets
-            )
+            guard let data = try await item.loadTransferable(type: Data.self),
+                let image = UIImage(data: data)
+            else {
+                app.toast(
+                    type: .error,
+                    title: "Error",
+                    description: "Sorry. Bitkit wasn't able to load this image."
+                )
+                return
+            }
+
+            // Detect QR codes in the image
+            guard let cgImage = image.cgImage else {
+                app.toast(
+                    type: .error,
+                    title: "Error",
+                    description: "Sorry. Bitkit wasn't able to process this image."
+                )
+                return
+            }
+
+            let request = VNDetectBarcodesRequest { request, error in
+                if let error = error {
+                    Logger.error(error, context: "QR detection failed")
+                    DispatchQueue.main.async {
+                        self.app.toast(
+                            type: .error,
+                            title: "Detection Error",
+                            description: "Failed to process the image for QR codes."
+                        )
+                    }
+                    return
+                }
+
+                guard let results = request.results as? [VNBarcodeObservation] else {
+                    Logger.error("No barcode results found")
+                    DispatchQueue.main.async {
+                        self.app.toast(
+                            type: .error,
+                            title: "No QR Code Found",
+                            description: "Sorry. Bitkit wasn't able to detect a QR code in this image."
+                        )
+                    }
+                    return
+                }
+
+                let qrResults = results.filter { $0.symbology == .qr }
+
+                guard let firstResult = qrResults.first,
+                    let payload = firstResult.payloadStringValue
+                else {
+                    DispatchQueue.main.async {
+                        self.app.toast(
+                            type: .error,
+                            title: "No QR Code Found",
+                            description: "Sorry. Bitkit wasn't able to detect a QR code in this image."
+                        )
+                    }
+                    return
+                }
+
+                DispatchQueue.main.async {
+                    self.handleScan(payload)
+                }
+            }
+
+            #if targetEnvironment(simulator) && compiler(>=5.7)
+                if #available(iOS 16, *) {
+                    request.revision = VNDetectBarcodesRequestRevision1
+                }
+            #endif
+
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            try handler.perform([request])
         } catch {
-            Logger.error(error, context: "Failed to read data from clipboard")
+            Logger.error(error, context: "Failed to process image")
             app.toast(
                 type: .error,
-                title: localizedString("other__qr_error_header"),
-                description: localizedString("other__qr_error_text")
+                title: "Error",
+                description: "Sorry. An error occurred when trying to process this image."
             )
         }
-    }
-}
 
-// Scanner UI Overlay component for reuse in both actual and preview versions
-struct ScannerUIOverlay: View {
-    var onPaste: () async -> Void
-
-    var body: some View {
-        ZStack {
-            // Scanner overlay with blur
-            ScannerOverlayView()
-                .edgesIgnoringSafeArea(.all)
-
-            // UI Elements
-            VStack {
-                Spacer()
-
-                // Paste button
-                CustomButton(
-                    title: localizedString("other__qr_paste"),
-                    variant: .tertiary,
-                    icon: Image("clipboard-white")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 20, height: 20),
-                    action: { await onPaste() }
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 36)
-            }
-            .edgesIgnoringSafeArea(.all)
-        }
-    }
-}
-
-// Preview-friendly version of the scanner that uses an image instead of the actual camera
-struct ScannerPreview: View {
-    @EnvironmentObject private var app: AppViewModel
-
-    var body: some View {
-        ZStack {
-            // Background image instead of camera
-            Image("preview-scan")
-                .resizable()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .edgesIgnoringSafeArea(.all)
-
-            // Scanner UI overlay
-            ScannerUIOverlay(
-                onPaste: {
-                    // No-op for preview
-                }
-            )
-        }
-        .navigationBarTitle(localizedString("other__qr_scan"))
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-// UIKit-based scanner overlay
-struct ScannerOverlayView: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let view = TransparentHoleView()
-        return view
+        selectedItem = nil
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
-// Custom UIView with transparent hole
-class TransparentHoleView: UIView {
-    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
-    private let holeLayer = CAShapeLayer()
-    private let borderLayer = CAShapeLayer()
-    private let darkOverlayView = UIView()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupLayers()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupLayers()
-    }
-
-    private func setupLayers() {
-        // Add blur view
-        blurView.frame = bounds
-        blurView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        blurView.alpha = 0.9
-        addSubview(blurView)
-
-        // Add dark overlay
-        darkOverlayView.backgroundColor = UIColor.black.withAlphaComponent(0.25)
-        darkOverlayView.frame = bounds
-        darkOverlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        blurView.contentView.addSubview(darkOverlayView)
-
-        // Configure hole layer (will be cut out of blur)
-        holeLayer.fillRule = .evenOdd
-        blurView.layer.mask = holeLayer
-
-        // Configure border layer (just for the border)
-        borderLayer.fillColor = UIColor.clear.cgColor
-        borderLayer.strokeColor = UIColor.white.withAlphaComponent(0.1).cgColor
-        borderLayer.lineWidth = 2
-        layer.addSublayer(borderLayer)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        blurView.frame = bounds
-
-        // Calculate hole size
-        let width = bounds.width
-        let height = bounds.height
-
-        let holeWidth = min(width - 36, width)
-        let holeHeight = height * 0.75 // Make the height 65% of available space
-        let holeX = (width - holeWidth) / 2
-        let holeY = (height - holeHeight) / 2
-
-        // Create path with hole
-        let path = UIBezierPath(rect: bounds)
-        let holePath = UIBezierPath(roundedRect: CGRect(x: holeX, y: holeY, width: holeWidth, height: holeHeight), cornerRadius: 12)
-        path.append(holePath)
-        path.usesEvenOddFillRule = true
-
-        // Apply path to layers
-        holeLayer.path = path.cgPath
-
-        // Create border path
-        let borderPath = UIBezierPath(roundedRect: CGRect(x: holeX, y: holeY, width: holeWidth, height: holeHeight), cornerRadius: 12)
-        borderLayer.path = borderPath.cgPath
-    }
-}
-
-#Preview {
-    // Use the preview-friendly version for previews
-    NavigationStack {
-        ScannerPreview()
-            .environmentObject(AppViewModel())
-    }
-    .preferredColorScheme(.dark)
 }
