@@ -191,7 +191,9 @@ class SheetViewModel: ObservableObject {
     var receiveSheetItem: ReceiveSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .receive else { return nil }
-            return ReceiveSheetItem()
+            let receiveConfig = config.data as? ReceiveConfig
+            let initialRoute = receiveConfig?.initialRoute ?? .qr(cjitInvoice: nil, tab: nil)
+            return ReceiveSheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {

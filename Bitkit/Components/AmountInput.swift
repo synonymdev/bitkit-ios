@@ -3,6 +3,7 @@ import SwiftUI
 struct AmountInput: View {
     @State private var satsAmount: String
     @State private var fiatAmount: String
+    @State private var isViewActive = true
     @Binding var primaryDisplay: PrimaryDisplay
     @Binding var overrideSats: UInt64?
     @FocusState private var isSatsFocused: Bool
@@ -190,6 +191,14 @@ struct AmountInput: View {
             if sats > 0, let converted = currency.convert(sats: sats) {
                 fiatAmount = converted.formatted
             }
+        }
+        .onDisappear {
+            // TODO: fix this properly
+            // Hide keyboard immediately when view disappears
+            isSatsFocused = false
+            isFiatFocused = false
+            // Force keyboard to dismiss immediately
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         }
         .onTapGesture {
             focusTextField()

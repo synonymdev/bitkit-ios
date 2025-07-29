@@ -46,7 +46,6 @@ struct FundManualAmountView: View {
                 isDisabled: satsAmount == 0,
                 destination: FundManualConfirmView(lnPeer: lnPeer, satsAmount: satsAmount)
             )
-            .disabled(satsAmount == 0)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }

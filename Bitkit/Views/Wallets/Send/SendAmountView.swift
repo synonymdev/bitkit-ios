@@ -80,7 +80,7 @@ struct SendAmountView: View {
 
             Spacer()
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+            CustomButton(title: localizedString("common__continue"), isDisabled: satsAmount == 0) {
                 do {
                     if satsAmount > 0 {
                         wallet.sendAmountSats = satsAmount
@@ -134,7 +134,6 @@ struct SendAmountView: View {
                     app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
                 }
             }
-            .disabled(satsAmount == 0)
             .padding(.vertical, 16)
         }
         .navigationBarHidden(true)

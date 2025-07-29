@@ -977,7 +977,7 @@
 "wallet__receive_note_placeholder" = "Optional note to payer";
 "wallet__receive_show_qr" = "Show QR Code";
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
-"wallet__receive_spending" = "Receive on Spending Balance";
+"wallet__receive_spending" = "Receive Lightning Funds";
 "wallet__receive_connect_initial" = "To set up your spending balance, a <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted.";
 "wallet__receive_connect_additional" = "To receive more instant Bitcoin, Bitkit has to increase your liquidity. A <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted from the amount you specified.";
 "wallet__receive_liquidity__nav_title" = "Spending Balance Setup";
