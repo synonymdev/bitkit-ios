@@ -201,10 +201,11 @@ struct PinChangeView: View {
                 pinInputSection
             }
         }
-        .padding(.horizontal, 16)
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(step == .success)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 
     private var descriptionSection: some View {

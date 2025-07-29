@@ -3,6 +3,7 @@ import SwiftUI
 enum SendRoute {
     case options
     case manual
+    case scan
     case amount
     case utxoSelection
     case confirm
@@ -53,6 +54,8 @@ struct SendSheet: View {
             SendOptionsView(navigationPath: $navigationPath)
         case .manual:
             SendEnterManuallyView(navigationPath: $navigationPath)
+        case .scan:
+            ScannerView()
         case .amount:
             SendAmountView(navigationPath: $navigationPath)
         case .utxoSelection:

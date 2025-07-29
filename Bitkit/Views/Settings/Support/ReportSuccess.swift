@@ -28,10 +28,10 @@ struct ReportSuccess: View {
                 // TODO: Implement navigation to wallet
                 dismiss()
             }
-            .padding(.bottom, 16)
         }
         .navigationTitle(localizedString("settings__support__title_success"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }

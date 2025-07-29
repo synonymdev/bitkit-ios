@@ -56,6 +56,7 @@ struct DisablePinView: View {
         }
         .navigationTitle(NSLocalizedString("security__pin_disable_title", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
+        .bottomSafeAreaPadding()
     }
 }
 

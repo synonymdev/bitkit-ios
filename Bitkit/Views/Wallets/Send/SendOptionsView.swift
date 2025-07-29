@@ -7,42 +7,32 @@
 
 import SwiftUI
 
-struct SendOptionCard<Destination: View>: View {
+struct SendOptionCard: View {
     var title: String
-    var destination: Destination
-    var isButton: Bool = false
-    var action: (() -> Void)? = nil
+    var action: (() -> Void)
     var iconName: String
+    var testID: String
 
     var body: some View {
-        Group {
-            if isButton {
-                Button(action: { action?() }) {
-                    cardContent
-                }
-            } else {
-                NavigationLink(destination: destination) {
-                    cardContent
-                }
+        Button {
+            action()
+        } label: {
+            HStack {
+                Image(iconName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .foregroundColor(Color.brandAccent)
+                    .frame(width: 32, height: 32)
+                    .padding(.trailing, 8)
+                BodyMSBText(title)
+                Spacer()
             }
+            .frame(height: 80)
+            .padding(.horizontal, 24)
+            .background(Color.white06)
+            .cornerRadius(8)
+            .accessibilityIdentifier(testID)
         }
-    }
-
-    private var cardContent: some View {
-        HStack {
-            Image(iconName)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .foregroundColor(Color.brandAccent)
-                .frame(width: 32, height: 32)
-                .padding(.trailing, 8)
-            SubtitleText(title)
-            Spacer()
-        }
-        .frame(height: 80)
-        .padding(.horizontal, 24)
-        .background(Color.white06)
-        .cornerRadius(8)
     }
 }
 
@@ -57,49 +47,68 @@ struct SendOptionsView: View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("wallet__send_bitcoin"))
 
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
-                    .padding(.horizontal)
+            VStack(alignment: .leading, spacing: 0) {
+                CaptionMText(localizedString("wallet__send_to"))
+                    .padding(.bottom, 8)
 
-                VStack(spacing: 12) {
+                VStack(spacing: 8) {
                     SendOptionCard(
-                        title: "Paste Invoice",
-                        destination: EmptyView(),
-                        isButton: true,
+                        title: localizedString("wallet__recipient_contact"),
+                        action: handleContact,
+                        iconName: "users",
+                        testID: "RecipientContact"
+                    )
+
+                    SendOptionCard(
+                        title: localizedString("wallet__recipient_invoice"),
                         action: handlePaste,
-                        iconName: "clipboard-brand"
+                        iconName: "clipboard-brand",
+                        testID: "RecipientInvoice"
                     )
 
                     SendOptionCard(
-                        title: "Enter Manually",
-                        destination: SendEnterManuallyView(navigationPath: $navigationPath),
-                        iconName: "pencil"
+                        title: localizedString("wallet__recipient_manual"),
+                        action: { navigationPath.append(.manual) },
+                        iconName: "pencil",
+                        testID: "RecipientManual"
                     )
 
                     SendOptionCard(
-                        title: "Scan QR Code",
-                        destination: ScannerView(),
-                        iconName: "scan-brand"
+                        title: localizedString("wallet__recipient_scan"),
+                        action: { navigationPath.append(.scan) },
+                        iconName: "scan-brand",
+                        testID: "RecipientScan"
                     )
                 }
-                .padding(.horizontal)
 
-                Spacer()
+                if !UIScreen.main.isSmall {
+                    // Spacer()
+                    //     .frame(minHeight: 16)
+
+                    Image("coin-stack-logo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 256, height: 256)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                    // Spacer()
+                    //     .frame(minHeight: 16)
+                } else {
+                    Spacer()
+                }
             }
-
-            Spacer()
-
-            Image("coin-stack-logo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(alignment: .bottom)
-                .padding(.bottom, 8)
         }
         .sheetBackground()
-        .ignoresSafeArea(.all, edges: .bottom)
+        .padding(.horizontal, 16)
+        .ignoresSafeArea(edges: .bottom)
         .onAppear {
             wallet.syncState()
         }
+    }
+
+    func handleContact() {
+        // TODO: implement contacts
+        // navigationPath.append(.contact)
     }
 
     func handlePaste() {

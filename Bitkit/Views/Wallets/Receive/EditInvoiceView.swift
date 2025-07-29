@@ -89,11 +89,12 @@ struct EditInvoiceView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.top, 16)
         }
-        .sheetBackground()
         .navigationTitle(NSLocalizedString("wallet__receive_specify", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
+        .sheetBackground()
+        .bottomSafeAreaPadding()
         .task {
             // Initialize with existing values from wallet model
             if wallet.invoiceAmountSats > 0 {
