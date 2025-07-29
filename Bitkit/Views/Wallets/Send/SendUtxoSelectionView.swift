@@ -66,7 +66,7 @@ struct SendUtxoSelectionView: View {
             }
             .padding(.bottom, 16)
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+            CustomButton(title: localizedString("common__continue"), isDisabled: selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats) {
                 do {
                     wallet.selectedUtxo = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
 
@@ -76,7 +76,6 @@ struct SendUtxoSelectionView: View {
                     app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
                 }
             }
-            .disabled(selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats)
             .padding(.bottom, 16)
         }
         .padding(.horizontal, 16)

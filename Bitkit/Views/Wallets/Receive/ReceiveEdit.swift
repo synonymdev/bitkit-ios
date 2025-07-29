@@ -1,18 +1,11 @@
-//
-//  EditInvoiceView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/03/21.
-//
-
 import SwiftUI
 
-struct EditInvoiceView: View {
+struct ReceiveEdit: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
-    @Environment(\.presentationMode) private var presentationMode
-
+    @Environment(\.dismiss) private var dismiss
+    @Binding var navigationPath: [ReceiveRoute]
     @State private var amountSats: UInt64 = 0
     @State private var overrideSats: UInt64?
     @State private var noteText = ""
@@ -21,7 +14,9 @@ struct EditInvoiceView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
+            SheetHeader(title: localizedString("wallet__receive_specify"))
+
+            VStack(alignment: .leading, spacing: 0) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true, shouldAutoFocus: false) {
                     newSats in
                     Haptics.play(.buttonTap)
@@ -29,30 +24,42 @@ struct EditInvoiceView: View {
                     overrideSats = nil
                 }
                 .focused($isAmountInputFocused)
-                .padding(.vertical, 16)
+                .padding(.bottom, 32)
 
-                CaptionText(NSLocalizedString("wallet__note", comment: "").uppercased())
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                CaptionMText(localizedString("wallet__note"))
+                    .padding(.bottom, 8)
 
                 ZStack(alignment: .topLeading) {
                     if noteText.isEmpty {
-                        BodySText(NSLocalizedString("wallet__receive_note_placeholder", comment: ""), textColor: .textSecondary)
-                            .padding(20)
+                        BodySSBText(localizedString("wallet__receive_note_placeholder"), textColor: .textSecondary)
+                            .padding(16)
                     }
 
                     TextEditor(text: $noteText)
                         .focused($isNoteEditorFocused)
                         .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
-                        .padding(20)
+                        .padding(16)
                         .frame(minHeight: 100)
                         .scrollContentBackground(.hidden)
-                        .font(.custom(Fonts.bold, size: 22))
+                        .font(.custom(Fonts.semiBold, size: 15))
                         .foregroundColor(.textPrimary)
                         .accentColor(.brandAccent)
                         .frame(maxHeight: 100)
                 }
-                .background(Color.gray.opacity(0.2))
+                .background(Color.white06)
                 .cornerRadius(8)
+
+                CaptionMText(localizedString("wallet__tags"))
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+
+                CustomButton(
+                    title: localizedString("wallet__tags_add"),
+                    size: .small,
+                    icon: Image("tag").foregroundColor(.brandAccent),
+                ) {
+                    navigationPath.append(.tag)
+                }
 
                 Spacer()
 
@@ -68,18 +75,17 @@ struct EditInvoiceView: View {
                     optionButtonsRow
                 }
             }
-            .padding(.horizontal, 16)
 
             Spacer()
 
-            CustomButton(title: NSLocalizedString("wallet__receive_show_qr", comment: "")) {
+            CustomButton(title: localizedString("wallet__receive_show_qr")) {
                 // Wait until node is running if it's in starting state
                 if await wallet.waitForNodeToRun() {
                     do {
                         wallet.invoiceAmountSats = amountSats
                         wallet.invoiceNote = noteText
                         try await wallet.refreshBip21(forceRefreshBolt11: true)
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     } catch {
                         app.toast(error)
                     }
@@ -88,13 +94,10 @@ struct EditInvoiceView: View {
                     app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
         }
-        .navigationTitle(NSLocalizedString("wallet__receive_specify", comment: ""))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .sheetBackground()
-        .bottomSafeAreaPadding()
         .task {
             // Initialize with existing values from wallet model
             if wallet.invoiceAmountSats > 0 {
@@ -131,9 +134,9 @@ struct EditInvoiceView: View {
 
 #Preview {
     NavigationStack {
-        EditInvoiceView()
-            .environmentObject(WalletViewModel())
+        ReceiveEdit(navigationPath: .constant([]))
             .environmentObject(AppViewModel())
             .environmentObject(CurrencyViewModel())
+            .environmentObject(WalletViewModel())
     }
 }

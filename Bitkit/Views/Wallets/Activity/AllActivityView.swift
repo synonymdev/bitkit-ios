@@ -39,7 +39,7 @@ struct AllActivityView: View {
                 ActivityListFilter(viewModel: activity)
                     .padding(.horizontal)
 
-                SegmentedControl<ActivityTab>(selectedTab: $selectedTab)
+                SegmentedControl<ActivityTab>(selectedTab: $selectedTab, tabs: ActivityTab.allCases)
                     .padding(.top)
                     .padding(.bottom, 8)
                     .padding(.horizontal)

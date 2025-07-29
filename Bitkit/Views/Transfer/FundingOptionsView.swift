@@ -50,7 +50,7 @@ struct FundingOptionsView: View {
 
                 NavigationLink(destination: FundReceiveView()) {
                     RectangleButton(
-                        icon: Image("qr-purple"),
+                        icon: Image("qr").foregroundColor(.purpleAccent),
                         title: NSLocalizedString("lightning__funding__button2", comment: ""),
                         isDisabled: app.isGeoBlocked == true
                     )

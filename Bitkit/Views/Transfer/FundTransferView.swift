@@ -61,7 +61,7 @@ struct FundTransferView: View {
                 EmptyView()
             }
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
+            CustomButton(title: localizedString("common__continue"), isDisabled: satsAmount == 0) {
                 do {
                     let newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
                     transfer.onOrderCreated(order: newOrder)
@@ -70,7 +70,6 @@ struct FundTransferView: View {
                     app.toast(error)
                 }
             }
-            .disabled(satsAmount == 0)
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
