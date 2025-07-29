@@ -3,7 +3,7 @@ import SwiftUI
 struct AppStatusView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
-    
+
     var body: some View {
         List {
             internetStatusView
@@ -14,21 +14,23 @@ struct AppStatusView: View {
         }
         .navigationTitle(NSLocalizedString("settings__status__title", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
-        .background(Color.black.ignoresSafeArea())
         .scrollContentBackground(.hidden)
         .listStyle(PlainListStyle())
         .onAppear {
             wallet.syncState()
         }
     }
-    
+
     private var internetStatusView: some View {
         let isConnected = app.networkStatus == .wifi || app.networkStatus == .cellular
         let iconBackgroundColor: Color = isConnected ? .green16 : .red16
         let iconColor: Color = isConnected ? .greenAccent : .redAccent
-        let status = isConnected ? NSLocalizedString("settings__status__internet__ready", comment: "Connected") : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
+        let status =
+            isConnected
+            ? NSLocalizedString("settings__status__internet__ready", comment: "Connected")
+            : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
         let statusColor: Color = isConnected ? .greenAccent : .redAccent
-        
+
         return StatusItemView(
             imageName: "status-internet",
             iconBackgroundColor: iconBackgroundColor,
@@ -38,18 +40,18 @@ struct AppStatusView: View {
             statusColor: statusColor
         )
     }
-    
+
     private var lightningNodeStatusView: some View {
         return StatusItemView(
-             imageName: "status-node",
-             iconBackgroundColor: .green16,
-             iconColor: wallet.nodeLifecycleState.statusColor,
-             title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
-             status: wallet.nodeLifecycleState.displayState,
-             statusColor: wallet.nodeLifecycleState.statusColor
-         )
+            imageName: "status-node",
+            iconBackgroundColor: .green16,
+            iconColor: wallet.nodeLifecycleState.statusColor,
+            title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
+            status: wallet.nodeLifecycleState.displayState,
+            statusColor: wallet.nodeLifecycleState.statusColor
+        )
     }
-    
+
     private var lightningConnectionStatusView: some View {
         let hasChannels = (wallet.channelCount > 0)
         let hasUsableChannels = wallet.channels?.contains(where: { $0.isUsable }) ?? false
@@ -64,7 +66,7 @@ struct AppStatusView: View {
                 return .yellowAccent
             }
         }()
-        
+
         let iconBackgroundColor: Color = {
             if !hasChannels {
                 return .red16
@@ -74,7 +76,7 @@ struct AppStatusView: View {
                 return .yellow16
             }
         }()
-        
+
         let connectionStatus: String = {
             if !hasChannels {
                 return NSLocalizedString("settings__status__lightning_connection__error", comment: "")
@@ -86,7 +88,7 @@ struct AppStatusView: View {
                 return NSLocalizedString("settings__status__lightning_connection__ready", comment: "")
             }
         }()
-        
+
         return StatusItemView(
             imageName: "status-lightning",
             iconBackgroundColor: iconBackgroundColor,
@@ -105,21 +107,21 @@ struct StatusItemView: View {
     let title: String
     let status: String
     let statusColor: Color
-    
+
     var body: some View {
         HStack(spacing: 16) {
             CircularIcon(
-                icon: imageName, 
+                icon: imageName,
                 iconColor: iconColor,
                 backgroundColor: iconBackgroundColor,
                 size: 40
             )
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 BodyMSBText(title)
                 CaptionText(status)
             }
-            
+
             Spacer()
         }
         .padding(.vertical, 12)
@@ -135,4 +137,4 @@ struct StatusItemView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
     }
-} 
+}

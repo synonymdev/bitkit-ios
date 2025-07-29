@@ -4,10 +4,17 @@ enum SheetSize {
     case small, medium, large
 
     var height: CGFloat {
+        let screenHeight = UIScreen.screenHeight
+
         switch self {
-        case .small: return 400
-        case .medium: return UIScreen.screenHeight - 273 // Header + Balance visible
-        case .large: return UIScreen.screenHeight - 153 // Only Header visible
+        case .small:
+            return 400
+        case .medium:
+            let preferredHeight = screenHeight - 273 // Header + Balance visible
+            return UIScreen.main.isSmall ? 600 : preferredHeight
+        case .large:
+            let preferredHeight = screenHeight - 153 // Only Header visible
+            return UIScreen.main.isSmall ? 600 : preferredHeight
         }
     }
 }

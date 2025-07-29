@@ -52,6 +52,7 @@ struct QuickpaySettings: View {
                 }
                 .frame(minHeight: geometry.size.height)
                 .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationTitle(localizedString("settings__quickpay__nav_title"))

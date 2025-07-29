@@ -39,10 +39,11 @@ struct SupportView: View {
 
             Social()
         }
-        .padding(.top, 16)
-        .padding(.horizontal, 16)
         .navigationTitle(localizedString("settings__support__title"))
         .navigationBarTitleDisplayMode(.inline)
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

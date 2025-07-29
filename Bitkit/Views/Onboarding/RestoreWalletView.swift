@@ -107,8 +107,9 @@ struct RestoreWalletView: View {
                         Spacer(minLength: 16)
                         buttonSection
                     }
-                    .padding(.horizontal, 32)
                     .frame(minHeight: geometry.size.height)
+                    .padding(.horizontal, 32)
+                    .bottomSafeAreaPadding()
                 }
                 .scrollDismissesKeyboard(.interactively)
             }

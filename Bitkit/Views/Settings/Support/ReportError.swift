@@ -26,10 +26,10 @@ struct ReportError: View {
             ) {
                 dismiss()
             }
-            .padding(.bottom, 16)
         }
         .navigationTitle(localizedString("settings__support__title_unsuccess"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }

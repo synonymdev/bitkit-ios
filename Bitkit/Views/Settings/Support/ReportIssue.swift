@@ -153,8 +153,9 @@ struct ReportIssue: View {
                         await sendRequest()
                     }
                 }
-                .padding(.horizontal, 16)
                 .frame(minHeight: geometry.size.height)
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
             .navigationTitle(localizedString("settings__support__report"))
             .navigationBarTitleDisplayMode(.inline)
