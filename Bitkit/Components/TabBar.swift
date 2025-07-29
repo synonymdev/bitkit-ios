@@ -1,10 +1,3 @@
-//
-//  TabBar.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import SwiftUI
 
 struct NoAnimationButtonStyle: ButtonStyle {
@@ -44,9 +37,7 @@ struct TabBar: View {
                     Spacer()
                     Button(
                         action: {
-                            // TODO: find a better place to reset send state
-                            app.resetSendState()
-                            sheets.showSheet(.send)
+                            onSendPress()
                         },
                         label: {
                             HStack(spacing: 4) {
@@ -64,7 +55,7 @@ struct TabBar: View {
                     Spacer()
                     Button(
                         action: {
-                            sheets.showSheet(.receive)
+                            onReceivePress()
                         },
                         label: {
                             HStack(spacing: 4) {
@@ -84,17 +75,7 @@ struct TabBar: View {
                 .overlay {
                     Button(
                         action: {
-                            sheets.showSheet(.scanner)
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                scaleEffect = 1.1
-                            }
-
-                            // Reset scale after animation
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                                    scaleEffect = 1.0
-                                }
-                            }
+                            onScanPress()
                         },
                         label: {
                             Image("scan")
@@ -121,6 +102,34 @@ struct TabBar: View {
         .animation(.easeInOut, value: shouldShow)
         .ignoresSafeArea(.keyboard)
         .bottomSafeAreaPadding()
+    }
+
+    private func onSendPress() {
+        // TODO: find a better place to reset send state
+        app.resetSendState()
+        sheets.showSheet(.send)
+    }
+
+    private func onReceivePress() {
+        if navigation.currentRoute == .spendingWallet {
+            sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
+        } else {
+            sheets.showSheet(.receive)
+        }
+    }
+
+    private func onScanPress() {
+        sheets.showSheet(.scanner)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            scaleEffect = 1.1
+        }
+
+        // Reset scale after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                scaleEffect = 1.0
+            }
+        }
     }
 }
 

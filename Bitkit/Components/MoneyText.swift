@@ -3,6 +3,7 @@ import SwiftUI
 // MoneyText - Single text display component for monetary values
 enum MoneySize {
     case display
+    case title
     case bodyMSB
     case bodySSB
     case caption
@@ -69,6 +70,8 @@ extension MoneyText {
             DisplayText(
                 // Cap symbol font weight to ExtraBold
                 text, textColor: color, accentColor: symbolColor ?? .textSecondary, accentFont: size == .display ? Fonts.extraBold : nil)
+        case .title:
+            TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .bodyMSB:
             BodyMSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .bodySSB:

@@ -31,7 +31,6 @@ struct BackupSheetItem: SheetItem {
 }
 
 struct BackupSheet: View {
-    @EnvironmentObject private var sheets: SheetViewModel
     @State private var navigationPath: [BackupRoute] = []
     let config: BackupSheetItem
 

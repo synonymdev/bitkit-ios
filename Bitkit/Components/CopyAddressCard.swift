@@ -1,10 +1,3 @@
-//
-//  CopyAddressCard.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/18.
-//
-
 import SwiftUI
 
 struct CopyAddressPair {
@@ -22,23 +15,23 @@ struct CopyAddressCard: View {
     let addresses: [CopyAddressPair]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 32) {
             ForEach(0 ..< addresses.count, id: \.self) { index in
                 let pair = addresses[index]
 
-                VStack(alignment: .leading) {
-                    CaptionText(pair.title.uppercased())
-                        .padding(.bottom)
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptionMText(pair.title)
+                        .padding(.bottom, 12)
 
-                    // Ellipse the address if it's too long
-                    BodySSBText((pair.address.count > 32 ? pair.address.prefix(27) + "..." : pair.address).uppercased())
-                        .padding(.bottom)
+                    BodySSBText(pair.address.ellipsis(maxLength: 25))
+                        .padding(.bottom, 12)
 
-                    HStack {
+                    HStack(spacing: 8) {
                         CustomButton(
-                            title: NSLocalizedString("common__copy", comment: ""),
+                            title: localizedString("common__copy"),
                             size: .small,
-                            icon: Image(pair.type == .lightning ? "copy-purple" : "copy-brand")
+                            icon: Image("copy").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
+                            shouldExpand: true
                         ) {
                             UIPasteboard.general.string = pair.address
                             Haptics.play(.copiedToClipboard)
@@ -46,23 +39,20 @@ struct CopyAddressCard: View {
 
                         ShareLink(item: URL(string: pair.address)!) {
                             CustomButton(
-                                title: NSLocalizedString("common__share", comment: ""),
+                                title: localizedString("common__share"),
                                 size: .small,
-                                icon: Image(pair.type == .lightning ? "share-purple" : "share-brand")
+                                icon: Image("share").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
+                                shouldExpand: true
                             )
                         }
                     }
                 }
-
-                if index < addresses.count - 1 {
-                    VStack {}.frame(height: 12)
-                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(20)
-        .background(.gray.opacity(0.25))
-        .cornerRadius(10)
+        .padding(32)
+        .background(Color.white06)
+        .cornerRadius(8)
     }
 }
 

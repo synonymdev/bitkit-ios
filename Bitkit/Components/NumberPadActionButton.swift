@@ -29,12 +29,12 @@ struct NumberPadActionButton: View {
                     Image(imageName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 12)
+                        .frame(height: 16)
                 }
 
                 CaptionMText(text.uppercased(), textColor: color)
             }
-            .padding(.vertical, 5)
+            .frame(height: 28)
             .padding(.horizontal, 8)
             .background(variant == .primary ? Color.white10 : Color.clear)
             .overlay(
