@@ -216,7 +216,7 @@ extension AppViewModel {
             break
         case .lnurlAuth(data: let lnurlAuthData):
             Logger.debug("LNURL: \(lnurlAuthData)")
-            // TODO: Handle LNURL
+            handleLnurlAuth(lnurlAuthData, lnurl: uri)
             break
         case .nodeId(let url, let network):
             guard lightningService.status?.isRunning == true else {
@@ -321,6 +321,16 @@ extension AppViewModel {
 
         sheetViewModel.hideSheet()
         navigationViewModel.navigate(.lnurlChannel(channelData: data))
+    }
+
+    private func handleLnurlAuth(_ data: LnurlAuthData, lnurl: String) {
+        // Check if lightning service is running
+        guard lightningService.status?.isRunning == true else {
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
+            return
+        }
+
+        sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
     private func handleNodeUri(_ url: String, _ network: NetworkType) {
