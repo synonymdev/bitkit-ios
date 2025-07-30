@@ -77,11 +77,11 @@ struct CustomButton: View {
     let size: Size
     let icon: AnyView?
     let isDisabled: Bool
+    let isLoading: Bool
     let shouldExpand: Bool
     let action: (() async -> Void)?
     let destination: AnyView?
 
-    @State private var isLoading = false
     @State private var isPressed = false
 
     // Base initializer for optional action
@@ -248,9 +248,7 @@ struct CustomButton: View {
                     Haptics.play(.buttonTap)
 
                     Task { @MainActor in
-                        isLoading = true
                         await action()
-                        isLoading = false
                     }
                 } label: {
                     buttonContent

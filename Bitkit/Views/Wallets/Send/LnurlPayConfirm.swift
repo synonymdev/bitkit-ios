@@ -43,15 +43,8 @@ struct LnurlPayConfirm: View {
             SheetHeader(title: localizedString("wallet__lnurl_p_title"), showBackButton: true)
 
             VStack(alignment: .leading) {
-                AmountInput(
-                    defaultValue: wallet.sendAmountSats ?? app.lnurlPayData!.minSendable,
-                    primaryDisplay: $currency.primaryDisplay,
-                    showConversion: true
-                ) { _ in
-                    // This is a read-only view, so we don't need to handle changes
-                }
-                .padding(.vertical)
-                .disabled(true) // Disable interaction since this is just for display
+                MoneyStack(sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable), showSymbol: true)
+                    .padding(.bottom, 32)
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading) {

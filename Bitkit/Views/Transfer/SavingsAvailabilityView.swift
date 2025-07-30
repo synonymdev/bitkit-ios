@@ -1,69 +1,42 @@
-//
-//  SavingsAvailabilityView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/12.
-//
-
 import SwiftUI
 
 struct SavingsAvailabilityView: View {
-    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                DisplayText(NSLocalizedString("lightning__availability__title", comment: ""), accentColor: .brandAccent)
-                    .padding(.top, 32)
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(localizedString("lightning__availability__title"), accentColor: .brandAccent)
 
-                BodyMText(NSLocalizedString("lightning__availability__text", comment: ""), textColor: .textSecondary)
-                    .padding(.top, 8)
+            BodyMText(localizedString("lightning__availability__text"), accentFont: Fonts.bold)
+                .padding(.top, 16)
 
-                Spacer()
+            Spacer()
 
-                ZStack {
-                    Image("exclamation-mark")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 256, height: 256)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 16)
-
-                Spacer()
-
-                HStack(spacing: 16) {
-                    CustomButton(
-                        title: NSLocalizedString("common__cancel", comment: ""),
-                        variant: .secondary,
-                        size: .large
-                    ) {
-                        navigation.reset()
-                    }
-
-                    NavigationLink(destination: SavingsConfirmView()) {
-                        CustomButton(
-                            title: NSLocalizedString("common__continue", comment: ""),
-                            variant: .primary,
-                            size: .large
-                        )
-                    }
-                }
-                .padding(.bottom, 16)
+            ZStack {
+                Image("exclamation-mark")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 256, height: 256)
             }
-            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+
+            Spacer()
+
+            HStack(spacing: 16) {
+                CustomButton(title: localizedString("common__cancel"), variant: .secondary) {
+                    navigation.reset()
+                }
+
+                CustomButton(title: localizedString("common__continue")) {
+                    navigation.navigate(.savingsConfirm)
+                }
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
         .backToWalletButton()
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
-}
-
-#Preview {
-    NavigationStack {
-        SavingsAvailabilityView()
-            .environmentObject(AppViewModel())
-    }
-    .preferredColorScheme(.dark)
 }

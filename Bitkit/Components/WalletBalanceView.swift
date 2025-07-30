@@ -8,7 +8,7 @@ struct WalletBalanceView: View {
 
     var body: some View {
         VStack(alignment: .leading) {
-            CaptionText(type.title)
+            CaptionMText(type.title)
                 .padding(.bottom, 4)
 
             if let converted = currency.convert(sats: sats) {

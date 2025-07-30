@@ -1,5 +1,5 @@
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct ActivityList: View {
     @EnvironmentObject var activity: ActivityListViewModel
@@ -22,8 +22,7 @@ struct ActivityList: View {
                 ForEach(groupedItems, id: \.self) { groupItem in
                     switch groupItem {
                     case .header(let title):
-                        CaptionText(title)
-                            .textCase(.uppercase)
+                        CaptionMText(title)
                             .padding(.top)
 
                     case .activity(let item):

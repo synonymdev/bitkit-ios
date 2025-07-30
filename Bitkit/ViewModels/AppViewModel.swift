@@ -368,7 +368,6 @@ extension AppViewModel {
             }
             break
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
-            toast(type: .lightning, title: "Channel closed", description: "Balance moved from spending to savings")
             break
         case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
             // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.

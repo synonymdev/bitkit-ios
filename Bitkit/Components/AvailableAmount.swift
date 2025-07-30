@@ -10,6 +10,7 @@ struct AvailableAmount: View {
                 .padding(.bottom, 5)
 
             MoneyText(sats: amount, size: .bodySSB, symbol: true)
+                .padding(.bottom, 5)
         }
     }
 }

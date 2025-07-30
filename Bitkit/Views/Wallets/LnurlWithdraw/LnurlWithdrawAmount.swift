@@ -43,7 +43,7 @@ struct LnurlWithdrawAmount: View {
 
                     NumberPadActionButton(
                         text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                        imageName: "transfer-brand",
+                        imageName: "transfer",
                         color: .brandAccent
                     ) {
                         withAnimation {

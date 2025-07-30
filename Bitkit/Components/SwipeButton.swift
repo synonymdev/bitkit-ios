@@ -16,16 +16,15 @@ struct SwipeButton: View {
     @State private var isDragging = false
     @State private var isLoading = false
 
-    private let buttonHeight: CGFloat = 70
-    private let innerPadding: CGFloat = 10
+    private let buttonHeight: CGFloat = 76
+    private let innerPadding: CGFloat = 16
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                // Button background
+                // Track
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
-                    .fill(Color.gray)
-                    .opacity(0.2)
+                    .fill(Color.white16)
 
                 // Colored trail
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
@@ -39,7 +38,7 @@ struct SwipeButton: View {
                             .padding(.horizontal, innerPadding / 2)
                     }
 
-                // Title text
+                // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .opacity(Double(1.0 - (offset / (geometry.size.width - buttonHeight))))

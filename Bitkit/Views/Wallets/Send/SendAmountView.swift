@@ -65,8 +65,8 @@ struct SendAmountView: View {
 
                     NumberPadActionButton(
                         text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                        imageName: "transfer-brand",
-                        color: Color.brandAccent
+                        imageName: "transfer",
+                        color: .brandAccent
                     ) {
                         withAnimation {
                             currency.togglePrimaryDisplay()

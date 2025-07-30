@@ -15,8 +15,7 @@ struct ActivityLatest: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CaptionText(localizedString("wallet__activity"))
-                .textCase(.uppercase)
+            CaptionMText(localizedString("wallet__activity"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 16)
                 .padding(.top, 32)

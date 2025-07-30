@@ -31,16 +31,8 @@ struct ReceiveCjitConfirmation: View {
             SheetHeader(title: localizedString("wallet__receive_bitcoin"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                AmountInput(
-                    defaultValue: receiveAmountSats,
-                    primaryDisplay: $currency.primaryDisplay,
-                    overrideSats: .constant(receiveAmountSats),
-                    showConversion: true
-                ) { _ in
-                    // Read-only, so no action needed
-                }
-                .disabled(true)
-                .padding(.bottom, 32)
+                MoneyStack(sats: Int(receiveAmountSats), showSymbol: true)
+                    .padding(.bottom, 32)
 
                 BodyMText(
                     localizedString(

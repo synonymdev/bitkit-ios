@@ -80,7 +80,7 @@ struct TabBar: View {
                         label: {
                             Image("scan")
                                 .resizable()
-                                .frame(width: 32, height: 32)
+                                .frame(width: 46, height: 46)
                                 .padding(24)
                                 .frame(width: 80, height: 80)
                                 .background(Circle().fill(Color.gray6))
