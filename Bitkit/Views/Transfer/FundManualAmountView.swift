@@ -59,7 +59,7 @@ struct FundManualAmountView: View {
         HStack(spacing: 8) {
             NumberPadActionButton(
                 text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                imageName: "transfer-purple"
+                imageName: "transfer"
             ) {
                 withAnimation {
                     currency.togglePrimaryDisplay()

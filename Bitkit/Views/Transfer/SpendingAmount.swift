@@ -1,102 +1,75 @@
 import SwiftUI
 
-struct FundTransferView: View {
-    @EnvironmentObject var wallet: WalletViewModel
+struct SpendingAmount: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
     @State private var satsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
-    @State private var isCreatingOrder = false
-    @State private var showConfirmation = false
 
     // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
     // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__spending_amount__title", comment: ""), accentColor: .purpleAccent)
-                    .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(localizedString("lightning__spending_amount__title"), accentColor: .purpleAccent)
 
-                // Visible balance display that acts as a button
-                AmountInput(primaryDisplay: $primaryDisplay, overrideSats: $overrideSats) { newSats in
-                    satsAmount = newSats
-                    overrideSats = nil
-                    print("satsAmount: \(satsAmount)")
-                }
-                .padding(.vertical, 16)
-
-                Spacer()
-
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading) {
-                        BodySText(NSLocalizedString("wallet__send_available", comment: "").uppercased(), textColor: .textSecondary)
-
-                        if let converted = currency.convert(sats: UInt64(wallet.totalBalanceSats)) {
-                            if primaryDisplay == .bitcoin {
-                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                                BodySText("\(btcComponents.symbol) \(btcComponents.value)")
-                            } else {
-                                BodySText("\(converted.symbol) \(converted.formatted)")
-                            }
-                        }
-                    }
-
-                    Spacer()
-
-                    amountButtons
-                }
-                .padding(.vertical, 8)
+            AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
+                satsAmount = newSats
+                overrideSats = nil
             }
-            .padding(.horizontal, 16)
-
-            Divider()
+            .padding(.top, 32)
 
             Spacer()
 
-            NavigationLink(destination: SpendingConfirmationView(), isActive: $showConfirmation) {
-                EmptyView()
+            HStack(alignment: .bottom) {
+                AvailableAmount(label: localizedString("wallet__send_available"), amount: wallet.totalBalanceSats)
+                Spacer()
+                actionButtons
             }
+            .padding(.vertical, 8)
+
+            Divider()
 
             CustomButton(title: localizedString("common__continue"), isDisabled: satsAmount == 0) {
                 do {
                     let newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
                     transfer.onOrderCreated(order: newOrder)
-                    showConfirmation = true
+                    navigation.navigate(.spendingConfirm)
                 } catch {
                     app.toast(error)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.top, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
         .backToWalletButton()
-        .task {
-            primaryDisplay = currency.primaryDisplay
-        }
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 
-    private var amountButtons: some View {
-        HStack(spacing: 16) {
+    private var actionButtons: some View {
+        HStack(spacing: 8) {
             NumberPadActionButton(
-                text: primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                imageName: "transfer-purple"
+                text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
+                imageName: "transfer"
             ) {
                 withAnimation {
-                    primaryDisplay = primaryDisplay == .bitcoin ? .fiat : .bitcoin
+                    currency.togglePrimaryDisplay()
                 }
             }
 
-            NumberPadActionButton(text: "25%") {
+            NumberPadActionButton(text: localizedString("lightning__spending_amount__quarter")) {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
             }
 
-            NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
+            NumberPadActionButton(text: localizedString("common__max")) {
                 overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }
@@ -105,7 +78,7 @@ struct FundTransferView: View {
 
 #Preview("USD") {
     NavigationStack {
-        FundTransferView()
+        SpendingAmount()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -123,7 +96,7 @@ struct FundTransferView: View {
 
 #Preview("EUR") {
     NavigationStack {
-        FundTransferView()
+        SpendingAmount()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -141,7 +114,7 @@ struct FundTransferView: View {
 
 #Preview("Bitcoin modern") {
     NavigationStack {
-        FundTransferView()
+        SpendingAmount()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())
@@ -159,7 +132,7 @@ struct FundTransferView: View {
 
 #Preview("Bitcoin classic") {
     NavigationStack {
-        FundTransferView()
+        SpendingAmount()
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(BlocktankViewModel())

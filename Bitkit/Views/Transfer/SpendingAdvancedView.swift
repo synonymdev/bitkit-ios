@@ -5,19 +5,18 @@
 //  Created by Jason van den Berg on 2024/09/12.
 //
 
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct SpendingAdvancedView: View {
     let order: IBtOrder
-    var onOrderCreated: (IBtOrder) -> Void
 
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var transfer: TransferViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var wallet: WalletViewModel
+    @Environment(\.dismiss) var dismiss
 
     @State private var receivingSatsAmount: UInt64 = 0
     @State private var overrideSats: UInt64?
@@ -41,8 +40,7 @@ struct SpendingAdvancedView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__spending_advanced__title", comment: ""), accentColor: .purpleAccent)
-                    .padding(.top, 16)
+                DisplayText(localizedString("lightning__spending_advanced__title"), accentColor: .purpleAccent)
 
                 // Receiving capacity input
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
@@ -54,22 +52,12 @@ struct SpendingAdvancedView: View {
 
                 // Fee estimate
                 HStack(spacing: 4) {
-                    CaptionText(
-                        NSLocalizedString("lightning__spending_advanced__fee", comment: "").uppercased(),
-                        textColor: .white64
-                    )
+                    CaptionMText(localizedString("lightning__spending_advanced__fee"))
 
                     if let feeEstimate = feeEstimate {
-                        if let converted = currency.convert(sats: feeEstimate) {
-                            if currency.primaryDisplay == .bitcoin {
-                                let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                                CaptionText("\(btcComponents.symbol) \(feeEstimate)", textColor: .white)
-                            } else {
-                                CaptionText("\(converted.symbol) \(converted.formatted)", textColor: .white)
-                            }
-                        }
+                        MoneyText(sats: Int(feeEstimate), size: .bodySSB, symbol: true)
                     } else {
-                        CaptionText("—", textColor: .white64)
+                        CaptionMText("—")
                     }
                 }
                 .frame(height: 20)
@@ -81,18 +69,17 @@ struct SpendingAdvancedView: View {
                 HStack(alignment: .bottom) {
                     Spacer()
 
-                    amountButtons
+                    actionButtons
                 }
                 .padding(.vertical, 8)
             }
-            .padding(.horizontal, 16)
 
             Divider()
 
             Spacer()
 
             CustomButton(
-                title: NSLocalizedString("common__continue", comment: ""),
+                title: localizedString("common__continue"),
                 isDisabled: !isValid
             ) {
                 do {
@@ -103,18 +90,18 @@ struct SpendingAdvancedView: View {
                     )
 
                     transfer.onAdvancedOrderCreated(order: newOrder)
-                    onOrderCreated(newOrder)
-                    presentationMode.wrappedValue.dismiss()
+                    dismiss()
                 } catch {
                     app.toast(error)
                 }
             }
-            .padding(.horizontal, 16)
             .padding(.vertical, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .background(Color.black)
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .task {
             transfer.updateTransferValues(
                 clientBalanceSat: order.clientBalanceSat,
@@ -131,23 +118,23 @@ struct SpendingAdvancedView: View {
         }
     }
 
-    private var amountButtons: some View {
+    private var actionButtons: some View {
         HStack(spacing: 16) {
-            NumberPadActionButton(text: NSLocalizedString("common__min", comment: "")) {
+            NumberPadActionButton(text: localizedString("common__min")) {
                 Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
                 overrideSats = transfer.transferValues.minLspBalance
             }
 
             Spacer()
 
-            NumberPadActionButton(text: NSLocalizedString("common__default", comment: "")) {
+            NumberPadActionButton(text: localizedString("common__default")) {
                 Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
                 overrideSats = transfer.transferValues.defaultLspBalance
             }
 
             Spacer()
 
-            NumberPadActionButton(text: NSLocalizedString("common__max", comment: "")) {
+            NumberPadActionButton(text: localizedString("common__max")) {
                 Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
                 overrideSats = transfer.transferValues.maxLspBalance
             }
@@ -176,10 +163,7 @@ struct SpendingAdvancedView: View {
 #Preview {
     NavigationStack {
         SpendingAdvancedView(
-            order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000),
-            onOrderCreated: { _ in
-
-            }
+            order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000)
         )
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())

@@ -24,7 +24,7 @@ struct SavingsWalletView: View {
             .padding(.top)
 
             Divider()
-                .padding(.top, 8)
+                .padding(.top, 16)
 
             if wallet.totalOnchainSats > 0 {
                 if !(app.isGeoBlocked ?? true) {

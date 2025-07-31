@@ -1,63 +1,56 @@
-//
-//  FundAdvancedOptions.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/05/21.
-//
-
 import SwiftUI
 
 struct FundAdvancedOptions: View {
+    @EnvironmentObject private var navigation: NavigationViewModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Title
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
                     DisplayText(
-                        NSLocalizedString("lightning__funding_advanced__title", comment: ""),
+                        localizedString("lightning__funding_advanced__title"),
                         accentColor: .purpleAccent
                     )
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
 
-                    // Description
-                    BodyMText(NSLocalizedString("lightning__funding_advanced__text", comment: ""))
+                    BodyMText(localizedString("lightning__funding_advanced__text"))
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 32)
 
-                    // Options
                     VStack(spacing: 8) {
                         NavigationLink(destination: ScannerView()) {
                             RectangleButton(
                                 icon: Image("scan")
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(width: 24, height: 24)
+                                    .frame(width: 32, height: 32)
                                     .foregroundColor(.purpleAccent),
-                                title: NSLocalizedString("lightning__funding_advanced__button1", comment: "")
+                                title: localizedString("lightning__funding_advanced__button1")
                             )
                         }
 
-                        NavigationLink(destination: FundManualSetupView()) {
-                            RectangleButton(
-                                icon: Image("pencil")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 24, height: 24)
-                                    .foregroundColor(.purpleAccent),
-                                title: NSLocalizedString("lightning__funding_advanced__button2", comment: "")
-                            )
+                        RectangleButton(
+                            icon: Image("pencil")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 32, height: 32)
+                                .foregroundColor(.purpleAccent),
+                            title: localizedString("lightning__funding_advanced__button2")
+                        ) {
+                            navigation.navigate(.fundManual(nodeUri: nil))
                         }
                     }
+
                     Spacer()
                 }
-                .padding()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(localizedString("lightning__funding_advanced__nav_title"))
         .backToWalletButton()
-        .background(Color.black)
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
     }
 }
 

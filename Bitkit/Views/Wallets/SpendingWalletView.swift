@@ -24,7 +24,7 @@ struct SpendingWalletView: View {
             .padding(.top)
 
             Divider()
-                .padding(.top, 8)
+                .padding(.top, 16)
 
             if wallet.totalLightningSats > 0 {
                 if let channels = wallet.channels, !channels.isEmpty {

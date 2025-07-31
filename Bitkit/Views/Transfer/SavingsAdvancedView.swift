@@ -1,57 +1,60 @@
-//
-//  SavingsAdvancedView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/03/21.
-//
-
 import LDKNode
 import SwiftUI
 
 struct SavingsAdvancedView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) var dismiss
+
+    private var totalSelectedBalance: UInt64 {
+        guard let channels = wallet.channels else { return 0 }
+
+        return
+            channels
+            .filter { transfer.selectedChannelIds.contains($0.channelId) }
+            .reduce(0) { total, channel in
+                let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
+                return total + balance
+            }
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__savings_advanced__title", comment: ""), accentColor: .brandAccent)
-                    .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(localizedString("lightning__savings_advanced__title"), accentColor: .brandAccent)
+                .padding(.bottom, 16)
 
-                BodyMText(NSLocalizedString("lightning__savings_advanced__text", comment: ""), textColor: .textSecondary, accentColor: .white)
-                    .padding(.bottom, 16)
+            BodyMText(localizedString("lightning__savings_advanced__text"))
+                .padding(.bottom, 16)
 
-                if let channels = wallet.channels {
-                    VStack(spacing: 0) {
-                        ForEach(Array(channels.enumerated()), id: \.element.channelId) { index, channel in
-                            channelView(channel: channel, index: index, isLast: index == channels.count - 1)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .background(Color.black.opacity(0.3))
-                    .cornerRadius(8)
+            if let channels = wallet.channels {
+                ForEach(Array(channels.enumerated()), id: \.element.channelId) { index, channel in
+                    channelView(channel: channel, index: index, isLast: index == channels.count - 1)
                 }
-
-                Spacer()
             }
-            .padding(.horizontal, 16)
-
-            Divider()
 
             Spacer()
 
-            CustomButton(title: NSLocalizedString("common__continue", comment: "")) {
-                presentationMode.wrappedValue.dismiss()
+            CaptionMText(localizedString("lightning__savings_advanced__total"))
+                .padding(.bottom, 16)
+
+            MoneyText(sats: Int(totalSelectedBalance), size: .display, symbol: true)
+                .padding(.bottom, 32)
+
+            CustomButton(
+                title: localizedString("common__continue"),
+                isDisabled: transfer.selectedChannelIds.isEmpty
+            ) {
+                dismiss()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
         .backToWalletButton()
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .bottomSafeAreaPadding()
         .task {
             if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {
                 transfer.selectedChannelIds = channels.map { $0.channelId }
@@ -61,25 +64,15 @@ struct SavingsAdvancedView: View {
 
     @ViewBuilder
     private func channelView(channel: ChannelDetails, index: Int, isLast: Bool) -> some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(NSLocalizedString("lightning__connection", comment: "").uppercased() + " \(index + 1)")
-                    .foregroundColor(.gray)
-                    .font(.system(size: 14, weight: .medium))
-                Spacer()
-            }
+        let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
 
+        VStack(spacing: 16) {
             HStack {
-                if let converted = currency.convert(sats: channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        if currency.primaryDisplay == .bitcoin {
-                            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                            Text(btcComponents.value)
-                        } else {
-                            Text("\(converted.symbol) \(converted.formatted)")
-                        }
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(localizedString("lightning__connection") + " \(index + 1)")
+                    MoneyText(sats: Int(balance), size: .bodySSB, symbol: true)
                 }
+
                 Spacer()
 
                 Toggle(
@@ -104,10 +97,7 @@ struct SavingsAdvancedView: View {
         }
         .padding(.vertical, 16)
 
-        if !isLast {
-            Divider()
-                .background(Color.gray.opacity(0.3))
-        }
+        Divider()
     }
 }
 

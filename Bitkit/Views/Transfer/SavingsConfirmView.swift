@@ -9,14 +9,13 @@ import LDKNode
 import SwiftUI
 
 struct SavingsConfirmView: View {
-    @State private var showSettingUp = false
-    @State private var hideSwipeButton = false
-    @State private var showAdvancedView = false
-
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
+    @State private var hideSwipeButton = false
 
     private var hasMultipleChannels: Bool {
         guard let channels = wallet.channels else { return false }
@@ -43,89 +42,69 @@ struct SavingsConfirmView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__transfer__confirm", comment: ""), accentColor: .brandAccent)
-                    .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 16) {
+            DisplayText(localizedString("lightning__transfer__confirm"), accentColor: .brandAccent)
 
-                VStack(alignment: .leading, spacing: 8) {
-                    BodySText(NSLocalizedString("lightning__savings_confirm__label", comment: "").uppercased(), textColor: .textSecondary)
+            CaptionMText(localizedString("lightning__savings_confirm__label"))
+                .padding(.top, 32)
 
-                    AmountInput(
-                        defaultValue: UInt64(totalSats),
-                        primaryDisplay: .constant(currency.primaryDisplay),
-                        overrideSats: .constant(UInt64(totalSats))
-                    ) { _ in }
-                    .disabled(true)
-                }
-                .padding(.vertical, 16)
+            MoneyText(sats: Int(totalSats), size: .display, symbol: true)
 
-                if hasMultipleChannels {
-                    HStack(spacing: 16) {
-                        if hasSelectedChannels {
-                            Button(action: {
-                                transfer.setSelectedChannelIds([])
-                            }) {
-                                CustomButton(title: NSLocalizedString("lightning__savings_confirm__transfer_all", comment: ""), size: .small)
-                            }
-                        } else {
-                            Button(action: {
-                                showAdvancedView = true
-                            }) {
-                                CustomButton(title: NSLocalizedString("common__advanced", comment: ""), size: .small)
-                            }
+            if hasMultipleChannels {
+                HStack(spacing: 16) {
+                    if hasSelectedChannels {
+                        CustomButton(title: localizedString("lightning__savings_confirm__transfer_all"), size: .small) {
+                            transfer.setSelectedChannelIds([])
                         }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Spacer()
-
-                // Piggybank image
-                Image("piggybank-right")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: 256, height: 256)
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                Spacer()
-
-                if !hideSwipeButton {
-                    SwipeButton(
-                        title: NSLocalizedString("lightning__transfer__swipe", comment: ""),
-                        accentColor: .brandAccent
-                    ) {
-                        do {
-                            // Process transfer to savings action
-                            transfer.onTransferToSavingsConfirm(channels: channels)
-
-                            try await Task.sleep(nanoseconds: 300_000_000)
-
-                            showSettingUp = true
-
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                hideSwipeButton = true
-                            }
-                        } catch {
-                            app.toast(error)
+                    } else {
+                        CustomButton(title: localizedString("common__advanced"), size: .small) {
+                            navigation.navigate(.savingsAdvanced)
                         }
                     }
                 }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-
-            NavigationLink(destination: SavingsAdvancedView(), isActive: $showAdvancedView) {
-                EmptyView()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
             }
 
-            NavigationLink(destination: SavingsProgressView().environmentObject(transfer), isActive: $showSettingUp) {
-                EmptyView()
+            Spacer()
+
+            // Piggybank image
+            Image("piggybank-right")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 256, height: 256)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            Spacer()
+
+            if !hideSwipeButton {
+                SwipeButton(
+                    title: localizedString("lightning__transfer__swipe"),
+                    accentColor: .brandAccent
+                ) {
+                    do {
+                        // Process transfer to savings action
+                        transfer.onTransferToSavingsConfirm(channels: channels)
+
+                        try await Task.sleep(nanoseconds: 300_000_000)
+
+                        navigation.navigate(.savingsProgress)
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                            hideSwipeButton = true
+                        }
+                    } catch {
+                        app.toast(error)
+                    }
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
         .backToWalletButton()
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

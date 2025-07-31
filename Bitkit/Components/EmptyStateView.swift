@@ -44,8 +44,8 @@ struct EmptyStateView: View {
                 Image("empty-state-arrow")
                     .resizable()
                     .scaledToFit()
-                    .padding(.leading, 4)
                     .frame(maxHeight: 144)
+
                 Spacer()
             }
             .frame(maxWidth: .infinity)

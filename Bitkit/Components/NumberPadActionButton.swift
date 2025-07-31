@@ -29,7 +29,8 @@ struct NumberPadActionButton: View {
                     Image(imageName)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 16)
+                        .foregroundColor(color)
+                        .frame(width: 16, height: 16)
                 }
 
                 CaptionMText(text.uppercased(), textColor: color)
@@ -73,7 +74,7 @@ struct NumberPadActionButton: View {
 
             NumberPadActionButton(
                 text: "Bitcoin",
-                imageName: "transfer-purple"
+                imageName: "transfer"
             ) {
                 print("Currency toggle tapped")
             }
