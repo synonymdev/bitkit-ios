@@ -18,12 +18,21 @@ enum Route: Hashable {
     case quickpayIntro
     case transferIntro
     case fundingOptions
-    case fundingAmount
+    case spendingIntro
+    case spendingAmount
+    case spendingConfirm
+    case spendingAdvanced(order: IBtOrder)
+    case transferLearnMore(order: IBtOrder)
+    case settingUp
+    case fundingAdvanced
     case fundManual(nodeUri: String?)
     case fundManualSuccess
     case lnurlChannel(channelData: LnurlChannelData)
     case savingsIntro
     case savingsAvailability
+    case savingsConfirm
+    case savingsAdvanced
+    case savingsProgress
     case settings
     case generalSettings
     case shopIntro

@@ -203,7 +203,7 @@ struct LightningConnectionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: FundingOptionsView()) {
+                NavigationLink(destination: FundingOptions()) {
                     Image(systemName: "plus")
                         .foregroundColor(.white)
                 }
@@ -223,7 +223,7 @@ struct LightningConnectionsView: View {
                     title: NSLocalizedString("lightning__conn_button_add", comment: ""),
                     variant: .primary,
                     shouldExpand: true,
-                    destination: FundingOptionsView()
+                    destination: FundingOptions()
                 )
             }
             .padding(.horizontal, 16)

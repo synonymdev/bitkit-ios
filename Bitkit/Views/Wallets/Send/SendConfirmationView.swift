@@ -47,10 +47,12 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    amountView(wallet.sendAmountSats ?? invoice.amountSatoshis)
+                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                        .padding(.bottom, 32)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                    amountView(wallet.sendAmountSats ?? invoice.amountSatoshis)
+                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                        .padding(.bottom, 32)
                     onchainView(invoice)
                 }
             }
@@ -280,32 +282,13 @@ struct SendConfirmationView: View {
     }
 
     @ViewBuilder
-    func amountView(_ sats: UInt64) -> some View {
-        VStack {
-            AmountInput(
-                defaultValue: sats,
-                primaryDisplay: $primaryDisplay,
-                showConversion: true
-            ) { _ in
-                // This is a read-only view, so we don't need to handle changes
-            }
-            .padding(.vertical)
-            .disabled(true) // Disable interaction since this is just for display
-        }
-    }
-
-    @ViewBuilder
     func toView(_ address: String) -> some View {
-        VStack(alignment: .leading) {
-            Text(NSLocalizedString("wallet__send_to", comment: ""))
-                .foregroundColor(.secondary)
-                .font(.caption)
-            Text(address)
-                .lineLimit(2)
-                .truncationMode(.tail)
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(localizedString("wallet__send_to"))
+            BodyMBoldText(address.ellipsis(maxLength: 20), textColor: .textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical)
+        .padding(.bottom, 16)
     }
 
     @ViewBuilder

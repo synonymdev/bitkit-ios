@@ -10,7 +10,7 @@ struct SpendingIntroView: View {
             imageName: "coin-stack-x",
             buttonText: localizedString("lightning__spending_intro__button"),
             onButtonPress: {
-                navigation.navigate(.fundingAmount)
+                navigation.navigate(.spendingAmount)
             },
             accentColor: .purpleAccent,
             imagePosition: .center,

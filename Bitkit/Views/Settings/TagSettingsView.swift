@@ -7,30 +7,22 @@ struct TagSettingsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                if !activityViewModel.recentlyUsedTags.isEmpty {
-                    CaptionText(NSLocalizedString("settings__general__tags_previously", comment: ""))
-                        .textCase(.uppercase)
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                CaptionText(NSLocalizedString("settings__general__tags_previously", comment: ""))
+                    .textCase(.uppercase)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    WrappingHStack(spacing: 8) {
-                        ForEach(activityViewModel.recentlyUsedTags, id: \.self) { tag in
-                            Tag(
-                                tag,
-                                icon: .trash,
-                                onDelete: {
-                                    activityViewModel.removeFromRecentlyUsedTags(tag)
-                                }
-                            )
-                        }
+                WrappingHStack(spacing: 8) {
+                    ForEach(activityViewModel.recentlyUsedTags, id: \.self) { tag in
+                        Tag(
+                            tag,
+                            icon: .trash,
+                            onDelete: {
+                                activityViewModel.removeFromRecentlyUsedTags(tag)
+                            }
+                        )
                     }
-                } else {
-                    CaptionText(NSLocalizedString("wallet__tags_no", comment: ""))
-                        .textCase(.uppercase)
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(.horizontal, 16)

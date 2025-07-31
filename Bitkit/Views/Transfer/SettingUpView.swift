@@ -43,7 +43,7 @@ struct ProgressSteps: View {
                                     // Number for current and upcoming steps
                                     Text("\(index + 1)")
                                         .foregroundColor(index == currentStep ? Color.purpleAccent : .white32)
-                                        .font(.system(size: 14, weight: .bold))
+                                        .font(.custom(Fonts.regular, size: 17))
                                 }
 
                                 // Border for current step
@@ -60,10 +60,11 @@ struct ProgressSteps: View {
                             .padding(.horizontal, 16)
                         }
                     }
+                    .padding(.bottom, 16)
                 }
             }
 
-            BodyMText(steps[currentStep], textColor: .textSecondary)
+            BodySSBText(steps[currentStep], textColor: .white32)
         }
     }
 }
@@ -73,7 +74,6 @@ struct SettingUpView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
 
-    @State private var isRocking = false
     @State private var outerRotation: Double = 0
     @State private var innerRotation: Double = 0
     @State private var transferRotation: Double = 0
@@ -84,26 +84,37 @@ struct SettingUpView: View {
         return transfer.lightningSetupStep < 3
     }
 
+    var navTitle: String {
+        return isTransferring ? localizedString("lightning__transfer__nav_title") : localizedString("lightning__transfer_success__nav_title")
+    }
+
+    var title: String {
+        return isTransferring ? localizedString("lightning__savings_progress__title") : localizedString("lightning__transfer_success__title_spending")
+    }
+
+    var text: String {
+        return isTransferring ? localizedString("lightning__setting_up_text") : localizedString("lightning__transfer_success__text_spending")
+    }
+
+    var buttonTitle: String {
+        return isTransferring ? localizedString("lightning__setting_up_button") : randomOkText
+    }
+
     let steps = [
-        NSLocalizedString("lightning__setting_up_step1", comment: ""), // Processing Payment
-        NSLocalizedString("lightning__setting_up_step2", comment: ""), // Payment Successful
-        NSLocalizedString("lightning__setting_up_step3", comment: ""), // Queued For Opening
-        NSLocalizedString("lightning__setting_up_step4", comment: ""), // Opening Connection
+        localizedString("lightning__setting_up_step1"), // Processing Payment
+        localizedString("lightning__setting_up_step2"), // Payment Successful
+        localizedString("lightning__setting_up_step3"), // Queued For Opening
+        localizedString("lightning__setting_up_step4"), // Opening Connection
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(
-                    NSLocalizedString(
-                        isTransferring ? "lightning__savings_progress__title" : "lightning__transfer_success__title_spending", comment: ""),
-                    accentColor: .purpleAccent
-                )
-                .padding(.top, 16)
+                DisplayText(title, accentColor: .purpleAccent)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                BodyMText(
-                    NSLocalizedString(isTransferring ? "lightning__setting_up_text" : "lightning__transfer_success__text_spending", comment: ""),
-                    textColor: .textSecondary, accentColor: .white)
+                BodyMText(text, accentColor: .white, accentFont: Fonts.bold)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer()
 
@@ -124,7 +135,7 @@ struct SettingUpView: View {
                             .rotationEffect(.degrees(innerRotation))
 
                         // Transfer image
-                        Image("transfer")
+                        Image("transfer-figure")
                             .resizable()
                             .aspectRatio(contentMode: .fit)
                             .frame(width: 256, height: 256)
@@ -159,41 +170,22 @@ struct SettingUpView: View {
 
                 if isTransferring {
                     ProgressSteps(steps: steps, currentStep: transfer.lightningSetupStep)
-                    Spacer()
+                        .padding(.bottom, 32)
                 }
 
-                CustomButton(
-                    title: isTransferring ? NSLocalizedString("lightning__setting_up_button", comment: "") : randomOkText,
-                    size: .large
-                ) {
+                CustomButton(title: buttonTitle) {
                     navigation.reset()
                 }
             }
-            .padding(.horizontal, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .navigationTitle(NSLocalizedString(isTransferring ? "lightning__transfer__nav_title" : "lightning__transfer_success__nav_title", comment: ""))
+        .navigationTitle(navTitle)
         .backToWalletButton()
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .interactiveDismissDisabled()
-        .onAppear {
-            Logger.debug("View appeared - TransferViewModel is handling order updates")
-
-            // Auto-mine a block in regtest mode after a 5-second delay
-            if Env.network == .regtest {
-                Task {
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-
-                    do {
-                        Logger.debug("Auto-mining a block", context: "SettingUpView")
-                        try await CoreService.shared.blocktank.regtestMineBlocks(1)
-                        Logger.debug("Successfully mined a block", context: "SettingUpView")
-                    } catch {
-                        Logger.error("Failed to mine block: \(error.localizedDescription)", context: "SettingUpView")
-                    }
-                }
-            }
-        }
     }
 }
 

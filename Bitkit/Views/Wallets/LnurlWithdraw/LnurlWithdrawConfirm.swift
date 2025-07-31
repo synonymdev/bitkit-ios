@@ -22,23 +22,16 @@ struct LnurlWithdrawConfirm: View {
         VStack(spacing: 0) {
             SheetHeader(title: localizedString("wallet__lnurl_w_title"), showBackButton: true)
 
-            AmountInput(
-                defaultValue: amount,
-                primaryDisplay: $currency.primaryDisplay,
-                showConversion: true
-            ) { _ in
-                // This is a read-only view, so we don't need to handle changes
-            }
-            .padding(.top, 16)
-            .padding(.bottom, 42)
-            .disabled(true) // Disable interaction since this is just for display
+            MoneyStack(sats: Int(amount), showSymbol: true)
+                .padding(.top, 16)
+                .padding(.bottom, 42)
 
             BodyMText(localizedString("wallet__lnurl_w_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
 
-            Image("transfer")
+            Image("transfer-figure")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: UIScreen.main.bounds.width * 0.8)

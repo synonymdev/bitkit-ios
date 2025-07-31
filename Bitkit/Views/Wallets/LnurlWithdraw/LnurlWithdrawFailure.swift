@@ -13,16 +13,9 @@ struct LnurlWithdrawFailure: View {
         VStack(spacing: 0) {
             SheetHeader(title: "Withdrawal Failed", showBackButton: true)
 
-            AmountInput(
-                defaultValue: amount,
-                primaryDisplay: $currency.primaryDisplay,
-                showConversion: true
-            ) { _ in
-                // This is a read-only view, so we don't need to handle changes
-            }
-            .padding(.top, 16)
-            .padding(.bottom, 42)
-            .disabled(true) // Disable interaction since this is just for display
+            MoneyStack(sats: Int(amount), showSymbol: true)
+                .padding(.top, 16)
+                .padding(.bottom, 42)
 
             BodyMText("Your withdrawal was unsuccessful. Please scan the QR code again or contact support.")
                 .frame(maxWidth: .infinity, alignment: .leading)

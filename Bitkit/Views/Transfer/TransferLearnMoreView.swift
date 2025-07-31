@@ -5,29 +5,28 @@
 //  Created by Jason van den Berg on 2024/09/12.
 //
 
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct TransferLearnMoreView: View {
     let order: IBtOrder
 
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
-    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var wallet: WalletViewModel
+    @Environment(\.dismiss) var dismiss
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            DisplayText(NSLocalizedString("lightning__liquidity__title", comment: ""), accentColor: .purpleAccent)
-                .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(localizedString("lightning__liquidity__title"), accentColor: .purpleAccent)
+                .padding(.bottom, 16)
 
-            BodyMText(NSLocalizedString("lightning__liquidity__text", comment: ""))
-                .padding(.vertical, 16)
+            BodyMText(localizedString("lightning__liquidity__text"))
 
             Spacer()
 
-            VStack(alignment: .leading, spacing: 12) {
-                SubtitleText(NSLocalizedString("lightning__liquidity__label", comment: ""))
+            VStack(alignment: .leading, spacing: 16) {
+                SubtitleText(localizedString("lightning__liquidity__label"))
                 LightningChannel(
                     capacity: order.lspBalanceSat + order.clientBalanceSat,
                     localBalance: order.clientBalanceSat,
@@ -36,18 +35,17 @@ struct TransferLearnMoreView: View {
                     showLabels: true
                 )
             }
-            .padding(.vertical, 16)
 
-            CustomButton(title: NSLocalizedString("common__understood", comment: "")) {
-                presentationMode.wrappedValue.dismiss()
+            CustomButton(title: localizedString("common__understood")) {
+                dismiss()
             }
-            .padding(.top, 16)
+            .padding(.top, 32)
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 16)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__transfer__nav_title", comment: ""))
-        .background(Color.black)
+        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

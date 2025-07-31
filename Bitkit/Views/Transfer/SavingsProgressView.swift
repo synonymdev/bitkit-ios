@@ -23,109 +23,105 @@ struct SavingsProgressContentView: View {
     @State private var innerRotation: Double = 0
     @State private var transferRotation: Double = 0
 
+    var navTitle: String {
+        switch progressState {
+        case .inProgress: return localizedString("lightning__transfer__nav_title")
+        case .failed: return localizedString("lightning__savings_interrupted__nav_title")
+        case .success: return localizedString("lightning__transfer__nav_title")
+        }
+    }
+
+    var title: String {
+        switch progressState {
+        case .inProgress: return localizedString("lightning__savings_progress__title")
+        case .failed: return localizedString("lightning__savings_interrupted__title")
+        case .success: return localizedString("lightning__transfer_success__title_savings")
+        }
+    }
+
+    var text: String {
+        switch progressState {
+        case .inProgress: return localizedString("lightning__savings_progress__text")
+        case .failed: return localizedString("lightning__savings_interrupted__text")
+        case .success: return localizedString("lightning__transfer_success__text_savings")
+        }
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
-                DisplayText(
-                    NSLocalizedString(
-                        {
-                            switch progressState {
-                            case .inProgress: return "lightning__savings_progress__title"
-                            case .failed: return "lightning__savings_interrupted__title"
-                            case .success: return "lightning__transfer_success__title_savings"
-                            }
-                        }(),
-                        comment: ""
-                    ), accentColor: .brandAccent
-                )
-                .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText(title, accentColor: .brandAccent)
+                .padding(.bottom, 16)
 
-                BodyMText(
-                    NSLocalizedString(
-                        {
-                            switch progressState {
-                            case .inProgress: return "lightning__savings_progress__text"
-                            case .failed: return "lightning__savings_interrupted__text"
-                            case .success: return "lightning__transfer_success__text_savings"
-                            }
-                        }(),
-                        comment: ""
-                    ), textColor: .textSecondary, accentColor: .white)
+            BodyMText(text, accentFont: Fonts.bold)
 
-                Spacer()
+            Spacer()
 
-                if progressState == .inProgress {
-                    ZStack(alignment: .center) {
-                        // Outer ellipse
-                        Image("ellipse-outer-brand")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 311, height: 311)
-                            .rotationEffect(.degrees(outerRotation))
+            if progressState == .inProgress {
+                ZStack(alignment: .center) {
+                    // Outer ellipse
+                    Image("ellipse-outer-brand")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 311, height: 311)
+                        .rotationEffect(.degrees(outerRotation))
 
-                        // Inner ellipse
-                        Image("ellipse-inner-brand")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 207, height: 207)
-                            .rotationEffect(.degrees(innerRotation))
+                    // Inner ellipse
+                    Image("ellipse-inner-brand")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 207, height: 207)
+                        .rotationEffect(.degrees(innerRotation))
 
-                        // Transfer image
-                        Image("transfer")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 256, height: 256)
-                            .rotationEffect(.degrees(transferRotation))
-                    }
-                    .frame(width: 320, height: 320)
-                    .clipped()
-                    .frame(maxWidth: .infinity)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            outerRotation = -90
-                        }
-
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            innerRotation = 120
-                        }
-
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            transferRotation = 90
-                        }
-                    }
-
-                } else {
-                    Image(progressState == .failed ? "exclamation-mark" : "check")
+                    // Transfer image
+                    Image("transfer-figure")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 256, height: 256)
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .rotationEffect(.degrees(transferRotation))
                 }
+                .frame(width: 320, height: 320)
+                .clipped()
+                .frame(maxWidth: .infinity)
+                .onAppear {
+                    withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                        outerRotation = -90
+                    }
 
-                Spacer()
+                    withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                        innerRotation = 120
+                    }
 
-                if progressState != .inProgress {
-                    CustomButton(
-                        title: NSLocalizedString("common__ok", comment: ""),
-                        size: .large
-                    ) {
-                        navigation.reset()
+                    withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                        transferRotation = 90
                     }
                 }
+
+            } else {
+                Image(progressState == .failed ? "exclamation-mark" : "check")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 256, height: 256)
+                    .padding()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, 16)
+
+            Spacer()
+
+            CustomButton(
+                title: localizedString("common__ok"),
+                isLoading: progressState == .inProgress
+            ) {
+                navigation.reset()
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .interactiveDismissDisabled()
-        .navigationTitle(
-            NSLocalizedString(
-                progressState == .failed ? "lightning__savings_interrupted__nav_title" : "lightning__transfer__nav_title",
-                comment: ""
-            )
-        )
+        .navigationTitle(navTitle)
         .backToWalletButton()
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .interactiveDismissDisabled()
     }
 }
 
@@ -160,7 +156,6 @@ struct SavingsProgressView: View {
                         // Start retrying the cooperative close
                         transfer.startCoopCloseRetries(channels: channelsFailedToCoopClose)
                     }
-
                 } catch {
                     app.toast(error)
                 }

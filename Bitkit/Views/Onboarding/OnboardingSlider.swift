@@ -52,6 +52,7 @@ struct Dots: View {
 }
 
 struct OnboardingSlider: View {
+    @EnvironmentObject var app: AppViewModel
     @State var currentTab = 0
 
     var body: some View {
@@ -72,7 +73,7 @@ struct OnboardingSlider: View {
                         imageName: "lightning",
                         title: NSLocalizedString("onboarding__slide1_header", comment: ""),
                         text: NSLocalizedString("onboarding__slide1_text", comment: ""),
-                        disclaimerText: NSLocalizedString("onboarding__slide1_note", comment: ""),
+                        disclaimerText: app.isGeoBlocked == true ? NSLocalizedString("onboarding__slide1_note", comment: "") : nil,
                         accentColor: .purpleAccent
                     )
                     .tag(1)

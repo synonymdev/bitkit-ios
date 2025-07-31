@@ -257,9 +257,21 @@ struct MainNavView: View {
             case .transferIntro:
                 TransferIntroView()
             case .fundingOptions:
-                FundingOptionsView()
-            case .fundingAmount:
-                FundTransferView()
+                FundingOptions()
+            case .spendingIntro:
+                SpendingIntroView()
+            case .spendingAmount:
+                SpendingAmount()
+            case .spendingConfirm:
+                SpendingConfirm()
+            case .spendingAdvanced(let order):
+                SpendingAdvancedView(order: order)
+            case .transferLearnMore(let order):
+                TransferLearnMoreView(order: order)
+            case .settingUp:
+                SettingUpView()
+            case .fundingAdvanced:
+                FundAdvancedOptions()
             case .fundManual(let nodeUri):
                 FundManualSetupView(initialNodeUri: nodeUri)
             case .fundManualSuccess:
@@ -270,6 +282,12 @@ struct MainNavView: View {
                 SavingsIntroView()
             case .savingsAvailability:
                 SavingsAvailabilityView()
+            case .savingsConfirm:
+                SavingsConfirmView()
+            case .savingsAdvanced:
+                SavingsAdvancedView()
+            case .savingsProgress:
+                SavingsProgressView()
             case .notifications:
                 NotificationsSettings()
             case .notificationsIntro:

@@ -1,14 +1,12 @@
+import BitkitCore
 import Foundation
 import LDKNode
 import SwiftUI
-import BitkitCore
-
 
 struct ActivityExplorerView: View {
     let item: Activity
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
-    @Environment(\.presentationMode) var presentationMode
 
     private var onchain: OnchainActivity? {
         guard case .onchain(let activity) = item else { return nil }
@@ -133,7 +131,7 @@ struct ActivityExplorerView: View {
             Spacer()
 
             if onchain != nil {
-                CustomButton(title: "Open Block Explorer", shouldExpand: true) {
+                CustomButton(title: localizedString("common__open_block_explorer"), shouldExpand: true) {
                     if let onchain = onchain,
                         let url = getBlockExplorerUrl(txId: onchain.txId)
                     {

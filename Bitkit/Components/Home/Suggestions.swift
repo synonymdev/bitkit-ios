@@ -32,6 +32,14 @@ let cards: [SuggestionCardData] = [
         action: .backup
     ),
     SuggestionCardData(
+        id: "transferToSpending",
+        title: localizedString("cards__lightning__title"),
+        description: localizedString("cards__lightning__description"),
+        imageName: "lightning",
+        color: .purple24,
+        action: .transferToSpending
+    ),
+    SuggestionCardData(
         id: "pin",
         title: localizedString("cards__pin__title"),
         description: localizedString("cards__pin__description"),
@@ -142,8 +150,7 @@ struct Suggestions: View {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("cards__suggestions"))
-                    .textCase(.uppercase)
+                CaptionMText(localizedString("cards__suggestions"))
                     .padding(.horizontal)
                     .padding(.bottom, 16)
 
