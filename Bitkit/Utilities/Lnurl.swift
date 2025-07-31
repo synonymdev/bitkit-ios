@@ -43,14 +43,15 @@ extension LnurlHelper {
 
         Logger.debug("HTTP response status: \(httpResponse.statusCode)")
 
+        guard let responseString = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response data"])
+        }
+
         guard httpResponse.statusCode == 200 else {
+            Logger.error("HTTP request failed with status \(httpResponse.statusCode), response: \(responseString)")
             throw NSError(
                 domain: "LNURL", code: httpResponse.statusCode,
                 userInfo: [NSLocalizedDescriptionKey: "HTTP request failed with status \(httpResponse.statusCode)"])
-        }
-
-        guard let responseString = String(data: data, encoding: .utf8) else {
-            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response data"])
         }
 
         Logger.debug("HTTP response: \(responseString)")
