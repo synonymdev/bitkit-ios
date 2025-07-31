@@ -41,7 +41,7 @@ enum Env {
 
     static let network: LDKNode.Network = .regtest
     static let defaultWalletWordCount = 12
-    static let walletSyncIntervalSecs: UInt64 = 10 //TODO: play arond with this
+    static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this
 
     /// Converts the LDKNode.Network to BitkitCore.Network for use with bitkitcore functions
     static var bitkitCoreNetwork: BitkitCore.Network {
@@ -68,7 +68,7 @@ enum Env {
         case .regtest:
             return "34.65.252.32:18483"
         case .bitcoin:
-            fatalError("Bitcoin network not implemented")
+            return "35.187.18.233:18484"
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:
@@ -110,7 +110,10 @@ enum Env {
                 .appendingPathComponent("regtest")
                 .appendingPathComponent("wallet\(walletIndex)/ldk")
         case .bitcoin:
-            fatalError("Bitcoin network not implemented")
+            return
+                appStorageUrl
+                .appendingPathComponent("bitcoin")
+                .appendingPathComponent("wallet\(walletIndex)/electrs")
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:
@@ -126,7 +129,10 @@ enum Env {
                 .appendingPathComponent("regtest")
                 .appendingPathComponent("wallet\(walletIndex)/core")
         case .bitcoin:
-            fatalError("Bitcoin network not implemented")
+            return
+                appStorageUrl
+                .appendingPathComponent("bitcoin")
+                .appendingPathComponent("wallet\(walletIndex)/core")
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:

@@ -7,6 +7,7 @@ enum SheetID: String, CaseIterable {
     case boost
     case forgotPin
     case highBalance
+    case lnurlAuth
     case lnurlWithdraw
     case notifications
     case quickpay
@@ -142,6 +143,20 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .highBalance else { return nil }
             return HighBalanceSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var lnurlAuthSheetItem: LnurlAuthSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .lnurlAuth else { return nil }
+            let lnurlAuthConfig = config.data as? LnurlAuthConfig
+            guard let lnurl = lnurlAuthConfig?.lnurl, let authData = lnurlAuthConfig?.authData else { return nil }
+            return LnurlAuthSheetItem(lnurl: lnurl, authData: authData)
         }
         set {
             if newValue == nil {
