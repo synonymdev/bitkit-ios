@@ -8,6 +8,9 @@
 import SwiftUI
 
 struct AdvancedSettingsView: View {
+    @State private var showingResetAlert = false
+    @EnvironmentObject var suggestionsManager: SuggestionsManager
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -114,7 +117,9 @@ struct AdvancedSettingsView: View {
                     //     )
                     // }
 
-                    NavigationLink(destination: Text("Coming soon")) {
+                    Button(action: {
+                        showingResetAlert = true
+                    }) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__suggestions_reset", comment: "")
                         )
@@ -128,12 +133,15 @@ struct AdvancedSettingsView: View {
             .padding(.horizontal, 16)
         }
         .navigationTitle(NSLocalizedString("settings__advanced_title", comment: ""))
+        .alert(isPresented: $showingResetAlert) {
+            Alert(
+                title: Text(localizedString("settings__adv__reset_title")),
+                message: Text(localizedString("settings__adv__reset_desc")),
+                primaryButton: .destructive(Text(localizedString("settings__adv__reset_confirm"))) {
+                    suggestionsManager.resetDismissed()
+                },
+                secondaryButton: .cancel()
+            )
+        }
     }
-}
-
-#Preview {
-    NavigationStack {
-        AdvancedSettingsView()
-    }
-    .preferredColorScheme(.dark)
 }

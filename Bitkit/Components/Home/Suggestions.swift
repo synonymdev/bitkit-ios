@@ -110,10 +110,9 @@ struct Suggestions: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var suggestionsManager: SuggestionsManager
 
     @State private var showShareSheet = false
-    // In-memory set of dismissed card keys
-    @State private var dismissedCards: Set<String> = []
     // Prevent duplicate item taps when the card is dismissed
     @State private var ignoringCardTaps = false
 
@@ -137,7 +136,7 @@ struct Suggestions: View {
             }
 
             // Filter out dismissed cards
-            if dismissedCards.contains(card.id) {
+            if suggestionsManager.isDismissed(card.id) {
                 return false
             }
 
@@ -168,14 +167,11 @@ struct Suggestions: View {
                         data: card,
                         onDismiss: { dismissCard(card) })
                 }
-                .id("suggestions-\(filteredCards.count)-\(dismissedCards.count)")
+                .id("suggestions-\(filteredCards.count)-\(suggestionsManager.dismissedIds.count)")
                 .frame(height: cardSize)
                 .padding(.bottom, 16)
             }
             .padding(.top, 32)
-            .onAppear {
-                loadDismissedCards()
-            }
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [
                     localizedString(
@@ -220,25 +216,13 @@ struct Suggestions: View {
         }
     }
 
-    private func loadDismissedCards() {
-        let dismissedArray = UserDefaults.standard.stringArray(forKey: "dismissedSuggestionCards") ?? []
-        dismissedCards = Set(dismissedArray)
-    }
-
-    private func saveDismissedCards() {
-        let dismissedArray = Array(dismissedCards)
-        UserDefaults.standard.set(dismissedArray, forKey: "dismissedSuggestionCards")
-    }
-
     private func dismissCard(_ card: SuggestionCardData) {
         ignoringCardTaps = true
 
         // Force UI update by using withAnimation
         withAnimation(.easeInOut(duration: 0.3)) {
-            dismissedCards.insert(card.id)
+            suggestionsManager.dismiss(card.id)
         }
-
-        saveDismissedCards()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             ignoringCardTaps = false
