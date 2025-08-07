@@ -18,6 +18,7 @@ struct ContentView: View {
     @StateObject private var transfer = TransferViewModel()
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var settings = SettingsViewModel()
+    @StateObject private var suggestionsManager = SuggestionsManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -59,6 +60,7 @@ struct ContentView: View {
             .environmentObject(transfer)
             .environmentObject(widgets)
             .environmentObject(settings)
+            .environmentObject(suggestionsManager)
             .onAppear {
                 // Set up failure callback to show toast
                 NotificationService.shared.onRegistrationFailed = { error in
