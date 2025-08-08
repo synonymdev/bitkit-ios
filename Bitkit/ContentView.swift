@@ -118,7 +118,7 @@ struct ContentView: View {
             // Wallet exists and has been restored from backup. isRestoringWallet is set to false inside below component
             WalletRestoreSuccess()
         } else {
-            if !isPinVerified && (settings.requirePinOnLaunch || settings.requirePinWhenIdle) {
+            if !isPinVerified && settings.pinEnabled && (settings.requirePinOnLaunch || settings.requirePinWhenIdle) {
                 AuthCheck {
                     isPinVerified = true
                 }
@@ -240,7 +240,8 @@ struct ContentView: View {
     }
 
     private func handleScenePhaseChange(_: ScenePhase) {
-        if scenePhase == .background && settings.requirePinWhenIdle {
+        // If 'pinOnIdle' is enabled, lock the app when the app goes to the background
+        if scenePhase == .background && settings.pinEnabled && settings.requirePinWhenIdle {
             isPinVerified = false
         }
     }
