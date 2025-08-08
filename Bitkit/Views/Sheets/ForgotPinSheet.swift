@@ -55,7 +55,7 @@ struct ForgotPinSheet: View {
                     )
                 }
             } catch {
-                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinOnLaunchView")
+                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "ForgotPinSheet")
                 await MainActor.run {
                     app.toast(error)
                 }

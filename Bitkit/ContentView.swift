@@ -8,6 +8,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.scenePhase) var scenePhase
+
     @StateObject private var app: AppViewModel
     @StateObject private var navigation = NavigationViewModel()
     @StateObject private var sheets = SheetViewModel()
@@ -24,6 +26,8 @@ struct ContentView: View {
 
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
+
+    @State private var isPinVerified: Bool = false
 
     init() {
         let sheetViewModel = SheetViewModel()
@@ -43,12 +47,20 @@ struct ContentView: View {
 
     var body: some View {
         mainContent
-            .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
-            .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
+            // Keep this sheet here so it is mounted when the PIN check is shown
+            .sheet(
+                item: $sheets.forgotPinSheetItem,
+                onDismiss: { sheets.hideSheet() }
+            ) {
+                config in ForgotPinSheet(config: config)
+            }
             .task(priority: .userInitiated, setupTask)
             .handleLightningStateOnScenePhaseChange() // Will stop and start LDK-node in foreground app as needed
+            .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
+            .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
             .onChange(of: wallet.totalBalanceSats, perform: handleBalanceChange)
+            .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .environmentObject(app)
             .environmentObject(navigation)
             .environmentObject(sheets)
@@ -60,6 +72,10 @@ struct ContentView: View {
             .environmentObject(widgets)
             .environmentObject(settings)
             .onAppear {
+                if !settings.requirePinOnLaunch {
+                    isPinVerified = true
+                }
+
                 // Set up failure callback to show toast
                 NotificationService.shared.onRegistrationFailed = { error in
                     app.toast(
@@ -102,7 +118,13 @@ struct ContentView: View {
             // Wallet exists and has been restored from backup. isRestoringWallet is set to false inside below component
             WalletRestoreSuccess()
         } else {
-            MainNavView()
+            if !isPinVerified && (settings.requirePinOnLaunch || settings.requirePinWhenIdle) {
+                AuthCheck {
+                    isPinVerified = true
+                }
+            } else {
+                MainNavView()
+            }
         }
     }
 
@@ -215,6 +237,12 @@ struct ContentView: View {
     private func handleBalanceChange(_: Int) {
         // Anytime we receive a balance update, we should sync the payments to activity list
         Task { try? await activity.syncLdkNodePayments() }
+    }
+
+    private func handleScenePhaseChange(_: ScenePhase) {
+        if scenePhase == .background && settings.requirePinWhenIdle {
+            isPinVerified = false
+        }
     }
 }
 
