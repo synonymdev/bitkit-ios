@@ -60,7 +60,7 @@ struct BackupMnemonicView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 32)
                 .onLongPressGesture(minimumDuration: 1.0) {
-                    if Env.isDebug {
+                    if Env.isDebug || Env.isTestFlight {
                         let mnemonicString = mnemonic.joined(separator: " ")
                         UIPasteboard.general.string = mnemonicString
                         app.toast(type: .success, title: localizedString("common__copied"), description: "Mnemonic copied to clipboard")

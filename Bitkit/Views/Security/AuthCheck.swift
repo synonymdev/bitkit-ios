@@ -1,7 +1,7 @@
 import LocalAuthentication
 import SwiftUI
 
-struct PinOnLaunchView: View {
+struct AuthCheck: View {
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
     @State private var biometricFailedOnce = false
@@ -70,7 +70,7 @@ struct PinOnLaunchView: View {
                         )
                     }
                 } catch {
-                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinOnLaunchView")
+                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "AuthCheck")
                     await MainActor.run {
                         app.toast(error)
                     }
@@ -99,7 +99,7 @@ struct PinOnLaunchView: View {
 
         // Check if biometric authentication is available
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "PinOnLaunchView")
+            Logger.error("Biometric authentication not available: \(error?.localizedDescription ?? "Unknown error")", context: "AuthCheck")
             return
         }
 
@@ -113,7 +113,7 @@ struct PinOnLaunchView: View {
                     onPinVerified()
                 } else {
                     if let error = authenticationError {
-                        Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "PinOnLaunchView")
+                        Logger.error("Biometric authentication failed: \(error.localizedDescription)", context: "AuthCheck")
                     }
                     Haptics.notify(.error)
                     biometricFailedOnce = true
@@ -134,28 +134,33 @@ struct PinOnLaunchView: View {
 
             BodyMSBText(localizedString("security__pin_enter"))
 
-            // Biometric button (if enabled and available, and failed once)
-            if settings.useBiometrics && isBiometricAvailable && biometricFailedOnce {
-                CustomButton(
-                    title: localizedString("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
-                    size: .small,
-                    icon: Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
-                        .resizable()
-                        .frame(width: 16, height: 16)
-                ) {
-                    handleBiometricAuthentication()
-                }
-                .padding(.top, 12)
-            }
+            VStack(alignment: .center, spacing: 0) {
+                Spacer()
 
-            if !errorMessage.isEmpty {
-                BodySText(errorMessage, textColor: .brandAccent)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.top, 12)
-                    .onTapGesture {
-                        sheets.showSheet(.forgotPin)
+                // Biometric button (if enabled and available, and failed once)
+                if settings.useBiometrics && isBiometricAvailable && biometricFailedOnce {
+                    CustomButton(
+                        title: localizedString("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
+                        size: .small,
+                        icon: Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                    ) {
+                        handleBiometricAuthentication()
                     }
+                }
+
+                if !errorMessage.isEmpty {
+                    BodySText(errorMessage, textColor: .brandAccent)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .onTapGesture {
+                            sheets.showSheet(.forgotPin)
+                        }
+                }
             }
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .padding(.top, 12)
 
             PinInput(pinInput: $pinInput) { pin in
                 handlePinChange(pin)
@@ -173,7 +178,7 @@ struct PinOnLaunchView: View {
 }
 
 #Preview {
-    PinOnLaunchView {
+    AuthCheck {
         print("PIN verified!")
     }
     .environmentObject(SettingsViewModel())

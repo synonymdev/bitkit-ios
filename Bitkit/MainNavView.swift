@@ -9,17 +9,9 @@ struct MainNavView: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.scenePhase) var scenePhase
 
-    @State private var isPinVerified: Bool = false
-
     var body: some View {
         NavigationStack(path: $navigation.path) {
-            if settings.requirePinOnLaunch && settings.pinEnabled && !isPinVerified {
-                PinOnLaunchView {
-                    isPinVerified = true
-                }
-            } else {
-                navigationContent
-            }
+            navigationContent
         }
         .sheet(
             item: $sheets.addTagSheetItem,
@@ -54,14 +46,6 @@ struct MainNavView: View {
             }
         ) {
             config in BackupSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.forgotPinSheetItem,
-            onDismiss: {
-                sheets.hideSheet()
-            }
-        ) {
-            config in ForgotPinSheet(config: config)
         }
         .sheet(
             item: $sheets.highBalanceSheetItem,
@@ -149,27 +133,14 @@ struct MainNavView: View {
         }
         .accentColor(.white)
         .overlay {
-            if !settings.requirePinOnLaunch || !settings.pinEnabled || isPinVerified {
-                TabBar()
-                DrawerView()
-            }
+            TabBar()
+            DrawerView()
         }
         .onChange(of: scenePhase) { newPhase in
-            // Reset PIN verification when app goes to background and comes back
-            if newPhase == .background && settings.requirePinWhenIdle && settings.pinEnabled {
-                isPinVerified = false
-            }
-
-            guard wallet.walletExists == true && settings.readClipboard && newPhase == .active else {
+            guard settings.readClipboard && newPhase == .active else {
                 return
             }
             handleClipboard()
-        }
-        .onAppear {
-            // Initialize PIN verification state based on settings
-            if !settings.requirePinOnLaunch || !settings.pinEnabled {
-                isPinVerified = true
-            }
         }
         .onOpenURL { url in
             Task {

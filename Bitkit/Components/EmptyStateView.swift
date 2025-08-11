@@ -61,11 +61,14 @@ struct EmptyStateView: View {
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
                                 .foregroundColor(.textSecondary)
-                                .frame(width: 16, height: 16, alignment: .topTrailing)
+                                .frame(width: 16, height: 16)
                         }
-                        .frame(maxWidth: .infinity, alignment: .topTrailing)
+                        .frame(width: 44, height: 44)
+                        .offset(x: 16, y: -16)
+
                         Spacer()
                     }
+                    .frame(maxWidth: .infinity, alignment: .topTrailing)
                 }
             }
         }
