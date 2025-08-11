@@ -2,10 +2,11 @@ import SwiftUI
 import UIKit
 
 struct DevSettingsView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
 
     var body: some View {
@@ -97,6 +98,8 @@ struct DevSettingsView: View {
                             app.highBalanceIgnoreTimestamp = 0
                             app.showHomeViewEmptyState = false
                             app.showDrawer = false
+
+                            settings.resetPinSettings()
 
                             widgets.clearWidgets()
 

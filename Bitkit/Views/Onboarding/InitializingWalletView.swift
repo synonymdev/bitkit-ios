@@ -13,14 +13,14 @@ struct InitializingWalletView: View {
     @State private var rotation: Double = 0
     @State private var percentage: Double = 0
     @State private var timer: Timer?
-    @State private var hapticTimer: Timer?
+    @State private var shouldStopAnimation = false
 
     @Binding var shouldFinish: Bool
     let onComplete: () -> Void
 
     private func handleCompletion() {
         timer?.invalidate()
-        hapticTimer?.invalidate()
+        shouldStopAnimation = true
         Haptics.stopHaptics()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             Haptics.notify(.success)
@@ -51,7 +51,10 @@ struct InitializingWalletView: View {
     }
 
     private func animateRocketSequence(geometry: GeometryProxy) {
-        // Initial haptic
+        // Stop if animation should be stopped
+        guard !shouldStopAnimation else { return }
+
+        // Play haptic synced with animation
         Haptics.rocket(duration: 2.5)
 
         // Single continuous animation with custom timing
@@ -134,8 +137,6 @@ struct InitializingWalletView: View {
                 }
                 .onDisappear {
                     timer?.invalidate()
-                    hapticTimer?.invalidate()
-                    Haptics.stopHaptics()
                 }
         }
     }
@@ -158,20 +159,9 @@ struct InitializingWalletView: View {
 
                         // Small delay before starting animation
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                            // Start repeating haptics
-                            hapticTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: true) { _ in
-                                Haptics.rocket(duration: 2.5)
-                            }
-                            // Initial haptic
-                            Haptics.rocket(duration: 2.5)
-
                             // Start the rocket animation sequence
                             animateRocketSequence(geometry: geometry)
                         }
-                    }
-                    .onDisappear {
-                        hapticTimer?.invalidate()
-                        hapticTimer = nil
                     }
 
                 // Content second (front)

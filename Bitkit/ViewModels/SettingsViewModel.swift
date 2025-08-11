@@ -134,9 +134,13 @@ class SettingsViewModel: ObservableObject {
     }
 
     func resetPinSettings() {
+        pinEnabled = false
         pinFailedAttempts = 0
-        updatePinEnabledState()
-        Logger.debug("PIN settings reset after security wipe", context: "SettingsViewModel")
+        requirePinOnLaunch = true
+        requirePinWhenIdle = false
+        requirePinForPayments = false
+        useBiometrics = false
+        Logger.debug("PIN settings reset after app wipe", context: "SettingsViewModel")
     }
 
     func removePin(pin: String, resetSettings: Bool = true) throws {

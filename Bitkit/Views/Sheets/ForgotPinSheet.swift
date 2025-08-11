@@ -8,6 +8,7 @@ struct ForgotPinSheetItem: SheetItem {
 struct ForgotPinSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     let config: ForgotPinSheetItem
 
@@ -54,8 +55,10 @@ struct ForgotPinSheet: View {
                         description: localizedString("security__wiped_message"),
                     )
                 }
+
+                sheets.hideSheet()
             } catch {
-                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinOnLaunchView")
+                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "ForgotPinSheet")
                 await MainActor.run {
                     app.toast(error)
                 }

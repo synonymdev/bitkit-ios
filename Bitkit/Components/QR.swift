@@ -11,13 +11,16 @@ import SwiftUI
 struct QR: View {
     let content: String
     var imageAsset: String? = nil
-    
+
+    @State private var cachedImage: UIImage?
+    @State private var cachedContent: String = ""
+
     private let context = CIContext()
     private let filter = CIFilter.qrCodeGenerator()
 
     var body: some View {
         ZStack {
-            Image(uiImage: generateQRCode(from: content))
+            Image(uiImage: cachedImage ?? generateQRCode(from: content))
                 .interpolation(.none)
                 .resizable()
                 .scaledToFit()
@@ -25,19 +28,31 @@ struct QR: View {
                 .padding(8)
                 .background(Color.white)
                 .cornerRadius(8)
-            
+
             if let imageAsset = imageAsset {
                 ZStack {
                     Circle()
                         .fill(Color.white)
                         .frame(width: 68, height: 68)
-                    
+
                     Image(imageAsset)
                         .resizable()
                         .scaledToFit()
                         .frame(width: 50, height: 50)
                 }
             }
+        }
+        .onAppear {
+            // Generate initial QR code
+            if cachedImage == nil {
+                cachedContent = content
+                cachedImage = generateQRCode(from: content)
+            }
+        }
+        .onChange(of: content) { newContent in
+            // Regenerate when content changes
+            cachedContent = newContent
+            cachedImage = generateQRCode(from: newContent)
         }
     }
 
@@ -57,12 +72,18 @@ struct QR: View {
 #Preview {
     ScrollView {
         VStack(spacing: 20) {
-            QR(content: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq", imageAsset: "btc-and-ln")
-            
+            QR(
+                content:
+                    "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq?lightning=lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                imageAsset: "btc-and-ln")
+
             QR(content: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", imageAsset: "btc")
-            
-            QR(content: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq", imageAsset: "ln")
-            
+
+            QR(
+                content:
+                    "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5usxefww9jeqxv4ujmfwqhynz3rgf4x4k8kmjkjy8mkzctxt5vvq9qyyssqy4lgd8nj3vxjmnqyfgxnz3gqhykj8rd9v4xnz970m2cfqsz3vh7qwg0o4jj2mcwhzguktgc8hm8zmnwnp6f5ke4h8dkwrm8fqz2cpgqqqqqqqqlgqqqq",
+                imageAsset: "ln")
+
             QR(content: "bitcoin:bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")
         }
         .padding(.horizontal, 20)
