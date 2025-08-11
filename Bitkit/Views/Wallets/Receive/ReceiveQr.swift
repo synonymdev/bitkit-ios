@@ -113,6 +113,7 @@ struct ReceiveQr: View {
                     bottomButton
                         .padding(.horizontal, 16)
                 }
+
                 .onAppear {
                     // Set cjitActive based on cjitInvoice when the view appears
                     cjitActive = cjitInvoice != nil
@@ -124,6 +125,7 @@ struct ReceiveQr: View {
                 }
             }
         }
+
         .navigationBarHidden(true)
         .sheetBackground()
         .onDisappear {
@@ -179,38 +181,7 @@ struct ReceiveQr: View {
 
         VStack(spacing: 0) {
             if !uri.isEmpty {
-                QR(content: uri, imageAsset: "btc")
-
-                HStack {
-                    CustomButton(
-                        title: localizedString("common__edit"),
-                        size: .small,
-                        icon: Image("pencil").foregroundColor(.brandAccent),
-                        shouldExpand: true
-                    ) {
-                        navigationPath.append(.edit)
-                    }
-
-                    CustomButton(
-                        title: localizedString("common__copy"),
-                        size: .small,
-                        icon: Image("copy").foregroundColor(.brandAccent),
-                        shouldExpand: true
-                    ) {
-                        UIPasteboard.general.string = uri
-                        Haptics.play(.copiedToClipboard)
-                    }
-
-                    ShareLink(item: URL(string: uri)!) {
-                        CustomButton(
-                            title: localizedString("common__share"),
-                            size: .small,
-                            icon: Image("share").foregroundColor(.brandAccent),
-                            shouldExpand: true
-                        )
-                    }
-                }
-                .padding(.vertical)
+                QrArea(uri: uri, imageAsset: "btc", accentColor: .brandAccent, navigationPath: $navigationPath)
             } else {
                 ProgressView()
             }
@@ -237,38 +208,7 @@ struct ReceiveQr: View {
 
         VStack(spacing: 0) {
             if !uri.isEmpty {
-                QR(content: uri, imageAsset: imageAsset)
-
-                HStack {
-                    CustomButton(
-                        title: localizedString("common__edit"),
-                        size: .small,
-                        icon: Image("pencil").foregroundColor(.brandAccent),
-                        shouldExpand: true
-                    ) {
-                        navigationPath.append(.edit)
-                    }
-
-                    CustomButton(
-                        title: localizedString("common__copy"),
-                        size: .small,
-                        icon: Image("copy").foregroundColor(.brandAccent),
-                        shouldExpand: true
-                    ) {
-                        UIPasteboard.general.string = uri
-                        Haptics.play(.copiedToClipboard)
-                    }
-
-                    ShareLink(item: URL(string: uri)!) {
-                        CustomButton(
-                            title: localizedString("common__share"),
-                            size: .small,
-                            icon: Image("share").foregroundColor(.brandAccent),
-                            shouldExpand: true
-                        )
-                    }
-                }
-                .padding(.vertical)
+                QrArea(uri: uri, imageAsset: imageAsset, accentColor: .brandAccent, navigationPath: $navigationPath)
             } else {
                 ProgressView()
             }
@@ -283,38 +223,7 @@ struct ReceiveQr: View {
 
         VStack(spacing: 0) {
             if !uri.isEmpty {
-                QR(content: uri, imageAsset: "ln")
-
-                HStack {
-                    CustomButton(
-                        title: localizedString("common__edit"),
-                        size: .small,
-                        icon: Image("pencil").foregroundColor(.purpleAccent),
-                        shouldExpand: true
-                    ) {
-                        navigationPath.append(.edit)
-                    }
-
-                    CustomButton(
-                        title: localizedString("common__copy"),
-                        size: .small,
-                        icon: Image("copy").foregroundColor(.purpleAccent),
-                        shouldExpand: true
-                    ) {
-                        UIPasteboard.general.string = uri
-                        Haptics.play(.copiedToClipboard)
-                    }
-
-                    ShareLink(item: URL(string: uri)!) {
-                        CustomButton(
-                            title: localizedString("common__share"),
-                            size: .small,
-                            icon: Image("share").foregroundColor(.purpleAccent),
-                            shouldExpand: true
-                        )
-                    }
-                }
-                .padding(.vertical)
+                QrArea(uri: uri, imageAsset: "ln", accentColor: .purpleAccent, navigationPath: $navigationPath)
             } else {
                 // ProgressView()
                 spendingEmpty
