@@ -7,7 +7,7 @@
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
         "branch" : "master",
-        "revision" : "836c23a5c3baa5f8297f0cbe99d4b19579f0339c"
+        "revision" : "7d6b0a4a8b5c251ffc0dbc00a9e3f40b6c749945"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
         "branch" : "main",
-        "revision" : "207c2998d375763bee1d6685250e13b206d676f5"
+        "revision" : "1187856bcb71e83e48a3b132b4dedcd59873b8de"
       }
     },
     {
