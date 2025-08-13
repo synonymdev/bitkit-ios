@@ -106,7 +106,7 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
         case .slow:
             return "speed-slow"
         case .custom:
-            return "settings-gear"
+            return "gear-six"
         }
     }
 
@@ -114,7 +114,7 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
         switch (lhs, rhs) {
         case (.fast, .fast), (.medium, .medium), (.slow, .slow):
             return true
-        case let (.custom(lhsRate), .custom(rhsRate)):
+        case (.custom(let lhsRate), .custom(let rhsRate)):
             return lhsRate == rhsRate
         default:
             return false

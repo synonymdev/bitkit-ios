@@ -43,7 +43,7 @@ let cards: [SuggestionCardData] = [
         id: "pin",
         title: localizedString("cards__pin__title"),
         description: localizedString("cards__pin__description"),
-        imageName: "shield",
+        imageName: "shield-figure",
         color: .green24,
         action: .secure
     ),

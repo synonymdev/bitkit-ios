@@ -12,32 +12,24 @@ struct DisablePinView: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                BodyMText(
-                    NSLocalizedString("security__pin_disable_text", comment: ""),
-                    textColor: .textSecondary
-                )
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .padding(.horizontal, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            BodyMText(localizedString("security__pin_disable_text"))
 
             Spacer()
 
-            // Shield image
-            Image("shield")
+            Image("shield-figure")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 274, height: 274)
+                .frame(width: 256, height: 256)
+                .frame(maxWidth: .infinity)
                 .padding(.top, 32)
 
             Spacer()
 
-            // Disable PIN button
             CustomButton(
-                title: NSLocalizedString("security__pin_disable_button", comment: ""),
+                title: localizedString("security__pin_disable_button"),
                 destination: PinCheckView(
-                    title: NSLocalizedString("security__pin_enter", comment: ""),
+                    title: localizedString("security__pin_enter"),
                     explanation: "",
                     onCancel: {},
                     onPinVerified: { pin in
@@ -52,10 +44,11 @@ struct DisablePinView: View {
                     }
                 )
             )
-            .padding(.horizontal, 32)
         }
-        .navigationTitle(NSLocalizedString("security__pin_disable_title", comment: ""))
+        .navigationTitle(localizedString("security__pin_disable_title"))
         .navigationBarTitleDisplayMode(.inline)
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }
 }

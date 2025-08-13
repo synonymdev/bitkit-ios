@@ -1,17 +1,10 @@
-//
-//  SettingsListView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import SwiftUI
 
-struct SettingsListView: View {
-    @EnvironmentObject var wallet: WalletViewModel
+struct MainSettings: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
@@ -23,44 +16,51 @@ struct SettingsListView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     NavigationLink(value: Route.generalSettings) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__general_title", comment: ""),
-                            iconName: "settings-gear"
+                            title: localizedString("settings__general_title"),
+                            iconName: "gear-six"
                         )
                     }
 
-                    NavigationLink(destination: SecurityPrivacySettingsView()) {
+                    NavigationLink(value: Route.securitySettings) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security_title", comment: ""),
-                            iconName: "settings-shield"
+                            title: localizedString("settings__security_title"),
+                            iconName: "shield"
                         )
                     }
 
-                    NavigationLink(destination: AdvancedSettingsView()) {
+                    NavigationLink(value: Route.backupSettings) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__advanced_title", comment: ""),
-                            iconName: "settings-slider"
+                            title: localizedString("settings__backup_title"),
+                            iconName: "rewind"
                         )
                     }
 
-                    NavigationLink(destination: SupportView()) {
+                    NavigationLink(value: Route.advancedSettings) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__support_title", comment: ""),
-                            iconName: "settings-chat"
+                            title: localizedString("settings__advanced_title"),
+                            iconName: "sliders"
                         )
                     }
 
-                    NavigationLink(destination: AboutView()) {
+                    NavigationLink(value: Route.support) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__about_title", comment: ""),
-                            iconName: "settings-info"
+                            title: localizedString("settings__support_title"),
+                            iconName: "chat"
+                        )
+                    }
+
+                    NavigationLink(value: Route.about) {
+                        SettingsListLabel(
+                            title: localizedString("settings__about_title"),
+                            iconName: "info"
                         )
                     }
 
                     if showDevSettings {
-                        NavigationLink(destination: DevSettingsView()) {
+                        NavigationLink(value: Route.devSettings) {
                             SettingsListLabel(
-                                title: NSLocalizedString("settings__dev_title", comment: ""),
-                                iconName: "settings-gear" //TODO: find icon for this
+                                title: localizedString("settings__dev_title"),
+                                iconName: "game-controller"
                             )
                         }
                     }
@@ -96,15 +96,7 @@ struct SettingsListView: View {
                 .padding(.horizontal, 16)
             }
         }
-        .navigationTitle(NSLocalizedString("settings__settings", comment: ""))
+        .navigationTitle(localizedString("settings__settings"))
         .navigationBarTitleDisplayMode(.inline)
     }
-}
-
-#Preview {
-    SettingsListView()
-        .environmentObject(WalletViewModel())
-        .environmentObject(AppViewModel())
-        .environmentObject(ActivityListViewModel())
-        .preferredColorScheme(.dark)
 }
