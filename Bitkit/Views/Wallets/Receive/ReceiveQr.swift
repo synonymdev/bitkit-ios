@@ -10,8 +10,7 @@ struct ReceiveQr: View {
     let tab: ReceiveTab?
 
     @State private var selectedTab: ReceiveTab
-    @State private var cjitActive = false
-    @State private var showTechnicalDetails = false
+    @State private var showDetails = false
 
     init(navigationPath: Binding<[ReceiveRoute]>, cjitInvoice: String? = nil, tab: ReceiveTab? = nil) {
         self._navigationPath = navigationPath
@@ -60,12 +59,31 @@ struct ReceiveQr: View {
         }
     }
 
+    var showingCjitOnboarding: Bool {
+        return wallet.channelCount == 0 && cjitInvoice == nil && selectedTab == .spending
+    }
+
     var body: some View {
         ZStack {
             backgroundImage
 
             VStack(spacing: 0) {
-                SheetHeader(title: localizedString("wallet__receive_bitcoin"))
+                SheetHeader(
+                    title: localizedString("wallet__receive_bitcoin"),
+                    action:
+                        AnyView(
+                            Button(action: {
+                                showDetails.toggle()
+                            }) {
+                                Image(showDetails ? "qr" : "note")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .foregroundColor(.white50)
+                                    .frame(width: 24, height: 24)
+                            }
+                        )
+                )
+                .padding(.horizontal, 16)
 
                 SegmentedControl(selectedTab: $selectedTab, tabItems: availableTabItems)
                     .padding(.bottom, 16)
@@ -73,51 +91,23 @@ struct ReceiveQr: View {
 
                 VStack(spacing: 0) {
                     TabView(selection: $selectedTab) {
-                        if showTechnicalDetails {
-                            copyValues
-                                .padding(.horizontal)
-                                .tag(ReceiveTab.savings)
-                        } else {
-                            savingsQr
-                                .padding(.horizontal)
-                                .tag(ReceiveTab.savings)
-                        }
+                        tabContent(for: .savings)
 
                         if wallet.channelCount != 0 {
-                            if showTechnicalDetails {
-                                copyValues
-                                    .padding(.horizontal)
-                                    .tag(ReceiveTab.unified)
-                            } else {
-                                unifiedQr
-                                    .padding(.horizontal)
-                                    .tag(ReceiveTab.unified)
-                            }
+                            tabContent(for: .unified)
                         }
 
-                        if showTechnicalDetails {
-                            copyValues
-                                .padding(.horizontal)
-                                .tag(ReceiveTab.spending)
-                        } else {
-                            spendingQr
-                                .padding(.horizontal)
-                                .tag(ReceiveTab.spending)
-                        }
+                        tabContent(for: .spending)
                     }
                     .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
                     .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
 
                     Spacer()
 
-                    bottomButton
+                    footer
                         .padding(.horizontal, 16)
                 }
-
                 .onAppear {
-                    // Set cjitActive based on cjitInvoice when the view appears
-                    cjitActive = cjitInvoice != nil
-
                     // Set default tab to unified if available and no tab was provided
                     if tab == nil && wallet.channelCount != 0 {
                         selectedTab = .unified
@@ -125,19 +115,8 @@ struct ReceiveQr: View {
                 }
             }
         }
-
         .navigationBarHidden(true)
         .sheetBackground()
-        .onDisappear {
-            if wallet.invoiceAmountSats > 0 && !wallet.invoiceNote.isEmpty {
-                wallet.invoiceAmountSats = 0
-                wallet.invoiceNote = ""
-                Task {
-                    try? await wallet.refreshBip21(forceRefreshBolt11: true)
-                }
-                Logger.info("ReceiveView closed, reset invoice amount and note")
-            }
-        }
         .task {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
@@ -150,7 +129,7 @@ struct ReceiveQr: View {
             }
         }
         .onChange(of: wallet.nodeLifecycleState) { newState in
-            //They may open this view before node has started
+            // They may open this view before node has started
             if newState == .running {
                 Task {
                     await refreshBip21()
@@ -160,109 +139,78 @@ struct ReceiveQr: View {
     }
 
     @ViewBuilder
-    var savingsQr: some View {
-        // Strip lightning invoice only, keep other parameters like amount
-        let uri: String = {
-            let bip21 = wallet.bip21
-            guard let url = URL(string: bip21),
-                let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-            else {
-                return bip21
-            }
-
-            // Filter out lightning parameter but keep other parameters like amount
-            let filteredQueryItems = components.queryItems?.filter { $0.name != "lightning" } ?? []
-
-            var newComponents = components
-            newComponents.queryItems = filteredQueryItems.isEmpty ? nil : filteredQueryItems
-
-            return newComponents.url?.absoluteString ?? bip21
-        }()
-
+    func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if !uri.isEmpty {
-                QrArea(uri: uri, imageAsset: "btc", accentColor: .brandAccent, navigationPath: $navigationPath)
+            if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
+                cjitOnboarding
+            } else if showDetails {
+                detailsContent(for: tab)
             } else {
-                ProgressView()
+                qrContent(for: tab)
             }
 
             Spacer()
         }
+        .padding(.horizontal)
+        .tag(tab)
     }
 
     @ViewBuilder
-    var unifiedQr: some View {
-        let uri = cjitInvoice ?? wallet.bip21
+    func qrContent(for tab: ReceiveTab) -> some View {
+        let config = qrConfig(for: tab)
 
-        // Determine the appropriate image asset based on available content
-        let imageAsset: String? = {
-            if let cjitInvoice = cjitInvoice, !cjitInvoice.isEmpty {
-                return "ln"
-            } else if !wallet.bolt11.isEmpty && !wallet.onchainAddress.isEmpty {
-                return "btc-and-ln"
-            } else if !wallet.onchainAddress.isEmpty {
-                return "btc"
-            }
-            return nil
-        }()
+        if !config.uri.isEmpty {
+            QrArea(uri: config.uri, imageAsset: config.imageAsset, accentColor: config.accentColor, navigationPath: $navigationPath)
+        } else {
+            ProgressView()
+        }
+    }
 
-        VStack(spacing: 0) {
-            if !uri.isEmpty {
-                QrArea(uri: uri, imageAsset: imageAsset, accentColor: .brandAccent, navigationPath: $navigationPath)
-            } else {
-                ProgressView()
-            }
+    private func qrConfig(for tab: ReceiveTab) -> (uri: String, imageAsset: String, accentColor: Color) {
+        switch tab {
+        case .savings:
+            return (
+                uri: stripLightningFromBip21(wallet.bip21),
+                imageAsset: "btc",
+                accentColor: .brandAccent
+            )
+        case .unified:
+            return (
+                uri: wallet.bip21,
+                imageAsset: "btc-and-ln",
+                accentColor: .brandAccent
+            )
+        case .spending:
+            return (
+                uri: cjitInvoice ?? wallet.bolt11,
+                imageAsset: "ln",
+                accentColor: .purpleAccent
+            )
+        }
+    }
+
+    var cjitOnboarding: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DisplayText("Receive on <accent>spending balance</accent>", accentColor: .purpleAccent)
+                .padding(.bottom, 12)
+
+            BodyMText("Enjoy instant and cheap\ntransactions with friends, family,\nand merchants.")
 
             Spacer()
         }
+        .padding(32)
+        .background(Color.white06)
+        .cornerRadius(8)
+        .aspectRatio(1, contentMode: .fit)
     }
 
     @ViewBuilder
-    var spendingQr: some View {
-        let uri = cjitInvoice ?? wallet.bolt11
-
-        VStack(spacing: 0) {
-            if !uri.isEmpty {
-                QrArea(uri: uri, imageAsset: "ln", accentColor: .purpleAccent, navigationPath: $navigationPath)
-            } else {
-                // ProgressView()
-                spendingEmpty
-            }
-
-            Spacer()
-        }
-    }
-
-    var spendingEmpty: some View {
-        VStack(alignment: .center, spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                DisplayText("Receive on <accent>spending balance</accent>", accentColor: .purpleAccent)
-                    .padding(.bottom, 8)
-
-                BodyMText("Enjoy instant and cheap\ntransactions with friends, family,\nand merchants.")
-
-                Spacer()
-            }
-            .padding(32)
-            .background(Color.white06)
-            .cornerRadius(8)
-
-            Image("arrow-cjit")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(maxHeight: 82)
-                .offset(x: -55)
-                .padding(.top, 16)
-        }
-    }
-
-    @ViewBuilder
-    var copyValues: some View {
+    func detailsContent(for tab: ReceiveTab) -> some View {
         VStack {
             let addressPairs: [CopyAddressPair] = {
                 var pairs: [CopyAddressPair] = []
 
-                switch selectedTab {
+                switch tab {
                 case .savings:
                     // Savings: only onchain address
                     if !wallet.onchainAddress.isEmpty {
@@ -274,19 +222,22 @@ struct ReceiveQr: View {
                             ))
                     }
                 case .spending:
-                    // Spending: bolt11 or cjitInvoice
+                    // Spending: cjitInvoice or bolt11
+                    if let cjitInvoice = cjitInvoice {
+                        pairs.append(
+                            CopyAddressPair(
+                                title: localizedString("wallet__receive_lightning_invoice"),
+                                address: cjitInvoice,
+                                type: .lightning
+                            ))
+                        break
+                    }
+
                     if !wallet.bolt11.isEmpty {
                         pairs.append(
                             CopyAddressPair(
                                 title: localizedString("wallet__receive_lightning_invoice"),
                                 address: wallet.bolt11,
-                                type: .lightning
-                            ))
-                    } else if let cjitInvoice = cjitInvoice {
-                        pairs.append(
-                            CopyAddressPair(
-                                title: localizedString("wallet__receive_lightning_invoice"),
-                                address: cjitInvoice,
                                 type: .lightning
                             ))
                     }
@@ -308,13 +259,6 @@ struct ReceiveQr: View {
                                 address: wallet.bolt11,
                                 type: .lightning
                             ))
-                    } else if let cjitInvoice = cjitInvoice {
-                        pairs.append(
-                            CopyAddressPair(
-                                title: localizedString("wallet__receive_lightning_invoice"),
-                                address: cjitInvoice,
-                                type: .lightning
-                            ))
                     }
                 }
 
@@ -330,37 +274,28 @@ struct ReceiveQr: View {
     }
 
     @ViewBuilder
-    var bottomButton: some View {
-        if wallet.channelCount == 0 && cjitInvoice == nil {
-            if wallet.nodeLifecycleState == .running || wallet.nodeLifecycleState == .starting {
+    var footer: some View {
+        // Consistent height container to prevent layout jumps
+        VStack(spacing: 0) {
+            if showingCjitOnboarding {
                 CustomButton(
                     title: localizedString("wallet__receive_spending"),
-                    icon: Image("bolt").foregroundColor(.purpleAccent)
+                    icon: Image("bolt").foregroundColor(.purpleAccent),
+                    isDisabled: wallet.nodeLifecycleState != .running
                 ) {
                     navigationPath.append(.cjitAmount)
                 }
-            }
-        } else {
-            if showTechnicalDetails {
-                CustomButton(
-                    title: "Show QR Code",
-                    icon: Image("qr")
-                        .resizable()
-                        .foregroundColor(.white)
-                        .frame(width: 16, height: 16)
-                ) {
-                    showTechnicalDetails.toggle()
-                }
+                .transition(.opacity)
             } else {
-                CustomButton(
-                    title: "Technical Details",
-                    variant: .secondary,
-                    size: .small,
-                ) {
-                    showTechnicalDetails.toggle()
-                }
+                Image("logo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 48)
+                    .transition(.opacity)
             }
         }
+        .frame(minHeight: 56)
+        .animation(.easeInOut(duration: 0.3), value: showingCjitOnboarding)
     }
 
     private struct ImageConfig {
@@ -381,17 +316,33 @@ struct ReceiveQr: View {
             }
         }()
 
-        VStack {
-            Spacer()
-            HStack {
-                Spacer()
-                Image(imageConfig.name)
-                    .resizable()
-                    .frame(width: 256, height: 256)
-                    .offset(x: imageConfig.offset.x, y: imageConfig.offset.y)
+        ZStack {
+            if showingCjitOnboarding {
+                VStack {
+                    Spacer()
+
+                    Image("arrow-cjit")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 110)
+                        .offset(x: -55)
+                        .padding(.bottom, 72) // 56 (footer height) + 16 (spacing above button)
+                }
             }
+
+            VStack {
+                Spacer()
+
+                HStack {
+                    Spacer()
+                    Image(imageConfig.name)
+                        .resizable()
+                        .frame(width: 256, height: 256)
+                        .offset(x: imageConfig.offset.x, y: imageConfig.offset.y)
+                }
+            }
+            .edgesIgnoringSafeArea(.bottom)
         }
-        .edgesIgnoringSafeArea(.bottom)
     }
 
     func refreshBip21() async {
@@ -401,5 +352,24 @@ struct ReceiveQr: View {
         } catch {
             app.toast(error)
         }
+    }
+
+    /// Strips the lightning parameter from a BIP21 URI while keeping other parameters
+    /// - Parameter bip21: The original BIP21 URI string
+    /// - Returns: BIP21 URI with lightning parameter removed
+    private func stripLightningFromBip21(_ bip21: String) -> String {
+        guard let url = URL(string: bip21),
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else {
+            return bip21
+        }
+
+        // Filter out lightning parameter but keep other parameters like amount
+        let filteredQueryItems = components.queryItems?.filter { $0.name != "lightning" } ?? []
+
+        var newComponents = components
+        newComponents.queryItems = filteredQueryItems.isEmpty ? nil : filteredQueryItems
+
+        return newComponents.url?.absoluteString ?? bip21
     }
 }

@@ -31,6 +31,7 @@ struct ReceiveSheetItem: SheetItem {
 struct ReceiveSheet: View {
     let config: ReceiveSheetItem
     @State private var navigationPath: [ReceiveRoute] = []
+    @EnvironmentObject private var wallet: WalletViewModel
 
     var body: some View {
         Sheet(id: .receive, data: config) {
@@ -39,6 +40,13 @@ struct ReceiveSheet: View {
                     .navigationDestination(for: ReceiveRoute.self) { route in
                         viewForRoute(route)
                     }
+            }
+        }
+        .onAppear {
+            wallet.invoiceAmountSats = 0
+            wallet.invoiceNote = ""
+            Task {
+                try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
     }
