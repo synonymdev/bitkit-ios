@@ -9,21 +9,21 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                NavigationLink(destination: LocalCurrencySettingsView()) {
+                NavigationLink(value: Route.currencySettings) {
                     SettingsListLabel(
                         title: localizedString("settings__general__currency_local"),
                         rightText: currency.selectedCurrency
                     )
                 }
 
-                NavigationLink(destination: DefaultUnitSettingsView()) {
+                NavigationLink(value: Route.unitSettings) {
                     SettingsListLabel(
                         title: localizedString("settings__general__unit"),
                         rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
                     )
                 }
 
-                NavigationLink(destination: TransactionSpeedSettingsView()) {
+                NavigationLink(value: Route.transactionSpeedSettings) {
                     SettingsListLabel(
                         title: localizedString("settings__general__speed"),
                         rightText: settings.defaultTransactionSpeed.displayTitle
@@ -31,7 +31,7 @@ struct GeneralSettingsView: View {
                 }
 
                 if !activityViewModel.recentlyUsedTags.isEmpty {
-                    NavigationLink(destination: TagSettingsView()) {
+                    NavigationLink(value: Route.tagSettings) {
                         SettingsListLabel(
                             title: localizedString("settings__general__tags"),
                             rightText: String(activityViewModel.recentlyUsedTags.count)
@@ -39,7 +39,7 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                NavigationLink(destination: WidgetsSettingsView()) {
+                NavigationLink(value: Route.widgetsSettings) {
                     SettingsListLabel(
                         title: localizedString("settings__widgets__nav_title"),
                         rightText: settings.showWidgets ? "On" : "Off"

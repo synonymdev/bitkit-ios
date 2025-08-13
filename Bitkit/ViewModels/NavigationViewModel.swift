@@ -10,12 +10,8 @@ enum Route: Hashable {
     case buyBitcoin
     case contacts
     case contactsIntro
-    case notifications
-    case notificationsIntro
     case profile
     case profileIntro
-    case quickpay
-    case quickpayIntro
     case transferIntro
     case fundingOptions
     case spendingIntro
@@ -33,17 +29,61 @@ enum Route: Hashable {
     case savingsConfirm
     case savingsAdvanced
     case savingsProgress
-    case settings
-    case generalSettings
+
+    // Shop
     case shopIntro
     case shopDiscover
     case shopMain(page: String)
-    case support
+
+    // Widgets
     case widgetsIntro
     case widgetsList
     case widgetDetail(WidgetType)
     case widgetEdit(WidgetType)
-    // Add other distinct screens
+
+    // Main Settings
+    case settings
+    case generalSettings
+    case securitySettings
+    case backupSettings
+    case advancedSettings
+    case support
+    case about
+    case devSettings
+
+    // General settings
+    case currencySettings
+    case unitSettings
+    case transactionSpeedSettings
+    case customSpeedSettings
+    case tagSettings
+    case widgetsSettings
+    case quickpay
+    case quickpayIntro
+    case notifications
+    case notificationsIntro
+
+    // Security settings
+    case disablePin
+    case changePin
+
+    // Backup settings
+    case resetAndRestore
+
+    // Advanced settings
+    case coinSelection
+    case connections
+    case node
+    case electrumSettings
+    case addressViewer
+
+    // Support settings
+    case reportIssue
+    case appStatus
+
+    // Dev settings
+    case blocktankRegtest
+    case logs
 }
 
 @MainActor

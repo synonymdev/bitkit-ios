@@ -194,7 +194,7 @@ struct MainNavView: View {
                     ProfileIntroView()
                 }
             case .settings:
-                SettingsListView()
+                MainSettings()
                     .backToWalletButton()
             case .shop:
                 if app.hasSeenShopIntro {
@@ -267,20 +267,22 @@ struct MainNavView: View {
                 SavingsAdvancedView()
             case .savingsProgress:
                 SavingsProgressView()
-            case .notifications:
-                NotificationsSettings()
-            case .notificationsIntro:
-                NotificationsIntro()
             case .profile:
                 // ProfileView()
                 Text("Coming Soon")
                     .backToWalletButton()
             case .profileIntro:
                 ProfileIntroView()
-            case .quickpay:
-                QuickpaySettings()
-            case .quickpayIntro:
-                QuickpayIntroView()
+
+            // Shop
+            case .shopIntro:
+                ShopIntro()
+            case .shopDiscover:
+                ShopDiscover()
+            case .shopMain(let page):
+                ShopMain(page: page)
+
+            // Widgets
             case .widgetsIntro:
                 WidgetsIntroView()
             case .widgetsList:
@@ -289,18 +291,81 @@ struct MainNavView: View {
                 WidgetDetailView(id: widgetType)
             case .widgetEdit(let widgetType):
                 WidgetEditView(id: widgetType)
+
+            // Settings
             case .settings:
-                SettingsListView()
+                MainSettings()
             case .generalSettings:
                 GeneralSettingsView()
-            case .shopIntro:
-                ShopIntro()
-            case .shopDiscover:
-                ShopDiscover()
-            case .shopMain(let page):
-                ShopMain(page: page)
+            case .securitySettings:
+                SecurityPrivacySettingsView()
+            case .backupSettings:
+                BackupSettings()
+            case .advancedSettings:
+                AdvancedSettingsView()
             case .support:
                 SupportView()
+            case .about:
+                AboutView()
+            case .devSettings:
+                DevSettingsView()
+
+            // General settings
+            case .currencySettings:
+                LocalCurrencySettingsView()
+            case .unitSettings:
+                DefaultUnitSettingsView()
+            case .transactionSpeedSettings:
+                TransactionSpeedSettingsView()
+            case .quickpay:
+                QuickpaySettings()
+            case .quickpayIntro:
+                QuickpayIntroView()
+            case .customSpeedSettings:
+                CustomSpeedView()
+            case .tagSettings:
+                TagSettingsView()
+            case .widgetsSettings:
+                WidgetsSettingsView()
+            case .notifications:
+                NotificationsSettings()
+            case .notificationsIntro:
+                NotificationsIntro()
+
+            // Security settings
+            case .disablePin:
+                DisablePinView()
+            case .changePin:
+                PinChangeView()
+
+            // Backup settings
+            case .resetAndRestore:
+                ResetAndRestore()
+
+            // Support settings
+            case .reportIssue:
+                ReportIssue()
+            case .appStatus:
+                AppStatusView()
+
+            // Advanced settings
+            case .coinSelection:
+                CoinSelectionSettingsView()
+            case .connections:
+                LightningConnectionsView()
+            case .node:
+                NodeStateView()
+            case .electrumSettings:
+                Text("Coming Soon")
+                    .backToWalletButton()
+            case .addressViewer:
+                AddressViewer()
+
+            // Dev settings
+            case .blocktankRegtest:
+                BlocktankRegtestView()
+            case .logs:
+                LogView()
             }
         }
     }

@@ -9,7 +9,7 @@ struct SupportView: View {
                 .padding(.vertical, 16)
 
             VStack(spacing: 0) {
-                NavigationLink(destination: ReportIssue()) {
+                NavigationLink(value: Route.reportIssue) {
                     SettingsListLabel(title: localizedString("settings__support__report"))
                 }
 
@@ -19,7 +19,7 @@ struct SupportView: View {
                     SettingsListLabel(title: localizedString("settings__support__help"))
                 }
 
-                NavigationLink(destination: AppStatusView()) {
+                NavigationLink(value: Route.appStatus) {
                     SettingsListLabel(
                         title: localizedString("settings__support__status")
                     )

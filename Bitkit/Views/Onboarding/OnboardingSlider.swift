@@ -89,7 +89,7 @@ struct OnboardingSlider: View {
 
                     // Slide 3
                     OnboardingTab(
-                        imageName: "shield",
+                        imageName: "shield-figure",
                         title: NSLocalizedString("onboarding__slide3_header", comment: ""),
                         text: NSLocalizedString("onboarding__slide3_text", comment: ""),
                         accentColor: .greenAccent

@@ -64,7 +64,7 @@ struct SecurityPrivacySettingsView: View {
                         )
                     }
                 } else {
-                    NavigationLink(destination: DisablePinView()) {
+                    NavigationLink(value: Route.disablePin) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__security__pin", comment: ""),
                             rightText: NSLocalizedString("settings__security__pin_enabled", comment: "")
@@ -73,7 +73,7 @@ struct SecurityPrivacySettingsView: View {
                 }
 
                 if settings.pinEnabled {
-                    NavigationLink(destination: PinChangeView()) {
+                    NavigationLink(value: Route.changePin) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__security__pin_change", comment: "")
                         )

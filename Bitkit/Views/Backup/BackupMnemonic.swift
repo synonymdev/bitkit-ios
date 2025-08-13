@@ -101,8 +101,6 @@ struct BackupMnemonicView: View {
             // Get mnemonic for wallet index 0
             if let words = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) {
                 mnemonic = words.split(separator: " ").map { String($0) }
-                // TODO: Remove this once seed entropy size is fixed
-                mnemonic = Array(mnemonic.prefix(12))
             } else {
                 app.toast(
                     type: .error,
