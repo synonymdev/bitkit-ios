@@ -57,6 +57,6 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                 .buttonStyle(PlainButtonStyle())
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 36, maxHeight: 36)
+        .frame(maxWidth: .infinity)
     }
 }

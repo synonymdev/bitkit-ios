@@ -44,10 +44,12 @@ struct SheetHeader: View {
     @Environment(\.dismiss) var dismiss
     let title: String
     let showBackButton: Bool
+    let action: AnyView?
 
-    init(title: String, showBackButton: Bool = false) {
+    init(title: String, showBackButton: Bool = false, action: AnyView? = nil) {
         self.title = title
         self.showBackButton = showBackButton
+        self.action = action
     }
 
     var body: some View {
@@ -64,16 +66,17 @@ struct SheetHeader: View {
                 }
             } else {
                 Spacer()
+                    .frame(width: 24, height: 24)
             }
 
             SubtitleText(title)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            if showBackButton {
-                Spacer()
-                    .frame(width: 24, height: 24)
+            if let action = action {
+                action
             } else {
                 Spacer()
+                    .frame(width: 24, height: 24)
             }
         }
         .padding(.top, 32) // Make room for the drag indicator

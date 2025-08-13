@@ -63,11 +63,14 @@ struct CopyAddressCard: View {
                     }
                 }
             }
+
+            Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(32)
         .background(Color.white06)
         .cornerRadius(8)
+        .aspectRatio(1, contentMode: .fit)
     }
 
     private func onCopy(address: String, index: Int) {
