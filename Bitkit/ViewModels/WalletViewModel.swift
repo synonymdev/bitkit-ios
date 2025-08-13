@@ -380,16 +380,15 @@ class WalletViewModel: ObservableObject {
         var newBip21 = "bitcoin:\(onchainAddress)"
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
-        let note = invoiceNote.isEmpty ? "Bitkit" : invoiceNote
 
         if channels?.count ?? 0 > 0 {
             if forceRefreshBolt11 || bolt11.isEmpty {
-                bolt11 = try await self.createInvoice(amountSats: amountSats, note: note)
+                bolt11 = try await self.createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {
                 //Existing invoice needs to be checked for expiry
                 if case .lightning(let lightningInvoice) = try await decode(invoice: bolt11) {
                     if lightningInvoice.isExpired {
-                        bolt11 = try await self.createInvoice(amountSats: amountSats, note: note)
+                        bolt11 = try await self.createInvoice(amountSats: amountSats, note: invoiceNote)
                     }
                 }
             }
@@ -404,7 +403,8 @@ class WalletViewModel: ObservableObject {
         // Add amount and note if available
         if invoiceAmountSats > 0 {
             let separator = newBip21.contains("?") ? "&" : "?"
-            newBip21 += "\(separator)amount=\(Double(invoiceAmountSats) / 100_000_000.0)"
+            let formattedAmount = Self.formatBitcoinAmount(sats: invoiceAmountSats)
+            newBip21 += "\(separator)amount=\(formattedAmount)"
         }
 
         if !invoiceNote.isEmpty {
@@ -433,5 +433,20 @@ class WalletViewModel: ObservableObject {
     private func stopPolling() {
         syncTimer?.invalidate()
         syncTimer = nil
+    }
+
+    /// Formats satoshi amount to Bitcoin decimal format for BIP21 URIs
+    /// - Parameter sats: Amount in satoshis
+    /// - Returns: Formatted Bitcoin amount as string (e.g., "0.00123000")
+    static func formatBitcoinAmount(sats: UInt64) -> String {
+        let btcAmount = Double(sats) / 100_000_000.0
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 8
+        formatter.minimumFractionDigits = 0
+        formatter.usesGroupingSeparator = false
+        formatter.decimalSeparator = "."
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
     }
 }
