@@ -3,8 +3,9 @@ import LDKNode
 import SwiftUI
 
 struct LightningConnectionsView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showClosedConnections = false
     @State private var isRefreshing = false
@@ -203,7 +204,7 @@ struct LightningConnectionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: FundingOptions()) {
+                NavigationLink(value: Route.fundingOptions) {
                     Image(systemName: "plus")
                         .foregroundColor(.white)
                 }
@@ -223,12 +224,12 @@ struct LightningConnectionsView: View {
                     title: NSLocalizedString("lightning__conn_button_add", comment: ""),
                     variant: .primary,
                     shouldExpand: true,
-                    destination: FundingOptions()
-                )
+                ) {
+                    navigation.navigate(.fundingOptions)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
-            .background(Color.black)
         }
     }
 

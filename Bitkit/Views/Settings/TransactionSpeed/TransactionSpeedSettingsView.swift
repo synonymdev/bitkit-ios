@@ -9,7 +9,7 @@ struct TransactionSpeedSettingsRow: View {
     var iconColor: Color {
         switch speed {
         case .custom(_):
-            return .white
+            return .textSecondary
         default:
             return .brandAccent
         }
@@ -22,42 +22,46 @@ struct TransactionSpeedSettingsRow: View {
                     .resizable()
                     .scaledToFit()
                     .foregroundColor(iconColor)
-                    .frame(width: 28, height: 28)
-                    .padding(.trailing, 12)
+                    .frame(width: 32, height: 32)
+                    .padding(.trailing, 16)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    BodyMText(speed.displayTitle, textColor: .textPrimary)
-                    CaptionText(speed.displayDescription, textColor: .textSecondary)
+                VStack(alignment: .leading, spacing: 0) {
+                    BodyMSBText(speed.displayTitle, textColor: .textPrimary)
+                    BodySSBText(speed.displayDescription, textColor: .textSecondary)
                 }
 
                 Spacer()
 
                 if let customSetSpeed {
                     BodyMText(customSetSpeed, textColor: .textPrimary)
-                        .padding(.trailing, 8)
+                        .padding(.trailing, 5)
                 }
 
                 if isSelected {
                     Image("checkmark")
+                        .resizable()
+                        .frame(width: 32, height: 32)
                         .foregroundColor(.brandAccent)
                 }
             }
-            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 90)
+            .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
 
 struct TransactionSpeedSettingsView: View {
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
+
     @State private var showingCustomAlert = false
     @State private var customRate: String = ""
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(NSLocalizedString("settings__general__speed_default", comment: "").uppercased())
-                    .padding(16)
+                CaptionMText(localizedString("settings__general__speed_default"))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(spacing: 0) {
@@ -68,10 +72,8 @@ struct TransactionSpeedSettingsView: View {
                             settings.defaultTransactionSpeed = .fast
                         }
                     )
-                    .padding(.horizontal, 16)
 
                     Divider()
-                        .padding(.horizontal, 16)
 
                     TransactionSpeedSettingsRow(
                         speed: .medium,
@@ -80,10 +82,8 @@ struct TransactionSpeedSettingsView: View {
                             settings.defaultTransactionSpeed = .medium
                         }
                     )
-                    .padding(.horizontal, 16)
 
                     Divider()
-                        .padding(.horizontal, 16)
 
                     TransactionSpeedSettingsRow(
                         speed: .slow,
@@ -92,50 +92,27 @@ struct TransactionSpeedSettingsView: View {
                             settings.defaultTransactionSpeed = .slow
                         }
                     )
-                    .padding(.horizontal, 16)
 
                     Divider()
-                        .padding(.horizontal, 16)
 
                     TransactionSpeedSettingsRow(
                         speed: .custom(satsPerVByte: 1), // Placeholder
                         isSelected: {
-                            if case .custom(_) = settings.defaultTransactionSpeed {
-                                return true
-                            }
-                            return false
+                            if case .custom = settings.defaultTransactionSpeed { true } else { false }
                         }(),
                         onSelect: {
-                            // Reset to empty string when opening the alert
-                            customRate = ""
-                            showingCustomAlert = true
+                            navigation.navigate(.customSpeedSettings)
                         },
                         customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed
                     )
-                    .padding(.horizontal, 16)
                 }
             }
         }
-        .navigationTitle("Transaction Speed")
-        .alert("Custom Fee Rate", isPresented: $showingCustomAlert) {
-            TextField("", text: $customRate)
-                .keyboardType(.numberPad)
-
-            Button("OK") {
-                // Only proceed if a value was entered and it's valid
-                if !customRate.isEmpty, let rate = UInt32(customRate), rate > 0 {
-                    settings.defaultTransactionSpeed = .custom(satsPerVByte: rate)
-                }
-            }
-        } message: {
-            Text("Enter the custom fee rate (₿/vB)")
-        }
-        .onAppear {
-            // Initialize customRate from current setting if it's custom
-            if case .custom(let satsPerVByte) = settings.defaultTransactionSpeed {
-                customRate = String(satsPerVByte)
-            }
-        }
+        .navigationTitle(localizedString("settings__general__speed_title"))
+        .navigationBarTitleDisplayMode(.inline)
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

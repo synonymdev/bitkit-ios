@@ -11,7 +11,7 @@ struct SecurityIntro: View {
                 navTitle: localizedString("security__pin_security_header"),
                 title: localizedString("security__pin_security_title"),
                 description: localizedString("security__pin_security_text"),
-                image: "shield",
+                image: "shield-figure",
                 continueText: localizedString("security__pin_security_button"),
                 cancelText: showLaterButton ? localizedString("common__later") : nil,
                 accentColor: .greenAccent,

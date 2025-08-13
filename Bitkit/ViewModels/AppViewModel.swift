@@ -69,8 +69,6 @@ class AppViewModel: ObservableObject {
         showHomeViewEmptyState = show
     }
 
-    @Published var currentToast: Toast?
-
     private let lightningService: LightningService
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
@@ -130,6 +128,22 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    func wipe() async throws {
+        hasSeenContactsIntro = false
+        hasSeenProfileIntro = false
+        hasSeenNotificationsIntro = false
+        hasSeenQuickpayIntro = false
+        hasSeenShopIntro = false
+        hasSeenTransferToSpendingIntro = false
+        hasSeenTransferToSavingsIntro = false
+        hasSeenWidgetsIntro = false
+        showHomeViewEmptyState = false
+        appUpdateIgnoreTimestamp = 0
+        backupVerified = false
+        backupIgnoreTimestamp = 0
+        highBalanceIgnoreCount = 0
+        highBalanceIgnoreTimestamp = 0
+    }
 }
 
 // MARK: Toast notifications

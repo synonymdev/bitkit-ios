@@ -15,7 +15,6 @@ enum SettingsListRightIcon {
 struct SettingsListLabel: View {
     let title: String
     let iconName: String?
-    let iconColor: Color
     let rightText: String?
     let rightIcon: SettingsListRightIcon?
     let toggle: Binding<Bool>?
@@ -24,7 +23,6 @@ struct SettingsListLabel: View {
     init(
         title: String,
         iconName: String? = nil,
-        iconColor: Color = .white,
         rightText: String? = nil,
         rightIcon: SettingsListRightIcon? = .chevron,
         toggle: Binding<Bool>? = nil,
@@ -32,7 +30,6 @@ struct SettingsListLabel: View {
     ) {
         self.title = title
         self.iconName = iconName
-        self.iconColor = iconColor
         self.rightText = rightText
         self.rightIcon = rightIcon
         self.toggle = toggle
@@ -46,7 +43,7 @@ struct SettingsListLabel: View {
                     Label {
                         BodyMText(title, textColor: .textPrimary)
                     } icon: {
-                        CircularIcon(icon: iconName, iconColor: iconColor)
+                        CircularIcon(icon: iconName, iconColor: .textPrimary)
                             .padding(.trailing, 8)
                     }
                 } else {
@@ -75,7 +72,9 @@ struct SettingsListLabel: View {
                                 .frame(width: 24, height: 24)
                         case .checkmark:
                             Image("checkmark")
+                                .resizable()
                                 .foregroundColor(.brandAccent)
+                                .frame(width: 32, height: 32)
                         }
                     }
                 }

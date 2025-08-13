@@ -1,13 +1,13 @@
 import SwiftUI
 
 struct AppStatusView: View {
-    @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     var body: some View {
         List {
             internetStatusView
-            NavigationLink(destination: NodeStateView()) {
+            NavigationLink(value: Route.node) {
                 lightningNodeStatusView
             }
             lightningConnectionStatusView //TODO: navigate to channel list view
@@ -100,7 +100,7 @@ struct AppStatusView: View {
     }
 }
 
-struct StatusItemView: View {
+private struct StatusItemView: View {
     let imageName: String
     let iconBackgroundColor: Color
     let iconColor: Color
@@ -119,7 +119,7 @@ struct StatusItemView: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 BodyMSBText(title)
-                CaptionText(status)
+                CaptionBText(status)
             }
 
             Spacer()

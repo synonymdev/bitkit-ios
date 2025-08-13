@@ -35,7 +35,7 @@ struct AdvancedSettingsView: View {
                     //     )
                     // }
 
-                    NavigationLink(destination: CoinSelectionSettingsView()) {
+                    NavigationLink(value: Route.coinSelection) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__coin_selection", comment: "")
                         )
@@ -67,19 +67,19 @@ struct AdvancedSettingsView: View {
                         Spacer()
                     }
 
-                    NavigationLink(destination: LightningConnectionsView()) {
+                    NavigationLink(value: Route.connections) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__lightning_connections", comment: "")
                         )
                     }
 
-                    NavigationLink(destination: Text("Coming soon")) {
+                    NavigationLink(value: Route.node) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__lightning_node", comment: "")
                         )
                     }
 
-                    NavigationLink(destination: Text("Coming soon")) {
+                    NavigationLink(value: Route.electrumSettings) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__electrum_server", comment: "")
                         )
@@ -104,18 +104,16 @@ struct AdvancedSettingsView: View {
                         Spacer()
                     }
 
-                    NavigationLink(destination: AddressViewer()) {
+                    NavigationLink(value: Route.addressViewer) {
                         SettingsListLabel(
                             title: NSLocalizedString("settings__adv__address_viewer", comment: "")
                         )
                     }
 
-                    // NavigationLink(destination: Text("Coming soon")) {
-                    //     SettingsListLabel(
-                    //         title: NSLocalizedString("settings__adv__rescan", comment: ""),
-                    //         rightIcon: nil
-                    //     )
-                    // }
+                    // SettingsListLabel(
+                    //     title: NSLocalizedString("settings__adv__rescan", comment: ""),
+                    //     rightIcon: nil
+                    // )
 
                     Button(action: {
                         showingResetAlert = true
