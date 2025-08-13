@@ -11,7 +11,7 @@ import UIKit
 struct LogView: View {
     @State private var logFiles: [LogFile] = []
     @State private var showingDeleteConfirmation = false
-    
+
     var body: some View {
         List {
             ForEach(logFiles) { logFile in
@@ -28,16 +28,17 @@ struct LogView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Log Files")
-        .navigationBarItems(trailing: 
-            Button(action: {
-                showingDeleteConfirmation = true
-            }) {
-                Image(systemName: "trash")
-            }
-            .disabled(logFiles.isEmpty)
+        .navigationBarItems(
+            trailing:
+                Button(action: {
+                    showingDeleteConfirmation = true
+                }) {
+                    Image(systemName: "trash")
+                }
+                .disabled(logFiles.isEmpty)
         )
         .alert("Delete All Logs", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
+            Button("Cancel", role: .cancel) {}
             Button("Delete", role: .destructive) {
                 deleteAllLogs()
             }
@@ -48,58 +49,59 @@ struct LogView: View {
             loadLogFiles()
         }
     }
-    
+
     private func loadLogFiles() {
         var files: [LogFile] = []
-        
+
         let logDirectory = URL(fileURLWithPath: Env.logDirectory)
         if let logURLs = try? FileManager.default.contentsOfDirectory(
             at: logDirectory,
             includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
             options: .skipsHiddenFiles
         ) {
-            let logFiles = logURLs
+            let logFiles =
+                logURLs
                 .filter { $0.pathExtension == "log" }
                 .map { url -> LogFile in
                     let fileName = url.lastPathComponent
                     let components = fileName.components(separatedBy: "_")
-                    
+
                     // First component is the service name (e.g., "bitkit" or "ldk")
                     let serviceName = components.first?.capitalized ?? "Unknown"
-                    
+
                     // Format the date from the timestamp component (should be near the end)
                     let timestamp = components.count >= 3 ? components[components.count - 2] : ""
-                    
+
                     // Create a display name showing service and date
                     let displayName = "\(serviceName) Log: \(timestamp)"
-                    
+
                     return LogFile(displayName: displayName, url: url)
                 }
                 .sorted { (lhs, rhs) -> Bool in
                     // Try to get creation dates, fall back to modification dates if needed
                     let lhsResourceValues = try? lhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
                     let rhsResourceValues = try? rhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
-                    
+
                     let lhsDate = lhsResourceValues?.creationDate ?? lhsResourceValues?.contentModificationDate ?? Date.distantPast
                     let rhsDate = rhsResourceValues?.creationDate ?? rhsResourceValues?.contentModificationDate ?? Date.distantPast
-                    
+
                     // Sort descending (newest first)
                     return lhsDate > rhsDate
                 }
-            
+
             files.append(contentsOf: logFiles)
         }
-        
+
         logFiles = files
     }
-    
+
     private func deleteAllLogs() {
         let fileManager = FileManager.default
-        
+
         for logFile in logFiles {
             try? fileManager.removeItem(at: logFile.url)
         }
-        
+
         // Refresh the list
         loadLogFiles()
     }
@@ -118,7 +120,7 @@ struct LogContentView: View {
     @State private var lines: [String] = []
     @State private var shouldScrollToBottom = false
     @State private var showShareSheet = false
-    
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
@@ -148,7 +150,7 @@ struct LogContentView: View {
             await loadLog()
         }
     }
-    
+
     @MainActor
     func loadLog() async {
         do {
@@ -161,10 +163,10 @@ struct LogContentView: View {
         } catch {
             lines = ["Failed to load log file: \(error.localizedDescription)"]
         }
-        
+
         shouldScrollToBottom = true
     }
-    
+
     private func scrollToBottom(proxy: ScrollViewProxy) {
         if let lastLine = lines.last {
             withAnimation {
@@ -173,13 +175,13 @@ struct LogContentView: View {
         }
         shouldScrollToBottom = false
     }
-    
+
     private func prepareFileForSharing(_ sourceURL: URL) -> URL {
         let tempDir = FileManager.default.temporaryDirectory
         let destURL = tempDir.appendingPathComponent(sourceURL.lastPathComponent)
-        
+
         try? FileManager.default.removeItem(at: destURL)
-        
+
         do {
             let content = try String(contentsOf: sourceURL, encoding: .utf8)
             try content.write(to: destURL, atomically: true, encoding: .utf8)
@@ -189,20 +191,6 @@ struct LogContentView: View {
             return sourceURL
         }
     }
-}
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(
-            activityItems: activityItems,
-            applicationActivities: nil
-        )
-        return controller
-    }
-    
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 #Preview {
