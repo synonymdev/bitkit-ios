@@ -7,9 +7,10 @@ struct ForgotPinSheetItem: SheetItem {
 
 struct ForgotPinSheet: View {
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var session: SessionManager
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+
     let config: ForgotPinSheetItem
 
     var body: some View {
@@ -41,27 +42,18 @@ struct ForgotPinSheet: View {
     }
 
     private func onReset() {
-        // TODO: move to wipeApp()
         Task {
             do {
-                try await wallet.wipeWallet()
-                settings.resetPinSettings()
-
-                // Show toast notification
-                await MainActor.run {
-                    app.toast(
-                        type: .success,
-                        title: localizedString("security__wiped_title"),
-                        description: localizedString("security__wiped_message"),
-                    )
-                }
+                try await AppReset.wipe(
+                    app: app,
+                    wallet: wallet,
+                    session: session
+                )
 
                 sheets.hideSheet()
             } catch {
                 Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "ForgotPinSheet")
-                await MainActor.run {
-                    app.toast(error)
-                }
+                app.toast(error)
             }
         }
     }
