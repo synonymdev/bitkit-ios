@@ -138,40 +138,6 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
-    func wipeWallet() async throws {
-        Logger.warn("Starting lightning wallet wipe", context: "WalletViewModel")
-        _ = await waitForNodeToRun(timeoutSeconds: 5.0)
-
-        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
-            try await stopLightningNode()
-        }
-
-        try await lightningService.wipeStorage(walletIndex: 0)
-
-        // Reset AppStorage display values
-        totalBalanceSats = 0
-        totalOnchainSats = 0
-        totalLightningSats = 0
-        channelCount = 0
-
-        onchainAddress = ""
-        bolt11 = ""
-        bip21 = ""
-
-        try? await coreService.activity.removeAll()
-
-        if let bundleID = Bundle.main.bundleIdentifier {
-            UserDefaults.standard.removePersistentDomain(forName: bundleID)
-        }
-
-        // Wipe entire keychain (including PIN and mnemonic)
-        try Keychain.wipeEntireKeychain()
-
-        try setWalletExistsState()
-
-        Logger.warn("Lightning wallet wipe completed", context: "WalletViewModel")
-    }
-
     func createInvoice(amountSats: UInt64? = nil, note: String, expirySecs: UInt32? = nil) async throws -> String {
         let finalExpirySecs = expirySecs ?? 60 * 60 * 24
         let invoice = try await lightningService.receive(amountSats: amountSats, description: note, expirySecs: finalExpirySecs)
@@ -448,5 +414,32 @@ class WalletViewModel: ObservableObject {
         formatter.decimalSeparator = "."
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
+    }
+
+    func wipe() async throws {
+        Logger.warn("Starting wallet wipe", context: "WalletViewModel")
+        _ = await waitForNodeToRun(timeoutSeconds: 5.0)
+
+        if nodeLifecycleState == .starting || nodeLifecycleState == .running {
+            try await stopLightningNode()
+        }
+
+        try await lightningService.wipeStorage(walletIndex: 0)
+
+        // Reset AppStorage display values
+        totalBalanceSats = 0
+        totalOnchainSats = 0
+        totalLightningSats = 0
+        channelCount = 0
+
+        onchainAddress = ""
+        bolt11 = ""
+        bip21 = ""
+
+        try? await coreService.activity.removeAll()
+
+        try setWalletExistsState()
+
+        Logger.warn("Wallet wipe completed", context: "WalletViewModel")
     }
 }

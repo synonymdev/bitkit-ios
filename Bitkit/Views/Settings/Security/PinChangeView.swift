@@ -1,24 +1,19 @@
-//
-//  PinChangeView.swift
-//  Bitkit
-//
-//  Created by Assistant on 2024/12/19.
-//
-
 import SwiftUI
 
 /// View for changing the PIN or disabling it
 struct PinChangeView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var session: SessionManager
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
     @State private var pinInput: String = ""
     @State private var currentPin: String = ""
     @State private var newPin: String = ""
     @State private var step: PinChangeStep = .verifyCurrentPin
     @State private var errorMessage: String = ""
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var settings: SettingsViewModel
-    @EnvironmentObject private var sheets: SheetViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
 
     enum PinChangeStep {
         case verifyCurrentPin
@@ -141,23 +136,15 @@ struct PinChangeView: View {
     private func handleWalletWipe() {
         Task {
             do {
-                try await wallet.wipeWallet()
-                settings.resetPinSettings()
-
-                // Show toast notification
-                await MainActor.run {
-                    app.toast(
-                        type: .error,
-                        title: NSLocalizedString("security__wiped_title", comment: ""),
-                        description: NSLocalizedString("security__wiped_message", comment: ""),
-                        autoHide: false
-                    )
-                }
+                try await AppReset.wipe(
+                    app: app,
+                    wallet: wallet,
+                    session: session,
+                    toastType: .warning
+                )
             } catch {
                 Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinChangeView")
-                await MainActor.run {
-                    app.toast(error)
-                }
+                app.toast(error)
             }
         }
     }
