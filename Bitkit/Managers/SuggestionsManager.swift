@@ -1,6 +1,7 @@
 import Combine
 import SwiftUI
 
+@MainActor
 final class SuggestionsManager: ObservableObject {
     @Published private(set) var dismissedIds: Set<String> = []
 

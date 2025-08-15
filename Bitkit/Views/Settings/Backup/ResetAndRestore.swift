@@ -2,11 +2,9 @@ import SwiftUI
 
 struct ResetAndRestore: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var widgets: WidgetsViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var session: SessionManager
 
     @State private var showAlert = false
 
@@ -47,35 +45,30 @@ struct ResetAndRestore: View {
                 title: Text(localizedString("security__reset_dialog_title")),
                 message: Text(localizedString("security__reset_dialog_desc")),
                 primaryButton: .destructive(Text(localizedString("security__reset_confirm"))) {
-                    Task {
-                        await reset()
-                    }
+                    onReset()
                 },
                 secondaryButton: .cancel()
             )
         }
     }
 
-    private func reset() async {
-        do {
-            try await app.wipe()
-            try await wallet.wipeWallet()
-            navigation.reset()
-            navigation.activeDrawerMenuItem = .wallet
-            settings.resetPinSettings()
-            widgets.clearWidgets()
+    private func onReset() {
+        Task {
+            do {
+                try await AppReset.wipe(
+                    app: app,
+                    wallet: wallet,
+                    session: session
+                )
 
-            app.toast(
-                type: .success,
-                title: localizedString("security__wiped_title"),
-                description: localizedString("security__wiped_message")
-            )
-        } catch {
-            app.toast(
-                type: .error,
-                title: "Wipe Failed",
-                description: "Bitkit was unable to reset your wallet data. Please try again."
-            )
+                sheets.hideSheet()
+            } catch {
+                app.toast(
+                    type: .error,
+                    title: "Wipe Failed",
+                    description: "Bitkit was unable to reset your wallet data. Please try again."
+                )
+            }
         }
     }
 }

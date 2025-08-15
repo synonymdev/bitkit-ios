@@ -4,10 +4,8 @@ import UIKit
 struct DevSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var widgets: WidgetsViewModel
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -83,28 +81,18 @@ struct DevSettingsView: View {
 
                 Button {
                     Task {
-                        guard Env.network == .regtest else {
-                            Logger.error("Can only nuke on regtest")
-                            app.toast(type: .error, title: "Error", description: "Can only nuke on regtest")
-                            return
-                        }
                         do {
-                            // TODO: reset all of app state
-                            try await app.wipe()
-                            try await wallet.wipeWallet()
-                            widgets.clearWidgets()
-                            settings.resetPinSettings()
-                            navigation.reset()
-                            navigation.activeDrawerMenuItem = .wallet
+                            try await AppReset.wipe(
+                                app: app,
+                                wallet: wallet,
+                                session: session
+                            )
                         } catch {
                             app.toast(error)
                         }
                     }
                 } label: {
-                    SettingsListLabel(
-                        title: "Wipe Wallet",
-                        rightIcon: nil
-                    )
+                    SettingsListLabel(title: "Wipe Wallet", rightIcon: nil)
                 }
             }
             .padding(.horizontal, 16)
