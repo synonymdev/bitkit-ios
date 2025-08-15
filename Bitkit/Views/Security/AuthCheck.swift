@@ -2,13 +2,16 @@ import LocalAuthentication
 import SwiftUI
 
 struct AuthCheck: View {
-    @State private var pinInput: String = ""
-    @State private var errorMessage: String = ""
-    @State private var biometricFailedOnce = false
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var session: SessionManager
+
+    @State private var pinInput: String = ""
+    @State private var errorMessage: String = ""
+    @State private var biometricFailedOnce = false
+
     let onPinVerified: () -> Void
 
     private var biometryTypeName: String {
@@ -53,29 +56,20 @@ struct AuthCheck: View {
         Haptics.notify(.error)
 
         if settings.hasExceededPinAttempts() {
-            // Exceeded maximum attempts - wipe wallet
             Task {
                 do {
-                    try await wallet.wipeWallet()
-                    settings.resetPinSettings()
-
-                    // Show toast notification
-                    await MainActor.run {
-                        app.toast(
-                            type: .error,
-                            title: NSLocalizedString("security__wiped_title", comment: ""),
-                            description: NSLocalizedString(
-                                "security__wiped_message", comment: ""),
-                            autoHide: false
-                        )
-                    }
+                    try await AppReset.wipe(
+                        app: app,
+                        wallet: wallet,
+                        session: session,
+                        toastType: .warning
+                    )
                 } catch {
                     Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "AuthCheck")
-                    await MainActor.run {
-                        app.toast(error)
-                    }
+                    app.toast(error)
                 }
             }
+
             return
         }
 
