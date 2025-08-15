@@ -3,11 +3,13 @@ import SwiftUI
 
 @MainActor
 final class SuggestionsManager: ObservableObject {
+    static let shared = SuggestionsManager()
+
     @Published private(set) var dismissedIds: Set<String> = []
 
     private let userDefaultsKey = "dismissedSuggestions"
 
-    init() {
+    private init() {
         loadDismissed()
     }
 

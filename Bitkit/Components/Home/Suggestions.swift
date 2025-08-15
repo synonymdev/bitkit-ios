@@ -110,7 +110,7 @@ struct Suggestions: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
-    @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @StateObject private var suggestionsManager = SuggestionsManager.shared
 
     @State private var showShareSheet = false
     // Prevent duplicate item taps when the card is dismissed

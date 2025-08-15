@@ -311,6 +311,8 @@ struct MainNavView: View {
                 DevSettingsView()
 
             // General settings
+            case .languageSettings:
+                LanguageSettingsScreen()
             case .currencySettings:
                 LocalCurrencySettingsView()
             case .unitSettings:

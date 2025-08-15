@@ -40,7 +40,7 @@ struct LocalCurrencySettingsView: View {
     }
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             if !availableMostUsed.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     CaptionText(NSLocalizedString("settings__general__currency_most_used", comment: "").uppercased())

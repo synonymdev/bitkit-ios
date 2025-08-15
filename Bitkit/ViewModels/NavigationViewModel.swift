@@ -52,6 +52,7 @@ enum Route: Hashable {
     case devSettings
 
     // General settings
+    case languageSettings
     case currencySettings
     case unitSettings
     case transactionSpeedSettings

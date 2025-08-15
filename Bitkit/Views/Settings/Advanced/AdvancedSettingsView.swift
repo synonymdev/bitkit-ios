@@ -1,15 +1,8 @@
-//
-//  AdvancedSettingsView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/06/27.
-//
-
 import SwiftUI
 
 struct AdvancedSettingsView: View {
+    @StateObject private var suggestionsManager = SuggestionsManager.shared
     @State private var showingResetAlert = false
-    @EnvironmentObject var suggestionsManager: SuggestionsManager
 
     var body: some View {
         ScrollView(showsIndicators: false) {
