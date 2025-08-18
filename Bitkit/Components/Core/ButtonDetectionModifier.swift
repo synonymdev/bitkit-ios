@@ -10,7 +10,7 @@ private struct ButtonDetectionModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                GeometryReader { geometry in
+                GeometryReader { _ in
                     Color.clear
                         .contentShape(Rectangle())
                         .gesture(
@@ -23,7 +23,7 @@ private struct ButtonDetectionModifier: ViewModifier {
                                     // Perform hit testing to determine what was tapped
                                     let hitTest = UIApplication.shared.connectedScenes
                                         .first(where: { $0 is UIWindowScene })
-                                        .flatMap({ $0 as? UIWindowScene })?.windows
+                                        .flatMap { $0 as? UIWindowScene }?.windows
                                         .first?
                                         .hitTest(location, with: nil)
 

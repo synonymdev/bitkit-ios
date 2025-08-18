@@ -1,10 +1,3 @@
-//
-//  ActivityLatest.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/12/20.
-//
-
 import SwiftUI
 
 struct ActivityLatest: View {
@@ -32,14 +25,15 @@ struct ActivityLatest: View {
                         }
                     }
 
-                    if items.count == 0 {
+                    if items.isEmpty {
                         Button(
                             action: {
                                 sheets.showSheet(.receive)
                             },
                             label: {
                                 EmptyActivityRow()
-                            })
+                            }
+                        )
                     } else {
                         CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)

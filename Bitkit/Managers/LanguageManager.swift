@@ -11,15 +11,15 @@ final class LanguageManager: ObservableObject {
 
     private init() {
         // Initialize stored properties first
-        self.currentLanguage = .english
+        currentLanguage = .english
 
         // Then set the actual current language
         let deviceLanguageCode = Locale.current.language.languageCode?.identifier ?? "en"
 
         if selectedLanguageCode.isEmpty {
-            self.currentLanguage = SupportedLanguage.language(for: deviceLanguageCode)
+            currentLanguage = SupportedLanguage.language(for: deviceLanguageCode)
         } else {
-            self.currentLanguage = SupportedLanguage.language(for: selectedLanguageCode)
+            currentLanguage = SupportedLanguage.language(for: selectedLanguageCode)
         }
     }
 

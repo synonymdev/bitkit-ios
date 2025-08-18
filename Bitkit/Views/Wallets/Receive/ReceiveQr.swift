@@ -13,19 +13,18 @@ struct ReceiveQr: View {
     @State private var showDetails = false
 
     init(navigationPath: Binding<[ReceiveRoute]>, cjitInvoice: String? = nil, tab: ReceiveTab? = nil) {
-        self._navigationPath = navigationPath
+        _navigationPath = navigationPath
         self.cjitInvoice = cjitInvoice
         self.tab = tab
 
         // Default to unified tab if available, otherwise use provided tab or savings
-        let defaultTab: ReceiveTab
-        if tab != nil {
-            defaultTab = tab!
+        let defaultTab: ReceiveTab = if tab != nil {
+            tab!
         } else {
             // We'll set this in onAppear since we need access to wallet.channelCount
-            defaultTab = .savings
+            .savings
         }
-        self._selectedTab = State(initialValue: defaultTab)
+        _selectedTab = State(initialValue: defaultTab)
     }
 
     enum ReceiveTab: CaseIterable, CustomStringConvertible {
@@ -71,17 +70,17 @@ struct ReceiveQr: View {
                 SheetHeader(
                     title: localizedString("wallet__receive_bitcoin"),
                     action:
-                        AnyView(
-                            Button(action: {
-                                showDetails.toggle()
-                            }) {
-                                Image(showDetails ? "qr" : "note")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .foregroundColor(.white50)
-                                    .frame(width: 24, height: 24)
-                            }
-                        )
+                    AnyView(
+                        Button(action: {
+                            showDetails.toggle()
+                        }) {
+                            Image(showDetails ? "qr" : "note")
+                                .resizable()
+                                .scaledToFit()
+                                .foregroundColor(.white50)
+                                .frame(width: 24, height: 24)
+                        }
+                    )
                 )
                 .padding(.horizontal, 16)
 
@@ -219,17 +218,19 @@ struct ReceiveQr: View {
                                 title: localizedString("wallet__receive_bitcoin_invoice"),
                                 address: wallet.onchainAddress,
                                 type: .onchain
-                            ))
+                            )
+                        )
                     }
                 case .spending:
                     // Spending: cjitInvoice or bolt11
-                    if let cjitInvoice = cjitInvoice {
+                    if let cjitInvoice {
                         pairs.append(
                             CopyAddressPair(
                                 title: localizedString("wallet__receive_lightning_invoice"),
                                 address: cjitInvoice,
                                 type: .lightning
-                            ))
+                            )
+                        )
                         break
                     }
 
@@ -239,7 +240,8 @@ struct ReceiveQr: View {
                                 title: localizedString("wallet__receive_lightning_invoice"),
                                 address: wallet.bolt11,
                                 type: .lightning
-                            ))
+                            )
+                        )
                     }
                 case .unified:
                     // Unified: both onchain and lightning
@@ -249,7 +251,8 @@ struct ReceiveQr: View {
                                 title: localizedString("wallet__receive_bitcoin_invoice"),
                                 address: wallet.onchainAddress,
                                 type: .onchain
-                            ))
+                            )
+                        )
                     }
 
                     if !wallet.bolt11.isEmpty {
@@ -258,7 +261,8 @@ struct ReceiveQr: View {
                                 title: localizedString("wallet__receive_lightning_invoice"),
                                 address: wallet.bolt11,
                                 type: .lightning
-                            ))
+                            )
+                        )
                     }
                 }
 
@@ -359,7 +363,7 @@ struct ReceiveQr: View {
     /// - Returns: BIP21 URI with lightning parameter removed
     private func stripLightningFromBip21(_ bip21: String) -> String {
         guard let url = URL(string: bip21),
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         else {
             return bip21
         }

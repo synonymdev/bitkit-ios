@@ -1,12 +1,5 @@
-//
-//  MigrationsService.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/23.
-//
-
 import Foundation
-import LightningDevKit  // TODO: remove this when we no longer need it to read funding_tx and index from monitors
+import LightningDevKit // TODO: remove this when we no longer need it to read funding_tx and index from monitors
 import SQLite
 
 typealias Expression = SQLite.Expression
@@ -55,7 +48,8 @@ extension MigrationsService {
                 t.column(snCol)
                 t.column(keyCol)
                 t.column(valueCol)
-            })
+            }
+        )
 
         // TODO: use create statement directly from LDK-node instead
         // CREATE TABLE IF NOT EXISTS {} (
@@ -81,10 +75,9 @@ extension MigrationsService {
             // MARK: get funding_tx and index using plain LDK
 
             // https://github.com/lightning/bolts/blob/master/02-peer-protocol.md#definition-of-channel_id
-            guard
-                let channelMonitor = Bindings.readThirtyTwoBytesChannelMonitor(
-                    ser: [UInt8](monitor), argA: keysManager.asEntropySource(), argB: keysManager.asSignerProvider()
-                ).getValue()?.1
+            guard let channelMonitor = Bindings.readThirtyTwoBytesChannelMonitor(
+                ser: [UInt8](monitor), argA: keysManager.asEntropySource(), argB: keysManager.asSignerProvider()
+            ).getValue()?.1
             else {
                 Logger.error("Could not read channel monitor using readThirtyTwoBytesChannelMonitor")
                 throw AppError(serviceError: .ldkToLdkNodeMigration)

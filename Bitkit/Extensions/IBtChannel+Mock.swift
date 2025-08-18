@@ -1,5 +1,5 @@
-import Foundation
 import BitkitCore
+import Foundation
 
 extension IBtChannel {
     static func mock(state: BtOpenChannelState = .opening) -> IBtChannel {

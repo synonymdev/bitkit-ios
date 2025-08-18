@@ -72,10 +72,10 @@ struct CloseConnectionConfirmation: View {
             if failedChannels.isEmpty {
                 // Success - dismiss this view and show success toast
                 DispatchQueue.main.async {
-                    self.dismiss()
+                    dismiss()
 
                     // Show success toast
-                    self.app.toast(
+                    app.toast(
                         type: .success,
                         title: NSLocalizedString("lightning__close_success_title", comment: ""),
                         description: NSLocalizedString("lightning__close_success_msg", comment: "")

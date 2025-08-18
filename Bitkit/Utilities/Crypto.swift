@@ -1,10 +1,3 @@
-//
-//  Crypto.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/13.
-//
-
 import CryptoKit
 import Foundation
 import secp256k1

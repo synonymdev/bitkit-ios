@@ -10,9 +10,9 @@ struct WeatherWidgetOptions: Codable, Equatable {
 
 /// Fee condition enum matching the React Native implementation
 enum FeeCondition: String, Codable {
-    case good = "good"
-    case average = "average"
-    case poor = "poor"
+    case good
+    case average
+    case poor
 
     var title: String {
         switch self {
@@ -58,7 +58,7 @@ struct WeatherData: Codable {
 /// A widget that displays Bitcoin fee weather information
 struct WeatherWidget: View {
     /// Configuration options for the widget
-    var options: WeatherWidgetOptions = WeatherWidgetOptions()
+    var options: WeatherWidgetOptions = .init()
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false

@@ -1,10 +1,3 @@
-//
-//  NumPad.swift
-//  Bitkit
-//
-//  Created by Assistant on 2024/12/19.
-//
-
 import SwiftUI
 
 struct NumPad: View {
@@ -47,6 +40,7 @@ struct NumPad: View {
         }
     }
 }
+
 private struct NumPadButton: View {
     let text: String
     let height: CGFloat

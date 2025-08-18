@@ -1,10 +1,3 @@
-//
-//  LdkMigration.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2024/07/23.
-//
-
 import XCTest
 
 final class LdkMigrationTests: XCTestCase {
@@ -33,7 +26,8 @@ final class LdkMigrationTests: XCTestCase {
         //            return
         //        }
         //
-        //        guard let channelFile = Bundle(for: type(of: self)).url(forResource: "adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630", withExtension: "bin") else {
+        //        guard let channelFile = Bundle(for: type(of: self)).url(forResource:
+        //        "adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630", withExtension: "bin") else {
         //            XCTFail("Missing file: adb1de43b448b04b3fdde638155929cd2163d2c53d36bb40b517d7acc44d1630.bin")
         //            return
         //        }

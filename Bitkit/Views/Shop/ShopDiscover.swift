@@ -137,6 +137,7 @@ struct ShopDiscover: View {
 }
 
 // MARK: - Shop Discover Card Component
+
 struct ShopDiscoverCard: View {
     let title: String
     let description: String
@@ -187,6 +188,7 @@ struct ShopDiscoverCard: View {
 }
 
 // MARK: - Shop Category Row Component
+
 struct ShopCategoryRow: View {
     let title: String
     let iconName: String

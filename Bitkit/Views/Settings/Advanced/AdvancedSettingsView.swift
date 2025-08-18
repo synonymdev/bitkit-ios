@@ -20,7 +20,7 @@ struct AdvancedSettingsView: View {
                         Spacer()
                     }
 
-                    //Maybe never implemented
+                    // Maybe never implemented
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(
                     //         title: NSLocalizedString("settings__adv__address_type", comment: ""),

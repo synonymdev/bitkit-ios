@@ -119,7 +119,7 @@ struct AppScene: View {
 
     @ViewBuilder
     private var initializingContent: some View {
-        if case .errorStarting(_) = wallet.nodeLifecycleState {
+        if case .errorStarting = wallet.nodeLifecycleState {
             WalletRestoreError()
         } else {
             InitializingWalletView(shouldFinish: $walletInitShouldFinish) {

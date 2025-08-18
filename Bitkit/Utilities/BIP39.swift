@@ -1,11 +1,9 @@
-// Adapted from https://github.com/pengpengliu/BIP39
-
 // TODO: move to bitkit-core
 
 import CryptoKit
 import Foundation
 
-public struct BIP39 {
+public enum BIP39 {
     public static let wordlist = [
         "abandon", "ability", "able", "about", "above", "absent", "absorb", "abstract", "absurd", "abuse", "access", "accident", "account", "accuse",
         "achieve", "acid", "acoustic", "acquire", "across", "act", "action", "actor", "actress", "actual", "adapt", "add", "addict", "address",
@@ -196,7 +194,7 @@ public struct BIP39 {
 
     // Mnemonic -> Entropy
     private static func toEntropy(_ phrase: [String]) throws -> [UInt8] {
-        let bits = phrase.map { (word) -> String in
+        let bits = phrase.map { word -> String in
             let index = wordlist.firstIndex(of: word)!
             var str = String(index, radix: 2)
             while str.count < 11 {

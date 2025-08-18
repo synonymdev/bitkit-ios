@@ -1,10 +1,3 @@
-//
-//  Haptics.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/09.
-//
-
 import CoreHaptics
 import UIKit
 
@@ -12,7 +5,7 @@ class Haptics {
     private static var engine: CHHapticEngine?
     private static var player: CHHapticPatternPlayer?
     private static var lastHapticTime: TimeInterval = 0
-    private static let minimumHapticInterval: TimeInterval = 0.1  // 100ms
+    private static let minimumHapticInterval: TimeInterval = 0.1 // 100ms
 
     private static func shouldAllowHaptic() -> Bool {
         let currentTime = Date().timeIntervalSince1970
@@ -57,7 +50,9 @@ class Haptics {
                     eventType: .hapticContinuous,
                     parameters: [approachIntensity, approachSharpness],
                     relativeTime: 0,
-                    duration: duration * 0.3))
+                    duration: duration * 0.3
+                )
+            )
 
             // Middle section split into three parts
             // First part of peak (building up)
@@ -68,7 +63,9 @@ class Haptics {
                     eventType: .hapticContinuous,
                     parameters: [peak1Intensity, peak1Sharpness],
                     relativeTime: duration * 0.3,
-                    duration: duration * 0.133))
+                    duration: duration * 0.133
+                )
+            )
 
             // Second part of peak (maximum)
             let peak2Intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.35)
@@ -78,7 +75,9 @@ class Haptics {
                     eventType: .hapticContinuous,
                     parameters: [peak2Intensity, peak2Sharpness],
                     relativeTime: duration * 0.433,
-                    duration: duration * 0.134))
+                    duration: duration * 0.134
+                )
+            )
 
             // Third part of peak (reducing)
             let peak3Intensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.25)
@@ -88,7 +87,9 @@ class Haptics {
                     eventType: .hapticContinuous,
                     parameters: [peak3Intensity, peak3Sharpness],
                     relativeTime: duration * 0.567,
-                    duration: duration * 0.133))
+                    duration: duration * 0.133
+                )
+            )
 
             // Soft ending (flying away)
             let departIntensity = CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.15)
@@ -98,7 +99,9 @@ class Haptics {
                     eventType: .hapticContinuous,
                     parameters: [departIntensity, departSharpness],
                     relativeTime: duration * 0.7,
-                    duration: duration * 0.3))
+                    duration: duration * 0.3
+                )
+            )
 
             let pattern = try CHHapticPattern(events: events, parameters: [])
             player = try engine?.makePlayer(with: pattern)
@@ -136,7 +139,7 @@ class Haptics {
                 }
             }
 
-            engine?.stoppedHandler = { reason in
+            engine?.stoppedHandler = { _ in
                 engine = nil
             }
 
@@ -146,6 +149,7 @@ class Haptics {
 }
 
 // MARK: add aliases for common haptic feedback here
+
 extension UIImpactFeedbackGenerator.FeedbackStyle {
     static var copiedToClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .soft }
     static var pastedFromClipboard: UIImpactFeedbackGenerator.FeedbackStyle { .medium }

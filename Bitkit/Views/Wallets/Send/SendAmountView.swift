@@ -1,10 +1,3 @@
-//
-//  SendAmount.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/11.
-//
-
 import SwiftUI
 
 struct SendAmountView: View {
@@ -55,7 +48,7 @@ struct SendAmountView: View {
                         color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
                         variant: .secondary
                     ) {
-                        //Allow switching to savings if we have an onchain invoice
+                        // Allow switching to savings if we have an onchain invoice
                         if app.selectedWalletToPayFrom == .lightning && app.scannedOnchainInvoice != nil {
                             app.selectedWalletToPayFrom = .onchain
                         } else if app.selectedWalletToPayFrom == .onchain && app.scannedLightningInvoice != nil {
@@ -85,11 +78,12 @@ struct SendAmountView: View {
                     if satsAmount > 0 {
                         wallet.sendAmountSats = satsAmount
 
-                        //Lightning tx
+                        // Lightning tx
                         if app.selectedWalletToPayFrom == .lightning {
                             if UInt64(wallet.totalLightningSats) < satsAmount {
                                 app.toast(
-                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet."
+                                )
                                 return
                             }
 
@@ -97,7 +91,7 @@ struct SendAmountView: View {
                             return
                         }
 
-                        //Onchain tx
+                        // Onchain tx
                         try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
                         if settings.coinSelectionMethod == .manual {
                             try await wallet.loadAvailableUtxos()
@@ -109,18 +103,20 @@ struct SendAmountView: View {
 
                             if wallet.availableUtxos.reduce(0) { $0 + $1.valueSats } < satsAmount {
                                 app.toast(
-                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet."
+                                )
                                 return
                             }
 
-                            navigationPath.append(.utxoSelection) //User needs to select utxos
+                            navigationPath.append(.utxoSelection) // User needs to select utxos
                         } else {
                             try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
 
                             let totalSelectedSats = wallet.selectedUtxo?.reduce(0) { $0 + $1.valueSats } ?? 0
                             if totalSelectedSats < satsAmount {
                                 app.toast(
-                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet.")
+                                    type: .error, title: "Insufficient Funds", description: "You do not have enough funds in the selected wallet."
+                                )
                                 return
                             }
 

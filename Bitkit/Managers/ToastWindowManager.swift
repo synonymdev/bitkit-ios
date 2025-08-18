@@ -58,8 +58,8 @@ class ToastWindowManager: ObservableObject {
 
         window.rootViewController = hostingController
 
-        self.toastWindow = window
-        self.toastHostingController = hostingController
+        toastWindow = window
+        toastHostingController = hostingController
     }
 }
 

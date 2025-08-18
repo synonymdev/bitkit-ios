@@ -51,7 +51,7 @@ struct EmptyStateView: View {
             .frame(maxWidth: .infinity)
             .padding(.bottom, 115)
             .overlay {
-                if let onClose = onClose {
+                if let onClose {
                     VStack {
                         Button(action: {
                             Haptics.play(.buttonTap)

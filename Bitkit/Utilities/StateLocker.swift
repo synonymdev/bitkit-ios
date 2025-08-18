@@ -1,20 +1,13 @@
-//
-//  StateLocker.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/19.
-//
-
 import Foundation
 
 enum StateLockerError: Error, Equatable {
     case alreadyLocked(processName: String)
     case differentEnvironmentLocked
     case staleLock
-    
+
     static func == (lhs: StateLockerError, rhs: StateLockerError) -> Bool {
         switch (lhs, rhs) {
-        case (.alreadyLocked(let lhsProcess), .alreadyLocked(let rhsProcess)):
+        case let (.alreadyLocked(lhsProcess), .alreadyLocked(rhsProcess)):
             return lhsProcess == rhsProcess
         case (.differentEnvironmentLocked, .differentEnvironmentLocked):
             return true
@@ -29,7 +22,7 @@ enum StateLockerError: Error, Equatable {
 extension StateLockerError: LocalizedError {
     var errorDescription: String? {
         switch self {
-        case .alreadyLocked(let processName):
+        case let .alreadyLocked(processName):
             return "State already locked by process: \(processName)"
         case .differentEnvironmentLocked:
             return "Different environment has the lock"
@@ -42,17 +35,17 @@ extension StateLockerError: LocalizedError {
 public enum ExecutionContext: String, Codable {
     case foregroundApp
     case pushNotificationExtension
-    
+
     var expiryTime: TimeInterval {
         switch self {
         case .pushNotificationExtension:
-            return 35  // Should never run over 30s
+            return 35 // Should never run over 30s
         case .foregroundApp:
-            return 5 * 60  // TODO: test this out
+            return 5 * 60 // TODO: test this out
         }
     }
-    
-    //For log file names
+
+    // For log file names
     var filenamePrefix: String {
         switch self {
         case .foregroundApp:
@@ -77,13 +70,13 @@ class StateLocker {
         }
 
         static var unitTestCustomExecutionContext: ExecutionContext?
-        
+
         /// Allows unit tests to override the execution context returned by Env.currentExecutionContext
-        /// When used in unit tests, this value will be checked and used if set 
+        /// When used in unit tests, this value will be checked and used if set
         static func injectTestEnvironment(_ environment: ExecutionContext?) {
             unitTestCustomExecutionContext = environment
         }
-        
+
         /// Returns the current execution context, using the injected test context if available
         static var currentExecutionContext: ExecutionContext {
             return unitTestCustomExecutionContext ?? Env.currentExecutionContext
@@ -104,11 +97,11 @@ class StateLocker {
 
         init() {
             #if UNIT_TESTING
-                self.environment = StateLocker.currentExecutionContext
-                self.date = StateLocker.unitTestCustomDate
+                environment = StateLocker.currentExecutionContext
+                date = StateLocker.unitTestCustomDate
             #else
-                self.environment = Env.currentExecutionContext
-                self.date = Date()
+                environment = Env.currentExecutionContext
+                date = Date()
             #endif
         }
     }
@@ -141,7 +134,7 @@ class StateLocker {
     ///           or other errors related to file operations.
     static func lock(_ process: ProcessType, wait: TimeInterval) throws {
         Logger.debug("🔒 Attempting to lock process: \(process.rawValue) with wait time: \(wait)s")
-        
+
         // Check if the process is already locked
         if let existingLock = lockFileContent(process) {
             // If the lock is held by the same execution context, allow it
@@ -151,7 +144,7 @@ class StateLocker {
                 Logger.debug("🔒 Successfully updated lock for process: \(process.rawValue)")
                 return
             }
-            
+
             // Different environment has the lock, wait to acquire it
             Logger.debug("🔒 Process \(process.rawValue) is locked by different context, waiting up to \(wait)s for it to become available")
             let startTime = Date()
@@ -173,7 +166,7 @@ class StateLocker {
 
     static func unlock(_ process: ProcessType) throws {
         Logger.debug("🔒 Attempting to unlock process: \(process.rawValue)")
-        
+
         guard let lock = lockFileContent(process) else {
             Logger.debug("🔒 No lock file found for process \(process.rawValue), nothing to unlock")
             return
@@ -203,19 +196,19 @@ class StateLocker {
 
     static func isLocked(_ process: ProcessType) -> Bool {
         Logger.debug("🔒 Checking if process is locked: \(process.rawValue)")
-        
+
         guard let lock = lockFileContent(process) else {
             Logger.debug("🔒 No lock file found for process: \(process.rawValue)")
             return false
         }
-        
+
         let isExpired = lock.isExpired
         if isExpired {
             Logger.debug("🔒 Lock for process \(process.rawValue) exists but is expired (created: \(lock.date.description))")
         } else {
             Logger.info("🔒 Process \(process.rawValue) is locked by environment: \(lock.environment.rawValue), created: \(lock.date.description)")
         }
-        
+
         return !isExpired
     }
 }

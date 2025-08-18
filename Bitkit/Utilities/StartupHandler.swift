@@ -1,10 +1,3 @@
-//
-//  Startup.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/31.
-//
-
 import LDKNode
 import SwiftUI
 

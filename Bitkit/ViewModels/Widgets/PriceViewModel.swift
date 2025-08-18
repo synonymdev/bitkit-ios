@@ -31,9 +31,8 @@ class PriceViewModel: ObservableObject {
             do {
                 // First, try to get cached data immediately (no loading state)
                 if let cachedData = try? await priceService.fetchPriceData(pairs: pairs, period: period, returnCachedImmediately: true),
-                    !cachedData.isEmpty
+                   !cachedData.isEmpty
                 {
-
                     if !Task.isCancelled {
                         dataByPeriod[period] = cachedData
                         error = nil
@@ -109,7 +108,7 @@ class PriceViewModel: ObservableObject {
             guard !data.isEmpty else { continue }
 
             // Extract pairs from current data
-            let pairs = data.map { $0.name }
+            let pairs = data.map(\.name)
 
             do {
                 // Always fetch fresh data for background updates (no cache)

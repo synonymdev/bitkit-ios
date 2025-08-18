@@ -1,6 +1,6 @@
 import Foundation
 
-struct CurrencyFormatter {
+enum CurrencyFormatter {
     static func format(_ amount: Decimal, currency: String) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency

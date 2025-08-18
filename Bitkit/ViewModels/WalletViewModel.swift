@@ -1,10 +1,3 @@
-//
-//  WalletViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/06/28.
-//
-
 import BitkitCore
 import LDKNode
 import SwiftUI
@@ -213,7 +206,8 @@ class WalletViewModel: ObservableObject {
         }
 
         let txid = try await lightningService.send(
-            address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo)
+            address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo
+        )
         Task {
             // Best to auto sync on chain so we have latest state
             try await sync()
@@ -274,7 +268,7 @@ class WalletViewModel: ObservableObject {
         // Add event listener for this specific payment
         addOnEvent(id: eventId) { event in
             switch event {
-            case .paymentSuccessful(let paymentId, let paymentHash, _, _):
+            case let .paymentSuccessful(paymentId, paymentHash, _, _):
                 if paymentHash == hash {
                     self.removeOnEvent(id: eventId)
                     onSuccess()
@@ -349,12 +343,12 @@ class WalletViewModel: ObservableObject {
 
         if channels?.count ?? 0 > 0 {
             if forceRefreshBolt11 || bolt11.isEmpty {
-                bolt11 = try await self.createInvoice(amountSats: amountSats, note: invoiceNote)
+                bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {
-                //Existing invoice needs to be checked for expiry
-                if case .lightning(let lightningInvoice) = try await decode(invoice: bolt11) {
+                // Existing invoice needs to be checked for expiry
+                if case let .lightning(lightningInvoice) = try await decode(invoice: bolt11) {
                     if lightningInvoice.isExpired {
-                        bolt11 = try await self.createInvoice(amountSats: amountSats, note: invoiceNote)
+                        bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
                     }
                 }
             }
@@ -388,7 +382,7 @@ class WalletViewModel: ObservableObject {
 
         syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self = self else { return }
+                guard let self else { return }
                 if self.nodeLifecycleState == .running {
                     self.syncState()
                 }

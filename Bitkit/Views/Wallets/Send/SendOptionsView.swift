@@ -1,15 +1,8 @@
-//
-//  SendOptionsView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import SwiftUI
 
 struct SendOptionCard: View {
     var title: String
-    var action: (() -> Void)
+    var action: () -> Void
     var iconName: String
     var testID: String
 
@@ -112,7 +105,8 @@ struct SendOptionsView: View {
             app.toast(
                 type: .warning,
                 title: localizedString("wallet__send_clipboard_empty_title"),
-                description: localizedString("wallet__send_clipboard_empty_text"))
+                description: localizedString("wallet__send_clipboard_empty_text")
+            )
             return
         }
 

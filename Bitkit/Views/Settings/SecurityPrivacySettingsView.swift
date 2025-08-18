@@ -122,7 +122,8 @@ struct SecurityPrivacySettingsView: View {
                     SettingsListLabel(
                         title: localizedString(
                             "settings__security__use_bio", comment: "",
-                            variables: ["biometryTypeName": biometryTypeName]),
+                            variables: ["biometryTypeName": biometryTypeName]
+                        ),
                         toggle: Binding(
                             get: { settings.useBiometrics },
                             set: { newValue in
@@ -250,7 +251,7 @@ struct SecurityPrivacySettingsView: View {
     }
 
     private func handleBiometricError(_ error: Error?) {
-        guard let error = error else { return }
+        guard let error else { return }
 
         let nsError = error as NSError
 

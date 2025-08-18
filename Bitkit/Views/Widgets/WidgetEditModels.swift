@@ -26,8 +26,8 @@ struct WidgetEditItem {
     init(key: String, type: WidgetItemType, title: String, value: String? = nil, isChecked: Bool) {
         self.key = key
         self.type = type
-        self.titleView = AnyView(BodySSBText(title, textColor: .textSecondary))
-        self.valueView = value.map { AnyView(BodySSBText($0)) }
+        titleView = AnyView(BodySSBText(title, textColor: .textSecondary))
+        valueView = value.map { AnyView(BodySSBText($0)) }
         self.isChecked = isChecked
     }
 
@@ -35,7 +35,7 @@ struct WidgetEditItem {
     init(key: String, type: WidgetItemType, title: String, valueView: AnyView? = nil, isChecked: Bool) {
         self.key = key
         self.type = type
-        self.titleView = AnyView(BodySSBText(title, textColor: .textSecondary))
+        titleView = AnyView(BodySSBText(title, textColor: .textSecondary))
         self.valueView = valueView
         self.isChecked = isChecked
     }
@@ -43,8 +43,7 @@ struct WidgetEditItem {
 
 // MARK: - Widget Edit Item Factory
 
-struct WidgetEditItemFactory {
-
+enum WidgetEditItemFactory {
     @MainActor
     static func getBlocksItems(
         blocksViewModel: BlocksViewModel,
@@ -60,7 +59,8 @@ struct WidgetEditItemFactory {
                     title: "Block",
                     value: data.height,
                     isChecked: blocksOptions.height
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -69,7 +69,8 @@ struct WidgetEditItemFactory {
                     title: "Time",
                     value: data.time,
                     isChecked: blocksOptions.time
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -78,7 +79,8 @@ struct WidgetEditItemFactory {
                     title: "Date",
                     value: data.date,
                     isChecked: blocksOptions.date
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -87,7 +89,8 @@ struct WidgetEditItemFactory {
                     title: "Transactions",
                     value: data.transactionCount,
                     isChecked: blocksOptions.transactionCount
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -96,7 +99,8 @@ struct WidgetEditItemFactory {
                     title: "Size",
                     value: data.size,
                     isChecked: blocksOptions.size
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -105,7 +109,8 @@ struct WidgetEditItemFactory {
                     title: "Weight",
                     value: data.weight,
                     isChecked: blocksOptions.weight
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -114,7 +119,8 @@ struct WidgetEditItemFactory {
                     title: "Difficulty",
                     value: data.difficulty,
                     isChecked: blocksOptions.difficulty
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -123,7 +129,8 @@ struct WidgetEditItemFactory {
                     title: "Hash",
                     value: data.hash,
                     isChecked: blocksOptions.hash
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -132,7 +139,8 @@ struct WidgetEditItemFactory {
                     title: "Merkle Root",
                     value: data.merkleRoot,
                     isChecked: blocksOptions.merkleRoot
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -141,7 +149,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                     isChecked: blocksOptions.showSource
-                ))
+                )
+            )
         } else {
             // Fallback when no data is available
             items.append(
@@ -151,7 +160,8 @@ struct WidgetEditItemFactory {
                     title: "Block",
                     value: "870,123",
                     isChecked: blocksOptions.height
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -160,7 +170,8 @@ struct WidgetEditItemFactory {
                     title: "Time",
                     value: "2:45:30 PM",
                     isChecked: blocksOptions.time
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -169,7 +180,8 @@ struct WidgetEditItemFactory {
                     title: "Date",
                     value: "Dec 15, 2024",
                     isChecked: blocksOptions.date
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -178,7 +190,8 @@ struct WidgetEditItemFactory {
                     title: "Transactions",
                     value: "3,456",
                     isChecked: blocksOptions.transactionCount
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -187,7 +200,8 @@ struct WidgetEditItemFactory {
                     title: "Size",
                     value: "1,234 KB",
                     isChecked: blocksOptions.size
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -196,7 +210,8 @@ struct WidgetEditItemFactory {
                     title: "Weight",
                     value: "3.45 MWU",
                     isChecked: blocksOptions.weight
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -205,7 +220,8 @@ struct WidgetEditItemFactory {
                     title: "Difficulty",
                     value: "102.45 T",
                     isChecked: blocksOptions.difficulty
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -214,7 +230,8 @@ struct WidgetEditItemFactory {
                     title: "Hash",
                     value: "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054",
                     isChecked: blocksOptions.hash
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -223,7 +240,8 @@ struct WidgetEditItemFactory {
                     title: "Merkle Root",
                     value: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
                     isChecked: blocksOptions.merkleRoot
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -232,7 +250,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                     isChecked: blocksOptions.showSource
-                ))
+                )
+            )
         }
 
         return items
@@ -248,7 +267,8 @@ struct WidgetEditItemFactory {
                 type: .staticItem,
                 titleView: AnyView(TitleText(factsViewModel.fact)),
                 isChecked: true
-            ))
+            )
+        )
 
         items.append(
             WidgetEditItem(
@@ -257,7 +277,8 @@ struct WidgetEditItemFactory {
                 title: localizedString("widgets__widget__source"),
                 valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                 isChecked: factsOptions.showSource
-            ))
+            )
+        )
 
         return items
     }
@@ -277,7 +298,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(BodyMText(data.timeAgo, textColor: .textPrimary)),
                     valueView: nil,
                     isChecked: newsOptions.showDate
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -286,7 +308,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(TitleText(data.title)),
                     valueView: nil,
                     isChecked: true // Static items are always shown
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -295,7 +318,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__widget__source"),
                     valueView: AnyView(BodySSBText(data.publisher, textColor: .textSecondary)),
                     isChecked: newsOptions.showSource
-                ))
+                )
+            )
         } else {
             // Fallback when no data is available
             items.append(
@@ -305,7 +329,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(BodyMText("13 hours ago", textColor: .textPrimary)),
                     valueView: nil,
                     isChecked: newsOptions.showDate
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -314,7 +339,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(TitleText("Exodus Launches XO Pay, An In-App Bitcoin And Crypto Purchase Solution")),
                     valueView: nil,
                     isChecked: true // Static items are always shown
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -323,7 +349,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("Bitcoin Magazine", textColor: .textSecondary)),
                     isChecked: newsOptions.showSource
-                ))
+                )
+            )
         }
 
         return items
@@ -350,7 +377,8 @@ struct WidgetEditItemFactory {
                     title: pair,
                     value: livePrice,
                     isChecked: priceOptions.selectedPairs.contains(pair)
-                ))
+                )
+            )
         }
 
         // Period selection (radio group) with charts
@@ -374,7 +402,8 @@ struct WidgetEditItemFactory {
                     ),
                     valueView: nil,
                     isChecked: priceOptions.selectedPeriod == period
-                ))
+                )
+            )
         }
 
         items.append(
@@ -384,7 +413,8 @@ struct WidgetEditItemFactory {
                 title: localizedString("widgets__widget__source"),
                 valueView: AnyView(BodySSBText("Bitfinex.com", textColor: .textSecondary)),
                 isChecked: priceOptions.showSource
-            ))
+            )
+        )
 
         return items
     }
@@ -404,7 +434,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(TitleText(data.condition.title)),
                     valueView: AnyView(Text(data.condition.icon).font(.system(size: 30))),
                     isChecked: weatherOptions.showStatus
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -413,7 +444,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(BodyMText(data.condition.description, textColor: .textPrimary)),
                     valueView: nil,
                     isChecked: weatherOptions.showText
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -422,7 +454,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__weather__current_fee"),
                     value: data.currentFee,
                     isChecked: weatherOptions.showMedian
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -431,7 +464,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__weather__next_block"),
                     value: "\(data.nextBlockFee) ₿/vByte",
                     isChecked: weatherOptions.showNextBlockFee
-                ))
+                )
+            )
         } else {
             // Fallback when no data is available
             items.append(
@@ -441,7 +475,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(TitleText("Good")),
                     valueView: AnyView(Text("☀️").font(.system(size: 30))),
                     isChecked: weatherOptions.showStatus
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -450,7 +485,8 @@ struct WidgetEditItemFactory {
                     titleView: AnyView(BodyMText("Fees are low and transactions are fast", textColor: .textPrimary)),
                     valueView: nil,
                     isChecked: weatherOptions.showText
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -459,7 +495,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__weather__current_fee"),
                     value: "$0.50",
                     isChecked: weatherOptions.showMedian
-                ))
+                )
+            )
 
             items.append(
                 WidgetEditItem(
@@ -468,7 +505,8 @@ struct WidgetEditItemFactory {
                     title: localizedString("widgets__weather__next_block"),
                     value: "15 ₿/vByte",
                     isChecked: weatherOptions.showNextBlockFee
-                ))
+                )
+            )
         }
 
         return items

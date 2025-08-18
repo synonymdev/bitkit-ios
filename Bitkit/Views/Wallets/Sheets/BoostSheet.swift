@@ -77,7 +77,7 @@ struct BoostSheet: View {
 
     private var fiatFeeString: String {
         guard estimatedFeeSats > 0,
-            let converted = currency.convert(sats: estimatedFeeSats)
+              let converted = currency.convert(sats: estimatedFeeSats)
         else {
             return ""
         }
@@ -182,7 +182,7 @@ struct BoostSheet: View {
                             }) {
                                 HStack(spacing: 8) {
                                     VStack(alignment: .trailing, spacing: 2) {
-                                        if let feeRate = feeRate {
+                                        if let feeRate {
                                             BodySSBText("₿ \(estimatedFeeSats)")
                                         } else if fetchingFees {
                                             ProgressView()
@@ -235,7 +235,8 @@ struct BoostSheet: View {
             Logger.info("Starting fee rate fetch for boost", context: "BoostSheet.fetchFeeRate")
             Logger.debug(
                 "Transaction details - ID: \(onchainActivity.txId), Type: \(onchainActivity.txType), IsIncoming: \(isIncoming)",
-                context: "BoostSheet.fetchFeeRate")
+                context: "BoostSheet.fetchFeeRate"
+            )
 
             do {
                 // Wait for wallet to be ready before fetching fees
@@ -273,10 +274,12 @@ struct BoostSheet: View {
 
                         Logger.info(
                             "CPFP fee rate calculated: \(calculatedFeeRate) sat/vbyte (base: \(baseFeeRate), multiplier: 1.5x, minimum: 20)",
-                            context: "BoostSheet.fetchFeeRate")
+                            context: "BoostSheet.fetchFeeRate"
+                        )
                         Logger.debug(
                             "Estimated fee cost: \(estimatedFeeSats) sats (\(calculatedFeeRate) sat/vbyte × \(estimatedTxSize) vbytes)",
-                            context: "BoostSheet.fetchFeeRate")
+                            context: "BoostSheet.fetchFeeRate"
+                        )
 
                         fetchingFees = false
                     }
@@ -299,10 +302,12 @@ struct BoostSheet: View {
 
                         Logger.info(
                             "RBF fee rate set: \(validatedFeeRate) sat/vbyte (selected: \(selectedFeeRate ?? 0), original: \(originalFeeRate), min RBF: \(minRbfFeeRate))",
-                            context: "BoostSheet.fetchFeeRate")
+                            context: "BoostSheet.fetchFeeRate"
+                        )
                         Logger.debug(
                             "Estimated fee cost: \(estimatedFeeSats) sats (\(validatedFeeRate) sat/vbyte × \(estimatedTxSize) vbytes)",
-                            context: "BoostSheet.fetchFeeRate")
+                            context: "BoostSheet.fetchFeeRate"
+                        )
 
                         fetchingFees = false
                     }
@@ -313,7 +318,8 @@ struct BoostSheet: View {
             } catch {
                 Logger.error("Failed to fetch fee rate for boost: \(error)", context: "BoostSheet.fetchFeeRate")
                 Logger.debug(
-                    "Error details - Type: \(type(of: error)), Description: \(error.localizedDescription)", context: "BoostSheet.fetchFeeRate")
+                    "Error details - Type: \(type(of: error)), Description: \(error.localizedDescription)", context: "BoostSheet.fetchFeeRate"
+                )
 
                 await MainActor.run {
                     fetchingFees = false
@@ -331,7 +337,8 @@ struct BoostSheet: View {
         Logger.info("Starting boost transaction", context: "BoostSheet.performBoost")
         Logger.debug(
             "Transaction details - ID: \(onchainActivity.txId), Type: \(onchainActivity.txType), IsIncoming: \(isIncoming)",
-            context: "BoostSheet.performBoost")
+            context: "BoostSheet.performBoost"
+        )
 
         let feeRateToUse = currentFeeRate
         guard feeRateToUse > 0 else {
@@ -357,7 +364,8 @@ struct BoostSheet: View {
 
         Logger.info("Using fee rate: \(feeRateToUse) sat/vbyte for boost", context: "BoostSheet.performBoost")
         Logger.debug(
-            "Estimated transaction size: \(estimatedTxSize) vbytes, Estimated fee: \(estimatedFeeSats) sats", context: "BoostSheet.performBoost")
+            "Estimated transaction size: \(estimatedTxSize) vbytes, Estimated fee: \(estimatedFeeSats) sats", context: "BoostSheet.performBoost"
+        )
 
         do {
             // Perform the boost operation via CoreService
@@ -391,10 +399,12 @@ struct BoostSheet: View {
         } catch {
             Logger.error("Failed to boost transaction: \(error)", context: "BoostSheet.performBoost")
             Logger.debug(
-                "Boost error details - Type: \(type(of: error)), Description: \(error.localizedDescription)", context: "BoostSheet.performBoost")
+                "Boost error details - Type: \(type(of: error)), Description: \(error.localizedDescription)", context: "BoostSheet.performBoost"
+            )
             Logger.debug(
                 "Failed boost parameters - TxID: \(onchainActivity.txId), FeeRate: \(feeRateToUse) sat/vbyte, IsIncoming: \(isIncoming)",
-                context: "BoostSheet.performBoost")
+                context: "BoostSheet.performBoost"
+            )
 
             app.toast(
                 type: .error,
@@ -418,7 +428,7 @@ struct BoostSheet: View {
                             id: "test-onchain-1",
                             txType: .sent,
                             txId: "abc123",
-                            value: 100000,
+                            value: 100_000,
                             fee: 500,
                             feeRate: 8,
                             address: "bc1...",

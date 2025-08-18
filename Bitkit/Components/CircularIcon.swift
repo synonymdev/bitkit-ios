@@ -7,7 +7,7 @@ struct CircularIcon: View {
 
     // Initializer for string icons
     init(icon: String, iconColor: Color = .white, backgroundColor: Color = .white10, size: CGFloat = 32) {
-        self.content = AnyView(
+        content = AnyView(
             Image(icon)
                 .resizable()
                 .scaledToFit()
@@ -19,8 +19,8 @@ struct CircularIcon: View {
     }
 
     // Initializer for view icons (direct View parameter)
-    init<Icon: View>(icon: Icon, backgroundColor: Color = .white10, size: CGFloat = 32) {
-        self.content = AnyView(icon)
+    init(icon: some View, backgroundColor: Color = .white10, size: CGFloat = 32) {
+        content = AnyView(icon)
         self.backgroundColor = backgroundColor
         self.size = size
     }

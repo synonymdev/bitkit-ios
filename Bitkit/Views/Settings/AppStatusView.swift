@@ -10,7 +10,7 @@ struct AppStatusView: View {
             NavigationLink(value: Route.node) {
                 lightningNodeStatusView
             }
-            lightningConnectionStatusView //TODO: navigate to channel list view
+            lightningConnectionStatusView // TODO: navigate to channel list view
         }
         .navigationTitle(NSLocalizedString("settings__status__title", comment: ""))
         .navigationBarTitleDisplayMode(.inline)
@@ -27,8 +27,8 @@ struct AppStatusView: View {
         let iconColor: Color = isConnected ? .greenAccent : .redAccent
         let status =
             isConnected
-            ? NSLocalizedString("settings__status__internet__ready", comment: "Connected")
-            : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
+                ? NSLocalizedString("settings__status__internet__ready", comment: "Connected")
+                : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
         let statusColor: Color = isConnected ? .greenAccent : .redAccent
 
         return StatusItemView(
@@ -54,8 +54,8 @@ struct AppStatusView: View {
 
     private var lightningConnectionStatusView: some View {
         let hasChannels = (wallet.channelCount > 0)
-        let hasUsableChannels = wallet.channels?.contains(where: { $0.isUsable }) ?? false
-        let hasReadyChannels = wallet.channels?.contains(where: { $0.isChannelReady }) ?? false
+        let hasUsableChannels = wallet.channels?.contains(where: \.isUsable) ?? false
+        let hasReadyChannels = wallet.channels?.contains(where: \.isChannelReady) ?? false
 
         let connectionColor: Color = {
             if !hasChannels {

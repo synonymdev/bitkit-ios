@@ -58,7 +58,8 @@ struct CreateWalletWithPassphraseView: View {
                         #selector(UIResponder.resignFirstResponder),
                         to: nil,
                         from: nil,
-                        for: nil)
+                        for: nil
+                    )
                 }
         )
     }

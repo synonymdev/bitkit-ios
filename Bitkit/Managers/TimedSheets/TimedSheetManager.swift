@@ -149,7 +149,7 @@ class TimedSheetManager: ObservableObject {
 
     /// Check the queue and show the highest priority sheet that should be shown
     private func checkAndShowNextSheet() async {
-        guard let sheetViewModel = sheetViewModel else {
+        guard let sheetViewModel else {
             Logger.error("SheetViewModel not configured for TimedSheetManager")
             return
         }

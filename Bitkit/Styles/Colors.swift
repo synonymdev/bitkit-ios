@@ -2,6 +2,7 @@ import SwiftUI
 
 extension Color {
     // MARK: - Accents
+
     static let brandAccent = Color(hex: 0xFF4400)
     static let blueAccent = Color(hex: 0x0085FF)
     static let greenAccent = Color(hex: 0x75BF72)
@@ -10,16 +11,19 @@ extension Color {
     static let yellowAccent = Color(hex: 0xFFD200)
 
     // MARK: - Base
+
     static let customBlack = Color.black
     static let customWhite = Color.white
 
     // MARK: - Gray Base
+
     static let gray6 = Color(hex: 0x101010)
     static let gray5 = Color(hex: 0x1C1C1D)
     static let gray3 = Color(hex: 0x48484A)
     static let gray2 = Color(hex: 0x636366)
 
     // MARK: - Alpha Colors
+
     static let black50 = Color.black.opacity(0.5)
     static let black92 = Color.black.opacity(0.92)
     static let white06 = Color.white.opacity(0.06)
@@ -53,6 +57,7 @@ extension Color {
 }
 
 // MARK: - Text Colors
+
 extension Color {
     static let textPrimary = Color(
         uiColor: UIColor { traitCollection in
@@ -62,7 +67,8 @@ extension Color {
             default:
                 return UIColor(Color.black92)
             }
-        })
+        }
+    )
 
     static let textSecondary = Color(
         uiColor: UIColor { traitCollection in
@@ -72,10 +78,12 @@ extension Color {
             default:
                 return UIColor(Color.black50)
             }
-        })
+        }
+    )
 }
 
 // MARK: - Hex Initializer
+
 extension Color {
     init(hex: UInt, alpha: Double = 1) {
         self.init(

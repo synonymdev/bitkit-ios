@@ -1,10 +1,3 @@
-//
-//  SavingsWalletView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/11.
-//
-
 import SwiftUI
 
 struct SavingsWalletView: View {
@@ -75,7 +68,7 @@ struct SavingsWalletView: View {
 
     var transferButton: some View {
         CustomButton(
-            title: "Transfer To Spending", //TODO: add missing translation
+            title: "Transfer To Spending", // TODO: add missing translation
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

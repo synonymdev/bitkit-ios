@@ -523,7 +523,8 @@ struct AccentedText: View {
         } else {
             // Use a flexible layout that allows tap gestures
             FlexibleTextView(
-                parts: parts, font: font, fontColor: fontColor, accentColor: accentColor, accentFont: accentFont, accentAction: accentAction)
+                parts: parts, font: font, fontColor: fontColor, accentColor: accentColor, accentFont: accentFont, accentAction: accentAction
+            )
         }
     }
 
@@ -586,7 +587,8 @@ private struct FlexibleTextView: View {
                         return .handled
                     }
                     return .systemAction
-                })
+                }
+            )
     }
 
     private func createAttributedString() -> AttributedString {

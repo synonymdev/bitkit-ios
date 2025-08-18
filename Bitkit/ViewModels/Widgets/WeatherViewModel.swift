@@ -140,8 +140,8 @@ class WeatherViewModel: ObservableObject {
         let usdGoodThreshold = Decimal(1.0) // $1 USD threshold for good condition
 
         // Check USD threshold first using currency conversion
-        if let currencyViewModel = currencyViewModel,
-            let converted = currencyViewModel.convert(sats: UInt64(feeRate), to: "USD")
+        if let currencyViewModel,
+           let converted = currencyViewModel.convert(sats: UInt64(feeRate), to: "USD")
         {
             if converted.value <= usdGoodThreshold {
                 return .good
@@ -160,8 +160,8 @@ class WeatherViewModel: ObservableObject {
 
     /// Formats fee amount using CurrencyViewModel - throws error if conversion fails
     private func formatFeeAmount(_ fee: Int) throws -> String {
-        guard let currencyViewModel = currencyViewModel,
-            let converted = currencyViewModel.convert(sats: UInt64(fee))
+        guard let currencyViewModel,
+              let converted = currencyViewModel.convert(sats: UInt64(fee))
         else {
             throw AppError(message: "Currency conversion unavailable", debugMessage: "Failed to convert \(fee) satoshis to fiat currency")
         }

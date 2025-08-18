@@ -1,10 +1,10 @@
-import Foundation
 import BitkitCore
+import Foundation
 
 extension IcJitEntry {
     static func mock(
         state: CJitStateEnum = .created,
-        channelSizeSat: UInt64 = 100000,
+        channelSizeSat: UInt64 = 100_000,
         feeSat: UInt64 = 1000,
         channelExpiryWeeks: UInt32 = 6,
         channel: IBtChannel? = nil
@@ -40,4 +40,4 @@ extension IcJitEntry {
             createdAt: "2024-10-21T12:00:00Z"
         )
     }
-} 
+}

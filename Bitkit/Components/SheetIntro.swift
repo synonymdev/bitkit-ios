@@ -70,7 +70,7 @@ struct SheetIntro: View {
 
     @ViewBuilder
     private var buttonStack: some View {
-        if let cancelText = cancelText, let onCancel = onCancel {
+        if let cancelText, let onCancel {
             HStack(alignment: .center, spacing: 16) {
                 CustomButton(
                     title: cancelText,

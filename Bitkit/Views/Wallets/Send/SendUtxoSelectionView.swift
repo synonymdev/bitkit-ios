@@ -28,7 +28,7 @@ struct SendUtxoSelectionView: View {
 
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(wallet.availableUtxos.enumerated()), id: \.element.outpoint.txid) { index, utxo in
+                    ForEach(Array(wallet.availableUtxos.enumerated()), id: \.element.outpoint.txid) { _, utxo in
                         UtxoRowView(
                             utxo: utxo,
                             tags: utxoTags[utxo.outpoint.txid] ?? [],
@@ -93,7 +93,7 @@ struct SendUtxoSelectionView: View {
         // Create a map of txId to activity for efficient lookup
         let activityMap = Dictionary(
             onchainActivities.compactMap { activity in
-                if case .onchain(let onchainActivity) = activity {
+                if case let .onchain(onchainActivity) = activity {
                     return (onchainActivity.txId, onchainActivity)
                 }
                 return nil

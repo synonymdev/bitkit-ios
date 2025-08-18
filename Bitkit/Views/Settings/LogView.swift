@@ -1,10 +1,3 @@
-//
-//  LogView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/16.
-//
-
 import SwiftUI
 import UIKit
 
@@ -30,12 +23,12 @@ struct LogView: View {
         .navigationTitle("Log Files")
         .navigationBarItems(
             trailing:
-                Button(action: {
-                    showingDeleteConfirmation = true
-                }) {
-                    Image(systemName: "trash")
-                }
-                .disabled(logFiles.isEmpty)
+            Button(action: {
+                showingDeleteConfirmation = true
+            }) {
+                Image(systemName: "trash")
+            }
+            .disabled(logFiles.isEmpty)
         )
         .alert("Delete All Logs", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
@@ -61,33 +54,33 @@ struct LogView: View {
         ) {
             let logFiles =
                 logURLs
-                .filter { $0.pathExtension == "log" }
-                .map { url -> LogFile in
-                    let fileName = url.lastPathComponent
-                    let components = fileName.components(separatedBy: "_")
+                    .filter { $0.pathExtension == "log" }
+                    .map { url -> LogFile in
+                        let fileName = url.lastPathComponent
+                        let components = fileName.components(separatedBy: "_")
 
-                    // First component is the service name (e.g., "bitkit" or "ldk")
-                    let serviceName = components.first?.capitalized ?? "Unknown"
+                        // First component is the service name (e.g., "bitkit" or "ldk")
+                        let serviceName = components.first?.capitalized ?? "Unknown"
 
-                    // Format the date from the timestamp component (should be near the end)
-                    let timestamp = components.count >= 3 ? components[components.count - 2] : ""
+                        // Format the date from the timestamp component (should be near the end)
+                        let timestamp = components.count >= 3 ? components[components.count - 2] : ""
 
-                    // Create a display name showing service and date
-                    let displayName = "\(serviceName) Log: \(timestamp)"
+                        // Create a display name showing service and date
+                        let displayName = "\(serviceName) Log: \(timestamp)"
 
-                    return LogFile(displayName: displayName, url: url)
-                }
-                .sorted { (lhs, rhs) -> Bool in
-                    // Try to get creation dates, fall back to modification dates if needed
-                    let lhsResourceValues = try? lhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
-                    let rhsResourceValues = try? rhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                        return LogFile(displayName: displayName, url: url)
+                    }
+                    .sorted { lhs, rhs -> Bool in
+                        // Try to get creation dates, fall back to modification dates if needed
+                        let lhsResourceValues = try? lhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                        let rhsResourceValues = try? rhs.url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
 
-                    let lhsDate = lhsResourceValues?.creationDate ?? lhsResourceValues?.contentModificationDate ?? Date.distantPast
-                    let rhsDate = rhsResourceValues?.creationDate ?? rhsResourceValues?.contentModificationDate ?? Date.distantPast
+                        let lhsDate = lhsResourceValues?.creationDate ?? lhsResourceValues?.contentModificationDate ?? Date.distantPast
+                        let rhsDate = rhsResourceValues?.creationDate ?? rhsResourceValues?.contentModificationDate ?? Date.distantPast
 
-                    // Sort descending (newest first)
-                    return lhsDate > rhsDate
-                }
+                        // Sort descending (newest first)
+                        return lhsDate > rhsDate
+                    }
 
             files.append(contentsOf: logFiles)
         }
@@ -139,9 +132,9 @@ struct LogContentView: View {
         .navigationTitle(logFile.displayName)
         .navigationBarItems(
             trailing:
-                Button(action: { showShareSheet = true }) {
-                    Image(systemName: "square.and.arrow.up")
-                }
+            Button(action: { showShareSheet = true }) {
+                Image(systemName: "square.and.arrow.up")
+            }
         )
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [prepareFileForSharing(logFile.url)])

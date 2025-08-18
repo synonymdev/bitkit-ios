@@ -28,8 +28,7 @@ func getDefaultOptions(for type: WidgetType) -> Any {
 }
 
 // Empty options for widgets that don't have customization yet
-struct EmptyWidgetOptions: Codable, Equatable {
-}
+struct EmptyWidgetOptions: Codable, Equatable {}
 
 // MARK: - Widget Metadata
 
@@ -39,9 +38,9 @@ struct WidgetMetadata {
     let icon: String
 
     init(type: WidgetType, fiatSymbol: String = "$") {
-        self.name = localizedString("widgets__\(type.rawValue)__name")
-        self.description = localizedString("widgets__\(type.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
-        self.icon = "\(type.rawValue)-widget"
+        name = localizedString("widgets__\(type.rawValue)__name")
+        description = localizedString("widgets__\(type.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
+        icon = "\(type.rawValue)-widget"
     }
 }
 
@@ -144,12 +143,12 @@ struct PlaceholderWidget: View {
 // MARK: - Widget Types
 
 enum WidgetType: String, CaseIterable, Codable {
-    case price = "price"
-    case news = "news"
-    case blocks = "blocks"
-    case facts = "facts"
-    case calculator = "calculator"
-    case weather = "weather"
+    case price
+    case news
+    case blocks
+    case facts
+    case calculator
+    case weather
 }
 
 // MARK: - WidgetsViewModel
@@ -159,7 +158,7 @@ class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
     // Single AppStorage key for widgets with their options
-    @AppStorage("savedWidgets") private var savedWidgetsData: Data = Data()
+    @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
 
     // In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
@@ -203,8 +202,8 @@ class WidgetsViewModel: ObservableObject {
     /// Reorder widgets
     func reorderWidgets(from sourceIndex: Int, to destinationIndex: Int) {
         guard sourceIndex != destinationIndex,
-            sourceIndex >= 0, sourceIndex < savedWidgets.count,
-            destinationIndex >= 0, destinationIndex < savedWidgets.count
+              sourceIndex >= 0, sourceIndex < savedWidgets.count,
+              destinationIndex >= 0, destinationIndex < savedWidgets.count
         else { return }
 
         let savedWidget = savedWidgetsWithOptions.remove(at: sourceIndex)
@@ -229,8 +228,8 @@ class WidgetsViewModel: ObservableObject {
     func getOptions<T: Codable>(for type: WidgetType, as optionsType: T.Type) -> T {
         // Find the saved widget with this type
         if let savedWidget = savedWidgetsWithOptions.first(where: { $0.type == type }),
-            let optionsData = savedWidget.optionsData,
-            let options = try? JSONDecoder().decode(optionsType, from: optionsData)
+           let optionsData = savedWidget.optionsData,
+           let options = try? JSONDecoder().decode(optionsType, from: optionsData)
         {
             return options
         }
@@ -240,7 +239,7 @@ class WidgetsViewModel: ObservableObject {
     }
 
     /// Save options for a specific widget type
-    func saveOptions<T: Codable>(_ options: T, for type: WidgetType) {
+    func saveOptions(_ options: some Codable, for type: WidgetType) {
         do {
             let optionsData = try JSONEncoder().encode(options)
 

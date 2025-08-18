@@ -26,13 +26,13 @@ struct RectangleButton: View {
 
     private var backgroundColor: Color {
         if isPressed {
-            return .white.opacity(0.16)  // white16
+            return .white.opacity(0.16) // white16
         }
-        return .white.opacity(0.1)  // white10
+        return .white.opacity(0.1) // white10
     }
 
     var body: some View {
-        if let action = action {
+        if let action {
             Button {
                 guard !isLoading, !isDisabled else { return }
 
@@ -76,7 +76,7 @@ struct RectangleButton: View {
 
             Spacer(minLength: 0)
 
-            if let trailingContent = trailingContent {
+            if let trailingContent {
                 trailingContent
             }
         }

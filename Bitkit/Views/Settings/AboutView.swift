@@ -12,7 +12,8 @@ struct AboutView: View {
     private var shareText: String {
         return localizedString(
             "settings__about__shareText",
-            variables: ["appStoreUrl": Env.appStoreUrl, "playStoreUrl": Env.playStoreUrl])
+            variables: ["appStoreUrl": Env.appStoreUrl, "playStoreUrl": Env.playStoreUrl]
+        )
     }
 
     var body: some View {

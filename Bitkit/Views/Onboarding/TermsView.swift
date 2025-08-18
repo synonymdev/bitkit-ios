@@ -1,10 +1,3 @@
-//
-//  TermsView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/12/11.
-//
-
 import SwiftUI
 
 private struct ScrollViewShadow: View {

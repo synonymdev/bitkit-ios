@@ -1,10 +1,3 @@
-//
-//  UIScreen.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import UIKit
 
 extension UIScreen {

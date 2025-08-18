@@ -30,7 +30,7 @@ struct WidgetEditView: View {
     }
 
     private func getItems() -> [WidgetEditItem] {
-        guard let editLogic = editLogic else { return [] }
+        guard let editLogic else { return [] }
         return WidgetEditItemFactory.getItems(
             for: id,
             blocksViewModel: blocksViewModel,

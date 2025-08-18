@@ -215,8 +215,8 @@ struct CalculatorWidget: View {
     private func sanitizeFiatInput(_ input: String) -> String {
         let processed =
             input
-            .replacingOccurrences(of: ",", with: ".")
-            .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: ",", with: ".")
+                .replacingOccurrences(of: " ", with: "")
 
         let components = processed.components(separatedBy: ".")
         if components.count > 2 {
@@ -288,8 +288,8 @@ struct CalculatorWidget: View {
         // Convert comma to dot and remove spaces
         let processed =
             input
-            .replacingOccurrences(of: ",", with: ".")
-            .replacingOccurrences(of: " ", with: "")
+                .replacingOccurrences(of: ",", with: ".")
+                .replacingOccurrences(of: " ", with: "")
 
         // Check if input matches valid pattern: digits, optional dot, up to 2 decimal digits
         let validPattern = "^\\d*\\.?\\d{0,2}$"

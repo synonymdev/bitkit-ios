@@ -1,10 +1,3 @@
-//
-//  NodeStatus.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/04.
-//
-
 import Foundation
 import LDKNode
 import SwiftUI
@@ -12,9 +5,9 @@ import SwiftUI
 extension NodeStatus {
     var debugState: String {
         var debug = """
-            Running: \(isRunning ? "✅" : "❌")
-            Current best block \(currentBestBlock.height)
-            """
+        Running: \(isRunning ? "✅" : "❌")
+        Current best block \(currentBestBlock.height)
+        """
 
         if let latestLightningWalletSyncTimestamp {
             debug += "\nLightning synced \(Date(timeIntervalSince1970: TimeInterval(latestLightningWalletSyncTimestamp)).description)\n"
@@ -43,7 +36,7 @@ extension NodeLifecycleState {
             return "warning"
         }
     }
-    
+
     var statusColor: Color {
         switch self {
         case .running:

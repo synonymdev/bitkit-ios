@@ -63,7 +63,7 @@ class AppUpdateService: ObservableObject {
     /// Get the current app build number
     private func getCurrentBuildNumber() -> Int {
         guard let buildString = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
-            let buildNumber = Int(buildString)
+              let buildNumber = Int(buildString)
         else {
             Logger.error("Could not get current build number", context: "AppUpdateService")
             return 0

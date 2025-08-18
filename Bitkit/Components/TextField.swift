@@ -10,7 +10,7 @@ struct TextField: View {
         self.placeholder = placeholder
         self.backgroundColor = backgroundColor
         self.font = font
-        self._text = text
+        _text = text
     }
 
     var body: some View {

@@ -78,8 +78,8 @@ struct BackupMnemonicView: View {
                     ) {
                         let route =
                             passphrase.isEmpty
-                            ? BackupRoute.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase)
-                            : BackupRoute.passphrase(mnemonic: mnemonic, passphrase: passphrase)
+                                ? BackupRoute.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase)
+                                : BackupRoute.passphrase(mnemonic: mnemonic, passphrase: passphrase)
                         navigationPath.append(route)
                     }
                 }
@@ -105,10 +105,11 @@ struct BackupMnemonicView: View {
                 app.toast(
                     type: .error,
                     title: localizedString("security__mnemonic_error"),
-                    description: localizedString("security__mnemonic_error_description"))
+                    description: localizedString("security__mnemonic_error_description")
+                )
             }
 
-            self.passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0)) ?? ""
+            passphrase = try Keychain.loadString(key: .bip39Passphrase(index: 0)) ?? ""
         } catch {
             app.toast(
                 type: .error,

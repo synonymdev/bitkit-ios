@@ -5,7 +5,7 @@ import UIKit
 struct BottomSafeAreaPadding: ViewModifier {
     var hasHomeIndicator: Bool {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-            let window = windowScene.windows.first
+              let window = windowScene.windows.first
         else {
             return false
         }

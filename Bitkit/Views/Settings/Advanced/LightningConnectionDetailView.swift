@@ -71,10 +71,12 @@ struct LightningConnectionDetailView: View {
                             Divider().padding(.horizontal, 16)
                             DetailRow(
                                 label: NSLocalizedString("lightning__transaction", comment: ""),
-                                value: truncateString(order.payment.onchain.address, length: 16))
+                                value: truncateString(order.payment.onchain.address, length: 16)
+                            )
                             Divider().padding(.horizontal, 16)
                             DetailRow(
-                                label: NSLocalizedString("lightning__order_fee", comment: ""), value: "₿ \(formatNumber(order.feeSat))", isLast: true)
+                                label: NSLocalizedString("lightning__order_fee", comment: ""), value: "₿ \(formatNumber(order.feeSat))", isLast: true
+                            )
                         }
                     }
                 }
@@ -90,19 +92,23 @@ struct LightningConnectionDetailView: View {
                     VStack(spacing: 0) {
                         DetailRow(
                             label: NSLocalizedString("lightning__receiving_label", comment: ""),
-                            value: "₿ \(formatNumber(channel.inboundCapacityMsat / 1000))", isFirst: true)
+                            value: "₿ \(formatNumber(channel.inboundCapacityMsat / 1000))", isFirst: true
+                        )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
                             label: NSLocalizedString("lightning__spending_label", comment: ""),
-                            value: "₿ \(formatNumber(channel.outboundCapacityMsat / 1000))")
+                            value: "₿ \(formatNumber(channel.outboundCapacityMsat / 1000))"
+                        )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
                             label: NSLocalizedString("lightning__reserve_balance", comment: ""),
-                            value: "₿ \(formatNumber(channel.unspendablePunishmentReserve ?? 0))")
+                            value: "₿ \(formatNumber(channel.unspendablePunishmentReserve ?? 0))"
+                        )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
                             label: NSLocalizedString("lightning__total_size", comment: ""), value: "₿ \(formatNumber(channel.channelValueSats))",
-                            isLast: true)
+                            isLast: true
+                        )
                     }
                 }
 
@@ -136,16 +142,19 @@ struct LightningConnectionDetailView: View {
                             DetailRow(
                                 label: NSLocalizedString("lightning__opened_on", comment: ""),
                                 value: formattedDate,
-                                isFirst: true)
+                                isFirst: true
+                            )
                             Divider().padding(.horizontal, 16)
                             DetailRow(
                                 label: NSLocalizedString("lightning__channel_node_id", comment: ""),
-                                value: truncateString(channel.counterpartyNodeId.description, length: 16), isLast: true)
+                                value: truncateString(channel.counterpartyNodeId.description, length: 16), isLast: true
+                            )
                         } else {
                             DetailRow(
                                 label: NSLocalizedString("lightning__channel_node_id", comment: ""),
                                 value: truncateString(channel.counterpartyNodeId.description, length: 16),
-                                isFirst: true, isLast: true)
+                                isFirst: true, isLast: true
+                            )
                         }
                     }
                 }
@@ -264,7 +273,7 @@ struct LightningConnectionDetailView: View {
     }
 
     private func isValidDate(_ dateString: String?) -> Bool {
-        guard let dateString = dateString, !dateString.isEmpty else { return false }
+        guard let dateString, !dateString.isEmpty else { return false }
         return formatDate(dateString) != nil
     }
 

@@ -1,10 +1,3 @@
-//
-//  SwipeButton.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/11/20.
-//
-
 import SwiftUI
 
 struct SwipeButton: View {

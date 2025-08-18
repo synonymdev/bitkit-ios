@@ -14,7 +14,7 @@ struct LnurlChannel: View {
 
     // Parse the node URI to extract node, host, and port
     private var parsedUri: LnPeer {
-        guard let channelInfo = channelInfo else {
+        guard let channelInfo else {
             return LnPeer(nodeId: "", host: "", port: 0)
         }
 
@@ -164,11 +164,11 @@ struct LnurlChannel: View {
 
             await MainActor.run {
                 self.channelInfo = channelInfo
-                self.isLoadingChannelInfo = false
+                isLoadingChannelInfo = false
             }
         } catch {
             await MainActor.run {
-                self.isLoadingChannelInfo = false
+                isLoadingChannelInfo = false
             }
         }
     }

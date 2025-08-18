@@ -41,13 +41,13 @@ private struct ButtonLocationModifier: ViewModifier {
     }
 }
 
-extension View {
+public extension View {
     /// Tracks the location of a view in a specified coordinate space
     /// - Parameters:
     ///   - coordinateSpace: The name of the coordinate space to track the view in
     ///   - onLocationChanged: Callback when the view's location changes
     /// - Returns: A view that tracks its location in the specified coordinate space
-    public func trackButtonLocation(
+    func trackButtonLocation(
         in coordinateSpace: String,
         onLocationChanged: @escaping (CGRect) -> Void
     ) -> some View {
@@ -55,13 +55,14 @@ extension View {
             ButtonLocationModifier(
                 coordinateSpace: coordinateSpace,
                 onLocationChanged: onLocationChanged
-            ))
+            )
+        )
     }
 
     /// Tracks the location of a view in the default "dragSpace" coordinate space
     /// - Parameter onLocationChanged: Callback when the view's location changes
     /// - Returns: A view that tracks its location in the drag space
-    public func trackButtonLocation(onLocationChanged: @escaping (CGRect) -> Void) -> some View {
+    func trackButtonLocation(onLocationChanged: @escaping (CGRect) -> Void) -> some View {
         trackButtonLocation(in: "dragSpace", onLocationChanged: onLocationChanged)
     }
 }

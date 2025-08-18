@@ -1,12 +1,5 @@
-//
-//  ActivityRow.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/18.
-//
-
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 private struct TransactionStatusText: View {
     let txType: PaymentType
@@ -17,14 +10,14 @@ private struct TransactionStatusText: View {
     init(txType: PaymentType, activity: Activity) {
         self.txType = txType
         switch activity {
-        case .lightning(let ln):
-            self.isLightning = true
-            self.status = ln.status
-            self.confirmed = nil
-        case .onchain(let onchain):
-            self.isLightning = false
-            self.status = nil
-            self.confirmed = onchain.confirmed
+        case let .lightning(ln):
+            isLightning = true
+            status = ln.status
+            confirmed = nil
+        case let .onchain(onchain):
+            isLightning = false
+            status = nil
+            confirmed = onchain.confirmed
         }
     }
 
@@ -78,12 +71,11 @@ struct ActivityRow: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     private var formattedTime: String {
-        let timestamp: TimeInterval
-        switch item {
-        case .lightning(let activity):
-            timestamp = TimeInterval(activity.timestamp)
-        case .onchain(let activity):
-            timestamp = TimeInterval(activity.timestamp)
+        let timestamp = switch item {
+        case let .lightning(activity):
+            TimeInterval(activity.timestamp)
+        case let .onchain(activity):
+            TimeInterval(activity.timestamp)
         }
 
         return DateFormatterHelpers.formatActivityTime(UInt64(timestamp))
@@ -91,9 +83,9 @@ struct ActivityRow: View {
 
     private var amountPrefix: String {
         switch item {
-        case .lightning(let activity):
+        case let .lightning(activity):
             return activity.txType == .sent ? "-" : "+"
-        case .onchain(let activity):
+        case let .onchain(activity):
             return activity.txType == .sent ? "-" : "+"
         }
     }
@@ -101,9 +93,9 @@ struct ActivityRow: View {
     @ViewBuilder
     private var amountView: some View {
         switch item {
-        case .lightning(let activity):
+        case let .lightning(activity):
             MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
-        case .onchain(let activity):
+        case let .onchain(activity):
             MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
         }
     }
@@ -114,21 +106,21 @@ struct ActivityRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 switch item {
-                case .lightning(let activity):
+                case let .lightning(activity):
                     TransactionStatusText(txType: activity.txType, activity: item)
-                case .onchain(let activity):
+                case let .onchain(activity):
                     TransactionStatusText(txType: activity.txType, activity: item)
                 }
 
                 // Show message if available, otherwise show time
                 switch item {
-                case .lightning(let activity):
+                case let .lightning(activity):
                     if !activity.message.isEmpty {
                         CaptionBText(activity.message)
                     } else {
                         CaptionBText(formattedTime)
                     }
-                case .onchain(_):
+                case .onchain:
                     CaptionBText(formattedTime)
                 }
             }

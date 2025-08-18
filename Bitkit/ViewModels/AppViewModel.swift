@@ -1,10 +1,3 @@
-//
-//  AppViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/10.
-//
-
 import BitkitCore
 import LDKNode
 import Network
@@ -56,10 +49,10 @@ class AppViewModel: ObservableObject {
 
     // Network status
     enum NetworkStatus: String {
-        case wifi = "wifi"
-        case cellular = "cellular"
-        case offline = "offline"
-        case unknown = "unknown"
+        case wifi
+        case cellular
+        case offline
+        case unknown
     }
 
     @Published var networkStatus: NetworkStatus = .unknown
@@ -85,8 +78,8 @@ class AppViewModel: ObservableObject {
 
         // Start network monitoring
         networkMonitor.pathUpdateHandler = { [weak self] path in
-            guard let self = self else { return }
-            Logger.debug("Network path updated - Status: \(path.status), Interface Types: \(path.availableInterfaces.map { $0.type })")
+            guard let self else { return }
+            Logger.debug("Network path updated - Status: \(path.status), Interface Types: \(path.availableInterfaces.map(\.type))")
             DispatchQueue.main.async {
                 if path.status == .satisfied {
                     if path.usesInterfaceType(.wifi) {
@@ -187,14 +180,14 @@ extension AppViewModel {
 
         switch data {
         // BIP21 (Unified) invoice handling
-        case .onChain(let invoice):
+        case let .onChain(invoice):
             if let lnInvoice = invoice.params?["lightning"] {
                 guard lightningService.status?.isRunning == true else {
                     toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                     return
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
-                if case .lightning(let lightningInvoice) = try await decode(invoice: lnInvoice) {
+                if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
@@ -204,7 +197,7 @@ extension AppViewModel {
 
             // No LN invoice found, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
-        case .lightning(let invoice):
+        case let .lightning(invoice):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
@@ -216,23 +209,19 @@ extension AppViewModel {
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
             }
-        case .lnurlPay(data: let lnurlPayData):
+        case let .lnurlPay(data: lnurlPayData):
             Logger.debug("LNURL: \(lnurlPayData)")
             handleLnurlPayInvoice(lnurlPayData)
-            break
-        case .lnurlWithdraw(data: let lnurlWithdrawData):
+        case let .lnurlWithdraw(data: lnurlWithdrawData):
             Logger.debug("LNURL: \(lnurlWithdrawData)")
             handleLnurlWithdraw(lnurlWithdrawData)
-            break
-        case .lnurlChannel(data: let lnurlChannelData):
+        case let .lnurlChannel(data: lnurlChannelData):
             Logger.debug("LNURL: \(lnurlChannelData)")
             handleLnurlChannel(lnurlChannelData)
-            break
-        case .lnurlAuth(data: let lnurlAuthData):
+        case let .lnurlAuth(data: lnurlAuthData):
             Logger.debug("LNURL: \(lnurlAuthData)")
             handleLnurlAuth(lnurlAuthData, lnurl: uri)
-            break
-        case .nodeId(let url, let network):
+        case let .nodeId(url, network):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
@@ -241,7 +230,6 @@ extension AppViewModel {
             // TODO: add network check
 
             handleNodeUri(url, network)
-            break
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
@@ -363,12 +351,12 @@ extension AppViewModel {
     }
 
     func resetSendState() {
-        self.scannedLightningInvoice = nil
-        self.scannedOnchainInvoice = nil
-        self.selectedWalletToPayFrom = .onchain // Reset to default
-        self.lnurlPayData = nil
-        self.lnurlWithdrawData = nil
-        self.scannedLightningBolt11Invoice = nil
+        scannedLightningInvoice = nil
+        scannedOnchainInvoice = nil
+        selectedWalletToPayFrom = .onchain // Reset to default
+        lnurlPayData = nil
+        lnurlWithdrawData = nil
+        scannedLightningBolt11Invoice = nil
     }
 }
 
@@ -377,9 +365,8 @@ extension AppViewModel {
 extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let customRecords):
+        case let .paymentReceived(paymentId, paymentHash, amountMsat, customRecords):
             sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
-            break
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
@@ -390,17 +377,16 @@ extension AppViewModel {
             } else {
                 toast(type: .error, title: "Channel opened", description: "Ready to send")
             }
-            break
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
+        case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
             // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.
             break
         case .paymentClaimable:
             break
         case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
             break
-        case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
+        case .paymentForwarded:
             break
         }
     }

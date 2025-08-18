@@ -101,8 +101,8 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
-        self.action = nil
-        self.destination = nil
+        action = nil
+        destination = nil
     }
 
     // Trailing closure initializer
@@ -124,11 +124,11 @@ struct CustomButton: View {
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
         self.action = action
-        self.destination = nil
+        destination = nil
     }
 
     // Navigation link initializer
-    init<D: View>(
+    init(
         title: String,
         variant: Variant = .primary,
         size: Size = .large,
@@ -136,7 +136,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
-        destination: D
+        destination: some View
     ) {
         self.title = title
         self.variant = variant
@@ -145,7 +145,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
-        self.action = nil
+        action = nil
         self.destination = AnyView(destination)
     }
 
@@ -222,7 +222,7 @@ struct CustomButton: View {
 
     var body: some View {
         Group {
-            if let destination = destination {
+            if let destination {
                 NavigationLink(destination: destination) {
                     buttonContent
                 }
@@ -240,8 +240,9 @@ struct CustomButton: View {
                         if !isDisabled {
                             Haptics.play(.buttonTap)
                         }
-                    })
-            } else if let action = action {
+                    }
+                )
+            } else if let action {
                 Button {
                     guard !isLoading, !isDisabled else { return }
 
@@ -271,7 +272,7 @@ struct CustomButton: View {
 
     private var buttonContent: some View {
         HStack(spacing: 8) {
-            if let icon = icon, !isLoading {
+            if let icon, !isLoading {
                 icon
             }
 
@@ -294,7 +295,7 @@ struct CustomButton: View {
         .cornerRadius(size.cornerRadius)
         .overlay(
             Group {
-                if let borderColor = borderColor {
+                if let borderColor {
                     RoundedRectangle(cornerRadius: size.cornerRadius)
                         .stroke(borderColor, lineWidth: 2)
                 }

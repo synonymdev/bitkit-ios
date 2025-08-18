@@ -65,7 +65,7 @@ struct BackupConfirmMnemonic: View {
                         title: localizedString("common__continue"),
                         isDisabled: selectedWords != mnemonic,
                     ) {
-                        if let passphrase = passphrase, !passphrase.isEmpty {
+                        if let passphrase, !passphrase.isEmpty {
                             navigationPath.append(.confirmPassphrase(passphrase: passphrase))
                         } else {
                             navigationPath.append(.reminder)
@@ -91,8 +91,8 @@ struct BackupConfirmMnemonic: View {
         if pressedIndices.contains(index) {
             // Only allow unselecting if it's the last incorrect word
             if let wordIndex = selectedWords.firstIndex(of: word),
-                wordIndex == selectedWords.count - 1, // Must be the last word
-                selectedWords[wordIndex] != mnemonic[wordIndex]
+               wordIndex == selectedWords.count - 1, // Must be the last word
+               selectedWords[wordIndex] != mnemonic[wordIndex]
             {
                 selectedWords.removeLast()
                 pressedIndices.remove(index)
