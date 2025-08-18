@@ -1,10 +1,3 @@
-//
-//  NodeStateView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/04.
-//
-
 import LDKNode
 import SwiftUI
 
@@ -12,12 +5,12 @@ import SwiftUI
 extension LightningBalance {
     var channelIdString: String {
         switch self {
-        case .contentiousClaimable(let channelId, _, _, _, _, _),
-            .maybePreimageClaimableHtlc(let channelId, _, _, _, _),
-            .counterpartyRevokedOutputClaimable(let channelId, _, _),
-            .claimableOnChannelClose(let channelId, _, _, _, _, _, _, _),
-            .claimableAwaitingConfirmations(let channelId, _, _, _, _),
-            .maybeTimeoutClaimableHtlc(let channelId, _, _, _, _, _):
+        case let .contentiousClaimable(channelId, _, _, _, _, _),
+             let .maybePreimageClaimableHtlc(channelId, _, _, _, _),
+             let .counterpartyRevokedOutputClaimable(channelId, _, _),
+             let .claimableOnChannelClose(channelId, _, _, _, _, _, _, _),
+             let .claimableAwaitingConfirmations(channelId, _, _, _, _),
+             let .maybeTimeoutClaimableHtlc(channelId, _, _, _, _, _):
             return channelId
         }
     }
@@ -29,7 +22,7 @@ struct IdentifiableLightningBalance: Identifiable {
     let balance: LightningBalance
 
     init(_ balance: LightningBalance) {
-        self.id = balance.channelIdString
+        id = balance.channelIdString
         self.balance = balance
     }
 }
@@ -225,7 +218,7 @@ struct LightningBalanceRow: View {
     private var balanceTypeString: String {
         switch balance {
         case .claimableOnChannelClose: return "Claimable on Channel Close"
-        case .claimableAwaitingConfirmations(_, _, _, let confirmationHeight, _):
+        case let .claimableAwaitingConfirmations(_, _, _, confirmationHeight, _):
             return "Claimable Awaiting Confirmations (Height: \(confirmationHeight))"
         case .contentiousClaimable: return "Contentious Claimable"
         case .maybeTimeoutClaimableHtlc: return "Maybe Timeout Claimable HTLC"
@@ -236,12 +229,12 @@ struct LightningBalanceRow: View {
 
     private var amountString: String {
         switch balance {
-        case .claimableOnChannelClose(_, _, let amount, _, _, _, _, _),
-            .claimableAwaitingConfirmations(_, _, let amount, _, _),
-            .contentiousClaimable(_, _, let amount, _, _, _),
-            .maybeTimeoutClaimableHtlc(_, _, let amount, _, _, _),
-            .maybePreimageClaimableHtlc(_, _, let amount, _, _),
-            .counterpartyRevokedOutputClaimable(_, _, let amount):
+        case let .claimableOnChannelClose(_, _, amount, _, _, _, _, _),
+             let .claimableAwaitingConfirmations(_, _, amount, _, _),
+             let .contentiousClaimable(_, _, amount, _, _, _),
+             let .maybeTimeoutClaimableHtlc(_, _, amount, _, _, _),
+             let .maybePreimageClaimableHtlc(_, _, amount, _, _),
+             let .counterpartyRevokedOutputClaimable(_, _, amount):
             return "\(amount)"
         }
     }

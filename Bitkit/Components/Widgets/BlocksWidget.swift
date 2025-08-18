@@ -17,7 +17,7 @@ struct BlocksWidgetOptions: Codable, Equatable {
 /// A widget that displays Bitcoin block information
 struct BlocksWidget: View {
     /// Configuration options for the widget
-    var options: BlocksWidgetOptions = BlocksWidgetOptions()
+    var options: BlocksWidgetOptions = .init()
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false

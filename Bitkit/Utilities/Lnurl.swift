@@ -27,12 +27,12 @@ private struct ChannelInfoResponse: Codable {
 
 // MARK: - HTTP Helper
 
-extension LnurlHelper {
+private extension LnurlHelper {
     /// Makes an HTTP GET request and returns the response data
     /// - Parameter url: The URL to request
     /// - Returns: The response data as a string
     /// - Throws: Network or parsing errors
-    fileprivate static func makeHttpGetRequest(url: URL) async throws -> String {
+    static func makeHttpGetRequest(url: URL) async throws -> String {
         Logger.debug("Making GET request to: \(url.absoluteString)")
 
         let (data, response) = try await URLSession.shared.data(from: url)
@@ -51,7 +51,8 @@ extension LnurlHelper {
             Logger.error("HTTP request failed with status \(httpResponse.statusCode), response: \(responseString)")
             throw NSError(
                 domain: "LNURL", code: httpResponse.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "HTTP request failed with status \(httpResponse.statusCode)"])
+                userInfo: [NSLocalizedDescriptionKey: "HTTP request failed with status \(httpResponse.statusCode)"]
+            )
         }
 
         Logger.debug("HTTP response: \(responseString)")
@@ -64,7 +65,7 @@ extension LnurlHelper {
     ///   - responseType: The type to decode to
     /// - Returns: The decoded response
     /// - Throws: Parsing or business logic errors
-    fileprivate static func parseJsonResponse<T: Codable>(_ responseString: String, as responseType: T.Type) throws -> T {
+    static func parseJsonResponse<T: Codable>(_ responseString: String, as responseType: T.Type) throws -> T {
         guard let jsonData = responseString.data(using: .utf8) else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert response to data"])
         }
@@ -78,7 +79,7 @@ extension LnurlHelper {
     ///   - queryItems: The query parameters to add
     /// - Returns: The constructed URL
     /// - Throws: URL construction errors
-    fileprivate static func buildUrl(baseUrl: String, queryItems: [URLQueryItem]) throws -> URL {
+    static func buildUrl(baseUrl: String, queryItems: [URLQueryItem]) throws -> URL {
         var urlComponents = URLComponents(string: baseUrl)
         urlComponents?.queryItems = queryItems
 
@@ -92,10 +93,10 @@ extension LnurlHelper {
     /// Handles LNURL error responses
     /// - Parameter response: The response containing status and optional reason
     /// - Throws: Error if status is "ERROR"
-    fileprivate static func handleLnurlError<T>(_ response: T) throws where T: Codable {
+    static func handleLnurlError(_ response: some Codable) throws {
         // Check if the response has a status field that indicates an error
         if let errorResponse = response as? LnurlWithdrawResponse,
-            errorResponse.status == "ERROR"
+           errorResponse.status == "ERROR"
         {
             let errorMessage = errorResponse.reason ?? "Unknown error"
             Logger.error("LNURL request failed: \(errorMessage)")
@@ -103,7 +104,7 @@ extension LnurlHelper {
         }
 
         if let errorResponse = response as? LnurlChannelResponse,
-            errorResponse.status == "ERROR"
+           errorResponse.status == "ERROR"
         {
             let errorMessage = errorResponse.reason ?? "Unknown error"
             Logger.error("LNURL request failed: \(errorMessage)")
@@ -127,11 +128,11 @@ struct LnurlHelper {
         comment: String? = nil
     ) async throws -> String {
         var queryItems = [
-            URLQueryItem(name: "amount", value: String(amount * 1000)) // Convert to millisatoshis
+            URLQueryItem(name: "amount", value: String(amount * 1000)), // Convert to millisatoshis
         ]
 
         // Add comment if provided
-        if let comment = comment, !comment.isEmpty {
+        if let comment, !comment.isEmpty {
             queryItems.append(URLQueryItem(name: "comment", value: comment))
         }
 

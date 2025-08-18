@@ -1,13 +1,6 @@
-//
-//  UtxoSelectionTests.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2025/06/12.
-//
-
 import BitkitCore
-import XCTest
 import LDKNode
+import XCTest
 
 @testable import Bitkit
 
@@ -69,14 +62,15 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Deposit address: \(depositAddress)", context: "UtxoSelectionTests")
 
         // Define different deposit amounts for 5 transactions
-        let depositAmounts: [UInt64] = [15_000, 25_000, 35_000, 45_000, 50_000] // Different amounts in sats
+        let depositAmounts: [UInt64] = [15000, 25000, 35000, 45000, 50000] // Different amounts in sats
         var totalExpectedAmount: UInt64 = 0
         var transactionIds: [String] = []
 
         // Fund the wallet with multiple transactions
         for (index, depositAmount) in depositAmounts.enumerated() {
             Logger.test(
-                "Depositing \(depositAmount) sats to wallet (transaction \(index + 1)/\(depositAmounts.count))", context: "UtxoSelectionTests")
+                "Depositing \(depositAmount) sats to wallet (transaction \(index + 1)/\(depositAmounts.count))", context: "UtxoSelectionTests"
+            )
             let txId = try await blocktank.regtestDepositFunds(address: depositAddress, amountSat: depositAmount)
             XCTAssertFalse(txId.isEmpty, "Transaction ID should not be empty")
             transactionIds.append(txId)
@@ -136,7 +130,8 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Ensure all deposit amounts were matched
         XCTAssertTrue(
-            remainingDepositAmounts.isEmpty, "Not all deposit amounts were matched. Remaining unmatched amounts: \(remainingDepositAmounts)")
+            remainingDepositAmounts.isEmpty, "Not all deposit amounts were matched. Remaining unmatched amounts: \(remainingDepositAmounts)"
+        )
         Logger.test("✓ All spendable outputs successfully matched with deposit amounts", context: "UtxoSelectionTests")
 
         // Test a transaction spending specific utxos
@@ -150,13 +145,14 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Selected \(utxosToSpend.count) UTXOs to spend:", context: "UtxoSelectionTests")
         for (index, utxo) in utxosToSpend.enumerated() {
             Logger.test(
-                "  UTXO \(index + 1): \(utxo.outpoint.txid):\(utxo.outpoint.vout) - \(utxo.valueSats) sats", context: "UtxoSelectionTests")
+                "  UTXO \(index + 1): \(utxo.outpoint.txid):\(utxo.outpoint.vout) - \(utxo.valueSats) sats", context: "UtxoSelectionTests"
+            )
         }
         Logger.test("Total amount from selected UTXOs: \(totalSelectedAmount) sats", context: "UtxoSelectionTests")
 
         // Send transaction spending only the selected UTXOs
         let destinationAddress = "bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
-        let sendAmount: UInt64 = 10_000 // Send 10,000 sats
+        let sendAmount: UInt64 = 10000 // Send 10,000 sats
         let feeRate: UInt32 = 1 // 1 sat/vbyte
 
         Logger.test("Sending \(sendAmount) sats to \(destinationAddress) using specific UTXOs", context: "UtxoSelectionTests")
@@ -213,7 +209,8 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Lightning node stopped successfully", context: "UtxoSelectionTests")
         Logger.test(
             "UTXO selection test completed successfully with \(depositAmounts.count) transactions totaling \(totalExpectedAmount) sats",
-            context: "UtxoSelectionTests")
+            context: "UtxoSelectionTests"
+        )
     }
 
     func testUtxoSelectionAlgorithms() async throws {
@@ -239,14 +236,15 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Deposit address: \(depositAddress)", context: "UtxoSelectionTests")
 
         // Define different deposit amounts for testing coin selection algorithms
-        let depositAmounts: [UInt64] = [5_000, 10_000, 20_000, 30_000, 50_000] // Different amounts in sats
+        let depositAmounts: [UInt64] = [5000, 10000, 20000, 30000, 50000] // Different amounts in sats
         var totalExpectedAmount: UInt64 = 0
 
         // Fund the wallet with multiple transactions
         for (index, depositAmount) in depositAmounts.enumerated() {
             Logger.test(
                 "Depositing \(depositAmount) sats to wallet (transaction \(index + 1)/\(depositAmounts.count))",
-                context: "UtxoSelectionTests")
+                context: "UtxoSelectionTests"
+            )
             let txId = try await blocktank.regtestDepositFunds(address: depositAddress, amountSat: depositAmount)
             XCTAssertFalse(txId.isEmpty, "Transaction ID should not be empty")
             totalExpectedAmount += depositAmount
@@ -277,7 +275,7 @@ final class UtxoSelectionTests: XCTestCase {
         XCTAssertEqual(allUtxos.count, depositAmounts.count, "Number of UTXOs should match number of deposits")
 
         // Test parameters
-        let targetAmountSats: UInt64 = 25_000 // Target amount for selection
+        let targetAmountSats: UInt64 = 25000 // Target amount for selection
         let feeRate: UInt32 = 1 // 1 sat/vbyte
 
         // Test each coin selection algorithm
@@ -298,16 +296,19 @@ final class UtxoSelectionTests: XCTestCase {
             let selectedAmount = selectedUtxos.reduce(0) { $0 + $1.valueSats }
             Logger.test(
                 "Algorithm \(algorithm) selected \(selectedUtxos.count) UTXOs with total amount: \(selectedAmount) sats",
-                context: "UtxoSelectionTests")
+                context: "UtxoSelectionTests"
+            )
 
             // Verify that the selected amount is sufficient for the target amount
             XCTAssertGreaterThanOrEqual(
-                selectedAmount, targetAmountSats, "Selected amount should be at least the target amount for algorithm \(algorithm)")
+                selectedAmount, targetAmountSats, "Selected amount should be at least the target amount for algorithm \(algorithm)"
+            )
 
             // Log details of selected UTXOs
             for (index, utxo) in selectedUtxos.enumerated() {
                 Logger.test(
-                    "  UTXO \(index + 1): \(utxo.outpoint.txid):\(utxo.outpoint.vout) - \(utxo.valueSats) sats", context: "UtxoSelectionTests")
+                    "  UTXO \(index + 1): \(utxo.outpoint.txid):\(utxo.outpoint.vout) - \(utxo.valueSats) sats", context: "UtxoSelectionTests"
+                )
             }
 
             Logger.test("✓ Algorithm \(algorithm) successfully selected UTXOs", context: "UtxoSelectionTests")
@@ -317,7 +318,7 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Testing algorithm-specific behaviors with different target amounts", context: "UtxoSelectionTests")
 
         // Test with small amount (should prefer smaller UTXOs)
-        let smallTargetAmount: UInt64 = 7_000
+        let smallTargetAmount: UInt64 = 7000
         let smallAmountUtxos = try await lightning.selectUtxosWithAlgorithm(
             targetAmountSats: smallTargetAmount,
             satsPerVbyte: feeRate,
@@ -327,7 +328,7 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Largest first for \(smallTargetAmount) sats selected \(smallAmountUtxos.count) UTXOs", context: "UtxoSelectionTests")
 
         // Test with large amount (might need multiple UTXOs)
-        let largeTargetAmount: UInt64 = 80_000
+        let largeTargetAmount: UInt64 = 80000
         let largeAmountUtxos = try await lightning.selectUtxosWithAlgorithm(
             targetAmountSats: largeTargetAmount,
             satsPerVbyte: feeRate,
@@ -343,14 +344,15 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Testing coin selection with subset of UTXOs", context: "UtxoSelectionTests")
         let subsetUtxos = Array(allUtxos.prefix(3)) // Use only first 3 UTXOs
         let subsetSelectedUtxos = try await lightning.selectUtxosWithAlgorithm(
-            targetAmountSats: 15_000,
+            targetAmountSats: 15000,
             satsPerVbyte: feeRate,
             coinSelectionAlgorythm: .branchAndBound,
             utxos: subsetUtxos
         )
         Logger.test(
             "Branch and bound with subset selected \(subsetSelectedUtxos.count) UTXOs from \(subsetUtxos.count) available",
-            context: "UtxoSelectionTests")
+            context: "UtxoSelectionTests"
+        )
 
         // Clean up by stopping the lightning node
         Logger.test("Stopping lightning node", context: "UtxoSelectionTests")

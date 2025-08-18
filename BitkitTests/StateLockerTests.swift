@@ -1,10 +1,3 @@
-//
-//  StateLockerTests.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/19.
-//
-
 import XCTest
 
 final class StateLockerTests: XCTestCase {
@@ -50,12 +43,12 @@ final class StateLockerTests: XCTestCase {
 
     func testLockExpiry() {
         // Inject a past date for quick testing
-        let pastDate = Date().addingTimeInterval(-3600)  // 1 hour ago
+        let pastDate = Date().addingTimeInterval(-3600) // 1 hour ago
         StateLocker.injectTestDate(pastDate)
 
         XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
 
-        StateLocker.injectTestDate(Date())  // Reset to current date
+        StateLocker.injectTestDate(Date()) // Reset to current date
         XCTAssertFalse(StateLocker.isLocked(.lightning))
     }
 
@@ -97,7 +90,7 @@ final class StateLockerTests: XCTestCase {
     }
 
     func testLockExpiryInDifferentEnvironments() {
-        let pastDate = Date().addingTimeInterval(-3600)  // 1 hour ago
+        let pastDate = Date().addingTimeInterval(-3600) // 1 hour ago
 
         // Set past date and lock in foreground app environment
         StateLocker.injectTestDate(pastDate)
@@ -106,7 +99,7 @@ final class StateLockerTests: XCTestCase {
 
         // Check lock status in push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
-        StateLocker.injectTestDate(Date())  // Reset to current date
+        StateLocker.injectTestDate(Date()) // Reset to current date
         XCTAssertFalse(StateLocker.isLocked(.lightning))
 
         // Attempt to lock in push notification extension environment
@@ -128,11 +121,11 @@ final class StateLockerTests: XCTestCase {
 
     func testLockSameEnvironment() {
         StateLocker.injectTestEnvironment(.foregroundApp)
-        
+
         // First lock
         XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
         XCTAssertTrue(StateLocker.isLocked(.lightning))
-        
+
         // Second lock attempt in same environment should succeed
         XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
         XCTAssertTrue(StateLocker.isLocked(.lightning))

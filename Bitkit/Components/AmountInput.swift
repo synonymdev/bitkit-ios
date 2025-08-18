@@ -54,13 +54,11 @@ struct AmountInput: View {
                 .opacity(0)
                 .onChange(of: satsAmount) { newValue in
                     if primaryDisplay == .bitcoin {
-                        let filtered = {
-                            if currency.displayUnit == .modern {
-                                newValue.filter { "0123456789".contains($0) }
-                            } else {
-                                newValue.filter { "0123456789.".contains($0) }
-                            }
-                        }()
+                        let filtered = if currency.displayUnit == .modern {
+                            newValue.filter { "0123456789".contains($0) }
+                        } else {
+                            newValue.filter { "0123456789.".contains($0) }
+                        }
 
                         // Limit to 8 decimal places for classic
                         if currency.displayUnit == .classic {
@@ -107,7 +105,7 @@ struct AmountInput: View {
 
                         // Only convert if we have a valid number
                         if !fiatAmount.isEmpty, let fiatDouble = Double(fiatAmount),
-                            let convertedSats = currency.convert(fiatAmount: fiatDouble)
+                           let convertedSats = currency.convert(fiatAmount: fiatDouble)
                         {
                             satsAmount = String(convertedSats)
                             triggerOnSatsChange(convertedSats)
@@ -215,7 +213,8 @@ struct AmountInput: View {
                     vm.primaryDisplay = .bitcoin
                     vm.displayUnit = .modern
                     return vm
-                }())
+                }()
+            )
 
         AmountInput(primaryDisplay: .constant(.bitcoin), showConversion: true) { _ in }
             .environmentObject(
@@ -224,7 +223,8 @@ struct AmountInput: View {
                     vm.primaryDisplay = .bitcoin
                     vm.displayUnit = .modern
                     return vm
-                }())
+                }()
+            )
 
         AmountInput(primaryDisplay: .constant(.fiat)) { _ in }
             .environmentObject(
@@ -233,7 +233,8 @@ struct AmountInput: View {
                     vm.primaryDisplay = .fiat
                     vm.selectedCurrency = "USD"
                     return vm
-                }())
+                }()
+            )
 
         AmountInput(primaryDisplay: .constant(.fiat), showConversion: true) { _ in }
             .environmentObject(
@@ -242,7 +243,8 @@ struct AmountInput: View {
                     vm.primaryDisplay = .fiat
                     vm.selectedCurrency = "USD"
                     return vm
-                }())
+                }()
+            )
     }
     .padding()
     .preferredColorScheme(.dark)

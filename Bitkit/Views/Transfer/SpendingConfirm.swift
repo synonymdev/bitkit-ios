@@ -137,7 +137,8 @@ private struct SpendingDetailRow: View {
                     let vm = TransferViewModel()
                     vm.onOrderCreated(order: IBtOrder.mock())
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }

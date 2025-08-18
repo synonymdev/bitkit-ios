@@ -60,7 +60,7 @@ struct RestoreWalletView: View {
         switch BIP39.validate(phrase: currentWords) {
         case .success:
             return nil
-        case .failure(let error):
+        case let .failure(error):
             return error
         }
     }
@@ -88,7 +88,7 @@ struct RestoreWalletView: View {
     }
 
     private var currentFocusedWord: String {
-        guard let focusedField = focusedField else { return "" }
+        guard let focusedField else { return "" }
         if focusedField == 0 {
             return firstFieldText
         }
@@ -222,7 +222,7 @@ struct RestoreWalletView: View {
         Group {
             if focusedField != nil {
                 SeedInputAccessory(currentWord: currentFocusedWord) { selectedWord in
-                    if let focusedField = focusedField {
+                    if let focusedField {
                         if focusedField == 0 {
                             firstFieldText = selectedWord
                         } else {
@@ -256,9 +256,9 @@ struct RestoreWalletView: View {
     private func handlePastedWords(_ pastedText: String) {
         let pastedWords =
             pastedText
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .components(separatedBy: .whitespaces)
-            .filter { !$0.isEmpty }
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .components(separatedBy: .whitespaces)
+                .filter { !$0.isEmpty }
 
         // Check if it's a valid 12 or 24 word phrase
         guard pastedWords.count == 12 || pastedWords.count == 24 else { return }

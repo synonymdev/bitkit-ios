@@ -30,10 +30,10 @@ private struct StatusItemView: View {
         case .running:
             // return "Running"
             return "Dummy Status"
-        case .required(let timestamp):
+        case let .required(timestamp):
             // return "Required"
             return "Dummy Status"
-        case .synced(let timestamp):
+        case let .synced(timestamp):
             // return "Synced"
             return "Dummy Status"
         }

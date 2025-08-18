@@ -1,10 +1,3 @@
-//
-//  NodeLifecycleState.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/04.
-//
-
 import LDKNode
 
 enum NodeLifecycleState: Equatable {
@@ -25,7 +18,7 @@ enum NodeLifecycleState: Equatable {
             return "Running"
         case .stopping:
             return "Stopping"
-        case .errorStarting(let cause):
+        case let .errorStarting(cause):
             return "Error starting: \(cause.localizedDescription)"
         case .initializing:
             return "Setting up wallet..."
@@ -52,12 +45,12 @@ enum NodeLifecycleState: Equatable {
     static func == (lhs: NodeLifecycleState, rhs: NodeLifecycleState) -> Bool {
         switch (lhs, rhs) {
         case (.stopped, .stopped),
-            (.starting, .starting),
-            (.running, .running),
-            (.stopping, .stopping),
-            (.initializing, .initializing):
+             (.starting, .starting),
+             (.running, .running),
+             (.stopping, .stopping),
+             (.initializing, .initializing):
             return true
-        case (.errorStarting(let lhsCause), .errorStarting(let rhsCause)):
+        case let (.errorStarting(lhsCause), .errorStarting(rhsCause)):
             return lhsCause.localizedDescription == rhsCause.localizedDescription
         default:
             return false

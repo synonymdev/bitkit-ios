@@ -165,7 +165,8 @@ struct Suggestions: View {
                 ) { card in
                     SuggestionCard(
                         data: card,
-                        onDismiss: { dismissCard(card) })
+                        onDismiss: { dismissCard(card) }
+                    )
                 }
                 .id("suggestions-\(filteredCards.count)-\(suggestionsManager.dismissedIds.count)")
                 .frame(height: cardSize)
@@ -179,7 +180,8 @@ struct Suggestions: View {
                         variables: [
                             "appStoreUrl": Env.appStoreUrl,
                             "playStoreUrl": Env.playStoreUrl,
-                        ])
+                        ]
+                    ),
                 ])
             }
         }
@@ -211,7 +213,7 @@ struct Suggestions: View {
             route = app.hasSeenTransferToSpendingIntro ? .fundingOptions : .transferIntro
         }
 
-        if let route = route {
+        if let route {
             navigation.navigate(route)
         }
     }

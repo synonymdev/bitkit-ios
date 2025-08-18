@@ -89,7 +89,8 @@ struct SpendingAmount: View {
                     vm.selectedCurrency = "USD"
                     vm.primaryDisplay = .fiat
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -107,7 +108,8 @@ struct SpendingAmount: View {
                     vm.selectedCurrency = "EUR"
                     vm.primaryDisplay = .fiat
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -125,7 +127,8 @@ struct SpendingAmount: View {
                     vm.primaryDisplay = .bitcoin
                     vm.displayUnit = .modern
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -143,7 +146,8 @@ struct SpendingAmount: View {
                     vm.primaryDisplay = .bitcoin
                     vm.displayUnit = .classic
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }

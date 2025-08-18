@@ -105,7 +105,7 @@ struct SecurityBiometrics: View {
     }
 
     private func handleBiometricError(_ error: Error?) {
-        guard let error = error else { return }
+        guard let error else { return }
 
         let nsError = error as NSError
 

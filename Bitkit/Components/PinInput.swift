@@ -1,10 +1,3 @@
-//
-//  PinInputView.swift
-//  Bitkit
-//
-//  Created by Assistant on 2024/12/19.
-//
-
 import SwiftUI
 
 struct PinInput: View {

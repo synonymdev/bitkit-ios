@@ -1,10 +1,3 @@
-//
-//  CoinSelectionSettingsView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/06/27.
-//
-
 import LDKNode
 import SwiftUI
 
@@ -30,11 +23,11 @@ extension CoinSelectionAlgorithm {
             return NSLocalizedString("settings__adv__cs_first_in_first_out", comment: "")
         case .singleRandomDraw:
             return "Single Random Draw" // TODO: add missing localized text
-        // Commented out unsupported algorithms
-        // case .smallestFirst:
-        //     return NSLocalizedString("settings__adv__cs_max", comment: "")
-        // case .consolidate:
-        //     return NSLocalizedString("settings__adv__cs_consolidate", comment: "")
+            // Commented out unsupported algorithms
+            // case .smallestFirst:
+            //     return NSLocalizedString("settings__adv__cs_max", comment: "")
+            // case .consolidate:
+            //     return NSLocalizedString("settings__adv__cs_consolidate", comment: "")
         }
     }
 
@@ -48,11 +41,11 @@ extension CoinSelectionAlgorithm {
             return NSLocalizedString("settings__adv__cs_first_in_first_out_description", comment: "")
         case .singleRandomDraw:
             return "Random selection for privacy" // TODO: add missing localized text
-        // Commented out unsupported algorithms
-        // case .smallestFirst:
-        //     return NSLocalizedString("settings__adv__cs_max_description", comment: "")
-        // case .consolidate:
-        //     return NSLocalizedString("settings__adv__cs_consolidate_description", comment: "")
+            // Commented out unsupported algorithms
+            // case .smallestFirst:
+            //     return NSLocalizedString("settings__adv__cs_max_description", comment: "")
+            // case .consolidate:
+            //     return NSLocalizedString("settings__adv__cs_consolidate_description", comment: "")
         }
     }
 

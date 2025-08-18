@@ -36,15 +36,17 @@ struct CustomSpeedView: View {
                                 "feeSats": String(totalFee),
                                 "fiatSymbol": fiatAmount.symbol,
                                 "fiatFormatted": fiatAmount.formatted,
-                            ])
+                            ]
+                        )
                     )
                 } else {
                     BodyMText(
                         localizedString(
                             "settings__general__speed_fee_total",
                             variables: [
-                                "feeSats": String(totalFee)
-                            ])
+                                "feeSats": String(totalFee),
+                            ]
+                        )
                     )
                 }
             }
@@ -72,7 +74,7 @@ struct CustomSpeedView: View {
         .bottomSafeAreaPadding()
         .onAppear {
             // Initialize from current setting if it's custom
-            if case .custom(let currentRate) = settings.defaultTransactionSpeed {
+            if case let .custom(currentRate) = settings.defaultTransactionSpeed {
                 feeRate = currentRate
             }
         }
@@ -90,11 +92,10 @@ struct CustomSpeedView: View {
             }
         } else {
             // Handle leading zero
-            let newString: String
-            if current == "0" {
-                newString = key
+            let newString: String = if current == "0" {
+                key
             } else {
-                newString = current + key
+                current + key
             }
 
             // Limit to 3 digits (max 999 sat/vB)

@@ -65,19 +65,19 @@ class CurrencyViewModel: ObservableObject {
         stopPolling()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.fxRateRefreshInterval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.refreshTask?.cancel()
-            self.refreshTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                await self.refresh()
+            guard let self else { return }
+            refreshTask?.cancel()
+            refreshTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                await refresh()
             }
         }
 
         // Initial refresh
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            await self.refresh()
+            guard let self else { return }
+            await refresh()
         }
     }
 

@@ -21,11 +21,11 @@ struct ActivityList: View {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(groupedItems, id: \.self) { groupItem in
                     switch groupItem {
-                    case .header(let title):
+                    case let .header(title):
                         CaptionMText(title)
                             .padding(.top)
 
-                    case .activity(let item):
+                    case let .activity(item):
                         NavigationLink(value: Route.activityDetail(item)) {
                             ActivityRow(item: item)
                         }
@@ -34,8 +34,8 @@ struct ActivityList: View {
 
                         // Add divider if not the last item in the group
                         if let nextIndex = activity.groupedActivities.firstIndex(of: groupItem),
-                            nextIndex + 1 < activity.groupedActivities.count,
-                            case .activity = activity.groupedActivities[nextIndex + 1]
+                           nextIndex + 1 < activity.groupedActivities.count,
+                           case .activity = activity.groupedActivities[nextIndex + 1]
                         {
                             Divider()
                         }

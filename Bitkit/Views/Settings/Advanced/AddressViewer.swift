@@ -1,10 +1,3 @@
-//
-//  AddressViewer.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/07/10.
-//
-
 import BitkitCore
 import SwiftUI
 
@@ -49,7 +42,7 @@ struct AddressViewer: View {
     // Get the index of the currently selected address
     private var selectedAddressIndex: Int {
         if !selectedAddress.isEmpty,
-            let index = addresses.firstIndex(where: { $0.address == selectedAddress })
+           let index = addresses.firstIndex(where: { $0.address == selectedAddress })
         {
             return index
         }
@@ -98,7 +91,6 @@ struct AddressViewer: View {
 
                     Spacer()
                 }
-
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 24)
@@ -111,7 +103,8 @@ struct AddressViewer: View {
                     .foregroundColor(.white64)
                 TextField(
                     NSLocalizedString("common__search", comment: ""), text: $searchText, backgroundColor: .clear,
-                    font: .custom(Fonts.regular, size: 17))
+                    font: .custom(Fonts.regular, size: 17)
+                )
             }
             .frame(height: 48)
             .padding(.horizontal)
@@ -293,7 +286,7 @@ struct AddressViewer: View {
             }
 
             // Automatically check balances for newly loaded addresses
-            await checkBalancesForNewAddresses(accountAddresses.unused.map { $0.address })
+            await checkBalancesForNewAddresses(accountAddresses.unused.map(\.address))
 
         } catch {
             await MainActor.run {
@@ -324,7 +317,7 @@ struct AddressViewer: View {
             }
 
             // Automatically check balances for newly loaded addresses
-            await checkBalancesForNewAddresses(accountAddresses.unused.map { $0.address })
+            await checkBalancesForNewAddresses(accountAddresses.unused.map(\.address))
 
         } catch {
             await MainActor.run {
@@ -340,7 +333,7 @@ struct AddressViewer: View {
         isLoadingBalances = true
 
         do {
-            let addressStrings = addresses.map { $0.address }
+            let addressStrings = addresses.map(\.address)
             let balances = try await CoreService.shared.utility.getMultipleAddressBalances(addresses: addressStrings)
 
             await MainActor.run {
@@ -404,7 +397,7 @@ struct AddressRow: View {
             Spacer()
 
             // Balance (only show if available)
-            if let balance = balance {
+            if let balance {
                 MoneyText(
                     sats: Int(balance),
                     size: .caption,

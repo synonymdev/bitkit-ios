@@ -1,10 +1,3 @@
-//
-//  ScenePhase.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/15.
-//
-
 import SwiftUI
 import UIKit
 
@@ -95,9 +88,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         backgroundTaskID = UIApplication.shared.beginBackgroundTask(withName: "StopLightningNode") {
             // This closure is called if the task expires
             Logger.debug("Background task for stopping Lightning node expired before completion")
-            if self.backgroundTaskID != .invalid {
-                UIApplication.shared.endBackgroundTask(self.backgroundTaskID)
-                self.backgroundTaskID = .invalid
+            if backgroundTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                backgroundTaskID = .invalid
             }
         }
 
@@ -114,7 +107,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                 Logger.debug("Background task ended after successful node stop")
             }
 
-            //If we're stopped and we're not in the background, we need to start again
+            // If we're stopped and we're not in the background, we need to start again
             if scenePhase == .active {
                 try await startNodeIfNeeded()
             }

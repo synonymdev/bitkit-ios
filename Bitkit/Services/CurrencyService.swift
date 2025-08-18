@@ -43,7 +43,7 @@ class CurrencyService {
 
     func loadCachedRates() -> [FxRate]? {
         guard let data = cache.data(forKey: cacheKey),
-            let rates = try? JSONDecoder().decode([FxRate].self, from: data)
+              let rates = try? JSONDecoder().decode([FxRate].self, from: data)
         else {
             return nil
         }
@@ -99,7 +99,7 @@ extension CurrencyService {
     }
 
     func getAvailableCurrencies(from rates: [FxRate]) -> [String] {
-        rates.map { $0.quote }
+        rates.map(\.quote)
     }
 
     func getCurrentRate(for currency: String, from rates: [FxRate]) -> FxRate? {

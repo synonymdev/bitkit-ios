@@ -1,10 +1,3 @@
-//
-//  BlocktankViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/12.
-//
-
 import BitkitCore
 import SwiftUI
 
@@ -57,19 +50,19 @@ class BlocktankViewModel: ObservableObject {
         stopPolling()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.blocktankOrderRefreshInterval, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.refreshTask?.cancel()
-            self.refreshTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                try? await self.refreshOrders()
+            guard let self else { return }
+            refreshTask?.cancel()
+            refreshTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await refreshOrders()
             }
         }
 
         // Initial refresh
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            try? await self.refreshOrders()
+            guard let self else { return }
+            try? await refreshOrders()
         }
     }
 
@@ -223,7 +216,7 @@ class BlocktankViewModel: ObservableObject {
 
         // Get current rates
         guard let rates = currencyService.loadCachedRates(),
-            let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
+              let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
         else {
             Logger.error("Failed to get EUR rate for lspBalance calculation")
             throw CustomServiceError.currencyRateUnavailable

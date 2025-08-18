@@ -26,12 +26,12 @@ class ActivityService {
 
             // Get all activities and delete them one by one
             let activities = try getActivities(
-                filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil)
+                filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil
+            )
             for activity in activities {
-                let id: String
-                switch activity {
-                case .lightning(let ln): id = ln.id
-                case .onchain(let on): id = on.id
+                let id: String = switch activity {
+                case let .lightning(ln): ln.id
+                case let .onchain(on): on.id
                 }
 
                 _ = try deleteActivityById(activityId: id)
@@ -53,17 +53,16 @@ class ActivityService {
 
             for payment in payments {
                 do {
-                    let state: BitkitCore.PaymentState
-                    switch payment.status {
+                    let state: BitkitCore.PaymentState = switch payment.status {
                     case .failed:
-                        state = .failed
+                        .failed
                     case .pending:
-                        state = .pending
+                        .pending
                     case .succeeded:
-                        state = .succeeded
+                        .succeeded
                     }
 
-                    if case .onchain(let txid, let txStatus) = payment.kind {
+                    if case let .onchain(txid, txStatus) = payment.kind {
                         // Check if this transaction was replaced by RBF and should be ignored
                         if ActivityService.replacedTransactions.contains(txid) {
                             Logger.debug("Ignoring replaced transaction \(txid) during sync", context: "CoreService.syncLdkNodePayments")
@@ -72,7 +71,7 @@ class ActivityService {
 
                         var isConfirmed = false
                         var confirmedTimestamp: UInt64?
-                        if case .confirmed(let blockHash, let height, let timestamp) = txStatus {
+                        if case let .confirmed(blockHash, height, timestamp) = txStatus {
                             isConfirmed = true
                             confirmedTimestamp = timestamp
                         }
@@ -87,7 +86,7 @@ class ActivityService {
                         // Get existing activity to preserve certain flags like isBoosted
                         let existingActivity = try getActivityById(activityId: payment.id)
                         let preservedIsBoosted =
-                            if case .onchain(let existing) = existingActivity {
+                            if case let .onchain(existing) = existingActivity {
                                 existing.isBoosted
                             } else {
                                 false
@@ -121,16 +120,16 @@ class ActivityService {
                             txId: txid,
                             value: value,
                             fee: (payment.feePaidMsat ?? 0) / 1000,
-                            feeRate: 1, //TODO: get from somewhere
+                            feeRate: 1, // TODO: get from somewhere
                             address: "todo_find_address",
                             confirmed: isConfirmed,
                             timestamp: timestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
-                            isTransfer: false, //TODO: handle when paying for order
+                            isTransfer: false, // TODO: handle when paying for order
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
-                            channelId: nil, //TODO: get from linked order
-                            transferTxId: nil, //TODO: get from linked order
+                            channelId: nil, // TODO: get from linked order
+                            transferTxId: nil, // TODO: get from linked order
                             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
                             updatedAt: timestamp
                         )
@@ -144,7 +143,7 @@ class ActivityService {
                             print(payment)
                             addedCount += 1
                         }
-                    } else if case .bolt11(let hash, let preimage, let secret, let description, let bolt11) = payment.kind {
+                    } else if case let .bolt11(hash, preimage, secret, description, bolt11) = payment.kind {
                         // Skip pending inbound payments, just means they created an invoice
                         guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
 
@@ -162,7 +161,7 @@ class ActivityService {
                             updatedAt: UInt64(payment.latestUpdateTimestamp)
                         )
 
-                        if (try getActivityById(activityId: payment.id)) != nil {
+                        if try (getActivityById(activityId: payment.id)) != nil {
                             try updateActivity(activityId: payment.id, activity: .lightning(ln))
                             updatedCount += 1
                         } else {
@@ -175,10 +174,10 @@ class ActivityService {
                     latestCaughtError = error
                 }
 
-                //case spontaneous(hash: PaymentHash, preimage: PaymentPreimage?)
+                // case spontaneous(hash: PaymentHash, preimage: PaymentPreimage?)
             }
 
-            //If any of the inserts failed, we want to throw the error up
+            // If any of the inserts failed, we want to throw the error up
             if let error = latestCaughtError {
                 throw error
             }
@@ -263,7 +262,7 @@ class ActivityService {
             }
 
             // Only onchain activities can be boosted
-            guard case .onchain(var onchainActivity) = existingActivity else {
+            guard case var .onchain(onchainActivity) = existingActivity else {
                 throw AppError(message: "Only onchain activities can be boosted", debugMessage: "Activity \(activityId) is not an onchain activity")
             }
 
@@ -310,7 +309,8 @@ class ActivityService {
                 // For RBF, delete the original activity since it's been replaced
                 // The new transaction will be synced automatically from LDK
                 Logger.debug(
-                    "Attempting to delete original activity \(activityId) before RBF replacement", context: "CoreService.boostOnchainTransaction")
+                    "Attempting to delete original activity \(activityId) before RBF replacement", context: "CoreService.boostOnchainTransaction"
+                )
 
                 // Use the proper delete function that returns a Bool
                 let deleteResult = try deleteActivityById(activityId: activityId)
@@ -353,18 +353,17 @@ class ActivityService {
                 let value = UInt64.random(in: 1000 ... 1_000_000) // Random sats between 1k and 1M
 
                 // Ensure that the activities are spread out over the last 30 days
-                let offset: UInt64
-                switch i % 4 {
+                let offset: UInt64 = switch i % 4 {
                 case 0: // Today
-                    offset = 0
+                    0
                 case 1: // Yesterday
-                    offset = 86400 // 24 hours * 60 minutes * 60 seconds
+                    86400 // 24 hours * 60 minutes * 60 seconds
                 case 2: // Last week
-                    offset = 604800 // 7 days * 24 hours * 60 minutes * 60 seconds
+                    604_800 // 7 days * 24 hours * 60 minutes * 60 seconds
                 case 3: // Last month
-                    offset = 2_629_800 // Approx. 30 days * 24 hours * 60 minutes * 60 seconds
+                    2_629_800 // Approx. 30 days * 24 hours * 60 minutes * 60 seconds
                 default:
-                    offset = 0
+                    0
                 }
 
                 let timestamp = timestamp - offset
@@ -394,7 +393,8 @@ class ActivityService {
                             preimage: Bool.random() ? "preimage\(i)" : nil,
                             createdAt: timestamp,
                             updatedAt: timestamp
-                        ))
+                        )
+                    )
                 } else {
                     id = "test-onchain-\(i)"
                     activity = .onchain(
@@ -416,7 +416,8 @@ class ActivityService {
                             transferTxId: nil,
                             createdAt: timestamp,
                             updatedAt: timestamp
-                        ))
+                        )
+                    )
                 }
 
                 // Insert activity
@@ -738,7 +739,7 @@ class UtilityService {
             }
 
             for await (address, balance) in group {
-                if let balance = balance {
+                if let balance {
                     balances[address] = balance
                 }
             }
@@ -768,9 +769,9 @@ class CoreService {
             try initDb(basePath: Env.bitkitCoreStorage(walletIndex: walletIndex).path)
         } completion: { result in
             switch result {
-            case .success(let value):
+            case let .success(value):
                 Logger.info("bitkit-core database init: \(value)", context: "CoreService")
-            case .failure(let error):
+            case let .failure(error):
                 Logger.error("bitkit-core database init failed: \(error)", context: "CoreService")
             }
         }
@@ -781,7 +782,7 @@ class CoreService {
             switch result {
             case .success():
                 Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")
-            case .failure(let error):
+            case let .failure(error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
         }

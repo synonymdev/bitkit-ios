@@ -1,10 +1,3 @@
-//
-//  AllActivityView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/18.
-//
-
 import SwiftUI
 
 struct AllActivityView: View {
@@ -74,7 +67,7 @@ struct AllActivityView: View {
                                     if horizontalAmount < -50 {
                                         // Swipe left - move to next tab
                                         if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
-                                            currentIndex < ActivityTab.allCases.count - 1
+                                           currentIndex < ActivityTab.allCases.count - 1
                                         {
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 selectedTab = ActivityTab.allCases[currentIndex + 1]
@@ -83,7 +76,7 @@ struct AllActivityView: View {
                                     } else if horizontalAmount > 50 {
                                         // Swipe right - move to previous tab
                                         if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
-                                            currentIndex > 0
+                                           currentIndex > 0
                                         {
                                             withAnimation(.easeInOut(duration: 0.2)) {
                                                 selectedTab = ActivityTab.allCases[currentIndex - 1]

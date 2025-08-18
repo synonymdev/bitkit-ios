@@ -70,7 +70,7 @@ struct ReportIssue: View {
 
             // Check response
             if let httpResponse = response as? HTTPURLResponse,
-                (200 ... 299).contains(httpResponse.statusCode)
+               (200 ... 299).contains(httpResponse.statusCode)
             {
                 // Success - reset form and show success screen
                 email = ""

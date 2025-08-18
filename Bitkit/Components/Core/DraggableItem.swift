@@ -156,7 +156,7 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
                     onDragChanged(dragOffset)
                 }
             }
-            .onEnded { gesture in
+            .onEnded { _ in
                 if isDragging && shouldHandleDrag {
                     let verticalOffset = CGSize(width: 0, height: dragOffset.height)
                     onDragEnded(verticalOffset)

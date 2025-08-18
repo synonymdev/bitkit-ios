@@ -1,10 +1,3 @@
-//
-//  Keychain.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2024/07/29.
-//
-
 import XCTest
 
 final class KeychainTests: XCTestCase {
@@ -18,8 +11,8 @@ final class KeychainTests: XCTestCase {
 
     func testKeychain() throws {
         let testMnemonic =
-            "test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999)) test\(Int.random(in: 0...99999))"
-        let testPassphrase = "testpasshrase\(Int.random(in: 0...99999))"
+            "test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999)) test\(Int.random(in: 0 ... 99999))"
+        let testPassphrase = "testpasshrase\(Int.random(in: 0 ... 99999))"
 
         // Write
         try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: testMnemonic)

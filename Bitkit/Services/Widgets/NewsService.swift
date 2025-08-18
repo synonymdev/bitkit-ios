@@ -117,8 +117,8 @@ class NewsService {
         // Get a random article from the last 10
         let recentArticles =
             articles
-            .sorted { $0.published > $1.published }
-            .prefix(10)
+                .sorted { $0.published > $1.published }
+                .prefix(10)
 
         guard let article = recentArticles.randomElement() else {
             Logger.error("No articles available after filtering")

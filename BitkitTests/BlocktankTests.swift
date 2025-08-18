@@ -1,12 +1,5 @@
-//
-//  BlocktankTests.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2024/08/28.
-//
-
-import XCTest
 import BitkitCore
+import XCTest
 
 @testable import Bitkit
 
@@ -59,10 +52,10 @@ final class BlocktankTests: XCTestCase {
 
     func testCreateCjitOrder() async throws {
         // Test creating a CJIT order
-        let channelSizeSat: UInt64 = 100_000  // 100k sats
-        let invoiceSat: UInt64 = 10_000  // 10k sats for the invoice
+        let channelSizeSat: UInt64 = 100_000 // 100k sats
+        let invoiceSat: UInt64 = 10000 // 10k sats for the invoice
         let invoiceDescription = "Test CJIT order"
-        let nodeId = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad"  // Example node ID
+        let nodeId = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad" // Example node ID
         let channelExpiryWeeks: UInt32 = 6
         let options = CreateCjitOptions(source: "bitkit", discountCode: nil)
 

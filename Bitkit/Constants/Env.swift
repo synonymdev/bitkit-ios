@@ -1,10 +1,3 @@
-//
-//  Env.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/01.
-//
-
 import BitkitCore
 import Foundation
 import LDKNode
@@ -23,7 +16,7 @@ enum Env {
     }
 
     // {Team ID}.{Keychain Group}
-    static let keychainGroup = "KYH47R284B.to.bitkit" //TODO: needs to change for regtest/mainnet so we don't use same group
+    static let keychainGroup = "KYH47R284B.to.bitkit" // TODO: needs to change for regtest/mainnet so we don't use same group
 
     #if targetEnvironment(simulator)
         static let isSim = true
@@ -107,13 +100,13 @@ enum Env {
         case .regtest:
             return
                 appStorageUrl
-                .appendingPathComponent("regtest")
-                .appendingPathComponent("wallet\(walletIndex)/ldk")
+                    .appendingPathComponent("regtest")
+                    .appendingPathComponent("wallet\(walletIndex)/ldk")
         case .bitcoin:
             return
                 appStorageUrl
-                .appendingPathComponent("bitcoin")
-                .appendingPathComponent("wallet\(walletIndex)/electrs")
+                    .appendingPathComponent("bitcoin")
+                    .appendingPathComponent("wallet\(walletIndex)/electrs")
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:
@@ -126,13 +119,13 @@ enum Env {
         case .regtest:
             return
                 appStorageUrl
-                .appendingPathComponent("regtest")
-                .appendingPathComponent("wallet\(walletIndex)/core")
+                    .appendingPathComponent("regtest")
+                    .appendingPathComponent("wallet\(walletIndex)/core")
         case .bitcoin:
             return
                 appStorageUrl
-                .appendingPathComponent("bitcoin")
-                .appendingPathComponent("wallet\(walletIndex)/core")
+                    .appendingPathComponent("bitcoin")
+                    .appendingPathComponent("wallet\(walletIndex)/core")
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:
@@ -159,7 +152,7 @@ enum Env {
         case .regtest:
             return [
                 // Staging Blocktank node
-                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400)
+                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400),
             ]
         case .bitcoin:
             return []

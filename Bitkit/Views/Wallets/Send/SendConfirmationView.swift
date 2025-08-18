@@ -1,10 +1,3 @@
-//
-//  SendConfirmationView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/11/19.
-//
-
 import BitkitCore
 import LocalAuthentication
 import SwiftUI
@@ -67,13 +60,12 @@ struct SendConfirmationView: View {
             ) {
                 // Check if we need to show warning for amounts over $100 USD
                 if settings.warnWhenSendingOver100 {
-                    let sats: UInt64
-                    if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                        sats = wallet.sendAmountSats ?? invoice.amountSatoshis
+                    let sats: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+                        wallet.sendAmountSats ?? invoice.amountSatoshis
                     } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                        sats = wallet.sendAmountSats ?? invoice.amountSatoshis
+                        wallet.sendAmountSats ?? invoice.amountSatoshis
                     } else {
-                        sats = 0
+                        0
                     }
 
                     // Convert to USD to check if over $100
@@ -197,7 +189,7 @@ struct SendConfirmationView: View {
                         continuation.resume(returning: true)
                     } else {
                         if let error = authenticationError {
-                            self.handleBiometricError(error)
+                            handleBiometricError(error)
                         }
                         continuation.resume(returning: false)
                     }
@@ -207,7 +199,7 @@ struct SendConfirmationView: View {
     }
 
     private func handleBiometricError(_ error: Error?) {
-        guard let error = error else { return }
+        guard let error else { return }
 
         let nsError = error as NSError
 
@@ -235,7 +227,8 @@ struct SendConfirmationView: View {
     private func performPayment() async throws {
         do {
             if app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningBolt11Invoice {
-                // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
+                // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying
+                // different paths.
                 // So we need to handle all these cases here.
                 try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                     Task {
@@ -252,7 +245,8 @@ struct SendConfirmationView: View {
                                     Logger.error("Lightning payment failed: \(reason)")
                                     app.toast(type: .error, title: "Payment failed", description: reason)
                                     continuation.resume(
-                                        throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                        throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
+                                    )
                                 }
                             )
                             Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
@@ -272,7 +266,8 @@ struct SendConfirmationView: View {
                 navigationPath.append(.success)
             } else {
                 throw NSError(
-                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"])
+                    domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]
+                )
             }
         } catch {
             app.toast(error)
@@ -364,7 +359,8 @@ struct SendConfirmationView: View {
                                 let vm = CurrencyViewModel()
                                 vm.primaryDisplay = .bitcoin
                                 return vm
-                            }())
+                            }()
+                        )
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }

@@ -14,7 +14,7 @@ struct ReceiveConfig {
     let initialRoute: ReceiveRoute
 
     init(view: ReceiveRoute = .qr(cjitInvoice: nil, tab: nil)) {
-        self.initialRoute = view
+        initialRoute = view
     }
 }
 
@@ -54,7 +54,7 @@ struct ReceiveSheet: View {
     @ViewBuilder
     private func viewForRoute(_ route: ReceiveRoute) -> some View {
         switch route {
-        case .qr(let cjitInvoice, let tab):
+        case let .qr(cjitInvoice, tab):
             ReceiveQr(navigationPath: $navigationPath, cjitInvoice: cjitInvoice, tab: tab)
         case .edit:
             ReceiveEdit(navigationPath: $navigationPath)
@@ -62,9 +62,9 @@ struct ReceiveSheet: View {
             ReceiveTag(navigationPath: $navigationPath)
         case .cjitAmount:
             ReceiveCjitAmount(navigationPath: $navigationPath)
-        case .cjitLearnMore(let entry, let receiveAmountSats):
+        case let .cjitLearnMore(entry, receiveAmountSats):
             ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats)
-        case .cjitConfirm(let entry, let receiveAmountSats):
+        case let .cjitConfirm(entry, receiveAmountSats):
             ReceiveCjitConfirmation(navigationPath: $navigationPath, entry: entry, receiveAmountSats: receiveAmountSats)
         }
     }

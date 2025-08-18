@@ -1,7 +1,7 @@
 import Foundation
 
 /// Centralized localization helper with English fallback support
-struct LocalizationHelper {
+enum LocalizationHelper {
     private static let notFoundValue = "___NOTFOUND___"
 
     /// Gets the current language code from user preferences

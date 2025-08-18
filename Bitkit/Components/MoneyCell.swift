@@ -27,8 +27,9 @@ struct MoneyCell: View {
 }
 
 // MARK: - Preview Helpers
-extension MoneyCell {
-    fileprivate static func previewCurrencyVM(
+
+private extension MoneyCell {
+    static func previewCurrencyVM(
         primaryDisplay: PrimaryDisplay,
         currency: String,
         displayUnit: BitcoinDisplayUnit = .modern
@@ -40,7 +41,7 @@ extension MoneyCell {
         return vm
     }
 
-    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+    static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
         let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm

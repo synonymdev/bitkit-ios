@@ -18,7 +18,7 @@ struct SendConfig {
     let initialRoute: SendRoute
 
     init(view: SendRoute = .options) {
-        self.initialRoute = view
+        initialRoute = view
     }
 }
 

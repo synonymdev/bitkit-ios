@@ -1,8 +1,7 @@
 import Foundation
 
 /// Utility class for creating properly internationalized date formatters
-struct DateFormatterHelpers {
-
+enum DateFormatterHelpers {
     /// Creates a date formatter with proper locale settings
     /// - Parameters:
     ///   - dateStyle: The date style to use
@@ -108,7 +107,7 @@ struct DateFormatterHelpers {
     static func getActivityGroupHeader(for date: Date) -> String {
         let calendar = Calendar.current
         let now = Date()
-        
+
         // Check if it's today
         if calendar.isDateInToday(date) {
             // Use DateFormatter with relative formatting to get "Today"
@@ -119,7 +118,7 @@ struct DateFormatterHelpers {
             formatter.timeStyle = .none
             return formatter.string(from: date)
         }
-        
+
         // Check if it's yesterday
         if calendar.isDateInYesterday(date) {
             let formatter = DateFormatter()
@@ -129,12 +128,12 @@ struct DateFormatterHelpers {
             formatter.timeStyle = .none
             return formatter.string(from: date)
         }
-        
+
         // For this week, this month, this year, and earlier - use custom logic
         let beginningOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
         let beginningOfMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
         let beginningOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
-        
+
         if date >= beginningOfWeek {
             // This week - return localized "This week"
             return localizedString("wallet__activity_group_week", comment: "Activity group header for current week")
@@ -159,7 +158,6 @@ struct DateFormatterHelpers {
 
 /// Extension to provide common date formatting patterns
 extension DateFormatter {
-
     /// Convenience initializer for internationalized date formatter
     /// - Parameters:
     ///   - dateStyle: Date style

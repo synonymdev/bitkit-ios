@@ -28,7 +28,7 @@ struct Tag: View {
         HStack(spacing: 0) {
             BodySSBText(value).lineLimit(1)
 
-            if let onDelete = onDelete {
+            if let onDelete {
                 Button(action: onDelete) {
                     Image(icon == .close ? "x-mark" : "trash")
                         .resizable()
@@ -50,7 +50,7 @@ struct Tag: View {
     }
 
     var body: some View {
-        if let onPress = onPress {
+        if let onPress {
             Button(action: onPress) {
                 tagContent
             }

@@ -1,10 +1,3 @@
-//
-//  WalletType.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/04/04.
-//
-
 import Foundation
 
 enum WalletType {
@@ -28,4 +21,4 @@ enum WalletType {
             return "ln"
         }
     }
-} 
+}

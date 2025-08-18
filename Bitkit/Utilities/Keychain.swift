@@ -1,10 +1,3 @@
-//
-//  Keychain.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/29.
-//
-
 import Foundation
 import Security
 
@@ -18,9 +11,9 @@ enum KeychainEntryType {
 
     var storageKey: String {
         switch self {
-        case .bip39Mnemonic(let index):
+        case let .bip39Mnemonic(index):
             return "bip39_mnemonic_\(index)"
-        case .bip39Passphrase(let index):
+        case let .bip39Passphrase(index):
             return "bip39_passphrase_\(index)"
         case .pushNotificationPrivateKey:
             return "push_notification_private_key"
@@ -46,7 +39,8 @@ class Keychain {
         // Don't allow accidentally overwriting keys
         guard try load(key: key) == nil else {
             Logger.error(
-                "Key \(key.storageKey) already exists in keychain. Explicity delete key before attempting to update value.", context: "Keychain")
+                "Key \(key.storageKey) already exists in keychain. Explicity delete key before attempting to update value.", context: "Keychain"
+            )
             throw KeychainError.failedToSaveAlreadyExists
         }
 

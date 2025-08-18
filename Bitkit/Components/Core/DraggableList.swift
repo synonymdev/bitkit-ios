@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Helper component that implements reorderable list functionality
 struct DraggableList<Data, ID, Content>: View
-where Data: RandomAccessCollection, ID: Hashable, Content: View, Data.Element: Identifiable {
+    where Data: RandomAccessCollection, ID: Hashable, Content: View, Data.Element: Identifiable
+{
     /// The data to render in the list
     let data: Data
 
@@ -101,7 +102,7 @@ where Data: RandomAccessCollection, ID: Hashable, Content: View, Data.Element: I
                             }
                         }
                     },
-                    onDragEnded: { finalAmount in
+                    onDragEnded: { _ in
                         if draggedItemID == nil { return }
 
                         // Find the source index for the dragged item
@@ -150,7 +151,7 @@ where Data: RandomAccessCollection, ID: Hashable, Content: View, Data.Element: I
 
         // If we're not dragging or don't have a predicted destination, no offset
         guard let draggedIndex = getIndexForID(draggedItemID ?? id),
-            let predictedIndex = predictedDestinationIndex
+              let predictedIndex = predictedDestinationIndex
         else {
             return .zero
         }

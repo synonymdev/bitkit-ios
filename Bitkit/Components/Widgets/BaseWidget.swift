@@ -28,8 +28,7 @@ enum WidgetState {
 // MARK: - Widget Content Builder
 
 /// Helper for building common widget content patterns
-struct WidgetContentBuilder {
-
+enum WidgetContentBuilder {
     /// Creates a standard loading view
     static func loadingView() -> some View {
         ProgressView()
@@ -121,8 +120,7 @@ struct BaseWidget<Content: View>: View {
     }
 
     var body: some View {
-        Button {
-        } label: {
+        Button {} label: {
             VStack(spacing: 0) {
                 if settings.showWidgetTitles || isEditing {
                     HStack {

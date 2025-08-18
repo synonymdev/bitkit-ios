@@ -1,10 +1,3 @@
-//
-//  BitkitUITestsLaunchTests.swift
-//  BitkitUITests
-//
-//  Created by Jason van den Berg on 2024/06/27.
-//
-
 import XCTest
 
 final class BitkitUITestsLaunchTests: XCTestCase {

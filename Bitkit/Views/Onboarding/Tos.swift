@@ -54,7 +54,6 @@ struct TosContent: View {
                     Text(
                         "1.3 The purchase, access or use of any of the Bitkit Services is void where such access or use is prohibited by, would constitute a violation of, or would be subject to penalties under applicable Laws, and shall not be the basis for the assertion or recognition of any interest, right, remedy, power, or privilege."
                     )
-
                 }
 
                 // Definitions
@@ -260,7 +259,6 @@ struct TosContent: View {
                     Text(
                         "2.2 Unless otherwise specified in these Terms, words importing the singular include the plural and vice versa and words importing gender include all genders. The word \"include\", \"includes\" or \"including\" will be interpreted on an inclusive basis and be deemed to be followed by the words \"without limitation\"."
                     )
-
                 }
 
                 // Bitkit Services
@@ -286,7 +284,6 @@ struct TosContent: View {
                     Text(
                         "3.4 You may use the Bitkit Services solely in accordance with these Terms. You shall not take any steps to circumvent, avoid, bypass or obviate, directly or indirectly, the intent of these Terms."
                     )
-
                 }
 
                 // Bitkit Wallet
@@ -332,7 +329,6 @@ struct TosContent: View {
                     Text(
                         "4.2.5 When you send Supported Assets from your Bitkit Wallet to an external wallet (**\"Wallet Outbound Transfers\"**), such transfers are executed by you on your instruction. You should verify all transaction information prior to submitting instructions. Synonym shall bear no liability or responsibility in the event you enter an incorrect blockchain destination address, incorrect destination tag/memo, or if you send your Digital Assets to an incompatible wallet. We do not guarantee the identity or value received by a recipient of a Wallet Outbound Transfer. Wallet Asset Transfers cannot be reversed once they have been broadcast to the relevant Supported Asset Network, although they may be in a pending state, and designated accordingly, while the transaction is processed by network operators. Synonym does not control any Digital Asset network and makes no guarantees that a Wallet Asset Transfer will be confirmed by the network. We may cancel or refuse to process any pending Wallet Outbound Transfers as required by Law or any court or other authority to which Synonym is subject in any jurisdiction. Additionally, we may require you to wait some amount of time after completion of a transaction before permitting you to use further Bitkit Services and/or before permitting you to engage in transactions beyond certain volume limits."
                     )
-
                 }
 
                 // Lightning Connection Services
@@ -432,7 +428,6 @@ struct TosContent: View {
                     Text(
                         "5.5.8 You agree that any Fees are non-refundable, in whole or in part, even if your Blocktank Connection is closed prior to Connection Duration."
                     )
-
                 }
 
                 // Slashtags
@@ -472,7 +467,6 @@ struct TosContent: View {
                     Text(
                         "6.4 Slashtags can be used to create and to receive social profiles and dynamic content through the Bitkit Wallet. This content is User Content as described below and is not moderated, endorsed or verified by Synonym. Accordingly, it may contain content which is defamatory, obscene, indecent, abusive, offensive, harassing, violent, hateful, inflammatory, or otherwise objectionable. It may also violate Law, these Terms or the rights of any Person, including the intellectual property rights of any Person. User Content may be misleading, contain misstatements of fact or omit to state facts that a User might consider important."
                     )
-
                 }
 
                 // Content
@@ -548,7 +542,6 @@ struct TosContent: View {
                     Text(
                         "7.3.3 You access and use the Fiat Expressions entirely at your sole risk, and Synonym will not be responsible for any actions you take based on the Fiat Expressions."
                     )
-
                 }
 
                 // Feedback
@@ -558,7 +551,6 @@ struct TosContent: View {
                     Text(
                         "8.1 You may choose to, or we may invite you to, submit comments or ideas about the Bitkit Services, including without limitation about how to improve the Bitkit Services or our products (**\"Ideas\"**). By submitting any Idea, you agree that your disclosure is gratuitous, unsolicited and without restriction and will not place Synonym under any fiduciary or other obligation, and that Synonym and its Associates are free to use the Idea without any additional compensation to you, and/or to disclose the Idea on a non-confidential basis or otherwise to anyone and you grant Synonym and its Associates a worldwide, perpetual, irrevocable, non-exclusive, royalty-free license (with the right to sublicense) to any Intellectual Property Rights you may have in such Idea to use, including to improve the Bitkit Services, copy, reproduce, modify, publish, transmit, broadcast, display, and distribute. You further acknowledge that, by acceptance of your submission, Synonym does not waive any rights to use similar or related ideas previously known to Synonym, or developed by its employees, or obtained from sources other than you."
                     )
-
                 }
 
                 // Third Party Services
@@ -580,7 +572,6 @@ struct TosContent: View {
                     Text(
                         "9.3 WE MAKE NO WARRANTIES OR REPRESENTATIONS, EXPRESS OR IMPLIED, ABOUT LINKED THIRD PARTY SERVICES, THE THIRD PARTIES THEY ARE OWNED AND OPERATED BY, THE INFORMATION CONTAINED ON THEM, ASSETS AVAILABLE THROUGH THEM, OR THE SUITABILITY, PRIVACY, OR SECURITY OF THEIR PRODUCTS OR SERVICES. YOU ACKNOWLEDGE SOLE RESPONSIBILITY FOR AND ASSUME ALL RISK ARISING FROM YOUR USE OF THIRD-PARTY SERVICES, THIRD-PARTY WEBSITES, APPLICATIONS, OR RESOURCES, INCLUDING RISK OF LOSS FOR ASSETS TRADED THROUGH SUCH THIRD-PARTY SERVICES. IN NO EVENT WILL SYNONYM BE LIABLE FOR ANY DAMAGES ARISING OUT OF OR RELATING TO THIRD PARTY SERVICES. THIS SECTION OPERATES IN ADDITION TO ANY LIMITATION OF LIABILITY EXPRESSED ELSEWHERE IN THIS USER AGREEMENT."
                     )
-
                 }
 
                 // Prohibited Uses
@@ -654,7 +645,6 @@ struct TosContent: View {
                     Text(
                         "Any use as described in this Section 10 shall constitute a **\"Prohibited Use\"**. You must assure that any Wallet Asset Transfer, Routed Payment or other use by you of the Connection or the Bitkit Services is not a Prohibited Use. If Synonym determines or suspects that you have engaged in any Prohibited Use, Synonym may address such Prohibited Use through an appropriate sanction, in its sole and absolute discretion. Such sanction may include, without limitation: (i) force closing any active Blocktank Connection associated with you; (ii) making a report to any Government, law enforcement, or other authorities, without providing any notice of you about any such report; or (iii) suspending or terminating your access to any Bitkit Services. **In addition, should your actions or inaction result in Loss being suffered by Synonym or any of its Associates, you shall pay an amount to Synonym or the Associate so as to render Synonym or the Associate whole, including the amount of taxes or penalties that might be imposed on Synonym or the Associate.**"
                     )
-
                 }
 
                 // Information Obligations
@@ -668,7 +658,6 @@ struct TosContent: View {
                     Text(
                         "11.1 Synonym may, from time to time, request information regarding your use of any Bitkit Service. All information provided to Synonym must be true, accurate and not misleading in all respects. **In the event that there are any changes to any information provided to Synonym, you must inform Synonym of such changes in writing through **support@synonym.to** prior to such changes taking effect. Synonym reserves the right to cease to allow you to access the Bitkit Services at any time, including as a result of any change in information provided or a failure to provide any information when requested.**"
                     )
-
                 }
 
                 // Privacy
@@ -682,7 +671,6 @@ struct TosContent: View {
                     Text(
                         "12.1 The Bitkit Privacy Statement (available at bitkit.to/privacy-policy/) describes how Synonym handles any personal information and data that you provide to us when using the Bitkit Services. You acknowledge and agree that you have carefully read and understand the Synonym Privacy Statement."
                     )
-
                 }
 
                 // Representations, Warranties and Covenants
@@ -764,7 +752,6 @@ struct TosContent: View {
                     Text(
                         "13.1.17 you will accurately and promptly inform Synonym if you know or have reason to know whether any of the foregoing representations or warranties no longer is correct or becomes incorrect."
                     )
-
                 }
 
                 // No Representation by Synonym
@@ -790,7 +777,6 @@ struct TosContent: View {
                     Text(
                         "14.2.3 the functionality of the Lightning Network or any other Digital Asset network or protocol (including any technical glitch, malfunction, code error, failure, delay, default, or security breach thereof)."
                     )
-
                 }
 
                 // Mobile Application
@@ -824,7 +810,6 @@ struct TosContent: View {
                     Text(
                         "Fiat Expressions viewed through the Bitkit Wallet incorporate data available through the CoinGecko Application Programming Interface (together with its related documentation, the **\"CoinGecko API\"**). The CoinGecko API is the property of Gecko Labs Pte. Ltd. (**\"CoinGecko\"**), and your use of the CoinGecko API must comply with the then-current CoinGecko API Terms of Service. CoinGecko has no obligation or liability to you for your usage of the CoinGecko API through the Bitkit Wallet. Synonym, and not CoinGecko, is solely responsible for the Bitkit Wallet."
                     )
-
                 }
 
                 // Tax
@@ -838,7 +823,6 @@ struct TosContent: View {
                     Text(
                         "16.1 It is your sole responsibility to determine whether and to what extent taxes and tax reporting obligations may apply to you (including any goods and services tax) with respect to the transactions carried out through the Bitkit Services and you shall timely pay all such taxes and shall file all returns, reports, and disclosures required by applicable Law. You agree to indemnify and hold Synonym and its Associates harmless from and against any and all taxes (other than income or similar taxes on income earned by Synonym in providing the Bitkit Services) payable with respect to any transactions carried out through the Bitkit Services."
                     )
-
                 }
 
                 // No Insurance or Regulatory Oversight
@@ -852,7 +836,6 @@ struct TosContent: View {
                     Text(
                         "17.1 Synonym is not registered as a money services business or money transmitter in the British Virgin Islands or elsewhere. You accept that any balance standing in, or Routed Payment through, the Bitkit Wallet is not subject to regulatory oversight, protections or insurance provided by any Person. In addition, whilst Synonym may maintain insurance for its own benefit in connection with its business, the insurance, if maintained, is solely for the benefit of Synonym and does not guarantee or insure any User in any way."
                     )
-
                 }
 
                 // Responsibilities, Limitation of Liability and Indemnity
@@ -878,7 +861,6 @@ struct TosContent: View {
                     Text(
                         "18.3 To the fullest extent permissible by Law, the maximum aggregate monetary liability of Synonym under these Terms shall in no event exceed the fees paid by you to Synonym (if any) in respect of the Bitkit Services in relation to which the liability has arisen."
                     )
-
                 }
 
                 // Force Majeure
@@ -892,7 +874,6 @@ struct TosContent: View {
                     Text(
                         "19.1 Synonym is not responsible for Losses caused by delay or failure of Synonym, the Bitkit Wallet, the Blocktank Node or any Connection, including when the delay or failure is due to fires; strikes; floods; power outages or failures; acts of God or the state's enemies; disease pandemics; acts of any Government or Government Official; any and all market movements, shifts, or volatility; computer, server, protocol or internet malfunctions; security breaches or cyberattacks; criminal acts; delays or defaults caused by common carriers; acts or omissions of other Persons; or, any other delays, defaults, failures or interruptions that cannot reasonably be foreseen or provided against by Synonym."
                     )
-
                 }
 
                 // Arbitration
@@ -936,7 +917,6 @@ struct TosContent: View {
                     Text(
                         "**20.6 **JURY TRIAL WAIVER**. TO THE FULLEST EXTENT PERMITTED BY APPLICABLE LAW, THE PARTIES HEREBY IRREVOCABLY AND UNCONDITIONALLY WAIVE ALL RIGHT TO TRIAL BY JURY IN ANY LEGAL ACTION OR PROCEEDING OF ANY KIND WHATSOEVER ARISING OUT OF OR RELATING TO THESE TERMS OR ANY BREACH THEREOF, ANY USE OR ATTEMPTED USE OF THE BITKIT SERVICES BY YOU, AND/OR ANY OTHER MATTER INVOLVING THE USER AND SYNONYM.**"
                     )
-
                 }
 
                 // Miscellaneous

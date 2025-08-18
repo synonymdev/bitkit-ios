@@ -53,7 +53,7 @@ struct SecurityPin: View {
     }
 
     private func handlePinComplete(_ pin: String) {
-        if let pinToCheck = pinToCheck {
+        if let pinToCheck {
             // This is the confirmation step
             if pin == pinToCheck {
                 // PINs match, save via SettingsViewModel and check biometric enrollment
@@ -78,7 +78,7 @@ struct SecurityPin: View {
             }
         } else {
             // This is the initial PIN entry, set pinToCheck and reset input for confirmation
-            self.pinToCheck = pin
+            pinToCheck = pin
             pinInput = ""
             errorMessage = ""
         }

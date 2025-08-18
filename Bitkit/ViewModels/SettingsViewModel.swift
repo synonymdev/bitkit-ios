@@ -1,17 +1,10 @@
-//
-//  SettingsViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/12/19.
-//
-
 import LDKNode
 import SwiftUI
 import UserNotifications
 
 enum CoinSelectionMethod: String, CaseIterable {
-    case manual = "manual"
-    case autopilot = "autopilot"
+    case manual
+    case autopilot
 }
 
 extension CoinSelectionAlgorithm {
@@ -59,12 +52,13 @@ class SettingsViewModel: ObservableObject {
             }
         }
     }
+
     @AppStorage("defaultTransactionSpeed") var defaultTransactionSpeed: TransactionSpeed = .medium
     @AppStorage("hideBalance") var hideBalance: Bool = false
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
-    @AppStorage("showRecentlyPaidContacts") var showRecentlyPaidContacts: Bool = true //TODO: probably not going to be in anytime soon
+    @AppStorage("showRecentlyPaidContacts") var showRecentlyPaidContacts: Bool = true // TODO: probably not going to be in anytime soon
     @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = true
     @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = false
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false

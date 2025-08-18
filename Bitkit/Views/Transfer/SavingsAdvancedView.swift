@@ -13,11 +13,11 @@ struct SavingsAdvancedView: View {
 
         return
             channels
-            .filter { transfer.selectedChannelIds.contains($0.channelId) }
-            .reduce(0) { total, channel in
-                let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
-                return total + balance
-            }
+                .filter { transfer.selectedChannelIds.contains($0.channelId) }
+                .reduce(0) { total, channel in
+                    let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
+                    return total + balance
+                }
     }
 
     var body: some View {
@@ -57,7 +57,7 @@ struct SavingsAdvancedView: View {
         .bottomSafeAreaPadding()
         .task {
             if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {
-                transfer.selectedChannelIds = channels.map { $0.channelId }
+                transfer.selectedChannelIds = channels.map(\.channelId)
             }
         }
     }

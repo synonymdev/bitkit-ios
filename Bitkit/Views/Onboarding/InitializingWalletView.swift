@@ -1,10 +1,3 @@
-//
-//  InitializingWalletView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/01/17.
-//
-
 import SwiftUI
 
 struct InitializingWalletView: View {
@@ -58,7 +51,7 @@ struct InitializingWalletView: View {
         Haptics.rocket(duration: 2.5)
 
         // Single continuous animation with custom timing
-        let totalDuration: Double = 2.5
+        let totalDuration = 2.5
         let finalX = geometry.size.width / 2 + 128
         let finalY = -(geometry.size.height * 0.3)
 
@@ -104,19 +97,18 @@ struct InitializingWalletView: View {
                             let baseIncrement: Double = shouldFinish ? 1.2 : 0.5
 
                             // Progressive slowdown if shouldFinish is false
-                            let increment: Double
-                            if !shouldFinish {
+                            let increment: Double = if !shouldFinish {
                                 if percentage >= 80 {
-                                    increment = baseIncrement * 0.125 // Halved three times (0.5 * 0.5 * 0.5)
+                                    baseIncrement * 0.125 // Halved three times (0.5 * 0.5 * 0.5)
                                 } else if percentage >= 70 {
-                                    increment = baseIncrement * 0.25 // Halved twice (0.5 * 0.5)
+                                    baseIncrement * 0.25 // Halved twice (0.5 * 0.5)
                                 } else if percentage >= 60 {
-                                    increment = baseIncrement * 0.5 // Halved once
+                                    baseIncrement * 0.5 // Halved once
                                 } else {
-                                    increment = baseIncrement
+                                    baseIncrement
                                 }
                             } else {
-                                increment = baseIncrement
+                                baseIncrement
                             }
 
                             percentage = min(percentage + increment, 100)

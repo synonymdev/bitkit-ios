@@ -79,9 +79,9 @@ struct QrArea: View {
 
         if let outputImage = filter.outputImage {
             // Generate padded QR image for sharing
-            let fixedSize: Int = 400
+            let fixedSize = 400
             let padding: CGFloat = 16
-            let qrSize: CGFloat = CGFloat(fixedSize) - (padding * 2)
+            let qrSize = CGFloat(fixedSize) - (padding * 2)
 
             // Scale the QR code to fit exactly in the available space
             let scale = qrSize / outputImage.extent.width

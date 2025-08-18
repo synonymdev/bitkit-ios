@@ -59,7 +59,7 @@ public let tradingPairs: [TradingPair] = [
 ]
 
 // Convenience array for just the pair names
-public let tradingPairNames: [String] = tradingPairs.map { $0.name }
+public let tradingPairNames: [String] = tradingPairs.map(\.name)
 
 // MARK: - Helper Models
 
@@ -81,7 +81,7 @@ class PriceWidgetCache {
 
     private init() {}
 
-    func set<T: Codable>(_ value: T, forKey key: String) {
+    func set(_ value: some Codable, forKey key: String) {
         do {
             let data = try encoder.encode(value)
             userDefaults.set(data, forKey: "price_widget_cache_\(key)")
@@ -189,7 +189,7 @@ class PriceService {
         // Fetch historical data
         let candles = try await fetchCandles(ticker: ticker, period: period)
         let sortedCandles = candles.sorted { $0.timestamp < $1.timestamp }
-        let pastValues = sortedCandles.map { $0.close }
+        let pastValues = sortedCandles.map(\.close)
 
         // Fetch latest price
         let latestPrice = try await fetchLatestPrice(ticker: ticker)
