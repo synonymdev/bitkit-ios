@@ -6,10 +6,10 @@ struct ContactsIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("slashtags__onboarding_header"),
-            description: localizedString("slashtags__onboarding_text"),
+            title: t("slashtags__onboarding_header"),
+            description: t("slashtags__onboarding_text"),
             imageName: "group",
-            buttonText: localizedString("slashtags__onboarding_button"),
+            buttonText: t("slashtags__onboarding_button"),
             onButtonPress: {
                 app.hasSeenContactsIntro = true
                 navigation.navigate(.contacts)
@@ -18,7 +18,7 @@ struct ContactsIntroView: View {
             testID: "ContactsIntro"
         )
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("slashtags__contacts"))
+        .navigationTitle(t("slashtags__contacts"))
         .backToWalletButton()
     }
 }

@@ -20,11 +20,11 @@ struct SendConfirmationView: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return NSLocalizedString("security__bio_touch_id", comment: "")
+            return t("security__bio_touch_id")
         case .faceID:
-            return NSLocalizedString("security__bio_face_id", comment: "")
+            return t("security__bio_face_id")
         default:
-            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
@@ -36,7 +36,7 @@ struct SendConfirmationView: View {
 
     var body: some View {
         VStack {
-            SheetHeader(title: localizedString("wallet__send_review"), showBackButton: true)
+            SheetHeader(title: t("wallet__send_review"), showBackButton: true)
 
             VStack(alignment: .leading) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -55,7 +55,7 @@ struct SendConfirmationView: View {
             Spacer()
 
             SwipeButton(
-                title: NSLocalizedString("wallet__send_swipe", comment: ""),
+                title: t("wallet__send_swipe"),
                 accentColor: .greenAccent
             ) {
                 // Check if we need to show warning for amounts over $100 USD
@@ -114,23 +114,23 @@ struct SendConfirmationView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .alert(NSLocalizedString("common__are_you_sure", comment: ""), isPresented: $showWarningAlert) {
-            Button(NSLocalizedString("common__dialog_cancel", comment: ""), role: .cancel) {
+        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
                 alertContinuation?.resume(returning: false)
                 alertContinuation = nil
             }
-            Button(NSLocalizedString("wallet__send_yes", comment: "")) {
+            Button(t("wallet__send_yes")) {
                 alertContinuation?.resume(returning: true)
                 alertContinuation = nil
             }
         } message: {
-            Text(NSLocalizedString("wallet__send_dialog1", comment: ""))
+            Text(t("wallet__send_dialog1"))
         }
         .alert(
-            NSLocalizedString("security__bio_error_title", comment: ""),
+            t("security__bio_error_title"),
             isPresented: $showingBiometricError
         ) {
-            Button(NSLocalizedString("common__ok", comment: "")) {
+            Button(t("common__ok")) {
                 // Error handled, user acknowledged
             }
         } message: {
@@ -138,8 +138,8 @@ struct SendConfirmationView: View {
         }
         .navigationDestination(isPresented: $showPinCheck) {
             PinCheckView(
-                title: NSLocalizedString("security__pin_send_title", comment: ""),
-                explanation: NSLocalizedString("security__pin_send", comment: ""),
+                title: t("security__pin_send_title"),
+                explanation: t("security__pin_send"),
                 onCancel: {
                     pinCheckContinuation?.resume(returning: false)
                     pinCheckContinuation = nil
@@ -177,8 +177,8 @@ struct SendConfirmationView: View {
             }
 
             // Request biometric authentication
-            let reason = localizedString(
-                "security__bio_confirm", comment: "",
+            let reason = t(
+                "security__bio_confirm",
                 variables: ["biometricsName": biometryTypeName]
             )
 
@@ -205,17 +205,17 @@ struct SendConfirmationView: View {
 
         switch nsError.code {
         case LAError.biometryNotAvailable.rawValue:
-            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.biometryNotEnrolled.rawValue:
-            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.userCancel.rawValue, LAError.userFallback.rawValue:
             // User cancelled - don't show error, just keep current state
             return
         default:
-            biometricErrorMessage = localizedString(
-                "security__bio_error_message", comment: "",
+            biometricErrorMessage = t(
+                "security__bio_error_message",
                 variables: ["type": biometryTypeName]
             )
             showingBiometricError = true
@@ -279,7 +279,7 @@ struct SendConfirmationView: View {
     @ViewBuilder
     func toView(_ address: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(localizedString("wallet__send_to"))
+            CaptionMText(t("wallet__send_to"))
             BodyMBoldText(address.ellipsis(maxLength: 20), textColor: .textPrimary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -323,7 +323,7 @@ struct SendConfirmationView: View {
 
             HStack {
                 VStack(alignment: .leading) {
-                    Text(NSLocalizedString("wallet__send_fee_and_speed", comment: ""))
+                    Text(t("wallet__send_fee_and_speed"))
                         .foregroundColor(.secondary)
                         .font(.caption)
                     Text("1")

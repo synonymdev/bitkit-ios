@@ -5,9 +5,9 @@ extension CoinSelectionMethod {
     var localizedTitle: String {
         switch self {
         case .manual:
-            return NSLocalizedString("settings__adv__cs_manual", comment: "")
+            return t("settings__adv__cs_manual")
         case .autopilot:
-            return NSLocalizedString("settings__adv__cs_auto", comment: "")
+            return t("settings__adv__cs_auto")
         }
     }
 }
@@ -18,16 +18,16 @@ extension CoinSelectionAlgorithm {
         case .branchAndBound:
             return "Branch and Bound" // TODO: add missing localized text
         case .largestFirst:
-            return NSLocalizedString("settings__adv__cs_min", comment: "")
+            return t("settings__adv__cs_min")
         case .oldestFirst:
-            return NSLocalizedString("settings__adv__cs_first_in_first_out", comment: "")
+            return t("settings__adv__cs_first_in_first_out")
         case .singleRandomDraw:
             return "Single Random Draw" // TODO: add missing localized text
             // Commented out unsupported algorithms
             // case .smallestFirst:
-            //     return NSLocalizedString("settings__adv__cs_max", comment: "")
+            //     return t("settings__adv__cs_max")
             // case .consolidate:
-            //     return NSLocalizedString("settings__adv__cs_consolidate", comment: "")
+            //     return t("settings__adv__cs_consolidate")
         }
     }
 
@@ -36,16 +36,16 @@ extension CoinSelectionAlgorithm {
         case .branchAndBound:
             return "Finds exact amount matches to minimize change" // TODO: add missing localized text
         case .largestFirst:
-            return NSLocalizedString("settings__adv__cs_min_description", comment: "")
+            return t("settings__adv__cs_min_description")
         case .oldestFirst:
-            return NSLocalizedString("settings__adv__cs_first_in_first_out_description", comment: "")
+            return t("settings__adv__cs_first_in_first_out_description")
         case .singleRandomDraw:
             return "Random selection for privacy" // TODO: add missing localized text
             // Commented out unsupported algorithms
             // case .smallestFirst:
-            //     return NSLocalizedString("settings__adv__cs_max_description", comment: "")
+            //     return t("settings__adv__cs_max_description")
             // case .consolidate:
-            //     return NSLocalizedString("settings__adv__cs_consolidate_description", comment: "")
+            //     return t("settings__adv__cs_consolidate_description")
         }
     }
 
@@ -120,7 +120,7 @@ struct CoinSelectionSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         BodyMText(
-                            NSLocalizedString("settings__adv__cs_method", comment: ""),
+                            t("settings__adv__cs_method"),
                             textColor: .textSecondary
                         )
                         .padding(.horizontal, 16)
@@ -153,7 +153,7 @@ struct CoinSelectionSettingsView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
                             BodyMText(
-                                NSLocalizedString("settings__adv__cs_auto_mode", comment: ""),
+                                t("settings__adv__cs_auto_mode"),
                                 textColor: .textSecondary
                             )
                             .padding(.horizontal, 16)
@@ -183,7 +183,7 @@ struct CoinSelectionSettingsView: View {
                     .frame(height: 32)
             }
         }
-        .navigationTitle(NSLocalizedString("settings__adv__coin_selection", comment: ""))
+        .navigationTitle(t("settings__adv__coin_selection"))
     }
 }
 

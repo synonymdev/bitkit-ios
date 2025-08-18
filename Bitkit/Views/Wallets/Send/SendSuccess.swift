@@ -32,7 +32,7 @@ struct SendSuccess: View {
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    SheetHeader(title: localizedString("wallet__send_sent"), showBackButton: false)
+                    SheetHeader(title: t("wallet__send_sent"), showBackButton: false)
 
                     if let sendAmountSats = wallet.sendAmountSats {
                         MoneyStack(sats: Int(sendAmountSats), showSymbol: true)
@@ -50,11 +50,11 @@ struct SendSuccess: View {
                     Spacer()
 
                     HStack(spacing: 16) {
-                        CustomButton(title: localizedString("wallet__send_details"), variant: .secondary) {
+                        CustomButton(title: t("wallet__send_details"), variant: .secondary) {
                             // TODO: navigate to activity details screen
                         }
 
-                        CustomButton(title: localizedString("common__close")) {
+                        CustomButton(title: t("common__close")) {
                             sheets.hideSheet()
                         }
                     }

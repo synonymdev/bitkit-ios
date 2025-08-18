@@ -5,19 +5,19 @@ struct FundManualSuccessView: View {
     @EnvironmentObject var navigation: NavigationViewModel
 
     // Keep in state so we don't get a new random text on each render
-    @State private var randomOkText: String = localizedRandom("common__ok_random", comment: "")
+    @State private var randomOkText: String = localizedRandom("common__ok_random")
 
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
                 DisplayText(
-                    NSLocalizedString("lightning__external_success__title", comment: ""),
+                    t("lightning__external_success__title"),
                     accentColor: .purpleAccent
                 )
                 .padding(.top, 16)
 
                 BodyMText(
-                    NSLocalizedString("lightning__external_success__text", comment: ""),
+                    t("lightning__external_success__text"),
                     textColor: .textSecondary, accentColor: .white, accentFont: Fonts.bold
                 )
 
@@ -44,7 +44,7 @@ struct FundManualSuccessView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(NSLocalizedString("lightning__transfer_success__nav_title", comment: ""))
+        .navigationTitle(t("lightning__transfer_success__nav_title"))
         .backToWalletButton()
     }
 }

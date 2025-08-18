@@ -43,7 +43,7 @@ struct PriceWidget: View {
                 if viewModel.isLoading && filteredPriceData.isEmpty {
                     WidgetContentBuilder.loadingView()
                 } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(localizedString("widgets__price__error"))
+                    WidgetContentBuilder.errorView(t("widgets__price__error"))
                 } else {
                     ForEach(filteredPriceData, id: \.name) { priceData in
                         PriceRow(data: priceData)

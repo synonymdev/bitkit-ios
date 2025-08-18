@@ -6,10 +6,10 @@ struct WidgetsIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("widgets__onboarding__title"),
-            description: localizedString("widgets__onboarding__description"),
+            title: t("widgets__onboarding__title"),
+            description: t("widgets__onboarding__description"),
             imageName: "puzzle",
-            buttonText: localizedString("common__continue"),
+            buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenWidgetsIntro = true
                 navigation.navigate(.widgetsList)

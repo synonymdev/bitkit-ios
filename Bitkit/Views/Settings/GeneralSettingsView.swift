@@ -12,28 +12,28 @@ struct GeneralSettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 NavigationLink(value: Route.languageSettings) {
                     SettingsListLabel(
-                        title: localizedString("settings__general__language"),
+                        title: t("settings__general__language"),
                         rightText: languageManager.currentLanguageDisplayName
                     )
                 }
 
                 NavigationLink(value: Route.currencySettings) {
                     SettingsListLabel(
-                        title: localizedString("settings__general__currency_local"),
+                        title: t("settings__general__currency_local"),
                         rightText: currency.selectedCurrency
                     )
                 }
 
                 NavigationLink(value: Route.unitSettings) {
                     SettingsListLabel(
-                        title: localizedString("settings__general__unit"),
+                        title: t("settings__general__unit"),
                         rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
                     )
                 }
 
                 NavigationLink(value: Route.transactionSpeedSettings) {
                     SettingsListLabel(
-                        title: localizedString("settings__general__speed"),
+                        title: t("settings__general__speed"),
                         rightText: settings.defaultTransactionSpeed.displayTitle
                     )
                 }
@@ -41,7 +41,7 @@ struct GeneralSettingsView: View {
                 if !activityViewModel.recentlyUsedTags.isEmpty {
                     NavigationLink(value: Route.tagSettings) {
                         SettingsListLabel(
-                            title: localizedString("settings__general__tags"),
+                            title: t("settings__general__tags"),
                             rightText: String(activityViewModel.recentlyUsedTags.count)
                         )
                     }
@@ -49,28 +49,28 @@ struct GeneralSettingsView: View {
 
                 NavigationLink(value: Route.widgetsSettings) {
                     SettingsListLabel(
-                        title: localizedString("settings__widgets__nav_title"),
+                        title: t("settings__widgets__nav_title"),
                         rightText: settings.showWidgets ? "On" : "Off"
                     )
                 }
 
                 NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                     SettingsListLabel(
-                        title: localizedString("settings__quickpay__nav_title"),
+                        title: t("settings__quickpay__nav_title"),
                         rightText: settings.enableQuickpay ? "On" : "Off"
                     )
                 }
 
                 NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
                     SettingsListLabel(
-                        title: localizedString("settings__notifications__nav_title"),
+                        title: t("settings__notifications__nav_title"),
                         rightText: settings.notificationServerRegistered ? "On" : "Off"
                     )
                 }
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(localizedString("settings__general_title"))
+        .navigationTitle(t("settings__general_title"))
     }
 }
 

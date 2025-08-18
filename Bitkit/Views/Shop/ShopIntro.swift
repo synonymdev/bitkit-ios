@@ -6,10 +6,10 @@ struct ShopIntro: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("other__shop__intro__title"),
-            description: localizedString("other__shop__intro__description"),
+            title: t("other__shop__intro__title"),
+            description: t("other__shop__intro__description"),
             imageName: "bag",
-            buttonText: localizedString("other__shop__intro__button"),
+            buttonText: t("other__shop__intro__button"),
             onButtonPress: {
                 app.hasSeenShopIntro = true
                 navigation.navigate(.shopDiscover)

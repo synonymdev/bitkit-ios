@@ -15,7 +15,7 @@ struct WidgetsListView: View {
             .padding(.top)
             .padding(.horizontal)
         }
-        .navigationTitle(localizedString("widgets__add"))
+        .navigationTitle(t("widgets__add"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
     }

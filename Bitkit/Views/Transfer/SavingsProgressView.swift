@@ -18,25 +18,25 @@ struct SavingsProgressContentView: View {
 
     var navTitle: String {
         switch progressState {
-        case .inProgress: return localizedString("lightning__transfer__nav_title")
-        case .failed: return localizedString("lightning__savings_interrupted__nav_title")
-        case .success: return localizedString("lightning__transfer__nav_title")
+        case .inProgress: return t("lightning__transfer__nav_title")
+        case .failed: return t("lightning__savings_interrupted__nav_title")
+        case .success: return t("lightning__transfer__nav_title")
         }
     }
 
     var title: String {
         switch progressState {
-        case .inProgress: return localizedString("lightning__savings_progress__title")
-        case .failed: return localizedString("lightning__savings_interrupted__title")
-        case .success: return localizedString("lightning__transfer_success__title_savings")
+        case .inProgress: return t("lightning__savings_progress__title")
+        case .failed: return t("lightning__savings_interrupted__title")
+        case .success: return t("lightning__transfer_success__title_savings")
         }
     }
 
     var text: String {
         switch progressState {
-        case .inProgress: return localizedString("lightning__savings_progress__text")
-        case .failed: return localizedString("lightning__savings_interrupted__text")
-        case .success: return localizedString("lightning__transfer_success__text_savings")
+        case .inProgress: return t("lightning__savings_progress__text")
+        case .failed: return t("lightning__savings_interrupted__text")
+        case .success: return t("lightning__transfer_success__text_savings")
         }
     }
 
@@ -101,7 +101,7 @@ struct SavingsProgressContentView: View {
             Spacer()
 
             CustomButton(
-                title: localizedString("common__ok"),
+                title: t("common__ok"),
                 isLoading: progressState == .inProgress
             ) {
                 navigation.reset()

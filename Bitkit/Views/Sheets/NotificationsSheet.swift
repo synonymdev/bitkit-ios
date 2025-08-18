@@ -14,12 +14,12 @@ struct NotificationsSheet: View {
     var body: some View {
         Sheet(id: .notifications, data: config) {
             SheetIntro(
-                navTitle: localizedString("settings__notifications__nav_title"),
-                title: localizedString("settings__notifications__intro__title"),
-                description: localizedString("settings__notifications__intro__text"),
+                navTitle: t("settings__notifications__nav_title"),
+                title: t("settings__notifications__intro__title"),
+                description: t("settings__notifications__intro__text"),
                 image: "bell-figure",
-                continueText: localizedString("settings__notifications__intro__button"),
-                cancelText: localizedString("common__later"),
+                continueText: t("settings__notifications__intro__button"),
+                cancelText: t("common__later"),
                 accentColor: .blueAccent,
                 testID: "NotificationsSheet",
                 onCancel: onLater,

@@ -55,7 +55,7 @@ struct ActivityExplorerView: View {
         var body: some View {
             Button {
                 UIPasteboard.general.string = content
-                app.toast(type: .success, title: localizedString("common__copied"), description: content)
+                app.toast(type: .success, title: t("common__copied"), description: content)
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     CaptionText(title)
@@ -84,7 +84,7 @@ struct ActivityExplorerView: View {
 
             if let onchain {
                 InfoSection(
-                    title: localizedString("wallet__activity_tx_id"),
+                    title: t("wallet__activity_tx_id"),
                     content: onchain.txId,
                 )
 
@@ -110,20 +110,20 @@ struct ActivityExplorerView: View {
             } else if let lightning {
                 if let preimage = lightning.preimage {
                     InfoSection(
-                        title: localizedString("wallet__activity_preimage"),
+                        title: t("wallet__activity_preimage"),
                         content: preimage,
                     )
                 }
 
                 if let paymentHash {
                     InfoSection(
-                        title: localizedString("wallet__activity_payment_hash"),
+                        title: t("wallet__activity_payment_hash"),
                         content: paymentHash,
                     )
                 }
 
                 InfoSection(
-                    title: localizedString("wallet__activity_invoice"),
+                    title: t("wallet__activity_invoice"),
                     content: lightning.invoice,
                 )
             }
@@ -131,7 +131,7 @@ struct ActivityExplorerView: View {
             Spacer()
 
             if onchain != nil {
-                CustomButton(title: localizedString("common__open_block_explorer"), shouldExpand: true) {
+                CustomButton(title: t("common__open_block_explorer"), shouldExpand: true) {
                     if let onchain,
                        let url = getBlockExplorerUrl(txId: onchain.txId)
                     {
@@ -140,7 +140,7 @@ struct ActivityExplorerView: View {
                 }
             }
         }
-        .navigationTitle(localizedString("wallet__activity_bitcoin_received"))
+        .navigationTitle(t("wallet__activity_bitcoin_received"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
         .padding(.horizontal, 16)

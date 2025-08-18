@@ -273,8 +273,8 @@ extension AppViewModel {
         if lightningBalance < data.minSendable {
             toast(
                 type: .warning,
-                title: localizedString("other__lnurl_pay_error"),
-                description: localizedString("other__lnurl_pay_error_no_capacity")
+                title: t("other__lnurl_pay_error"),
+                description: t("other__lnurl_pay_error_no_capacity")
             )
             return
         }
@@ -294,8 +294,8 @@ extension AppViewModel {
         if (data.minWithdrawable ?? 1000) > data.maxWithdrawable {
             toast(
                 type: .warning,
-                title: localizedString("other__lnurl_withdr_error"),
-                description: localizedString("other__lnurl_withdr_error_minmax")
+                title: t("other__lnurl_withdr_error"),
+                description: t("other__lnurl_withdr_error_minmax")
             )
             return
         }
@@ -305,8 +305,8 @@ extension AppViewModel {
         if lightningBalance < (data.minWithdrawable ?? 1000) / 1000 {
             toast(
                 type: .warning,
-                title: localizedString("other__lnurl_withdr_error"),
-                description: localizedString("other__lnurl_withdr_error_no_capacity")
+                title: t("other__lnurl_withdr_error"),
+                description: t("other__lnurl_withdr_error_no_capacity")
             )
             return
         }

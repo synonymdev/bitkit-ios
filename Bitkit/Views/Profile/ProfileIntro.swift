@@ -6,10 +6,10 @@ struct ProfileIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("slashtags__onboarding_profile1_header"),
-            description: localizedString("slashtags__onboarding_profile1_text"),
+            title: t("slashtags__onboarding_profile1_header"),
+            description: t("slashtags__onboarding_profile1_text"),
             imageName: "crown",
-            buttonText: localizedString("common__continue"),
+            buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenProfileIntro = true
                 navigation.navigate(.profile)
@@ -18,7 +18,7 @@ struct ProfileIntroView: View {
             testID: "ProfileIntro"
         )
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("slashtags__profile"))
+        .navigationTitle(t("slashtags__profile"))
         .backToWalletButton()
     }
 }

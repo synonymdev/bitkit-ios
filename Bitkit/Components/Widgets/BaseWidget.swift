@@ -45,7 +45,7 @@ enum WidgetContentBuilder {
     static func sourceRow(source: String) -> some View {
         HStack(spacing: 0) {
             HStack {
-                CaptionBText(localizedString("widgets__widget__source"))
+                CaptionBText(t("widgets__widget__source"))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,20 +193,20 @@ struct BaseWidget<Content: View>: View {
         .background(Color.white10)
         .cornerRadius(16)
         .alert(
-            localizedString("widgets__delete__title"),
+            t("widgets__delete__title"),
             isPresented: $showDeleteDialog,
             actions: {
-                Button(localizedString("common__cancel"), role: .cancel) {
+                Button(t("common__cancel"), role: .cancel) {
                     showDeleteDialog = false
                 }
 
-                Button(localizedString("common__delete_yes"), role: .destructive) {
+                Button(t("common__delete_yes"), role: .destructive) {
                     widgets.deleteWidget(type)
                     showDeleteDialog = false
                 }
             },
             message: {
-                Text(localizedString("widgets__delete__description", variables: ["name": metadata.name]))
+                Text(t("widgets__delete__description", variables: ["name": metadata.name]))
             }
         )
     }

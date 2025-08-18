@@ -31,7 +31,7 @@ struct CopyAddressCard: View {
 
                         HStack(spacing: 8) {
                             CustomButton(
-                                title: localizedString("common__copy"),
+                                title: t("common__copy"),
                                 size: .small,
                                 icon: Image("copy").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
                                 shouldExpand: true
@@ -41,7 +41,7 @@ struct CopyAddressCard: View {
 
                             ShareLink(item: URL(string: pair.address)!) {
                                 CustomButton(
-                                    title: localizedString("common__share"),
+                                    title: t("common__share"),
                                     size: .small,
                                     icon: Image("share").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
                                     shouldExpand: true
@@ -56,7 +56,7 @@ struct CopyAddressCard: View {
                             Spacer()
                                 .frame(height: 60) // Position below address text
 
-                            Tooltip(text: localizedString("wallet__receive_copied"))
+                            Tooltip(text: t("wallet__receive_copied"))
                                 .transition(.opacity.combined(with: .scale(scale: 0.8)))
                         }
                         .frame(maxWidth: .infinity, alignment: .center)

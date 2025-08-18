@@ -78,12 +78,12 @@ struct RestoreWalletView: View {
 
             let invalidWords = currentWords.filter { !BIP39.isValidWord($0) }
             if !invalidWords.isEmpty {
-                return (localizedString("onboarding__restore_red_explain"), .textSecondary)
+                return (t("onboarding__restore_red_explain"), .textSecondary)
             } else {
-                return (localizedString("onboarding__restore_inv_checksum"), .redAccent)
+                return (t("onboarding__restore_inv_checksum"), .redAccent)
             }
         case .invalidEntropy:
-            return (localizedString("onboarding__restore_inv_checksum"), .redAccent)
+            return (t("onboarding__restore_inv_checksum"), .redAccent)
         }
     }
 
@@ -122,11 +122,11 @@ struct RestoreWalletView: View {
 
     private var headerSection: some View {
         VStack(spacing: 0) {
-            DisplayText(localizedString("onboarding__restore_header"), accentColor: .blueAccent)
+            DisplayText(t("onboarding__restore_header"), accentColor: .blueAccent)
                 .padding(.top, 40)
                 .padding(.bottom, 14)
 
-            BodyMText(localizedString("onboarding__restore_phrase"))
+            BodyMText(t("onboarding__restore_phrase"))
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -173,13 +173,13 @@ struct RestoreWalletView: View {
         Group {
             if showingPassphrase {
                 VStack(spacing: 16) {
-                    TextField(localizedString("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
+                    TextField(t("onboarding__restore_passphrase_placeholder"), text: $bip39Passphrase)
                         .autocapitalization(.none)
                         .autocorrectionDisabled()
                         .focused($isPassphraseFocused)
                         .padding(.top, 4)
 
-                    BodySText(localizedString("onboarding__restore_passphrase_meaning"))
+                    BodySText(t("onboarding__restore_passphrase_meaning"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -200,7 +200,7 @@ struct RestoreWalletView: View {
         HStack(spacing: 16) {
             if !showingPassphrase {
                 CustomButton(
-                    title: localizedString("onboarding__advanced"),
+                    title: t("onboarding__advanced"),
                     variant: .secondary,
                     isDisabled: !isValidMnemonic
                 ) {
@@ -210,7 +210,7 @@ struct RestoreWalletView: View {
             }
 
             CustomButton(
-                title: showingPassphrase ? localizedString("onboarding__restore_wallet") : localizedString("onboarding__restore"),
+                title: showingPassphrase ? t("onboarding__restore_wallet") : t("onboarding__restore"),
                 isDisabled: !isValidMnemonic
             ) {
                 restoreWallet()

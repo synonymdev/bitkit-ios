@@ -13,7 +13,7 @@ struct OnboardingToolbar: View {
             }) {
                 HStack {
                     Spacer()
-                    BodyMSBText(NSLocalizedString("onboarding__advanced_setup", comment: ""), textColor: .secondary)
+                    BodyMSBText(t("onboarding__advanced_setup"), textColor: .secondary)
                 }
             }
             .opacity(currentTab == 4 ? 1 : 0)
@@ -23,7 +23,7 @@ struct OnboardingToolbar: View {
             } label: {
                 HStack {
                     Spacer()
-                    BodyMSBText(NSLocalizedString("onboarding__skip", comment: ""), textColor: .secondary)
+                    BodyMSBText(t("onboarding__skip"), textColor: .secondary)
                 }
             }
             .opacity(currentTab == 4 ? 0 : 1)
@@ -62,8 +62,8 @@ struct OnboardingSlider: View {
                     // Slide 0
                     OnboardingTab(
                         imageName: "keyring",
-                        title: NSLocalizedString("onboarding__slide0_header", comment: ""),
-                        text: NSLocalizedString("onboarding__slide0_text", comment: ""),
+                        title: t("onboarding__slide0_header"),
+                        text: t("onboarding__slide0_text"),
                         accentColor: .blueAccent
                     )
                     .tag(0)
@@ -71,9 +71,9 @@ struct OnboardingSlider: View {
                     // Slide 1
                     OnboardingTab(
                         imageName: "lightning",
-                        title: NSLocalizedString("onboarding__slide1_header", comment: ""),
-                        text: NSLocalizedString("onboarding__slide1_text", comment: ""),
-                        disclaimerText: app.isGeoBlocked == true ? NSLocalizedString("onboarding__slide1_note", comment: "") : nil,
+                        title: t("onboarding__slide1_header"),
+                        text: t("onboarding__slide1_text"),
+                        disclaimerText: app.isGeoBlocked == true ? t("onboarding__slide1_note") : nil,
                         accentColor: .purpleAccent
                     )
                     .tag(1)
@@ -81,8 +81,8 @@ struct OnboardingSlider: View {
                     // Slide 2
                     OnboardingTab(
                         imageName: "spark",
-                        title: NSLocalizedString("onboarding__slide2_header", comment: ""),
-                        text: NSLocalizedString("onboarding__slide2_text", comment: ""),
+                        title: t("onboarding__slide2_header"),
+                        text: t("onboarding__slide2_text"),
                         accentColor: .yellowAccent
                     )
                     .tag(2)
@@ -90,8 +90,8 @@ struct OnboardingSlider: View {
                     // Slide 3
                     OnboardingTab(
                         imageName: "shield-figure",
-                        title: NSLocalizedString("onboarding__slide3_header", comment: ""),
-                        text: NSLocalizedString("onboarding__slide3_text", comment: ""),
+                        title: t("onboarding__slide3_header"),
+                        text: t("onboarding__slide3_text"),
                         accentColor: .greenAccent
                     )
                     .tag(3)

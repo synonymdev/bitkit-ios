@@ -7,15 +7,15 @@ struct BackupPassphrase: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__pass_your"))
+            SheetHeader(title: t("security__pass_your"))
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__pass_text"))
+                BodyMText(t("security__pass_text"))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 16)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    BodyMSBText(localizedString("security__pass"), textColor: .textSecondary)
+                    BodyMSBText(t("security__pass"), textColor: .textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     BodyMSBText(passphrase)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -32,13 +32,13 @@ struct BackupPassphrase: View {
                 .privacySensitive()
                 .frame(maxWidth: .infinity)
 
-                BodySText(localizedString("security__pass_never_share"), accentColor: .brandAccent)
+                BodySText(t("security__pass_never_share"), accentColor: .brandAccent)
 
                 Spacer()
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__continue"),
+                        title: t("common__continue"),
                     ) {
                         navigationPath.append(.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase))
                     }

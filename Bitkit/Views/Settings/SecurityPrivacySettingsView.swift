@@ -15,11 +15,11 @@ struct SecurityPrivacySettingsView: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return NSLocalizedString("security__bio_touch_id", comment: "")
+            return t("security__bio_touch_id")
         case .faceID:
-            return NSLocalizedString("security__bio_face_id", comment: "")
+            return t("security__bio_face_id")
         default:
-            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
@@ -34,22 +34,22 @@ struct SecurityPrivacySettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Privacy Settings Section
                 SettingsListLabel(
-                    title: NSLocalizedString("settings__security__swipe_balance_to_hide", comment: ""),
+                    title: t("settings__security__swipe_balance_to_hide"),
                     toggle: $settings.swipeBalanceToHide
                 )
 
                 SettingsListLabel(
-                    title: NSLocalizedString("settings__security__hide_balance_on_open", comment: ""),
+                    title: t("settings__security__hide_balance_on_open"),
                     toggle: $settings.hideBalanceOnOpen
                 )
 
                 SettingsListLabel(
-                    title: NSLocalizedString("settings__security__clipboard", comment: ""),
+                    title: t("settings__security__clipboard"),
                     toggle: $settings.readClipboard
                 )
 
                 SettingsListLabel(
-                    title: NSLocalizedString("settings__security__warn_100", comment: ""),
+                    title: t("settings__security__warn_100"),
                     toggle: $settings.warnWhenSendingOver100
                 )
 
@@ -59,15 +59,15 @@ struct SecurityPrivacySettingsView: View {
                         sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
                     } label: {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin", comment: ""),
-                            rightText: NSLocalizedString("settings__security__pin_disabled", comment: "")
+                            title: t("settings__security__pin"),
+                            rightText: t("settings__security__pin_disabled")
                         )
                     }
                 } else {
                     NavigationLink(value: Route.disablePin) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin", comment: ""),
-                            rightText: NSLocalizedString("settings__security__pin_enabled", comment: "")
+                            title: t("settings__security__pin"),
+                            rightText: t("settings__security__pin_enabled")
                         )
                     }
                 }
@@ -75,7 +75,7 @@ struct SecurityPrivacySettingsView: View {
                 if settings.pinEnabled {
                     NavigationLink(value: Route.changePin) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin_change", comment: "")
+                            title: t("settings__security__pin_change")
                         )
                     }
 
@@ -83,7 +83,7 @@ struct SecurityPrivacySettingsView: View {
                         showPinCheckForLaunch = true
                     } label: {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin_launch", comment: ""),
+                            title: t("settings__security__pin_launch"),
                             rightIcon: nil,
                             toggle: Binding(
                                 get: { settings.requirePinOnLaunch },
@@ -96,7 +96,7 @@ struct SecurityPrivacySettingsView: View {
                         showPinCheckForIdle = true
                     } label: {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin_idle", comment: ""),
+                            title: t("settings__security__pin_idle"),
                             rightIcon: nil,
                             toggle: Binding(
                                 get: { settings.requirePinWhenIdle },
@@ -109,7 +109,7 @@ struct SecurityPrivacySettingsView: View {
                         showPinCheckForPayments = true
                     } label: {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__security__pin_payments", comment: ""),
+                            title: t("settings__security__pin_payments"),
                             rightIcon: nil,
                             toggle: Binding(
                                 get: { settings.requirePinForPayments },
@@ -120,8 +120,8 @@ struct SecurityPrivacySettingsView: View {
 
                     // Biometrics toggle with custom handling
                     SettingsListLabel(
-                        title: localizedString(
-                            "settings__security__use_bio", comment: "",
+                        title: t(
+                            "settings__security__use_bio",
                             variables: ["biometryTypeName": biometryTypeName]
                         ),
                         toggle: Binding(
@@ -133,16 +133,16 @@ struct SecurityPrivacySettingsView: View {
                     )
 
                     // Footer text for Biometrics
-                    BodySText(localizedString("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
+                    BodySText(t("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
                         .padding(.top, 16)
                 }
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(NSLocalizedString("settings__security__title", comment: ""))
+        .navigationTitle(t("settings__security__title"))
         .navigationDestination(isPresented: $showPinCheckForLaunch) {
             PinCheckView(
-                title: NSLocalizedString("security__pin_enter", comment: ""),
+                title: t("security__pin_enter"),
                 explanation: "",
                 onCancel: {},
                 onPinVerified: { _ in
@@ -152,7 +152,7 @@ struct SecurityPrivacySettingsView: View {
         }
         .navigationDestination(isPresented: $showPinCheckForIdle) {
             PinCheckView(
-                title: NSLocalizedString("security__pin_enter", comment: ""),
+                title: t("security__pin_enter"),
                 explanation: "",
                 onCancel: {},
                 onPinVerified: { _ in
@@ -162,7 +162,7 @@ struct SecurityPrivacySettingsView: View {
         }
         .navigationDestination(isPresented: $showPinCheckForPayments) {
             PinCheckView(
-                title: NSLocalizedString("security__pin_enter", comment: ""),
+                title: t("security__pin_enter"),
                 explanation: "",
                 onCancel: {},
                 onPinVerified: { _ in
@@ -171,10 +171,10 @@ struct SecurityPrivacySettingsView: View {
             )
         }
         .alert(
-            NSLocalizedString("security__bio_error_title", comment: ""),
+            t("security__bio_error_title"),
             isPresented: $showingBiometricError
         ) {
-            Button(NSLocalizedString("common__ok", comment: "")) {
+            Button(t("common__ok")) {
                 // Error handled, user acknowledged
             }
         } message: {
@@ -231,8 +231,8 @@ struct SecurityPrivacySettingsView: View {
         }
 
         // Request biometric authentication
-        let reason = localizedString(
-            "security__bio_confirm", comment: "",
+        let reason = t(
+            "security__bio_confirm",
             variables: ["biometricsName": biometryTypeName]
         )
 
@@ -257,17 +257,17 @@ struct SecurityPrivacySettingsView: View {
 
         switch nsError.code {
         case LAError.biometryNotAvailable.rawValue:
-            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.biometryNotEnrolled.rawValue:
-            biometricErrorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.userCancel.rawValue, LAError.userFallback.rawValue:
             // User cancelled - don't show error, just keep current state
             return
         default:
-            biometricErrorMessage = localizedString(
-                "security__bio_error_message", comment: "",
+            biometricErrorMessage = t(
+                "security__bio_error_message",
                 variables: ["type": biometryTypeName]
             )
             showingBiometricError = true

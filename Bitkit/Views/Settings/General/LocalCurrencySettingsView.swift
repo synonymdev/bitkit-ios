@@ -43,7 +43,7 @@ struct LocalCurrencySettingsView: View {
         ScrollView(showsIndicators: false) {
             if !availableMostUsed.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(NSLocalizedString("settings__general__currency_most_used", comment: "").uppercased())
+                    CaptionText(t("settings__general__currency_most_used").uppercased())
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -55,7 +55,7 @@ struct LocalCurrencySettingsView: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                CaptionText(NSLocalizedString("settings__general__currency_other", comment: "").uppercased())
+                CaptionText(t("settings__general__currency_other").uppercased())
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -65,8 +65,8 @@ struct LocalCurrencySettingsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(NSLocalizedString("settings__general__currency_local_title", comment: ""))
-        .searchable(text: $searchText, prompt: NSLocalizedString("common__search", comment: ""))
+        .navigationTitle(t("settings__general__currency_local_title"))
+        .searchable(text: $searchText, prompt: t("common__search"))
     }
 }
 

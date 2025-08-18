@@ -13,16 +13,16 @@ struct NotificationsIntro: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("settings__notifications__intro__title"),
-            description: localizedString("settings__notifications__intro__text"),
+            title: t("settings__notifications__intro__title"),
+            description: t("settings__notifications__intro__text"),
             imageName: "bell-figure",
-            buttonText: localizedString("settings__notifications__intro__button"),
+            buttonText: t("settings__notifications__intro__button"),
             onButtonPress: onEnable,
             accentColor: .blueAccent,
             imagePosition: .center,
             testID: "NotificationsIntro"
         )
-        .navigationTitle(localizedString("settings__notifications__nav_title"))
+        .navigationTitle(t("settings__notifications__nav_title"))
         .backToWalletButton()
     }
 }

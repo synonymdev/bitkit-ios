@@ -61,7 +61,7 @@ struct TransactionSpeedSettingsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(localizedString("settings__general__speed_default"))
+                CaptionMText(t("settings__general__speed_default"))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 VStack(spacing: 0) {
@@ -108,7 +108,7 @@ struct TransactionSpeedSettingsView: View {
                 }
             }
         }
-        .navigationTitle(localizedString("settings__general__speed_title"))
+        .navigationTitle(t("settings__general__speed_title"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.top, 16)
         .padding(.horizontal, 16)

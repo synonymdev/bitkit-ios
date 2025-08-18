@@ -12,19 +12,19 @@ struct ReceiveCjitLearnMore: View {
 
     var text: String {
         isAdditional
-            ? localizedString("wallet__receive_liquidity__text_additional")
-            : localizedString("wallet__receive_liquidity__text")
+            ? t("wallet__receive_liquidity__text_additional")
+            : t("wallet__receive_liquidity__text")
     }
 
     var label: String {
         isAdditional
-            ? localizedString("wallet__receive_liquidity__label_additional")
-            : localizedString("wallet__receive_liquidity__label")
+            ? t("wallet__receive_liquidity__label_additional")
+            : t("wallet__receive_liquidity__label")
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("wallet__receive_liquidity__nav_title"), showBackButton: true)
+            SheetHeader(title: t("wallet__receive_liquidity__nav_title"), showBackButton: true)
 
             BodyMText(text)
 
@@ -42,7 +42,7 @@ struct ReceiveCjitLearnMore: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__understood")) {
+            CustomButton(title: t("common__understood")) {
                 dismiss()
             }
         }

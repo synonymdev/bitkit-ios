@@ -10,15 +10,15 @@ struct SendEnterManuallyView: View {
 
     var body: some View {
         VStack {
-            SheetHeader(title: localizedString("wallet__send_bitcoin"), showBackButton: true)
+            SheetHeader(title: t("wallet__send_bitcoin"), showBackButton: true)
 
-            CaptionText(NSLocalizedString("wallet__send_to", comment: "").uppercased())
+            CaptionText(t("wallet__send_to").uppercased())
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal)
 
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
-                    TitleText(NSLocalizedString("wallet__send_address_placeholder", comment: ""), textColor: .textSecondary)
+                    TitleText(t("wallet__send_address_placeholder"), textColor: .textSecondary)
                         .padding(20)
                 }
 

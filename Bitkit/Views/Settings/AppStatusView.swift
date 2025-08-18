@@ -12,7 +12,7 @@ struct AppStatusView: View {
             }
             lightningConnectionStatusView // TODO: navigate to channel list view
         }
-        .navigationTitle(NSLocalizedString("settings__status__title", comment: ""))
+        .navigationTitle(t("settings__status__title"))
         .navigationBarTitleDisplayMode(.inline)
         .scrollContentBackground(.hidden)
         .listStyle(PlainListStyle())
@@ -27,15 +27,15 @@ struct AppStatusView: View {
         let iconColor: Color = isConnected ? .greenAccent : .redAccent
         let status =
             isConnected
-                ? NSLocalizedString("settings__status__internet__ready", comment: "Connected")
-                : NSLocalizedString("settings__status__internet__error", comment: "Disconnected")
+                ? t("settings__status__internet__ready", comment: "Connected")
+                : t("settings__status__internet__error", comment: "Disconnected")
         let statusColor: Color = isConnected ? .greenAccent : .redAccent
 
         return StatusItemView(
             imageName: "status-internet",
             iconBackgroundColor: iconBackgroundColor,
             iconColor: iconColor,
-            title: NSLocalizedString("settings__status__internet__title", comment: ""),
+            title: t("settings__status__internet__title"),
             status: status,
             statusColor: statusColor
         )
@@ -46,7 +46,7 @@ struct AppStatusView: View {
             imageName: "status-node",
             iconBackgroundColor: .green16,
             iconColor: wallet.nodeLifecycleState.statusColor,
-            title: NSLocalizedString("settings__status__lightning_node__title", comment: ""),
+            title: t("settings__status__lightning_node__title"),
             status: wallet.nodeLifecycleState.displayState,
             statusColor: wallet.nodeLifecycleState.statusColor
         )
@@ -79,13 +79,13 @@ struct AppStatusView: View {
 
         let connectionStatus: String = {
             if !hasChannels {
-                return NSLocalizedString("settings__status__lightning_connection__error", comment: "")
+                return t("settings__status__lightning_connection__error")
             } else if hasUsableChannels && hasReadyChannels {
-                return NSLocalizedString("settings__status__lightning_connection__ready", comment: "")
+                return t("settings__status__lightning_connection__ready")
             } else if !hasUsableChannels && hasReadyChannels {
-                return NSLocalizedString("settings__status__lightning_connection__pending", comment: "")
+                return t("settings__status__lightning_connection__pending")
             } else {
-                return NSLocalizedString("settings__status__lightning_connection__ready", comment: "")
+                return t("settings__status__lightning_connection__ready")
             }
         }()
 
@@ -93,7 +93,7 @@ struct AppStatusView: View {
             imageName: "status-lightning",
             iconBackgroundColor: iconBackgroundColor,
             iconColor: connectionColor,
-            title: NSLocalizedString("settings__status__lightning_connection__title", comment: ""),
+            title: t("settings__status__lightning_connection__title"),
             status: connectionStatus,
             statusColor: connectionColor,
         )

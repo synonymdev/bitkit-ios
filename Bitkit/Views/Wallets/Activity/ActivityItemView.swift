@@ -62,13 +62,13 @@ struct ActivityItemView: View {
     private var navigationTitle: String {
         if isTransfer {
             return isSent
-                ? localizedString("wallet__activity_transfer_spending_done")
-                : localizedString("wallet__activity_transfer_savings_done")
+                ? t("wallet__activity_transfer_spending_done")
+                : t("wallet__activity_transfer_savings_done")
         }
 
         return isSent
-            ? localizedString("wallet__activity_bitcoin_sent")
-            : localizedString("wallet__activity_bitcoin_received")
+            ? t("wallet__activity_bitcoin_sent")
+            : t("wallet__activity_bitcoin_received")
     }
 
     private var formattedDateTime: (date: String, time: String) {
@@ -144,7 +144,7 @@ struct ActivityItemView: View {
     @ViewBuilder
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CaptionText(localizedString("wallet__activity_status"))
+            CaptionText(t("wallet__activity_status"))
                 .textCase(.uppercase)
                 .padding(.bottom, 8)
 
@@ -156,38 +156,38 @@ struct ActivityItemView: View {
                         Image("hourglass-simple")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_pending"), textColor: .purpleAccent)
+                        BodySSBText(t("wallet__activity_pending"), textColor: .purpleAccent)
                     case .succeeded:
                         Image("bolt")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_successful"), textColor: .purpleAccent)
+                        BodySSBText(t("wallet__activity_successful"), textColor: .purpleAccent)
                     case .failed:
                         Image("x-circle")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_failed"), textColor: .purpleAccent)
+                        BodySSBText(t("wallet__activity_failed"), textColor: .purpleAccent)
                     }
                 case let .onchain(activity):
                     if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_confirmed"), textColor: .greenAccent)
+                        BodySSBText(t("wallet__activity_confirmed"), textColor: .greenAccent)
                     } else if activity.isBoosted {
                         Image("hourglass-simple")
                             .foregroundColor(.yellowAccent)
                             .frame(width: 16, height: 16)
                         BodySSBText(
-                            localizedString("wallet__activity_confirms_in_boosted",
-                                            variables: ["feeRateDescription": localizedString("fee__fast__shortDescription")]),
+                            t("wallet__activity_confirms_in_boosted",
+                              variables: ["feeRateDescription": t("fee__fast__shortDescription")]),
                             textColor: .yellowAccent
                         )
                     } else {
                         Image("hourglass-simple")
                             .foregroundColor(.brandAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_confirming"), textColor: .brandAccent)
+                        BodySSBText(t("wallet__activity_confirming"), textColor: .brandAccent)
                     }
                 }
             }
@@ -201,7 +201,7 @@ struct ActivityItemView: View {
     private var timestampSection: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("wallet__activity_date"))
+                CaptionText(t("wallet__activity_date"))
                     .textCase(.uppercase)
                     .padding(.bottom, 8)
 
@@ -218,7 +218,7 @@ struct ActivityItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("wallet__activity_time"))
+                CaptionText(t("wallet__activity_time"))
                     .textCase(.uppercase)
                     .padding(.bottom, 8)
 
@@ -241,7 +241,7 @@ struct ActivityItemView: View {
         if isSent {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(localizedString("wallet__activity_payment"))
+                    CaptionText(t("wallet__activity_payment"))
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
 
@@ -259,7 +259,7 @@ struct ActivityItemView: View {
 
                 if let fee = activity.fee {
                     VStack(alignment: .leading, spacing: 0) {
-                        CaptionText(localizedString("wallet__activity_fee"))
+                        CaptionText(t("wallet__activity_fee"))
                             .textCase(.uppercase)
                             .padding(.bottom, 8)
 
@@ -283,7 +283,7 @@ struct ActivityItemView: View {
     private var tagsSection: some View {
         if !viewModel.tags.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("wallet__tags"))
+                CaptionText(t("wallet__tags"))
                     .textCase(.uppercase)
                     .padding(.bottom, 8)
 
@@ -311,7 +311,7 @@ struct ActivityItemView: View {
         if case let .lightning(activity) = viewModel.activity {
             if !activity.message.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(localizedString("wallet__activity_invoice_note"))
+                    CaptionText(t("wallet__activity_invoice_note"))
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
 
@@ -334,14 +334,14 @@ struct ActivityItemView: View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
                 CustomButton(
-                    title: localizedString("wallet__activity_assign"), size: .small,
+                    title: t("wallet__activity_assign"), size: .small,
                     icon: Image("user-plus")
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 )
 
                 CustomButton(
-                    title: localizedString("wallet__activity_tag"), size: .small,
+                    title: t("wallet__activity_tag"), size: .small,
                     icon: Image("tag")
                         .foregroundColor(accentColor),
                     shouldExpand: true
@@ -359,7 +359,7 @@ struct ActivityItemView: View {
 
             HStack(spacing: 16) {
                 CustomButton(
-                    title: localizedString("wallet__activity_boost"), size: .small,
+                    title: t("wallet__activity_boost"), size: .small,
                     icon: Image("timer-alt")
                         .foregroundColor(accentColor),
                     isDisabled: shouldDisableBoostButton,
@@ -372,7 +372,7 @@ struct ActivityItemView: View {
                 }
 
                 CustomButton(
-                    title: localizedString("wallet__activity_explore"), size: .small,
+                    title: t("wallet__activity_explore"), size: .small,
                     icon: Image("branch")
                         .foregroundColor(accentColor),
                     shouldExpand: true

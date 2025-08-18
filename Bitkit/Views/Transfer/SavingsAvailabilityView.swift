@@ -5,9 +5,9 @@ struct SavingsAvailabilityView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(localizedString("lightning__availability__title"), accentColor: .brandAccent)
+            DisplayText(t("lightning__availability__title"), accentColor: .brandAccent)
 
-            BodyMText(localizedString("lightning__availability__text"), accentFont: Fonts.bold)
+            BodyMText(t("lightning__availability__text"), accentFont: Fonts.bold)
                 .padding(.top, 16)
 
             Spacer()
@@ -23,17 +23,17 @@ struct SavingsAvailabilityView: View {
             Spacer()
 
             HStack(spacing: 16) {
-                CustomButton(title: localizedString("common__cancel"), variant: .secondary) {
+                CustomButton(title: t("common__cancel"), variant: .secondary) {
                     navigation.reset()
                 }
 
-                CustomButton(title: localizedString("common__continue")) {
+                CustomButton(title: t("common__continue")) {
                     navigation.navigate(.savingsConfirm)
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)

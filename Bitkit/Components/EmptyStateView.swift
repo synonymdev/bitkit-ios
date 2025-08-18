@@ -36,7 +36,7 @@ struct EmptyStateView: View {
 
             HStack(alignment: .bottom, spacing: 0) {
                 DisplayText(
-                    NSLocalizedString(type.localizationKey, comment: ""),
+                    t(type.localizationKey),
                     accentColor: type.accentColor
                 )
                 .frame(width: 224)

@@ -18,7 +18,7 @@ struct ReceiveCjitAmount: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("wallet__receive_bitcoin"), showBackButton: true)
+            SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
@@ -31,7 +31,7 @@ struct ReceiveCjitAmount: View {
 
                 HStack(alignment: .bottom) {
                     AvailableAmount(
-                        label: localizedString("fee__minimum__title"),
+                        label: t("fee__minimum__title"),
                         amount: Int(minimumAmount)
                     )
                     .onTapGesture {
@@ -57,7 +57,7 @@ struct ReceiveCjitAmount: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: amountSats < minimumAmount) {
+            CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount) {
                 // Wait until node is running if it's in starting state
                 if await wallet.waitForNodeToRun() {
                     // Only proceed if node is running

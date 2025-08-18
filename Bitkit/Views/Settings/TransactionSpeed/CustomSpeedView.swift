@@ -20,7 +20,7 @@ struct CustomSpeedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CaptionMText(localizedString("common__sat_vbyte"))
+            CaptionMText(t("common__sat_vbyte"))
                 .padding(.bottom, 16)
 
             MoneyText(sats: Int(feeRate), symbol: true)
@@ -30,7 +30,7 @@ struct CustomSpeedView: View {
             if isValid {
                 if let fiatAmount = currency.convert(sats: totalFee) {
                     BodyMText(
-                        localizedString(
+                        t(
                             "settings__general__speed_fee_total_fiat",
                             variables: [
                                 "feeSats": String(totalFee),
@@ -41,7 +41,7 @@ struct CustomSpeedView: View {
                     )
                 } else {
                     BodyMText(
-                        localizedString(
+                        t(
                             "settings__general__speed_fee_total",
                             variables: [
                                 "feeSats": String(totalFee),
@@ -58,7 +58,7 @@ struct CustomSpeedView: View {
             }
 
             CustomButton(
-                title: localizedString("common__continue"),
+                title: t("common__continue"),
                 isDisabled: !isValid
             ) {
                 // Save the custom speed setting
@@ -67,7 +67,7 @@ struct CustomSpeedView: View {
             }
             .padding(.top, 16)
         }
-        .navigationTitle(localizedString("settings__general__speed_fee_custom"))
+        .navigationTitle(t("settings__general__speed_fee_custom"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.top, 16)
         .padding(.horizontal, 16)

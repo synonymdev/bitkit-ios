@@ -16,7 +16,7 @@ struct SendAmountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__send_amount"), showBackButton: true)
+            SheetHeader(title: t("wallet__send_amount"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
                 // Use AmountInput component instead of TextField
@@ -31,7 +31,7 @@ struct SendAmountView: View {
                 // Available balance section
                 HStack(alignment: .bottom) {
                     AvailableAmount(
-                        label: localizedString("wallet__send_available"),
+                        label: t("wallet__send_available"),
                         amount: Int(availableAmount)
                     )
                     .onTapGesture {
@@ -43,8 +43,8 @@ struct SendAmountView: View {
                     // No specific invoice, show toggle button based on selected wallet type
                     NumberPadActionButton(
                         text: app.selectedWalletToPayFrom == .lightning
-                            ? NSLocalizedString("wallet__spending__title", comment: "").uppercased()
-                            : NSLocalizedString("wallet__savings__title", comment: "").uppercased(),
+                            ? t("wallet__spending__title").uppercased()
+                            : t("wallet__savings__title").uppercased(),
                         color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
                         variant: .secondary
                     ) {
@@ -73,7 +73,7 @@ struct SendAmountView: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: satsAmount == 0) {
+            CustomButton(title: t("common__continue"), isDisabled: satsAmount == 0) {
                 do {
                     if satsAmount > 0 {
                         wallet.sendAmountSats = satsAmount

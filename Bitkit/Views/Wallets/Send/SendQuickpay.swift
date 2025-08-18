@@ -56,7 +56,7 @@ struct SendQuickpay: View {
 
     var body: some View {
         VStack {
-            SheetHeader(title: localizedString("wallet__send_quickpay__nav_title"))
+            SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
             if let invoice = app.scannedLightningInvoice {
                 MoneyStack(sats: Int(invoice.amountSatoshis))
@@ -68,7 +68,7 @@ struct SendQuickpay: View {
 
             Spacer()
 
-            DisplayText(localizedString("wallet__send_quickpay__title"), accentColor: .purpleAccent)
+            DisplayText(t("wallet__send_quickpay__title"), accentColor: .purpleAccent)
         }
         .padding(.horizontal)
         .onAppear {

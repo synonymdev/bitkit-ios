@@ -77,33 +77,33 @@ struct SettingUpView: View {
     @State private var innerRotation: Double = 0
     @State private var transferRotation: Double = 0
     // Keep in state so we don't get a new random text on each render
-    @State private var randomOkText: String = localizedRandom("common__ok_random", comment: "")
+    @State private var randomOkText: String = localizedRandom("common__ok_random")
 
     var isTransferring: Bool {
         return transfer.lightningSetupStep < 3
     }
 
     var navTitle: String {
-        return isTransferring ? localizedString("lightning__transfer__nav_title") : localizedString("lightning__transfer_success__nav_title")
+        return isTransferring ? t("lightning__transfer__nav_title") : t("lightning__transfer_success__nav_title")
     }
 
     var title: String {
-        return isTransferring ? localizedString("lightning__savings_progress__title") : localizedString("lightning__transfer_success__title_spending")
+        return isTransferring ? t("lightning__savings_progress__title") : t("lightning__transfer_success__title_spending")
     }
 
     var text: String {
-        return isTransferring ? localizedString("lightning__setting_up_text") : localizedString("lightning__transfer_success__text_spending")
+        return isTransferring ? t("lightning__setting_up_text") : t("lightning__transfer_success__text_spending")
     }
 
     var buttonTitle: String {
-        return isTransferring ? localizedString("lightning__setting_up_button") : randomOkText
+        return isTransferring ? t("lightning__setting_up_button") : randomOkText
     }
 
     let steps = [
-        localizedString("lightning__setting_up_step1"), // Processing Payment
-        localizedString("lightning__setting_up_step2"), // Payment Successful
-        localizedString("lightning__setting_up_step3"), // Queued For Opening
-        localizedString("lightning__setting_up_step4"), // Opening Connection
+        t("lightning__setting_up_step1"), // Processing Payment
+        t("lightning__setting_up_step2"), // Payment Successful
+        t("lightning__setting_up_step3"), // Queued For Opening
+        t("lightning__setting_up_step4"), // Opening Connection
     ]
 
     var body: some View {

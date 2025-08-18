@@ -136,10 +136,10 @@ enum DateFormatterHelpers {
 
         if date >= beginningOfWeek {
             // This week - return localized "This week"
-            return localizedString("wallet__activity_group_week", comment: "Activity group header for current week")
+            return t("wallet__activity_group_week", comment: "Activity group header for current week")
         } else if date >= beginningOfMonth {
             // This month - return localized "This month"
-            return localizedString("wallet__activity_group_month", comment: "Activity group header for current month")
+            return t("wallet__activity_group_month", comment: "Activity group header for current month")
         } else if date >= beginningOfYear {
             // This year - use month and year
             let monthYearFormatter = DateFormatter()

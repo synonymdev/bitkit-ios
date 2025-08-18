@@ -10,8 +10,8 @@ struct EmptyActivityRow: View {
             )
 
             VStack(alignment: .leading, spacing: 4) {
-                BodyMSBText(localizedString("wallet__activity_no"))
-                CaptionBText(localizedString("wallet__activity_no_explain"))
+                BodyMSBText(t("wallet__activity_no"))
+                CaptionBText(t("wallet__activity_no_explain"))
             }
 
             Spacer()

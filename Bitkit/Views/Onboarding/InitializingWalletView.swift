@@ -160,7 +160,7 @@ struct InitializingWalletView: View {
                 VStack(spacing: 32) {
                     spinner
 
-                    DisplayText(localizedString("onboarding__loading_header"))
+                    DisplayText(t("onboarding__loading_header"))
                 }
                 .padding(.horizontal, 32)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

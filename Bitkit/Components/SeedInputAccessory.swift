@@ -14,7 +14,7 @@ struct SeedInputAccessory: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CaptionText(localizedString("onboarding__restore_suggestions"))
+            CaptionText(t("onboarding__restore_suggestions"))
                 .padding(.horizontal, 32)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)

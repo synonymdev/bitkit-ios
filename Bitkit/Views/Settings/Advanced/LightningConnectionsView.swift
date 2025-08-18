@@ -16,7 +16,7 @@ struct LightningConnectionsView: View {
                 // Header section with spending balance and receiving capacity
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        CaptionMText(NSLocalizedString("lightning__spending_label", comment: ""))
+                        CaptionMText(t("lightning__spending_label"))
                         HStack(spacing: 4) {
                             Image("arrow-up")
                                 .resizable()
@@ -28,7 +28,7 @@ struct LightningConnectionsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        CaptionMText(NSLocalizedString("lightning__receiving_label", comment: ""))
+                        CaptionMText(t("lightning__receiving_label"))
                         HStack(spacing: 4) {
                             Image("arrow-down")
                                 .resizable()
@@ -48,7 +48,7 @@ struct LightningConnectionsView: View {
                 if !pendingChannels.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionMText(NSLocalizedString("lightning__conn_pending", comment: ""))
+                            CaptionMText(t("lightning__conn_pending"))
                                 .padding(.top, 32)
                                 .padding(.bottom, 16)
                             Spacer()
@@ -59,12 +59,12 @@ struct LightningConnectionsView: View {
                                 destination: LightningConnectionDetailView(
                                     channel: channel,
                                     linkedOrder: findLinkedOrder(for: channel),
-                                    title: "\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)"
+                                    title: "\(t("lightning__connection")) \(index + 1)"
                                 )
                             ) {
                                 VStack(spacing: 0) {
                                     HStack {
-                                        SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
+                                        SubtitleText("\(t("lightning__connection")) \(index + 1)")
                                         Spacer()
                                         Image("chevron")
                                             .resizable()
@@ -94,7 +94,7 @@ struct LightningConnectionsView: View {
                 if !openChannels.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionMText(NSLocalizedString("lightning__conn_open", comment: ""))
+                            CaptionMText(t("lightning__conn_open"))
                                 .padding(.top, 16)
                                 .padding(.bottom, 16)
                             Spacer()
@@ -105,12 +105,12 @@ struct LightningConnectionsView: View {
                                 destination: LightningConnectionDetailView(
                                     channel: channel,
                                     linkedOrder: findLinkedOrder(for: channel),
-                                    title: "\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)"
+                                    title: "\(t("lightning__connection")) \(index + 1)"
                                 )
                             ) {
                                 VStack(spacing: 0) {
                                     HStack {
-                                        SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
+                                        SubtitleText("\(t("lightning__connection")) \(index + 1)")
                                         Spacer()
                                         Image("chevron")
                                             .resizable()
@@ -139,7 +139,7 @@ struct LightningConnectionsView: View {
                 if showClosedConnections && !closedConnections.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
-                            CaptionMText(NSLocalizedString("lightning__conn_closed", comment: ""))
+                            CaptionMText(t("lightning__conn_closed"))
                                 .padding(.top, 16)
                                 .padding(.bottom, 16)
                             Spacer()
@@ -148,7 +148,7 @@ struct LightningConnectionsView: View {
                         ForEach(Array(closedConnections.enumerated()), id: \.element.id) { index, order in
                             VStack(spacing: 0) {
                                 HStack {
-                                    SubtitleText("\(NSLocalizedString("lightning__connection", comment: "")) \(index + 1)")
+                                    SubtitleText("\(t("lightning__connection")) \(index + 1)")
                                     Spacer()
                                     Image("chevron")
                                         .resizable()
@@ -181,8 +181,8 @@ struct LightningConnectionsView: View {
                     // Show Closed & Failed button
                     CustomButton(
                         title: showClosedConnections
-                            ? localizedString("lightning__conn_closed_hide")
-                            : localizedString("lightning__conn_closed_show"),
+                            ? t("lightning__conn_closed_hide")
+                            : t("lightning__conn_closed_show"),
                         variant: .tertiary,
                     ) {
                         showClosedConnections.toggle()
@@ -196,7 +196,7 @@ struct LightningConnectionsView: View {
             .padding(.horizontal, 16)
         }
         .background(Color.black)
-        .navigationTitle(NSLocalizedString("lightning__connections", comment: ""))
+        .navigationTitle(t("lightning__connections"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             await refreshData()
@@ -212,7 +212,7 @@ struct LightningConnectionsView: View {
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 16) {
                 CustomButton(
-                    title: NSLocalizedString("lightning__conn_button_export_logs", comment: ""),
+                    title: t("lightning__conn_button_export_logs"),
                     variant: .secondary,
                     shouldExpand: true
                 ) {
@@ -220,7 +220,7 @@ struct LightningConnectionsView: View {
                 }
 
                 CustomButton(
-                    title: NSLocalizedString("lightning__conn_button_add", comment: ""),
+                    title: t("lightning__conn_button_add"),
                     variant: .primary,
                     shouldExpand: true,
                 ) {

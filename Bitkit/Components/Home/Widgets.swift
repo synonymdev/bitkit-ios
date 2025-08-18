@@ -22,7 +22,7 @@ struct Widgets: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                CaptionMText(localizedString("widgets__widgets"))
+                CaptionMText(t("widgets__widgets"))
 
                 Spacer()
 
@@ -56,7 +56,7 @@ struct Widgets: View {
             }
 
             CustomButton(
-                title: localizedString("widgets__add"), variant: .tertiary, size: .large, icon: Image("plus")
+                title: t("widgets__add"), variant: .tertiary, size: .large, icon: Image("plus")
             ) {
                 if app.hasSeenWidgetsIntro {
                     navigation.navigate(.widgetsList)

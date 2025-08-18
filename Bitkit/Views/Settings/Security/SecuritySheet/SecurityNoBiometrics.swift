@@ -6,11 +6,11 @@ struct SecurityNoBiometrics: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__bio"))
+            SheetHeader(title: t("security__bio"))
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__bio_not_available"))
+                BodyMText(t("security__bio_not_available"))
 
                 Spacer()
 
@@ -23,7 +23,7 @@ struct SecurityNoBiometrics: View {
 
                 HStack(spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__skip"),
+                        title: t("common__skip"),
                         variant: .secondary
                     ) {
                         // Set biometrics to false and continue
@@ -32,7 +32,7 @@ struct SecurityNoBiometrics: View {
                     }
 
                     // Phone Settings button
-                    CustomButton(title: localizedString("security__bio_phone_settings")) {
+                    CustomButton(title: t("security__bio_phone_settings")) {
                         openPhoneSettings()
                     }
                 }

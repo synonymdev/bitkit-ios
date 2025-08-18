@@ -29,7 +29,7 @@ struct LightningConnectionDetailView: View {
                 // STATUS Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        CaptionText(NSLocalizedString("lightning__status", comment: "").uppercased(), textColor: .textSecondary)
+                        CaptionText(t("lightning__status").uppercased(), textColor: .textSecondary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -55,27 +55,27 @@ struct LightningConnectionDetailView: View {
                 if let order = linkedOrder {
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
-                            CaptionText(NSLocalizedString("lightning__order_details", comment: "").uppercased(), textColor: .textSecondary)
+                            CaptionText(t("lightning__order_details").uppercased(), textColor: .textSecondary)
                             Spacer()
                         }
                         .padding(.horizontal, 16)
 
                         VStack(spacing: 0) {
-                            DetailRow(label: NSLocalizedString("lightning__order", comment: ""), value: order.id, isFirst: true)
+                            DetailRow(label: t("lightning__order"), value: order.id, isFirst: true)
 
                             if let formattedDate = formatDate(order.createdAt) {
                                 Divider().padding(.horizontal, 16)
-                                DetailRow(label: NSLocalizedString("lightning__opened_on", comment: ""), value: formattedDate)
+                                DetailRow(label: t("lightning__opened_on"), value: formattedDate)
                             }
 
                             Divider().padding(.horizontal, 16)
                             DetailRow(
-                                label: NSLocalizedString("lightning__transaction", comment: ""),
+                                label: t("lightning__transaction"),
                                 value: truncateString(order.payment.onchain.address, length: 16)
                             )
                             Divider().padding(.horizontal, 16)
                             DetailRow(
-                                label: NSLocalizedString("lightning__order_fee", comment: ""), value: "₿ \(formatNumber(order.feeSat))", isLast: true
+                                label: t("lightning__order_fee"), value: "₿ \(formatNumber(order.feeSat))", isLast: true
                             )
                         }
                     }
@@ -84,29 +84,29 @@ struct LightningConnectionDetailView: View {
                 // BALANCE Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        CaptionText(NSLocalizedString("lightning__balance", comment: "").uppercased(), textColor: .textSecondary)
+                        CaptionText(t("lightning__balance").uppercased(), textColor: .textSecondary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
 
                     VStack(spacing: 0) {
                         DetailRow(
-                            label: NSLocalizedString("lightning__receiving_label", comment: ""),
+                            label: t("lightning__receiving_label"),
                             value: "₿ \(formatNumber(channel.inboundCapacityMsat / 1000))", isFirst: true
                         )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
-                            label: NSLocalizedString("lightning__spending_label", comment: ""),
+                            label: t("lightning__spending_label"),
                             value: "₿ \(formatNumber(channel.outboundCapacityMsat / 1000))"
                         )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
-                            label: NSLocalizedString("lightning__reserve_balance", comment: ""),
+                            label: t("lightning__reserve_balance"),
                             value: "₿ \(formatNumber(channel.unspendablePunishmentReserve ?? 0))"
                         )
                         Divider().padding(.horizontal, 16)
                         DetailRow(
-                            label: NSLocalizedString("lightning__total_size", comment: ""), value: "₿ \(formatNumber(channel.channelValueSats))",
+                            label: t("lightning__total_size"), value: "₿ \(formatNumber(channel.channelValueSats))",
                             isLast: true
                         )
                     }
@@ -115,13 +115,13 @@ struct LightningConnectionDetailView: View {
                 // FEES Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        CaptionText(NSLocalizedString("lightning__fees", comment: "").uppercased(), textColor: .textSecondary)
+                        CaptionText(t("lightning__fees").uppercased(), textColor: .textSecondary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
 
                     VStack(spacing: 0) {
-                        DetailRow(label: NSLocalizedString("lightning__base_fee", comment: ""), value: "₿ 1", isFirst: true)
+                        DetailRow(label: t("lightning__base_fee"), value: "₿ 1", isFirst: true)
                         Divider().padding(.horizontal, 16)
                         DetailRow(label: "Receiving base fee", value: "₿ 1", isLast: true) // TODO: Add localization key for receiving base fee
                     }
@@ -130,7 +130,7 @@ struct LightningConnectionDetailView: View {
                 // OTHER Section
                 VStack(alignment: .leading, spacing: 16) {
                     HStack {
-                        CaptionText(NSLocalizedString("lightning__other", comment: "").uppercased(), textColor: .textSecondary)
+                        CaptionText(t("lightning__other").uppercased(), textColor: .textSecondary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
@@ -140,18 +140,18 @@ struct LightningConnectionDetailView: View {
 
                         if hasDate, let formattedDate = formatDate(linkedOrder?.createdAt ?? "") {
                             DetailRow(
-                                label: NSLocalizedString("lightning__opened_on", comment: ""),
+                                label: t("lightning__opened_on"),
                                 value: formattedDate,
                                 isFirst: true
                             )
                             Divider().padding(.horizontal, 16)
                             DetailRow(
-                                label: NSLocalizedString("lightning__channel_node_id", comment: ""),
+                                label: t("lightning__channel_node_id"),
                                 value: truncateString(channel.counterpartyNodeId.description, length: 16), isLast: true
                             )
                         } else {
                             DetailRow(
-                                label: NSLocalizedString("lightning__channel_node_id", comment: ""),
+                                label: t("lightning__channel_node_id"),
                                 value: truncateString(channel.counterpartyNodeId.description, length: 16),
                                 isFirst: true, isLast: true
                             )
@@ -162,7 +162,7 @@ struct LightningConnectionDetailView: View {
                 // Bottom buttons
                 HStack(spacing: 16) {
                     CustomButton(
-                        title: NSLocalizedString("lightning__support", comment: ""),
+                        title: t("lightning__support"),
                         variant: .secondary,
                         shouldExpand: true
                     ) {
@@ -171,7 +171,7 @@ struct LightningConnectionDetailView: View {
 
                     if channelStatus == .open {
                         CustomButton(
-                            title: NSLocalizedString("lightning__close_conn", comment: ""),
+                            title: t("lightning__close_conn"),
                             variant: .primary,
                             shouldExpand: true,
                             destination: CloseConnectionConfirmation(channel: channel)
@@ -221,11 +221,11 @@ struct LightningConnectionDetailView: View {
     private var statusText: String {
         switch channelStatus {
         case .pending:
-            return NSLocalizedString("lightning__order_state__opening", comment: "").capitalized
+            return t("lightning__order_state__opening").capitalized
         case .open:
-            return NSLocalizedString("lightning__order_state__open", comment: "").capitalized
+            return t("lightning__order_state__open").capitalized
         case .closed:
-            return NSLocalizedString("lightning__order_state__closed", comment: "").capitalized
+            return t("lightning__order_state__closed").capitalized
         }
     }
 
