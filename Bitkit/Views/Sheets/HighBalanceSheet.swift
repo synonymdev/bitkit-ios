@@ -13,12 +13,12 @@ struct HighBalanceSheet: View {
     var body: some View {
         Sheet(id: .highBalance, data: config) {
             SheetIntro(
-                navTitle: localizedString("other__high_balance__nav_title"),
-                title: localizedString("other__high_balance__title"),
-                description: localizedString("other__high_balance__text"),
+                navTitle: t("other__high_balance__nav_title"),
+                title: t("other__high_balance__title"),
+                description: t("other__high_balance__text"),
                 image: "exclamation-mark",
-                continueText: localizedString("other__high_balance__continue"),
-                cancelText: localizedString("other__high_balance__cancel"),
+                continueText: t("other__high_balance__continue"),
+                cancelText: t("other__high_balance__cancel"),
                 accentColor: .yellowAccent,
                 accentFont: Fonts.bold,
                 testID: "HighBalanceSheet",

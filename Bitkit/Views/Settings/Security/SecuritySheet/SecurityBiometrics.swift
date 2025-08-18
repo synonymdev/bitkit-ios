@@ -14,11 +14,11 @@ struct SecurityBiometrics: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return NSLocalizedString("security__bio_touch_id", comment: "")
+            return t("security__bio_touch_id")
         case .faceID:
-            return NSLocalizedString("security__bio_face_id", comment: "")
+            return t("security__bio_face_id")
         default:
-            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
@@ -27,7 +27,7 @@ struct SecurityBiometrics: View {
             SheetHeader(title: biometryTypeName)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__bio_ask", variables: ["biometricsName": biometryTypeName]))
+                BodyMText(t("security__bio_ask", variables: ["biometricsName": biometryTypeName]))
 
                 Spacer()
 
@@ -39,7 +39,7 @@ struct SecurityBiometrics: View {
                 Spacer()
 
                 HStack(alignment: .center, spacing: 0) {
-                    BodyMSBText(localizedString("security__bio_use", variables: ["biometricsName": biometryTypeName]))
+                    BodyMSBText(t("security__bio_use", variables: ["biometricsName": biometryTypeName]))
 
                     Spacer()
 
@@ -49,7 +49,7 @@ struct SecurityBiometrics: View {
                 }
                 .padding(.bottom, 32)
 
-                CustomButton(title: localizedString("common__continue")) {
+                CustomButton(title: t("common__continue")) {
                     if useBiometrics {
                         requestBiometricPermission()
                     } else {
@@ -63,10 +63,10 @@ struct SecurityBiometrics: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .alert(
-            NSLocalizedString("security__bio_error_title", comment: ""),
+            t("security__bio_error_title"),
             isPresented: $showingError
         ) {
-            Button(NSLocalizedString("common__ok", comment: "")) {
+            Button(t("common__ok")) {
                 useBiometrics = false
                 navigateToNoBiometricsSupport = true
             }
@@ -86,7 +86,7 @@ struct SecurityBiometrics: View {
         }
 
         // Request biometric authentication
-        let reason = localizedString("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
+        let reason = t("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
@@ -111,12 +111,12 @@ struct SecurityBiometrics: View {
 
         switch nsError.code {
         case LAError.biometryNotAvailable.rawValue:
-            errorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            errorMessage = t("security__bio_not_available")
             // Navigate directly to NoBiometricsSupport for this case
             navigateToNoBiometricsSupport = true
             return
         case LAError.biometryNotEnrolled.rawValue:
-            errorMessage = NSLocalizedString("security__bio_not_available", comment: "")
+            errorMessage = t("security__bio_not_available")
             // Navigate directly to NoBiometricsSupport for this case
             navigateToNoBiometricsSupport = true
             return
@@ -124,8 +124,8 @@ struct SecurityBiometrics: View {
             // User cancelled - don't show error, just turn off toggle
             return
         default:
-            errorMessage = localizedString(
-                "security__bio_error_message", comment: "",
+            errorMessage = t(
+                "security__bio_error_message",
                 variables: ["type": biometryTypeName]
             )
         }

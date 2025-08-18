@@ -26,7 +26,7 @@ struct LanguageSettingsScreen: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(localizedString("settings__general__language_other"))
+                CaptionMText(t("settings__general__language_other"))
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -35,7 +35,7 @@ struct LanguageSettingsScreen: View {
                 }
             }
         }
-        .navigationTitle(localizedString("settings__general__language_title"))
+        .navigationTitle(t("settings__general__language_title"))
         .padding(.horizontal, 16)
         .alert("Language Changed", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}

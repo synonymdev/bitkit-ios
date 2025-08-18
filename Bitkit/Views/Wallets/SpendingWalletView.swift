@@ -28,7 +28,7 @@ struct SpendingWalletView: View {
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .lightning)
 
-                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                    CustomButton(title: t("wallet__activity_show_all"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
                     /// Leave some space for TabBar
@@ -46,7 +46,7 @@ struct SpendingWalletView: View {
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .navigationTitle(localizedString("wallet__spending__title"))
+        .navigationTitle(t("wallet__spending__title"))
         .padding(.horizontal)
         .frame(maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .topTrailing) {

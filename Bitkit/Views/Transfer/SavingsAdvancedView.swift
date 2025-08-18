@@ -22,10 +22,10 @@ struct SavingsAdvancedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(localizedString("lightning__savings_advanced__title"), accentColor: .brandAccent)
+            DisplayText(t("lightning__savings_advanced__title"), accentColor: .brandAccent)
                 .padding(.bottom, 16)
 
-            BodyMText(localizedString("lightning__savings_advanced__text"))
+            BodyMText(t("lightning__savings_advanced__text"))
                 .padding(.bottom, 16)
 
             if let channels = wallet.channels {
@@ -36,21 +36,21 @@ struct SavingsAdvancedView: View {
 
             Spacer()
 
-            CaptionMText(localizedString("lightning__savings_advanced__total"))
+            CaptionMText(t("lightning__savings_advanced__total"))
                 .padding(.bottom, 16)
 
             MoneyText(sats: Int(totalSelectedBalance), size: .display, symbol: true)
                 .padding(.bottom, 32)
 
             CustomButton(
-                title: localizedString("common__continue"),
+                title: t("common__continue"),
                 isDisabled: transfer.selectedChannelIds.isEmpty
             ) {
                 dismiss()
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.horizontal, 16)
         .padding(.top, 16)
@@ -69,7 +69,7 @@ struct SavingsAdvancedView: View {
         VStack(spacing: 16) {
             HStack {
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(localizedString("lightning__connection") + " \(index + 1)")
+                    CaptionMText(t("lightning__connection") + " \(index + 1)")
                     MoneyText(sats: Int(balance), size: .bodySSB, symbol: true)
                 }
 

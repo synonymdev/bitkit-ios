@@ -11,7 +11,7 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         BodyMText(
-                            NSLocalizedString("settings__adv__section_payments", comment: ""),
+                            t("settings__adv__section_payments"),
                             textColor: .textSecondary
                         )
                         .padding(.top, 24)
@@ -23,26 +23,26 @@ struct AdvancedSettingsView: View {
                     // Maybe never implemented
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(
-                    //         title: NSLocalizedString("settings__adv__address_type", comment: ""),
+                    //         title: t("settings__adv__address_type"),
                     //         rightText: "Native Segwit"
                     //     )
                     // }
 
                     NavigationLink(value: Route.coinSelection) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__coin_selection", comment: "")
+                            title: t("settings__adv__coin_selection")
                         )
                     }
 
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(
-                    //         title: NSLocalizedString("settings__adv__payment_preference", comment: "")
+                    //         title: t("settings__adv__payment_preference")
                     //     )
                     // }
 
                     // NavigationLink(destination: Text("Coming soon")) {
                     //     SettingsListLabel(
-                    //         title: NSLocalizedString("settings__adv__gap_limit", comment: "")
+                    //         title: t("settings__adv__gap_limit")
                     //     )
                     // }
                 }
@@ -51,7 +51,7 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         BodyMText(
-                            NSLocalizedString("settings__adv__section_networks", comment: ""),
+                            t("settings__adv__section_networks"),
                             textColor: .textSecondary
                         )
                         .padding(.top, 24)
@@ -62,25 +62,25 @@ struct AdvancedSettingsView: View {
 
                     NavigationLink(value: Route.connections) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__lightning_connections", comment: "")
+                            title: t("settings__adv__lightning_connections")
                         )
                     }
 
                     NavigationLink(value: Route.node) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__lightning_node", comment: "")
+                            title: t("settings__adv__lightning_node")
                         )
                     }
 
                     NavigationLink(value: Route.electrumSettings) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__electrum_server", comment: "")
+                            title: t("settings__adv__electrum_server")
                         )
                     }
 
                     NavigationLink(destination: Text("Coming soon")) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__rgs_server", comment: "")
+                            title: t("settings__adv__rgs_server")
                         )
                     }
                 }
@@ -89,7 +89,7 @@ struct AdvancedSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         BodyMText(
-                            NSLocalizedString("settings__adv__section_other", comment: ""),
+                            t("settings__adv__section_other"),
                             textColor: .textSecondary
                         )
                         .padding(.top, 24)
@@ -99,12 +99,12 @@ struct AdvancedSettingsView: View {
 
                     NavigationLink(value: Route.addressViewer) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__address_viewer", comment: "")
+                            title: t("settings__adv__address_viewer")
                         )
                     }
 
                     // SettingsListLabel(
-                    //     title: NSLocalizedString("settings__adv__rescan", comment: ""),
+                    //     title: t("settings__adv__rescan"),
                     //     rightIcon: nil
                     // )
 
@@ -112,7 +112,7 @@ struct AdvancedSettingsView: View {
                         showingResetAlert = true
                     }) {
                         SettingsListLabel(
-                            title: NSLocalizedString("settings__adv__suggestions_reset", comment: "")
+                            title: t("settings__adv__suggestions_reset")
                         )
                     }
 
@@ -123,12 +123,12 @@ struct AdvancedSettingsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(NSLocalizedString("settings__advanced_title", comment: ""))
+        .navigationTitle(t("settings__advanced_title"))
         .alert(isPresented: $showingResetAlert) {
             Alert(
-                title: Text(localizedString("settings__adv__reset_title")),
-                message: Text(localizedString("settings__adv__reset_desc")),
-                primaryButton: .destructive(Text(localizedString("settings__adv__reset_confirm"))) {
+                title: Text(t("settings__adv__reset_title")),
+                message: Text(t("settings__adv__reset_desc")),
+                primaryButton: .destructive(Text(t("settings__adv__reset_confirm"))) {
                     suggestionsManager.resetDismissed()
                 },
                 secondaryButton: .cancel()

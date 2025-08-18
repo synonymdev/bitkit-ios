@@ -16,7 +16,7 @@ struct SpendingAmount: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(localizedString("lightning__spending_amount__title"), accentColor: .purpleAccent)
+            DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
 
             AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
                 satsAmount = newSats
@@ -27,7 +27,7 @@ struct SpendingAmount: View {
             Spacer()
 
             HStack(alignment: .bottom) {
-                AvailableAmount(label: localizedString("wallet__send_available"), amount: wallet.totalBalanceSats)
+                AvailableAmount(label: t("wallet__send_available"), amount: wallet.totalBalanceSats)
                 Spacer()
                 actionButtons
             }
@@ -35,7 +35,7 @@ struct SpendingAmount: View {
 
             Divider()
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: satsAmount == 0) {
+            CustomButton(title: t("common__continue"), isDisabled: satsAmount == 0) {
                 do {
                     let newOrder = try await blocktank.createOrder(spendingBalanceSats: satsAmount)
                     transfer.onOrderCreated(order: newOrder)
@@ -47,7 +47,7 @@ struct SpendingAmount: View {
             .padding(.top, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)
@@ -65,11 +65,11 @@ struct SpendingAmount: View {
                 }
             }
 
-            NumberPadActionButton(text: localizedString("lightning__spending_amount__quarter")) {
+            NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
                 overrideSats = UInt64(wallet.totalBalanceSats) / 4
             }
 
-            NumberPadActionButton(text: localizedString("common__max")) {
+            NumberPadActionButton(text: t("common__max")) {
                 overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
             }
         }

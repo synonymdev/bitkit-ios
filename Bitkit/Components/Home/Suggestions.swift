@@ -25,80 +25,80 @@ enum SuggestionAction: Hashable {
 let cards: [SuggestionCardData] = [
     SuggestionCardData(
         id: "backupSeedPhrase",
-        title: localizedString("cards__backupSeedPhrase__title"),
-        description: localizedString("cards__backupSeedPhrase__description"),
+        title: t("cards__backupSeedPhrase__title"),
+        description: t("cards__backupSeedPhrase__description"),
         imageName: "safe",
         color: .blue24,
         action: .backup
     ),
     SuggestionCardData(
         id: "transferToSpending",
-        title: localizedString("cards__lightning__title"),
-        description: localizedString("cards__lightning__description"),
+        title: t("cards__lightning__title"),
+        description: t("cards__lightning__description"),
         imageName: "lightning",
         color: .purple24,
         action: .transferToSpending
     ),
     SuggestionCardData(
         id: "pin",
-        title: localizedString("cards__pin__title"),
-        description: localizedString("cards__pin__description"),
+        title: t("cards__pin__title"),
+        description: t("cards__pin__description"),
         imageName: "shield-figure",
         color: .green24,
         action: .secure
     ),
     SuggestionCardData(
         id: "buyBitcoin",
-        title: localizedString("cards__buyBitcoin__title"),
-        description: localizedString("cards__buyBitcoin__description"),
+        title: t("cards__buyBitcoin__title"),
+        description: t("cards__buyBitcoin__description"),
         imageName: "b-emboss",
         color: .brand24,
         action: .buyBitcoin
     ),
     SuggestionCardData(
         id: "support",
-        title: localizedString("cards__support__title"),
-        description: localizedString("cards__support__description"),
+        title: t("cards__support__title"),
+        description: t("cards__support__description"),
         imageName: "lightbulb",
         color: .yellow24,
         action: .support
     ),
     SuggestionCardData(
         id: "invite",
-        title: localizedString("cards__invite__title"),
-        description: localizedString("cards__invite__description"),
+        title: t("cards__invite__title"),
+        description: t("cards__invite__description"),
         imageName: "group",
         color: .blue24,
         action: .invite
     ),
     SuggestionCardData(
         id: "quickpay",
-        title: localizedString("cards__quickpay__title"),
-        description: localizedString("cards__quickpay__description"),
+        title: t("cards__quickpay__title"),
+        description: t("cards__quickpay__description"),
         imageName: "fast-forward",
         color: .green24,
         action: .quickpay
     ),
     SuggestionCardData(
         id: "notifications",
-        title: localizedString("cards__notifications__title"),
-        description: localizedString("cards__notifications__description"),
+        title: t("cards__notifications__title"),
+        description: t("cards__notifications__description"),
         imageName: "bell-figure",
         color: .purple24,
         action: .notifications
     ),
     SuggestionCardData(
         id: "shop",
-        title: localizedString("cards__shop__title"),
-        description: localizedString("cards__shop__description"),
+        title: t("cards__shop__title"),
+        description: t("cards__shop__description"),
         imageName: "bag",
         color: .yellow24,
         action: .shop
     ),
     SuggestionCardData(
         id: "profile",
-        title: localizedString("cards__slashtagsProfile__title"),
-        description: localizedString("cards__slashtagsProfile__description"),
+        title: t("cards__slashtagsProfile__title"),
+        description: t("cards__slashtagsProfile__description"),
         imageName: "crown",
         color: .brand24,
         action: .profile
@@ -149,7 +149,7 @@ struct Suggestions: View {
             EmptyView()
         } else {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(localizedString("cards__suggestions"))
+                CaptionMText(t("cards__suggestions"))
                     .padding(.horizontal)
                     .padding(.bottom, 16)
 
@@ -175,7 +175,7 @@ struct Suggestions: View {
             .padding(.top, 32)
             .sheet(isPresented: $showShareSheet) {
                 ShareSheet(activityItems: [
-                    localizedString(
+                    t(
                         "settings__about__shareText",
                         variables: [
                             "appStoreUrl": Env.appStoreUrl,

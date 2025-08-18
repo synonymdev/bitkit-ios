@@ -5,23 +5,23 @@ struct SupportView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(localizedString("settings__support__text"))
+            BodyMText(t("settings__support__text"))
                 .padding(.vertical, 16)
 
             VStack(spacing: 0) {
                 NavigationLink(value: Route.reportIssue) {
-                    SettingsListLabel(title: localizedString("settings__support__report"))
+                    SettingsListLabel(title: t("settings__support__report"))
                 }
 
                 Button(action: {
                     openURL(URL(string: Env.helpUrl)!)
                 }) {
-                    SettingsListLabel(title: localizedString("settings__support__help"))
+                    SettingsListLabel(title: t("settings__support__help"))
                 }
 
                 NavigationLink(value: Route.appStatus) {
                     SettingsListLabel(
-                        title: localizedString("settings__support__status")
+                        title: t("settings__support__status")
                     )
                 }
             }
@@ -39,7 +39,7 @@ struct SupportView: View {
 
             Social()
         }
-        .navigationTitle(localizedString("settings__support__title"))
+        .navigationTitle(t("settings__support__title"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.top, 16)
         .padding(.horizontal, 16)

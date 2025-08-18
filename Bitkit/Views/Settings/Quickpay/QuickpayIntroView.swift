@@ -6,10 +6,10 @@ struct QuickpayIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("settings__quickpay__intro__title"),
-            description: localizedString("settings__quickpay__intro__description"),
+            title: t("settings__quickpay__intro__title"),
+            description: t("settings__quickpay__intro__description"),
             imageName: "fast-forward",
-            buttonText: localizedString("common__continue"),
+            buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenQuickpayIntro = true
                 navigation.navigate(.quickpay)
@@ -18,7 +18,7 @@ struct QuickpayIntroView: View {
             imagePosition: .center,
             testID: "QuickpayIntro"
         )
-        .navigationTitle(localizedString("settings__quickpay__nav_title"))
+        .navigationTitle(t("settings__quickpay__nav_title"))
         .backToWalletButton()
     }
 }

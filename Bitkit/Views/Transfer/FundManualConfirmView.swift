@@ -31,19 +31,19 @@ struct FundManualConfirmView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(NSLocalizedString("lightning__transfer__confirm", comment: ""), accentColor: .purpleAccent)
+                DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
                 VStack(spacing: 16) {
                     HStack {
                         FeeDisplayRow(
-                            label: NSLocalizedString("lightning__spending_confirm__network_fee", comment: ""),
+                            label: t("lightning__spending_confirm__network_fee"),
                             amount: networkFeeSat
                         )
                         .frame(maxWidth: .infinity)
 
                         FeeDisplayRow(
-                            label: NSLocalizedString("lightning__spending_confirm__lsp_fee", comment: ""),
+                            label: t("lightning__spending_confirm__lsp_fee"),
                             amount: 0
                         )
                         .frame(maxWidth: .infinity)
@@ -51,13 +51,13 @@ struct FundManualConfirmView: View {
 
                     HStack {
                         FeeDisplayRow(
-                            label: NSLocalizedString("lightning__spending_confirm__amount", comment: ""),
+                            label: t("lightning__spending_confirm__amount"),
                             amount: satsAmount
                         )
                         .frame(maxWidth: .infinity)
 
                         FeeDisplayRow(
-                            label: NSLocalizedString("lightning__spending_confirm__total", comment: ""),
+                            label: t("lightning__spending_confirm__total"),
                             amount: satsAmount + networkFeeSat
                         )
                         .frame(maxWidth: .infinity)
@@ -69,7 +69,7 @@ struct FundManualConfirmView: View {
 
                 if !hideSwipeButton {
                     SwipeButton(
-                        title: NSLocalizedString("lightning__transfer__swipe", comment: ""),
+                        title: t("lightning__transfer__swipe"),
                         accentColor: .purpleAccent
                     ) {
                         do {
@@ -103,7 +103,7 @@ struct FundManualConfirmView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(NSLocalizedString("lightning__connections", comment: ""))
+        .navigationTitle(t("lightning__connections"))
         .backToWalletButton()
         .background(Color.black)
         .task {

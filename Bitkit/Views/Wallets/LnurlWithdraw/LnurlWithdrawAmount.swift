@@ -23,7 +23,7 @@ struct LnurlWithdrawAmount: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__lnurl_w_title"), showBackButton: true)
+            SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newAmount in
@@ -34,7 +34,7 @@ struct LnurlWithdrawAmount: View {
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    AvailableAmount(label: localizedString("wallet__lnurl_w_max"), amount: maxAmount)
+                    AvailableAmount(label: t("wallet__lnurl_w_max"), amount: maxAmount)
                         .onTapGesture {
                             overrideSats = UInt64(maxAmount)
                         }
@@ -58,7 +58,7 @@ struct LnurlWithdrawAmount: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: !isValid) {
+            CustomButton(title: t("common__continue"), isDisabled: !isValid) {
                 onContinue()
             }
             .padding(.top, 16)

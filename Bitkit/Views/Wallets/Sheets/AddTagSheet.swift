@@ -35,12 +35,12 @@ struct AddTagSheet: View {
     var body: some View {
         Sheet(id: .addTag) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: localizedString("wallet__tags_add"))
+                SheetHeader(title: t("wallet__tags_add"))
 
                 let tagsToShow = previewTags ?? activityListViewModel.recentlyUsedTags
 
                 if !tagsToShow.isEmpty {
-                    CaptionMText(localizedString("wallet__tags_previously"))
+                    CaptionMText(t("wallet__tags_previously"))
                         .padding(.bottom, 16)
 
                     WrappingHStack(spacing: 8) {
@@ -55,18 +55,18 @@ struct AddTagSheet: View {
                     }
                 }
 
-                CaptionMText(localizedString("wallet__tags_new"))
+                CaptionMText(t("wallet__tags_new"))
                     .padding(.top, 28)
                     .padding(.bottom, 8)
 
-                TextField(localizedString("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white08)
+                TextField(t("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white08)
                     .disabled(isLoading)
                     .padding(.top, 8)
 
                 Spacer()
 
                 CustomButton(
-                    title: localizedString("wallet__tags_add_button"),
+                    title: t("wallet__tags_add_button"),
                     isDisabled: newTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                     isLoading: isLoading
                 ) {

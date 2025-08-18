@@ -5,10 +5,10 @@ struct BackupReminder: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("security__mnemonic_keep_header"), showBackButton: true)
+            SheetHeader(title: t("security__mnemonic_keep_header"), showBackButton: true)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__mnemonic_keep_text"), accentColor: .textPrimary, accentFont: Fonts.bold)
+                BodyMText(t("security__mnemonic_keep_text"), accentColor: .textPrimary, accentFont: Fonts.bold)
 
                 Spacer()
 
@@ -21,7 +21,7 @@ struct BackupReminder: View {
                 Spacer()
 
                 CustomButton(
-                    title: localizedString("common__ok"),
+                    title: t("common__ok"),
                 ) {
                     navigationPath.append(.success)
                 }

@@ -9,14 +9,14 @@ struct SecurityPin: View {
 
     private var navTitle: String {
         pinToCheck == nil
-            ? localizedString("security__pin_choose_header")
-            : localizedString("security__pin_retype_header")
+            ? t("security__pin_choose_header")
+            : t("security__pin_retype_header")
     }
 
     private var text: String {
         pinToCheck == nil
-            ? localizedString("security__pin_choose_text")
-            : localizedString("security__pin_retype_text")
+            ? t("security__pin_choose_text")
+            : t("security__pin_retype_text")
     }
 
     var body: some View {
@@ -73,7 +73,7 @@ struct SecurityPin: View {
                 }
             } else {
                 // PINs don't match, show error and reset
-                errorMessage = NSLocalizedString("security__pin_not_match", comment: "")
+                errorMessage = t("security__pin_not_match")
                 pinInput = ""
             }
         } else {

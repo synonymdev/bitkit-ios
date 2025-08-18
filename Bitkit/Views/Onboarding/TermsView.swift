@@ -29,8 +29,8 @@ private struct TermsFooter: View {
             VStack(alignment: .leading, spacing: 12) {
                 // Terms checkbox
                 CheckboxRow(
-                    title: NSLocalizedString("onboarding__tos_checkbox", comment: ""),
-                    subtitle: NSLocalizedString("onboarding__tos_checkbox_value", comment: ""),
+                    title: t("onboarding__tos_checkbox"),
+                    subtitle: t("onboarding__tos_checkbox_value"),
                     subtitleUrl: URL(string: Env.termsOfServiceUrl),
                     isChecked: $termsAccepted
                 )
@@ -39,8 +39,8 @@ private struct TermsFooter: View {
 
                 // Privacy checkbox
                 CheckboxRow(
-                    title: NSLocalizedString("onboarding__pp_checkbox", comment: ""),
-                    subtitle: NSLocalizedString("onboarding__pp_checkbox_value", comment: ""),
+                    title: t("onboarding__pp_checkbox"),
+                    subtitle: t("onboarding__pp_checkbox_value"),
                     subtitleUrl: URL(string: Env.privacyPolicyUrl),
                     isChecked: $privacyAccepted
                 )
@@ -49,7 +49,7 @@ private struct TermsFooter: View {
             }
 
             CustomButton(
-                title: NSLocalizedString("common__continue", comment: ""),
+                title: t("common__continue"),
                 isDisabled: !(termsAccepted && privacyAccepted),
                 destination: IntroView()
             )
@@ -67,7 +67,7 @@ struct TermsView: View {
         ZStack(alignment: .bottom) {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 16) {
-                    DisplayText(localizedString("onboarding__tos_header"))
+                    DisplayText(t("onboarding__tos_header"))
 
                     TosContent()
                         .font(Fonts.regular(size: 17))

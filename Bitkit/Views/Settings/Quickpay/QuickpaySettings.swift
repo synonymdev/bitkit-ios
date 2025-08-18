@@ -12,19 +12,19 @@ struct QuickpaySettings: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     SettingsListLabel(
-                        title: localizedString("settings__quickpay__settings__toggle"),
+                        title: t("settings__quickpay__settings__toggle"),
                         toggle: $settings.enableQuickpay
                     )
                     .padding(.top, 16)
 
                     BodyMText(
-                        localizedString("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
+                        t("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
                     )
                     .padding(.top, 16)
 
                     VStack(alignment: .leading, spacing: 16) {
                         CaptionText(
-                            localizedString("settings__quickpay__settings__label").uppercased(),
+                            t("settings__quickpay__settings__label").uppercased(),
                         )
 
                         CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
@@ -46,7 +46,7 @@ struct QuickpaySettings: View {
                     .padding(.vertical, 32)
 
                     BodySText(
-                        localizedString("settings__quickpay__settings__note"),
+                        t("settings__quickpay__settings__note"),
                         textColor: .textSecondary
                     )
                 }
@@ -55,7 +55,7 @@ struct QuickpaySettings: View {
                 .bottomSafeAreaPadding()
             }
         }
-        .navigationTitle(localizedString("settings__quickpay__nav_title"))
+        .navigationTitle(t("settings__quickpay__nav_title"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
     }

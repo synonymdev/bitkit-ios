@@ -20,11 +20,11 @@ struct LnurlPayConfirm: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return localizedString("security__bio_touch_id")
+            return t("security__bio_touch_id")
         case .faceID:
-            return localizedString("security__bio_face_id")
+            return t("security__bio_face_id")
         default:
-            return localizedString("security__bio_face_id") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
@@ -40,7 +40,7 @@ struct LnurlPayConfirm: View {
 
     var body: some View {
         VStack {
-            SheetHeader(title: localizedString("wallet__lnurl_p_title"), showBackButton: true)
+            SheetHeader(title: t("wallet__lnurl_p_title"), showBackButton: true)
 
             VStack(alignment: .leading) {
                 MoneyStack(sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable), showSymbol: true)
@@ -48,7 +48,7 @@ struct LnurlPayConfirm: View {
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading) {
-                        CaptionMText(localizedString("wallet__send_invoice"))
+                        CaptionMText(t("wallet__send_invoice"))
                             .padding(.bottom, 8)
                         BodySSBText(uri)
                             .lineLimit(1)
@@ -60,7 +60,7 @@ struct LnurlPayConfirm: View {
                     Divider()
 
                     VStack(alignment: .leading) {
-                        CaptionMText(localizedString("wallet__send_fee_and_speed"))
+                        CaptionMText(t("wallet__send_fee_and_speed"))
                             .padding(.bottom, 8)
                         HStack(spacing: 0) {
                             Image("bolt-hollow")
@@ -79,10 +79,10 @@ struct LnurlPayConfirm: View {
 
                     if let commentAllowed = app.lnurlPayData?.commentAllowed {
                         VStack(alignment: .leading) {
-                            CaptionMText(localizedString("wallet__lnurl_pay_confirm__comment"))
+                            CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
                                 .padding(.bottom, 8)
 
-                            TextField(localizedString("wallet__lnurl_pay_confirm__comment_placeholder"), text: $comment)
+                            TextField(t("wallet__lnurl_pay_confirm__comment_placeholder"), text: $comment)
                                 .lineLimit(3 ... 3)
                                 .onChange(of: comment) { newValue in
                                     let maxLength = Int(commentAllowed)
@@ -100,7 +100,7 @@ struct LnurlPayConfirm: View {
             Spacer()
 
             SwipeButton(
-                title: localizedString("wallet__send_swipe"),
+                title: t("wallet__send_swipe"),
                 accentColor: .greenAccent
             ) {
                 // Check if we need to show warning for amounts over $100 USD
@@ -155,23 +155,23 @@ struct LnurlPayConfirm: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
-        .alert(localizedString("common__are_you_sure"), isPresented: $showWarningAlert) {
-            Button(localizedString("common__dialog_cancel"), role: .cancel) {
+        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
                 alertContinuation?.resume(returning: false)
                 alertContinuation = nil
             }
-            Button(localizedString("wallet__send_yes")) {
+            Button(t("wallet__send_yes")) {
                 alertContinuation?.resume(returning: true)
                 alertContinuation = nil
             }
         } message: {
-            Text(localizedString("wallet__send_dialog1"))
+            Text(t("wallet__send_dialog1"))
         }
         .alert(
-            localizedString("security__bio_error_title"),
+            t("security__bio_error_title"),
             isPresented: $showingBiometricError
         ) {
-            Button(localizedString("common__ok")) {
+            Button(t("common__ok")) {
                 // Error handled, user acknowledged
             }
         } message: {
@@ -179,8 +179,8 @@ struct LnurlPayConfirm: View {
         }
         .navigationDestination(isPresented: $showPinCheck) {
             PinCheckView(
-                title: localizedString("security__pin_send_title"),
-                explanation: localizedString("security__pin_send"),
+                title: t("security__pin_send_title"),
+                explanation: t("security__pin_send"),
                 onCancel: {
                     pinCheckContinuation?.resume(returning: false)
                     pinCheckContinuation = nil
@@ -218,7 +218,7 @@ struct LnurlPayConfirm: View {
             }
 
             // Request biometric authentication
-            let reason = localizedString(
+            let reason = t(
                 "security__bio_confirm",
                 variables: ["biometricsName": biometryTypeName]
             )
@@ -246,16 +246,16 @@ struct LnurlPayConfirm: View {
 
         switch nsError.code {
         case LAError.biometryNotAvailable.rawValue:
-            biometricErrorMessage = localizedString("security__bio_not_available")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.biometryNotEnrolled.rawValue:
-            biometricErrorMessage = localizedString("security__bio_not_available")
+            biometricErrorMessage = t("security__bio_not_available")
             showingBiometricError = true
         case LAError.userCancel.rawValue, LAError.userFallback.rawValue:
             // User cancelled - don't show error, just keep current state
             return
         default:
-            biometricErrorMessage = localizedString(
+            biometricErrorMessage = t(
                 "security__bio_error_message",
                 variables: ["type": biometryTypeName]
             )

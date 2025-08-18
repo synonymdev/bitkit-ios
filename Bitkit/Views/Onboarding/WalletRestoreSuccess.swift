@@ -5,12 +5,12 @@ struct WalletRestoreSuccess: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DisplayText(localizedString("onboarding__restore_success_header"), accentColor: .greenAccent)
+            DisplayText(t("onboarding__restore_success_header"), accentColor: .greenAccent)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 40)
                 .padding(.bottom, 14)
 
-            BodyMText(localizedString("onboarding__restore_success_text"))
+            BodyMText(t("onboarding__restore_success_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
@@ -23,7 +23,7 @@ struct WalletRestoreSuccess: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("onboarding__get_started")) {
+            CustomButton(title: t("onboarding__get_started")) {
                 Haptics.play(.light)
                 wallet.isRestoringWallet = false
             }

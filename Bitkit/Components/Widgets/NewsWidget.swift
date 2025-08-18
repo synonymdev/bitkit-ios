@@ -42,7 +42,7 @@ struct NewsWidget: View {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
                 } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(localizedString("widgets__news__error"))
+                    WidgetContentBuilder.errorView(t("widgets__news__error"))
                 } else if let data = viewModel.widgetData {
                     if options.showDate {
                         BodyMText(data.timeAgo, textColor: .textPrimary)

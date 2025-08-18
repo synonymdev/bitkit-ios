@@ -38,36 +38,36 @@ struct SendOptionsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__send_bitcoin"))
+            SheetHeader(title: t("wallet__send_bitcoin"))
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(localizedString("wallet__send_to"))
+                CaptionMText(t("wallet__send_to"))
                     .padding(.bottom, 8)
 
                 VStack(spacing: 8) {
                     SendOptionCard(
-                        title: localizedString("wallet__recipient_contact"),
+                        title: t("wallet__recipient_contact"),
                         action: handleContact,
                         iconName: "users",
                         testID: "RecipientContact"
                     )
 
                     SendOptionCard(
-                        title: localizedString("wallet__recipient_invoice"),
+                        title: t("wallet__recipient_invoice"),
                         action: handlePaste,
                         iconName: "clipboard",
                         testID: "RecipientInvoice"
                     )
 
                     SendOptionCard(
-                        title: localizedString("wallet__recipient_manual"),
+                        title: t("wallet__recipient_manual"),
                         action: { navigationPath.append(.manual) },
                         iconName: "pencil",
                         testID: "RecipientManual"
                     )
 
                     SendOptionCard(
-                        title: localizedString("wallet__recipient_scan"),
+                        title: t("wallet__recipient_scan"),
                         action: { navigationPath.append(.scan) },
                         iconName: "scan-brand",
                         testID: "RecipientScan"
@@ -104,8 +104,8 @@ struct SendOptionsView: View {
         guard let uri = UIPasteboard.general.string else {
             app.toast(
                 type: .warning,
-                title: localizedString("wallet__send_clipboard_empty_title"),
-                description: localizedString("wallet__send_clipboard_empty_text")
+                title: t("wallet__send_clipboard_empty_title"),
+                description: t("wallet__send_clipboard_empty_text")
             )
             return
         }

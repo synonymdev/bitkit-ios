@@ -96,16 +96,16 @@ struct ReportIssue: View {
         GeometryReader { geometry in
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    BodyMText(localizedString("settings__support__report_text"))
+                    BodyMText(t("settings__support__report_text"))
                         .padding(.top, 16)
                         .padding(.bottom, 32)
 
                     VStack(alignment: .leading, spacing: 26) {
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionText(localizedString("settings__support__label_address").uppercased())
+                            CaptionText(t("settings__support__label_address").uppercased())
 
                             TextField(
-                                localizedString("settings__support__placeholder_address"),
+                                t("settings__support__placeholder_address"),
                                 text: $email
                             )
                             .keyboardType(.emailAddress)
@@ -115,13 +115,13 @@ struct ReportIssue: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionText(
-                                localizedString("settings__support__label_message").uppercased(),
+                                t("settings__support__label_message").uppercased(),
                                 textColor: .textSecondary
                             )
 
                             ZStack(alignment: .topLeading) {
                                 if message.isEmpty {
-                                    Text(localizedString("settings__support__placeholder_message"))
+                                    Text(t("settings__support__placeholder_message"))
                                         .foregroundColor(.textSecondary)
                                         .font(.custom(Fonts.semiBold, size: 15))
                                         .padding(4)
@@ -146,7 +146,7 @@ struct ReportIssue: View {
                     Spacer(minLength: 16)
 
                     CustomButton(
-                        title: localizedString("settings__support__text_button"),
+                        title: t("settings__support__text_button"),
                         isDisabled: !isFormValid,
                         isLoading: isLoading
                     ) {
@@ -157,7 +157,7 @@ struct ReportIssue: View {
                 .padding(.horizontal, 16)
                 .bottomSafeAreaPadding()
             }
-            .navigationTitle(localizedString("settings__support__report"))
+            .navigationTitle(t("settings__support__report"))
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             .navigationDestination(isPresented: $showingSuccess) {

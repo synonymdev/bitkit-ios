@@ -100,54 +100,54 @@ struct BackupSettings: View {
                     Button(action: {
                         sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
                     }) {
-                        SettingsListLabel(title: localizedString("settings__backup__wallet"))
+                        SettingsListLabel(title: t("settings__backup__wallet"))
                     }
 
                     NavigationLink(value: Route.resetAndRestore) {
-                        SettingsListLabel(title: localizedString("settings__backup__reset"))
+                        SettingsListLabel(title: t("settings__backup__reset"))
                     }
 
-                    SettingsLabel(localizedString("settings__backup__latest"))
+                    SettingsLabel(t("settings__backup__latest"))
                         .padding(.top, 16)
 
                     StatusItemView(
                         imageName: "bolt-hollow",
-                        title: localizedString("settings__backup__category_connections"),
+                        title: t("settings__backup__category_connections"),
                         status: .required(1_718_281_828)
                     )
                     StatusItemView(
                         imageName: "note",
-                        title: localizedString("settings__backup__category_connection_receipts"),
+                        title: t("settings__backup__category_connection_receipts"),
                         status: .synced(1_718_281_828)
                     )
                     StatusItemView(
                         imageName: "arrow-up-down",
-                        title: localizedString("settings__backup__category_transaction_log"),
+                        title: t("settings__backup__category_transaction_log"),
                         status: .synced(1_718_281_828)
                     )
                     StatusItemView(
                         imageName: "rewind",
-                        title: localizedString("settings__backup__category_wallet"),
+                        title: t("settings__backup__category_wallet"),
                         status: .synced(1_718_281_828)
                     )
                     StatusItemView(
                         imageName: "gear-six",
-                        title: localizedString("settings__backup__category_settings"),
+                        title: t("settings__backup__category_settings"),
                         status: .running
                     )
                     StatusItemView(
                         imageName: "bolt-hollow",
-                        title: localizedString("settings__backup__category_widgets"),
+                        title: t("settings__backup__category_widgets"),
                         status: .running
                     )
                     StatusItemView(
                         imageName: "tag",
-                        title: localizedString("settings__backup__category_tags"),
+                        title: t("settings__backup__category_tags"),
                         status: .running
                     )
                     StatusItemView(
                         imageName: "users",
-                        title: localizedString("settings__backup__category_contacts"),
+                        title: t("settings__backup__category_contacts"),
                         status: .running
                     )
 
@@ -159,7 +159,7 @@ struct BackupSettings: View {
                 .bottomSafeAreaPadding()
             }
         }
-        .navigationTitle(localizedString("settings__backup_title"))
+        .navigationTitle(t("settings__backup_title"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

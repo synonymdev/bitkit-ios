@@ -14,7 +14,7 @@ struct ReceiveEdit: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__receive_specify"))
+            SheetHeader(title: t("wallet__receive_specify"))
 
             VStack(alignment: .leading, spacing: 0) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true, shouldAutoFocus: false) {
@@ -26,12 +26,12 @@ struct ReceiveEdit: View {
                 .focused($isAmountInputFocused)
                 .padding(.bottom, 32)
 
-                CaptionMText(localizedString("wallet__note"))
+                CaptionMText(t("wallet__note"))
                     .padding(.bottom, 8)
 
                 ZStack(alignment: .topLeading) {
                     if noteText.isEmpty {
-                        BodySSBText(localizedString("wallet__receive_note_placeholder"), textColor: .textSecondary)
+                        BodySSBText(t("wallet__receive_note_placeholder"), textColor: .textSecondary)
                             .padding(16)
                     }
 
@@ -49,12 +49,12 @@ struct ReceiveEdit: View {
                 .background(Color.white06)
                 .cornerRadius(8)
 
-                CaptionMText(localizedString("wallet__tags"))
+                CaptionMText(t("wallet__tags"))
                     .padding(.top, 16)
                     .padding(.bottom, 8)
 
                 CustomButton(
-                    title: localizedString("wallet__tags_add"),
+                    title: t("wallet__tags_add"),
                     size: .small,
                     icon: Image("tag").foregroundColor(.brandAccent),
                 ) {
@@ -78,7 +78,7 @@ struct ReceiveEdit: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("wallet__receive_show_qr")) {
+            CustomButton(title: t("wallet__receive_show_qr")) {
                 // Wait until node is running if it's in starting state
                 if await wallet.waitForNodeToRun() {
                     do {

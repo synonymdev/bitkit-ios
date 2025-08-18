@@ -7,7 +7,7 @@ struct TagSettingsView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(NSLocalizedString("settings__general__tags_previously", comment: ""))
+                CaptionText(t("settings__general__tags_previously"))
                     .textCase(.uppercase)
                     .padding(.top, 24)
                     .padding(.bottom, 16)
@@ -27,7 +27,7 @@ struct TagSettingsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(NSLocalizedString("settings__general__tags", comment: ""))
+        .navigationTitle(t("settings__general__tags"))
         .task {
             await activityViewModel.syncState()
         }

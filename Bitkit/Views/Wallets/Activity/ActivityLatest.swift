@@ -8,7 +8,7 @@ struct ActivityLatest: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CaptionMText(localizedString("wallet__activity"))
+            CaptionMText(t("wallet__activity"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 16)
                 .padding(.top, 32)
@@ -35,7 +35,7 @@ struct ActivityLatest: View {
                             }
                         )
                     } else {
-                        CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                        CustomButton(title: t("wallet__activity_show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)
                         }
                     }

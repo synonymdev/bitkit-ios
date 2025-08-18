@@ -16,42 +16,42 @@ struct MainSettings: View {
                 VStack(alignment: .leading, spacing: 0) {
                     NavigationLink(value: Route.generalSettings) {
                         SettingsListLabel(
-                            title: localizedString("settings__general_title"),
+                            title: t("settings__general_title"),
                             iconName: "gear-six"
                         )
                     }
 
                     NavigationLink(value: Route.securitySettings) {
                         SettingsListLabel(
-                            title: localizedString("settings__security_title"),
+                            title: t("settings__security_title"),
                             iconName: "shield"
                         )
                     }
 
                     NavigationLink(value: Route.backupSettings) {
                         SettingsListLabel(
-                            title: localizedString("settings__backup_title"),
+                            title: t("settings__backup_title"),
                             iconName: "rewind"
                         )
                     }
 
                     NavigationLink(value: Route.advancedSettings) {
                         SettingsListLabel(
-                            title: localizedString("settings__advanced_title"),
+                            title: t("settings__advanced_title"),
                             iconName: "sliders"
                         )
                     }
 
                     NavigationLink(value: Route.support) {
                         SettingsListLabel(
-                            title: localizedString("settings__support_title"),
+                            title: t("settings__support_title"),
                             iconName: "chat"
                         )
                     }
 
                     NavigationLink(value: Route.about) {
                         SettingsListLabel(
-                            title: localizedString("settings__about_title"),
+                            title: t("settings__about_title"),
                             iconName: "info"
                         )
                     }
@@ -59,7 +59,7 @@ struct MainSettings: View {
                     if showDevSettings {
                         NavigationLink(value: Route.devSettings) {
                             SettingsListLabel(
-                                title: localizedString("settings__dev_title"),
+                                title: t("settings__dev_title"),
                                 iconName: "game-controller"
                             )
                         }
@@ -83,8 +83,8 @@ struct MainSettings: View {
 
                                 app.toast(
                                     type: .success,
-                                    title: localizedString(showDevSettings ? "settings__dev_enabled_title" : "settings__dev_disabled_title"),
-                                    description: localizedString(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message")
+                                    title: t(showDevSettings ? "settings__dev_enabled_title" : "settings__dev_disabled_title"),
+                                    description: t(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message")
                                 )
                             }
                         }
@@ -96,7 +96,7 @@ struct MainSettings: View {
                 .padding(.horizontal, 16)
             }
         }
-        .navigationTitle(localizedString("settings__settings"))
+        .navigationTitle(t("settings__settings"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

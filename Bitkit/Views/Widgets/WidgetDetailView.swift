@@ -12,11 +12,11 @@ struct WidgetDetailView: View {
 
     // Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
-        let name = localizedString("widgets__\(id.rawValue)__name")
+        let name = t("widgets__\(id.rawValue)__name")
 
         // Get fiat symbol from currency conversion
         let fiatSymbol = currency.symbol
-        let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
+        let description = t("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
 
         return (name: name, description: description, icon: icon)
@@ -81,14 +81,14 @@ struct WidgetDetailView: View {
                     navigation.navigate(.widgetEdit(id))
                 }) {
                     HStack(alignment: .center, spacing: 0) {
-                        BodyMText(localizedString("widgets__widget__edit"), textColor: .textPrimary)
+                        BodyMText(t("widgets__widget__edit"), textColor: .textPrimary)
 
                         Spacer()
 
                         BodyMText(
                             hasCustomOptions
-                                ? localizedString("widgets__widget__edit_custom")
-                                : localizedString("widgets__widget__edit_default"),
+                                ? t("widgets__widget__edit_custom")
+                                : t("widgets__widget__edit_default"),
                             textColor: .textPrimary
                         )
 
@@ -119,7 +119,7 @@ struct WidgetDetailView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(localizedString("common__preview"))
+                CaptionText(t("common__preview"))
                     .textCase(.uppercase)
                     .padding(.top, 16)
                     .padding(.bottom, 16)
@@ -129,7 +129,7 @@ struct WidgetDetailView: View {
                 HStack(spacing: 16) {
                     if isWidgetSaved {
                         CustomButton(
-                            title: localizedString("common__delete"),
+                            title: t("common__delete"),
                             variant: .secondary,
                             size: .large,
                             shouldExpand: true
@@ -140,7 +140,7 @@ struct WidgetDetailView: View {
                     }
 
                     CustomButton(
-                        title: localizedString("common__save"),
+                        title: t("common__save"),
                         variant: .primary,
                         size: .large,
                         shouldExpand: true,
@@ -154,23 +154,23 @@ struct WidgetDetailView: View {
         .padding(.top)
         .padding(.horizontal, 16)
         .frame(maxHeight: .infinity)
-        .navigationTitle(localizedString("widgets__widget__nav_title"))
+        .navigationTitle(t("widgets__widget__nav_title"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
         .alert(
-            localizedString("widgets__delete__title"),
+            t("widgets__delete__title"),
             isPresented: $showDeleteAlert,
             actions: {
-                Button(localizedString("common__cancel"), role: .cancel) {
+                Button(t("common__cancel"), role: .cancel) {
                     showDeleteAlert = false
                 }
 
-                Button(localizedString("common__delete_yes"), role: .destructive) {
+                Button(t("common__delete_yes"), role: .destructive) {
                     onDelete()
                 }
             },
             message: {
-                Text(localizedString("widgets__delete__description", variables: ["name": widget.name]))
+                Text(t("widgets__delete__description", variables: ["name": widget.name]))
             }
         )
     }

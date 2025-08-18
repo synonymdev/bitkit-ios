@@ -10,7 +10,7 @@ struct ResetAndRestore: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(localizedString("security__reset_text"))
+            BodyMText(t("security__reset_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 32)
 
@@ -26,13 +26,13 @@ struct ResetAndRestore: View {
 
             HStack(spacing: 16) {
                 CustomButton(
-                    title: localizedString("security__reset_button_backup"),
+                    title: t("security__reset_button_backup"),
                     variant: .secondary
                 ) {
                     sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
                 }
 
-                CustomButton(title: localizedString("security__reset_button_reset")) {
+                CustomButton(title: t("security__reset_button_reset")) {
                     showAlert = true
                 }
             }
@@ -42,9 +42,9 @@ struct ResetAndRestore: View {
         .accessibilityIdentifier("ResetAndRestore")
         .alert(isPresented: $showAlert) {
             Alert(
-                title: Text(localizedString("security__reset_dialog_title")),
-                message: Text(localizedString("security__reset_dialog_desc")),
-                primaryButton: .destructive(Text(localizedString("security__reset_confirm"))) {
+                title: Text(t("security__reset_dialog_title")),
+                message: Text(t("security__reset_dialog_desc")),
+                primaryButton: .destructive(Text(t("security__reset_confirm"))) {
                     onReset()
                 },
                 secondaryButton: .cancel()

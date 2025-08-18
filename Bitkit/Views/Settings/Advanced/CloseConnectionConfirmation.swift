@@ -14,7 +14,7 @@ struct CloseConnectionConfirmation: View {
         VStack(spacing: 0) {
             VStack(spacing: 16) {
                 BodyMText(
-                    NSLocalizedString("lightning__close_text", comment: ""),
+                    t("lightning__close_text"),
                     textColor: .textSecondary
                 )
                 .multilineTextAlignment(.center)
@@ -36,7 +36,7 @@ struct CloseConnectionConfirmation: View {
             // Bottom buttons
             HStack(spacing: 16) {
                 CustomButton(
-                    title: NSLocalizedString("common__cancel", comment: ""),
+                    title: t("common__cancel"),
                     variant: .secondary,
                     isDisabled: isClosing,
                     shouldExpand: true
@@ -45,7 +45,7 @@ struct CloseConnectionConfirmation: View {
                 }
 
                 CustomButton(
-                    title: NSLocalizedString("lightning__close_button", comment: ""),
+                    title: t("lightning__close_button"),
                     variant: .primary,
                     isDisabled: isClosing,
                     shouldExpand: true
@@ -58,7 +58,7 @@ struct CloseConnectionConfirmation: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 32)
         }
-        .navigationTitle(NSLocalizedString("lightning__close_conn", comment: ""))
+        .navigationTitle(t("lightning__close_conn"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -77,23 +77,23 @@ struct CloseConnectionConfirmation: View {
                     // Show success toast
                     app.toast(
                         type: .success,
-                        title: NSLocalizedString("lightning__close_success_title", comment: ""),
-                        description: NSLocalizedString("lightning__close_success_msg", comment: "")
+                        title: t("lightning__close_success_title"),
+                        description: t("lightning__close_success_msg")
                     )
                 }
             } else {
                 // Failed to close
                 app.toast(
                     type: .error,
-                    title: NSLocalizedString("lightning__close_error", comment: ""),
-                    description: NSLocalizedString("lightning__close_error_msg", comment: "")
+                    title: t("lightning__close_error"),
+                    description: t("lightning__close_error_msg")
                 )
             }
         } catch {
             Logger.error("Failed to close channel: \(error)")
             app.toast(
                 type: .error,
-                title: NSLocalizedString("lightning__close_error", comment: ""),
+                title: t("lightning__close_error"),
                 description: error.localizedDescription
             )
         }

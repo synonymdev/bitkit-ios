@@ -15,13 +15,13 @@ struct AllActivityView: View {
         var description: String {
             switch self {
             case .all:
-                return localizedString("wallet__activity_tabs__all")
+                return t("wallet__activity_tabs__all")
             case .sent:
-                return localizedString("wallet__activity_tabs__sent")
+                return t("wallet__activity_tabs__sent")
             case .received:
-                return localizedString("wallet__activity_tabs__received")
+                return t("wallet__activity_tabs__received")
             case .other:
-                return localizedString("wallet__activity_tabs__other")
+                return t("wallet__activity_tabs__other")
             }
         }
     }

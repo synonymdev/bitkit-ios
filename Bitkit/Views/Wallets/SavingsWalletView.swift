@@ -28,7 +28,7 @@ struct SavingsWalletView: View {
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .onchain)
 
-                    CustomButton(title: localizedString("wallet__activity_show_all"), variant: .tertiary) {
+                    CustomButton(title: t("wallet__activity_show_all"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
                     /// Leave some space for TabBar
@@ -46,7 +46,7 @@ struct SavingsWalletView: View {
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .navigationTitle(localizedString("wallet__savings__title"))
+        .navigationTitle(t("wallet__savings__title"))
         .padding(.horizontal)
         .frame(maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .topTrailing) {

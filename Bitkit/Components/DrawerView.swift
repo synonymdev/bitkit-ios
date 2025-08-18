@@ -28,14 +28,14 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .wallet: return localizedString("wallet__drawer__wallet")
-        case .activity: return localizedString("wallet__drawer__activity")
-        case .contacts: return localizedString("wallet__drawer__contacts")
-        case .profile: return localizedString("wallet__drawer__profile")
-        case .widgets: return localizedString("wallet__drawer__widgets")
-        case .shop: return localizedString("wallet__drawer__shop")
-        case .settings: return localizedString("wallet__drawer__settings")
-        case .appStatus: return localizedString("settings__status__title")
+        case .wallet: return t("wallet__drawer__wallet")
+        case .activity: return t("wallet__drawer__activity")
+        case .contacts: return t("wallet__drawer__contacts")
+        case .profile: return t("wallet__drawer__profile")
+        case .widgets: return t("wallet__drawer__widgets")
+        case .shop: return t("wallet__drawer__shop")
+        case .settings: return t("wallet__drawer__settings")
+        case .appStatus: return t("settings__status__title")
         }
     }
 

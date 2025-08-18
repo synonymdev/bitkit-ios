@@ -22,7 +22,7 @@ struct QrArea: View {
             QR(content: uri, imageAsset: imageAsset)
 
             if showCopyTooltip {
-                Tooltip(text: localizedString("wallet__receive_copied"))
+                Tooltip(text: t("wallet__receive_copied"))
                     .transition(.opacity.combined(with: .scale(scale: 0.8)))
                     .offset(y: 80)
                     .allowsHitTesting(false)
@@ -32,7 +32,7 @@ struct QrArea: View {
 
         HStack {
             CustomButton(
-                title: localizedString("common__edit"),
+                title: t("common__edit"),
                 size: .small,
                 icon: Image("pencil").foregroundColor(accentColor),
                 shouldExpand: true
@@ -41,7 +41,7 @@ struct QrArea: View {
             }
 
             CustomButton(
-                title: localizedString("common__copy"),
+                title: t("common__copy"),
                 size: .small,
                 icon: Image("copy").foregroundColor(accentColor),
                 shouldExpand: true
@@ -50,7 +50,7 @@ struct QrArea: View {
             }
 
             CustomButton(
-                title: localizedString("common__share"),
+                title: t("common__share"),
                 size: .small,
                 icon: Image("share").foregroundColor(accentColor),
                 shouldExpand: true

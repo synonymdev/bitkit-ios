@@ -8,17 +8,17 @@ struct NotificationsSettings: View {
 
     var text: String {
         if settings.notificationServerRegistered {
-            return localizedString("settings__notifications__settings__enabled")
+            return t("settings__notifications__settings__enabled")
         } else {
-            return localizedString("settings__notifications__settings__disabled")
+            return t("settings__notifications__settings__disabled")
         }
     }
 
     var buttonTitle: String {
         if settings.notificationAuthorizationStatus == .denied {
-            return localizedString("settings__notifications__settings__button__disabled", variables: ["platform": "iOS"])
+            return t("settings__notifications__settings__button__disabled", variables: ["platform": "iOS"])
         } else {
-            return localizedString("settings__notifications__settings__button__enabled", variables: ["platform": "iOS"])
+            return t("settings__notifications__settings__button__enabled", variables: ["platform": "iOS"])
         }
     }
 
@@ -26,7 +26,7 @@ struct NotificationsSettings: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsListLabel(
-                    title: localizedString("settings__notifications__settings__toggle"),
+                    title: t("settings__notifications__settings__toggle"),
                     toggle: Binding(
                         get: { settings.notificationServerRegistered },
                         set: { newValue in
@@ -50,7 +50,7 @@ struct NotificationsSettings: View {
                 .padding(.top, 16)
 
                 if settings.notificationAuthorizationStatus == .denied {
-                    BodyMBoldText(localizedString("settings__notifications__settings__denied"), textColor: .redAccent)
+                    BodyMBoldText(t("settings__notifications__settings__denied"), textColor: .redAccent)
                         .padding(.top, 16)
                 }
 
@@ -68,26 +68,26 @@ struct NotificationsSettings: View {
                 if settings.notificationAuthorizationStatus != .denied {
                     VStack(alignment: .leading, spacing: 16) {
                         CaptionText(
-                            localizedString("settings__notifications__settings__privacy__label").uppercased(),
+                            t("settings__notifications__settings__privacy__label").uppercased(),
                         )
                     }
                     .padding(.top, 32)
 
                     SettingsListLabel(
-                        title: localizedString("settings__notifications__settings__privacy__text"),
+                        title: t("settings__notifications__settings__privacy__text"),
                         toggle: $settings.enableNotificationsAmount
                     )
                 }
 
                 VStack(alignment: .leading, spacing: 16) {
                     CaptionText(
-                        localizedString("settings__notifications__settings__notifications__label").uppercased(),
+                        t("settings__notifications__settings__notifications__label").uppercased(),
                     )
                 }
                 .padding(.top, 32)
 
                 if settings.notificationAuthorizationStatus == .denied {
-                    BodyMText(localizedString("settings__notifications__settings__notifications__text"))
+                    BodyMText(t("settings__notifications__settings__notifications__text"))
                         .padding(.top, 16)
                 }
 
@@ -105,7 +105,7 @@ struct NotificationsSettings: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(localizedString("settings__notifications__nav_title"))
+        .navigationTitle(t("settings__notifications__nav_title"))
         .backToWalletButton()
         .onAppear {
             settings.checkNotificationPermission()
@@ -131,7 +131,7 @@ struct NotificationsSettings: View {
             if enableAmount {
                 return "₿ 21 000 ($21.00)"
             } else {
-                return localizedString("settings__notifications__settings__preview__text")
+                return t("settings__notifications__settings__preview__text")
             }
         }
 
@@ -143,11 +143,11 @@ struct NotificationsSettings: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack {
-                        Text(localizedString("settings__notifications__settings__preview__title"))
+                        Text(t("settings__notifications__settings__preview__title"))
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(Color(hex: 0x222222))
                         Spacer()
-                        Text(localizedString("settings__notifications__settings__preview__time"))
+                        Text(t("settings__notifications__settings__preview__time"))
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Color(hex: 0x3F3F3F).opacity(0.5))
                     }

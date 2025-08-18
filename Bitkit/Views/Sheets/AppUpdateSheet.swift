@@ -15,12 +15,12 @@ struct AppUpdateSheet: View {
     var body: some View {
         Sheet(id: .appUpdate, data: config) {
             SheetIntro(
-                navTitle: localizedString("other__update_nav_title"),
-                title: localizedString("other__update_title"),
-                description: localizedString("other__update_text"),
+                navTitle: t("other__update_nav_title"),
+                title: t("other__update_title"),
+                description: t("other__update_text"),
                 image: "wand",
-                continueText: localizedString("other__update_button"),
-                cancelText: localizedString("common__cancel"),
+                continueText: t("other__update_button"),
+                cancelText: t("common__cancel"),
                 testID: "AppUpdateSheet",
                 onCancel: onCancel,
                 onContinue: onContinue

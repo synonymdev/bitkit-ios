@@ -97,7 +97,7 @@ struct DevSettingsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(localizedString("settings__dev_title"))
+        .navigationTitle(t("settings__dev_title"))
     }
 }
 

@@ -28,14 +28,14 @@ struct ReceiveCjitConfirmation: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__receive_bitcoin"), showBackButton: true)
+            SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
                 MoneyStack(sats: Int(receiveAmountSats), showSymbol: true)
                     .padding(.bottom, 32)
 
                 BodyMText(
-                    localizedString(
+                    t(
                         "wallet__receive_connect_initial",
                         variables: [
                             "networkFee": formattedNetworkFee(),
@@ -48,7 +48,7 @@ struct ReceiveCjitConfirmation: View {
                 .padding(.bottom, 32)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    CaptionMText(localizedString("wallet__receive_will"))
+                    CaptionMText(t("wallet__receive_will"))
                     MoneyText(sats: receiveAmount, size: .title, symbol: true)
                 }
             }
@@ -63,11 +63,11 @@ struct ReceiveCjitConfirmation: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 16) {
-                CustomButton(title: localizedString("common__learn_more"), variant: .secondary) {
+                CustomButton(title: t("common__learn_more"), variant: .secondary) {
                     navigationPath.append(.cjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats))
                 }
 
-                CustomButton(title: localizedString("common__continue")) {
+                CustomButton(title: t("common__continue")) {
                     navigationPath.append(.qr(cjitInvoice: entry.invoice.request, tab: .spending))
                 }
             }

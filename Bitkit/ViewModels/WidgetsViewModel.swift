@@ -38,8 +38,8 @@ struct WidgetMetadata {
     let icon: String
 
     init(type: WidgetType, fiatSymbol: String = "$") {
-        name = localizedString("widgets__\(type.rawValue)__name")
-        description = localizedString("widgets__\(type.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
+        name = t("widgets__\(type.rawValue)__name")
+        description = t("widgets__\(type.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         icon = "\(type.rawValue)-widget"
     }
 }

@@ -158,8 +158,8 @@ struct MainNavView: View {
                     Logger.error(error, context: "Failed to handle deeplink")
                     app.toast(
                         type: .error,
-                        title: localizedString("other__qr_error_header"),
-                        description: localizedString("other__qr_error_text")
+                        title: t("other__qr_error_header"),
+                        description: t("other__qr_error_text")
                     )
                 }
             }
@@ -392,8 +392,8 @@ struct MainNavView: View {
                 Logger.error(error, context: "Failed to read data from clipboard")
                 app.toast(
                     type: .error,
-                    title: localizedString("other__qr_error_header"),
-                    description: localizedString("other__qr_error_text")
+                    title: t("other__qr_error_header"),
+                    description: t("other__qr_error_text")
                 )
             }
         }

@@ -21,8 +21,8 @@ struct FundManualSetupView: View {
     // Test URI: 028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc@34.65.86.104:9400
     func pasteLightningNodeUri() {
         guard let pastedText = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            alertTitle = localizedString("wallet__send_clipboard_empty_title", comment: "")
-            alertMessage = localizedString("wallet__send_clipboard_empty_text", comment: "")
+            alertTitle = t("wallet__send_clipboard_empty_title")
+            alertMessage = t("wallet__send_clipboard_empty_text")
             showAlert = true
             return
         }
@@ -49,36 +49,36 @@ struct FundManualSetupView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         DisplayText(
-                            localizedString("lightning__external_manual__title"),
+                            t("lightning__external_manual__title"),
                             accentColor: .purpleAccent
                         )
 
-                        BodyMText(localizedString("lightning__external_manual__text"))
+                        BodyMText(t("lightning__external_manual__text"))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.bottom, 16)
 
                         // Node ID field
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(localizedString("lightning__external_manual__node_id"))
+                            CaptionMText(t("lightning__external_manual__node_id"))
                             TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
                                 .lineLimit(2 ... 2)
                         }
 
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(localizedString("lightning__external_manual__host"))
+                            CaptionMText(t("lightning__external_manual__host"))
                             TextField("00.00.00.00", text: $host)
                         }
 
                         // Port field
                         VStack(alignment: .leading, spacing: 8) {
-                            CaptionMText(localizedString("lightning__external_manual__port"))
+                            CaptionMText(t("lightning__external_manual__port"))
                             TextField("9735", text: $port)
                         }
 
                         // Paste Node URI button
                         CustomButton(
-                            title: localizedString("lightning__external_manual__paste"),
+                            title: t("lightning__external_manual__paste"),
                             variant: .primary,
                             size: .small,
                             icon: Image("clipboard")
@@ -105,14 +105,14 @@ struct FundManualSetupView: View {
                 HStack {
                     // Scan QR button
                     CustomButton(
-                        title: localizedString("lightning__external_manual__scan", comment: ""),
+                        title: t("lightning__external_manual__scan"),
                         variant: .secondary,
                         destination: ScannerView()
                     )
 
                     // Continue button
                     CustomButton(
-                        title: localizedString("common__continue", comment: ""),
+                        title: t("common__continue"),
                         variant: .primary,
                         isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
                         destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
@@ -121,7 +121,7 @@ struct FundManualSetupView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__external__nav_title"))
+        .navigationTitle(t("lightning__external__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)
@@ -130,7 +130,7 @@ struct FundManualSetupView: View {
             Alert(
                 title: Text(alertTitle),
                 message: Text(alertMessage),
-                dismissButton: .default(Text(localizedString("common__ok", comment: "")))
+                dismissButton: .default(Text(t("common__ok")))
             )
         }
         .onAppear {

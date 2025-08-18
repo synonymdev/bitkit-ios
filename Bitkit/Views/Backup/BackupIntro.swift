@@ -7,16 +7,16 @@ struct BackupIntroView: View {
     @Binding var navigationPath: [BackupRoute]
 
     var body: some View {
-        let text = wallet.totalBalanceSats > 0 ? localizedString("security__backup_funds") : localizedString("security__backup_funds_no")
+        let text = wallet.totalBalanceSats > 0 ? t("security__backup_funds") : t("security__backup_funds_no")
 
         VStack(alignment: .leading, spacing: 0) {
             SheetIntro(
-                navTitle: localizedString("security__backup_wallet"),
-                title: localizedString("security__backup_title"),
+                navTitle: t("security__backup_wallet"),
+                title: t("security__backup_title"),
                 description: text,
                 image: "safe",
-                continueText: localizedString("security__backup_button"),
-                cancelText: localizedString("common__later"),
+                continueText: t("security__backup_button"),
+                cancelText: t("common__later"),
                 accentColor: .blueAccent,
                 testID: "BackupIntroView",
                 onCancel: {

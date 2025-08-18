@@ -29,7 +29,7 @@ struct ShopMain: View {
             .padding(.top, 16)
             .padding(.horizontal, 16)
         }
-        .navigationTitle(localizedString("other__shop__main__nav_title"))
+        .navigationTitle(t("other__shop__main__nav_title"))
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(false)
         .backToWalletButton()

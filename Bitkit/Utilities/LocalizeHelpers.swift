@@ -59,7 +59,8 @@ enum LocalizationHelper {
 
 // MARK: - Public API
 
-func localizedString(_ key: String, comment: String = "", variables: [String: String] = [:]) -> String {
+// The main function for getting a localized string
+func t(_ key: String, comment: String = "", variables: [String: String] = [:]) -> String {
     var localizedString = LocalizationHelper.getString(for: key, comment: comment)
 
     // Replace variables
@@ -70,6 +71,7 @@ func localizedString(_ key: String, comment: String = "", variables: [String: St
     return localizedString
 }
 
+// Get a random line from a localized string
 func localizedRandom(_ key: String, comment: String = "") -> String {
     let localizedString = LocalizationHelper.getString(for: key, comment: comment)
     let components = localizedString.components(separatedBy: "\n")

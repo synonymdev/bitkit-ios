@@ -26,8 +26,8 @@ enum AppReset {
         // 4) Show toast
         app.toast(
             type: toastType,
-            title: localizedString("security__wiped_title"),
-            description: localizedString("security__wiped_message")
+            title: t("security__wiped_title"),
+            description: t("security__wiped_message")
         )
     }
 }

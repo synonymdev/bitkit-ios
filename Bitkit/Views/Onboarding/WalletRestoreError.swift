@@ -7,12 +7,12 @@ struct WalletRestoreError: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DisplayText(localizedString("onboarding__restore_failed_header"), accentColor: .redAccent)
+            DisplayText(t("onboarding__restore_failed_header"), accentColor: .redAccent)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 40)
                 .padding(.bottom, 14)
 
-            BodyMText(localizedString("onboarding__restore_failed_text"))
+            BodyMText(t("onboarding__restore_failed_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
@@ -27,7 +27,7 @@ struct WalletRestoreError: View {
 
             // TODO: implement retry logic and continue without backup
 
-            CustomButton(title: localizedString("common__try_again")) {
+            CustomButton(title: t("common__try_again")) {
                 Haptics.play(.light)
                 Task {
                     do {
@@ -41,7 +41,7 @@ struct WalletRestoreError: View {
                 }
             }
 
-            CustomButton(title: localizedString("onboarding__restore_no_backup_button"), variant: .secondary, size: .large) {
+            CustomButton(title: t("onboarding__restore_no_backup_button"), variant: .secondary, size: .large) {
                 Haptics.play(.light)
                 showDialog = true
             }
@@ -50,20 +50,20 @@ struct WalletRestoreError: View {
         .padding(.horizontal, 32)
         .bottomSafeAreaPadding()
         .alert(
-            localizedString("common__are_you_sure"),
+            t("common__are_you_sure"),
             isPresented: $showDialog,
             actions: {
-                Button(localizedString("common__dialog_cancel"), role: .cancel) {
+                Button(t("common__dialog_cancel"), role: .cancel) {
                     showDialog = false
                 }
 
-                Button(localizedString("common__yes_proceed"), role: .destructive) {
+                Button(t("common__yes_proceed"), role: .destructive) {
                     Haptics.play(.light)
                     showDialog = false
                 }
             },
             message: {
-                Text(localizedString("onboarding__restore_no_backup_warn"))
+                Text(t("onboarding__restore_no_backup_warn"))
             }
         )
     }

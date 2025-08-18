@@ -16,10 +16,10 @@ struct CreateWalletView: View {
                     .frame(maxWidth: .infinity, alignment: .center)
 
                 VStack(spacing: 14) {
-                    DisplayText(NSLocalizedString("onboarding__slide4_header", comment: ""), accentColor: .brandAccent)
+                    DisplayText(t("onboarding__slide4_header"), accentColor: .brandAccent)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    BodyMText(NSLocalizedString("onboarding__slide4_text", comment: ""), accentFont: Fonts.bold)
+                    BodyMText(t("onboarding__slide4_text"), accentFont: Fonts.bold)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.top, 48)
@@ -28,7 +28,7 @@ struct CreateWalletView: View {
 
             // Action buttons
             HStack(spacing: 16) {
-                CustomButton(title: NSLocalizedString("onboarding__new_wallet", comment: "")) {
+                CustomButton(title: t("onboarding__new_wallet")) {
                     do {
                         wallet.nodeLifecycleState = .initializing
                         app.showAllEmptyStates(true)
@@ -40,7 +40,7 @@ struct CreateWalletView: View {
                 }
 
                 CustomButton(
-                    title: NSLocalizedString("onboarding__restore", comment: ""),
+                    title: t("onboarding__restore"),
                     variant: .secondary,
                     destination: MultipleWalletsView()
                 )

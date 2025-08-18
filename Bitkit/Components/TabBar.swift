@@ -46,7 +46,7 @@ struct TabBar: View {
                                     .aspectRatio(contentMode: .fit)
                                     .frame(height: 16)
                                     .rotationEffect(.degrees(180))
-                                BodySSBText(localizedString("wallet__send"))
+                                BodySSBText(t("wallet__send"))
                             }
                             .foregroundColor(.white)
                         }
@@ -64,7 +64,7 @@ struct TabBar: View {
                                     .resizable()
                                     .aspectRatio(contentMode: .fit)
                                     .frame(height: 16)
-                                BodySSBText(localizedString("wallet__receive"))
+                                BodySSBText(t("wallet__receive"))
                             }
                             .foregroundColor(.white)
                         }

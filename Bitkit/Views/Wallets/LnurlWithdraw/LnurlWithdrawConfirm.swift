@@ -20,13 +20,13 @@ struct LnurlWithdrawConfirm: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__lnurl_w_title"), showBackButton: true)
+            SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
             MoneyStack(sats: Int(amount), showSymbol: true)
                 .padding(.top, 16)
                 .padding(.bottom, 42)
 
-            BodyMText(localizedString("wallet__lnurl_w_text"))
+            BodyMText(t("wallet__lnurl_w_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
@@ -39,7 +39,7 @@ struct LnurlWithdrawConfirm: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("wallet__lnurl_w_button"), isLoading: isLoading) {
+            CustomButton(title: t("wallet__lnurl_w_button"), isLoading: isLoading) {
                 performWithdraw()
             }
         }
@@ -73,8 +73,8 @@ struct LnurlWithdrawConfirm: View {
                 await MainActor.run {
                     app.toast(
                         type: .info,
-                        title: localizedString("other__lnurl_withdr_success_title"),
-                        description: localizedString("other__lnurl_withdr_success_msg")
+                        title: t("other__lnurl_withdr_success_title"),
+                        description: t("other__lnurl_withdr_success_msg")
                     )
                     isLoading = false
                     sheets.hideSheet()

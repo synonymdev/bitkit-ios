@@ -140,7 +140,7 @@ struct HomeView: View {
                     .foregroundColor(.secondary)
                     .frame(width: 32, height: 32)
 
-                TitleText(localizedString("slashtags__your_name_capital"))
+                TitleText(t("slashtags__your_name_capital"))
             }
             .frame(height: 46)
         }

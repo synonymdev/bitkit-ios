@@ -86,11 +86,11 @@ struct LightningChannel: View {
         VStack(spacing: 8) {
             if showLabels {
                 HStack {
-                    CaptionMText(NSLocalizedString("lightning__spending_label", comment: ""))
+                    CaptionMText(t("lightning__spending_label"))
 
                     Spacer()
 
-                    CaptionMText(NSLocalizedString("lightning__receiving_label", comment: ""))
+                    CaptionMText(t("lightning__receiving_label"))
                 }
             }
 

@@ -39,7 +39,7 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
     public var customSetSpeed: String? {
         switch self {
         case let .custom(satsPerVByte):
-            return "\(satsPerVByte) \(NSLocalizedString("common__sat_vbyte_compact", comment: ""))"
+            return "\(satsPerVByte) \(t("common__sat_vbyte_compact"))"
         default:
             return nil
         }
@@ -48,52 +48,52 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
     public var displayTitle: String {
         switch self {
         case .fast:
-            return NSLocalizedString("fee__fast__title", comment: "")
+            return t("fee__fast__title")
         case .medium:
-            return NSLocalizedString("fee__normal__title", comment: "")
+            return t("fee__normal__title")
         case .slow:
-            return NSLocalizedString("fee__slow__title", comment: "")
+            return t("fee__slow__title")
         case .custom:
-            return NSLocalizedString("fee__custom__title", comment: "")
+            return t("fee__custom__title")
         }
     }
 
     public var displayLabel: String {
         switch self {
         case .fast:
-            return NSLocalizedString("settings__fee__fast__label", comment: "")
+            return t("settings__fee__fast__label")
         case .medium:
-            return NSLocalizedString("settings__fee__normal__label", comment: "")
+            return t("settings__fee__normal__label")
         case .slow:
-            return NSLocalizedString("settings__fee__slow__label", comment: "")
+            return t("settings__fee__slow__label")
         case .custom:
-            return NSLocalizedString("settings__fee__custom__label", comment: "")
+            return t("settings__fee__custom__label")
         }
     }
 
     public var displayValue: String {
         switch self {
         case .fast:
-            return NSLocalizedString("settings__fee__fast__value", comment: "")
+            return t("settings__fee__fast__value")
         case .medium:
-            return NSLocalizedString("settings__fee__normal__value", comment: "")
+            return t("settings__fee__normal__value")
         case .slow:
-            return NSLocalizedString("settings__fee__slow__value", comment: "")
+            return t("settings__fee__slow__value")
         case .custom:
-            return NSLocalizedString("settings__fee__custom__value", comment: "")
+            return t("settings__fee__custom__value")
         }
     }
 
     public var displayDescription: String {
         switch self {
         case .fast:
-            return NSLocalizedString("settings__fee__fast__description", comment: "")
+            return t("settings__fee__fast__description")
         case .medium:
-            return NSLocalizedString("settings__fee__normal__description", comment: "")
+            return t("settings__fee__normal__description")
         case .slow:
-            return NSLocalizedString("settings__fee__slow__description", comment: "")
+            return t("settings__fee__slow__description")
         case .custom:
-            return NSLocalizedString("settings__fee__custom__description", comment: "")
+            return t("settings__fee__custom__description")
         }
     }
 

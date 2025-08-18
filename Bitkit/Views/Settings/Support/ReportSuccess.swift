@@ -7,7 +7,7 @@ struct ReportSuccess: View {
     var body: some View {
         VStack(spacing: 0) {
             BodyMText(
-                localizedString("settings__support__text_success"),
+                t("settings__support__text_success"),
                 textColor: .textSecondary
             )
             .padding(.top, 16)
@@ -23,13 +23,13 @@ struct ReportSuccess: View {
             Spacer()
 
             CustomButton(
-                title: localizedString("settings__support__text_success_button")
+                title: t("settings__support__text_success_button")
             ) {
                 // TODO: Implement navigation to wallet
                 dismiss()
             }
         }
-        .navigationTitle(localizedString("settings__support__title_success"))
+        .navigationTitle(t("settings__support__title_success"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()

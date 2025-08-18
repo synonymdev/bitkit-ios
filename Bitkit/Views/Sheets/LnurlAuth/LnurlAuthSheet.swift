@@ -80,7 +80,7 @@ struct LnurlAuthSheet: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__cancel"),
+                        title: t("common__cancel"),
                         variant: .secondary
                     ) {
                         onCancel()
@@ -139,8 +139,8 @@ struct LnurlAuthSheet: View {
             // Close the sheet on success
             app.toast(
                 type: .success,
-                title: localizedString("other__lnurl_auth_success_title"),
-                description: localizedString("other__lnurl_auth_success_msg_no_domain")
+                title: t("other__lnurl_auth_success_title"),
+                description: t("other__lnurl_auth_success_msg_no_domain")
             )
             sheets.hideSheet()
         } catch {
@@ -148,8 +148,8 @@ struct LnurlAuthSheet: View {
 
             app.toast(
                 type: .error,
-                title: localizedString("other__lnurl_auth_error"),
-                description: localizedString("other__lnurl_auth_error_msg")
+                title: t("other__lnurl_auth_error"),
+                description: t("other__lnurl_auth_error_msg")
             )
         }
     }
