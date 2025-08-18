@@ -29,17 +29,33 @@ node scripts/validate-translations.js
 
 ## Development
 
-### Git Hooks
+### Formatting
 
-This project uses pre-commit hooks to ensure code quality. To set up the hooks, run:
+This project uses [SwiftFormat](https://github.com/nicklockwood/SwiftFormat) for code formatting. Configuration is in `.swiftformat`.
 
+**Install SwiftFormat:**
 ```bash
-chmod +x scripts/setup-hooks.sh
-./scripts/setup-hooks.sh
+brew install swiftformat
 ```
 
-This will install the pre-commit hook that runs various checks before each commit, including:
-- Running swift-format on staged Swift files
+**IDE Extensions:**
+- [VSCode extension](https://open-vsx.org/extension/vknabel/vscode-swiftformat)
+- [Xcode extension](https://github.com/nicklockwood/SwiftFormat#xcode-source-editor-extension)
+
+**Format code:**
+```bash
+swiftformat .
+```
+
+### Git Hooks
+
+The project includes git hooks to automatically check code formatting before commits.
+
+**Set up git hooks:**
+1. Install [git-format-staged](https://github.com/hallettj/git-format-staged): `npm install -g git-format-staged`
+2. Run: `./scripts/setup-hooks.sh`
+
+This installs a pre-commit hook that lints Swift files with SwiftFormat.
 
 ### Xcode Previews
 

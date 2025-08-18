@@ -198,7 +198,8 @@ struct SettingUpView: View {
                     vm.onOrderCreated(order: IBtOrder.mock(state2: .created))
                     vm.lightningSetupStep = 0
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -213,7 +214,8 @@ struct SettingUpView: View {
                     vm.onOrderCreated(order: IBtOrder.mock(state2: .paid))
                     vm.lightningSetupStep = 1
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -228,7 +230,8 @@ struct SettingUpView: View {
                     vm.onOrderCreated(order: IBtOrder.mock(state2: .executed))
                     vm.lightningSetupStep = 2
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }
@@ -243,7 +246,8 @@ struct SettingUpView: View {
                     vm.onOrderCreated(order: IBtOrder.mock(state2: .executed, channel: .mock()))
                     vm.lightningSetupStep = 4
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }

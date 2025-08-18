@@ -10,7 +10,7 @@ struct NewsWidgetOptions: Codable, Equatable {
 /// A widget that displays a news article
 struct NewsWidget: View {
     /// Configuration options for the widget
-    var options: NewsWidgetOptions = NewsWidgetOptions()
+    var options: NewsWidgetOptions = .init()
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false

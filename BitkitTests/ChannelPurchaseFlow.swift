@@ -1,10 +1,3 @@
-//
-//  PaymentFlow.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/04/15.
-//
-
 import BitkitCore
 import XCTest
 
@@ -120,7 +113,7 @@ final class PaymentFlowTests: XCTestCase {
         try await blocktank.regtestMineBlocks(1)
         Logger.test("Blocks mined successfully", context: "PaymentFlowTests")
 
-        //Sleep 10 seconds to ensure the blocks are mined
+        // Sleep 10 seconds to ensure the blocks are mined
         Logger.test("Waiting 10 seconds for blocks to be processed", context: "PaymentFlowTests")
         try await Task.sleep(nanoseconds: 10_000_000_000)
         Logger.test("Wait completed", context: "PaymentFlowTests")
@@ -180,7 +173,7 @@ final class PaymentFlowTests: XCTestCase {
         XCTAssertFalse(paymentTxId.isEmpty, "Payment transaction ID should not be empty")
         Logger.test("Payment sent with transaction ID: \(paymentTxId)", context: "PaymentFlowTests")
 
-        //Mine 1 block to confirm the payment transaction
+        // Mine 1 block to confirm the payment transaction
         try await Task.sleep(nanoseconds: 500_000_000)
         try await blocktank.regtestMineBlocks(1)
         Logger.test("Block mined successfully", context: "PaymentFlowTests")
@@ -241,7 +234,7 @@ final class PaymentFlowTests: XCTestCase {
         XCTAssertGreaterThan(channels?.count ?? 0, 0, "Should have at least one channel")
 
         // Check if we have at least one usable channel
-        let usableChannels = channels?.filter { $0.isUsable } ?? []
+        let usableChannels = channels?.filter(\.isUsable) ?? []
         XCTAssertGreaterThan(usableChannels.count, 0, "Should have at least one usable channel")
 
         if let firstUsableChannel = usableChannels.first {
@@ -255,13 +248,14 @@ final class PaymentFlowTests: XCTestCase {
         } else if let firstChannel = channels?.first {
             Logger.test(
                 "Channel exists but is not yet usable. State: isChannelReady=\(firstChannel.isChannelReady), isUsable=\(firstChannel.isUsable)",
-                context: "PaymentFlowTests")
+                context: "PaymentFlowTests"
+            )
             Logger.test("Channel capacity: \(firstChannel.channelValueSats) sats", context: "PaymentFlowTests")
             Logger.test("Channel counterparty: \(firstChannel.counterpartyNodeId)", context: "PaymentFlowTests")
             XCTFail("Channel exists but is not usable yet")
         }
 
-        //TODO: actually try route some payments
+        // TODO: actually try route some payments
 
         // Clean up by removing the test wallet
         Logger.test("Stopping lightning node", context: "PaymentFlowTests")

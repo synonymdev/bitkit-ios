@@ -9,17 +9,17 @@ struct ActivityExplorerView: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     private var onchain: OnchainActivity? {
-        guard case .onchain(let activity) = item else { return nil }
+        guard case let .onchain(activity) = item else { return nil }
         return activity
     }
 
     private var lightning: LightningActivity? {
-        guard case .lightning(let activity) = item else { return nil }
+        guard case let .lightning(activity) = item else { return nil }
         return activity
     }
 
     private var paymentHash: String? {
-        guard case .lightning(let activity) = item else { return nil }
+        guard case let .lightning(activity) = item else { return nil }
         return activity.id
     }
 
@@ -35,9 +35,9 @@ struct ActivityExplorerView: View {
     @ViewBuilder
     private var amountView: some View {
         switch item {
-        case .lightning(let activity):
+        case let .lightning(activity):
             MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
-        case .onchain(let activity):
+        case let .onchain(activity):
             MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
         }
     }
@@ -82,7 +82,7 @@ struct ActivityExplorerView: View {
             .padding(.vertical)
             .padding(.bottom, 16)
 
-            if let onchain = onchain {
+            if let onchain {
                 InfoSection(
                     title: localizedString("wallet__activity_tx_id"),
                     content: onchain.txId,
@@ -107,7 +107,7 @@ struct ActivityExplorerView: View {
 
                 Divider()
                     .padding(.bottom, 16)
-            } else if let lightning = lightning {
+            } else if let lightning {
                 if let preimage = lightning.preimage {
                     InfoSection(
                         title: localizedString("wallet__activity_preimage"),
@@ -115,7 +115,7 @@ struct ActivityExplorerView: View {
                     )
                 }
 
-                if let paymentHash = paymentHash {
+                if let paymentHash {
                     InfoSection(
                         title: localizedString("wallet__activity_payment_hash"),
                         content: paymentHash,
@@ -132,8 +132,8 @@ struct ActivityExplorerView: View {
 
             if onchain != nil {
                 CustomButton(title: localizedString("common__open_block_explorer"), shouldExpand: true) {
-                    if let onchain = onchain,
-                        let url = getBlockExplorerUrl(txId: onchain.txId)
+                    if let onchain,
+                       let url = getBlockExplorerUrl(txId: onchain.txId)
                     {
                         UIApplication.shared.open(url)
                     }
@@ -157,10 +157,10 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         id: "test-lightning-1",
                         txType: .received,
                         status: .succeeded,
-                        value: 50_000,
+                        value: 50000,
                         fee: 1,
                         invoice:
-                            "lnbc500n1p3hk3hgpp5ygx8cnfds9x49rp2mwxhcqpvdp4xys5pcxg95tyc2mrqz8dskvvsdq5g9kxy7fqd9h8vmmfvdjscqzpgxqyz5vqsp5usyc4l9c2y2funvqp0gsq3u7yws2h0pjkm984dlv6rvhtevk4ms9qyyssqzpvy9gyzjc0xsmp9gk4w2rlp3ezs5f3k2cxqzfmjh8mcst8zps4stu8qf0egyn7vgx8k9dvrbr7znlkc9s67x8j88t0y4mu5m7c4kcpj8wcr3",
+                        "lnbc500n1p3hk3hgpp5ygx8cnfds9x49rp2mwxhcqpvdp4xys5pcxg95tyc2mrqz8dskvvsdq5g9kxy7fqd9h8vmmfvdjscqzpgxqyz5vqsp5usyc4l9c2y2funvqp0gsq3u7yws2h0pjkm984dlv6rvhtevk4ms9qyyssqzpvy9gyzjc0xsmp9gk4w2rlp3ezs5f3k2cxqzfmjh8mcst8zps4stu8qf0egyn7vgx8k9dvrbr7znlkc9s67x8j88t0y4mu5m7c4kcpj8wcr3",
                         message: "Test payment",
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

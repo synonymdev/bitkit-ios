@@ -78,7 +78,8 @@ struct AuthCheck: View {
         if remainingAttempts == 1 {
             // Last attempt warning
             errorMessage = NSLocalizedString(
-                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet.")
+                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
+            )
         } else {
             // Show remaining attempts
             errorMessage = localizedString(

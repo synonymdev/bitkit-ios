@@ -6,7 +6,7 @@ extension ChannelDetails {
         isChannelReady: Bool = true,
         isUsable: Bool = true,
         isAnnounced: Bool = false,
-        channelValueSats: UInt64 = 100000,
+        channelValueSats: UInt64 = 100_000,
         outboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         inboundCapacityMsat: UInt64 = 50_000_000, // 50,000 sats in msat
         shortChannelId: UInt64? = 123_456_789
@@ -45,7 +45,14 @@ extension ChannelDetails {
             forceCloseSpendDelay: nil,
             inboundHtlcMinimumMsat: 1000,
             inboundHtlcMaximumMsat: inboundCapacityMsat > 0 ? inboundCapacityMsat : nil,
-            config: .init(forwardingFeeProportionalMillionths: 0, forwardingFeeBaseMsat: 0, cltvExpiryDelta: 0, maxDustHtlcExposure: .feeRateMultiplier(multiplier: 0), forceCloseAvoidanceMaxFeeSatoshis: 0, acceptUnderpayingHtlcs: true)
+            config: .init(
+                forwardingFeeProportionalMillionths: 0,
+                forwardingFeeBaseMsat: 0,
+                cltvExpiryDelta: 0,
+                maxDustHtlcExposure: .feeRateMultiplier(multiplier: 0),
+                forceCloseAvoidanceMaxFeeSatoshis: 0,
+                acceptUnderpayingHtlcs: true
+            )
         )
     }
 }

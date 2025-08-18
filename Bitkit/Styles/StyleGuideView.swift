@@ -45,7 +45,8 @@ struct StyleGuideView: View {
                     "Click here to visit <accent>Google</accent> website", accentColor: .brandAccent,
                     accentAction: {
                         UIApplication.shared.open(URL(string: "https://www.google.com")!)
-                    })
+                    }
+                )
 
                 Divider()
 
@@ -73,14 +74,16 @@ struct StyleGuideView: View {
                         ("Purple Accent", Color.purpleAccent),
                         ("Red Accent", Color.redAccent),
                         ("Yellow Accent", Color.yellowAccent),
-                    ])
+                    ]
+                )
 
                 colorGroup(
                     title: "Text Colors",
                     colors: [
                         ("Text Primary", Color.textPrimary),
                         ("Text Secondary", Color.textSecondary),
-                    ])
+                    ]
+                )
 
                 colorGroup(
                     title: "Gray Scale",
@@ -89,7 +92,8 @@ struct StyleGuideView: View {
                         ("Gray 5", Color.gray5),
                         ("Gray 3", Color.gray3),
                         ("Gray 2", Color.gray2),
-                    ])
+                    ]
+                )
             }
         }
     }

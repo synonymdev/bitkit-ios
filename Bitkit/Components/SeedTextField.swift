@@ -48,12 +48,10 @@ struct SeedTextField: View {
                 .onSubmit {
                     focusedField = isLastField ? nil : index + 1
                 }
-
         }
         .frame(minHeight: 46)
         .padding(.horizontal, 16)
         .background(Color.white10)
         .cornerRadius(8)
-
     }
 }

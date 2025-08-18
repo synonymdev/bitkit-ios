@@ -1,10 +1,3 @@
-//
-//  TxBumpingTests.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2025/06/12.
-//
-
 import BitkitCore
 import LDKNode
 import XCTest
@@ -100,7 +93,7 @@ final class TxBumpingTests: XCTestCase {
 
         // Send a transaction with a low fee rate
         let destinationAddress = "bcrt1q59y53uy2h02dlqn76n824ns3maupd3mx4lfm0y"
-        let sendAmount: UInt64 = 10_000 // Send 10,000 sats
+        let sendAmount: UInt64 = 10000 // Send 10,000 sats
         let lowFeeRate: UInt32 = 1 // 1 sat/vbyte (very low)
 
         Logger.test("Sending \(sendAmount) sats to \(destinationAddress) with low fee rate of \(lowFeeRate) sat/vbyte", context: "TxBumpingTests")
@@ -215,7 +208,8 @@ final class TxBumpingTests: XCTestCase {
         // This demonstrates using CPFP to quickly move received funds
         let highFeeRate: UInt32 = 20 // 20 sat/vbyte (very high for fast confirmation)
         Logger.test(
-            "Using CPFP to quickly spend from incoming transaction \(stuckIncomingTxId) with \(highFeeRate) sat/vbyte", context: "TxBumpingTests")
+            "Using CPFP to quickly spend from incoming transaction \(stuckIncomingTxId) with \(highFeeRate) sat/vbyte", context: "TxBumpingTests"
+        )
 
         // Generate a destination address for the CPFP transaction (where we'll send the funds)
         Logger.test("Generating destination address for CPFP child transaction", context: "TxBumpingTests")

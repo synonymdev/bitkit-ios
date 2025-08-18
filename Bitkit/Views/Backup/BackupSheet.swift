@@ -16,7 +16,7 @@ struct BackupConfig {
     let initialRoute: BackupRoute
 
     init(view: BackupRoute = .intro) {
-        self.initialRoute = view
+        initialRoute = view
     }
 }
 
@@ -52,11 +52,11 @@ struct BackupSheet: View {
             BackupIntroView(navigationPath: $navigationPath)
         case .mnemonic:
             BackupMnemonicView(navigationPath: $navigationPath)
-        case .passphrase(let mnemonic, let passphrase):
+        case let .passphrase(mnemonic, passphrase):
             BackupPassphrase(navigationPath: $navigationPath, mnemonic: mnemonic, passphrase: passphrase)
-        case .confirmMnemonic(let mnemonic, let passphrase):
+        case let .confirmMnemonic(mnemonic, passphrase):
             BackupConfirmMnemonic(navigationPath: $navigationPath, mnemonic: mnemonic, passphrase: passphrase)
-        case .confirmPassphrase(let passphrase):
+        case let .confirmPassphrase(passphrase):
             BackupConfirmPassphrase(navigationPath: $navigationPath, passphrase: passphrase)
         case .reminder:
             BackupReminder(navigationPath: $navigationPath)

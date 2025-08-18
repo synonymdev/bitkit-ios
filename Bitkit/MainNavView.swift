@@ -217,9 +217,9 @@ struct MainNavView: View {
             switch screenValue {
             case .activityList:
                 AllActivityView()
-            case .activityDetail(let activity):
+            case let .activityDetail(activity):
                 ActivityItemView(item: activity)
-            case .activityExplorer(let activity):
+            case let .activityExplorer(activity):
                 ActivityExplorerView(item: activity)
             case .buyBitcoin:
                 BuyBitcoinView()
@@ -243,19 +243,19 @@ struct MainNavView: View {
                 SpendingAmount()
             case .spendingConfirm:
                 SpendingConfirm()
-            case .spendingAdvanced(let order):
+            case let .spendingAdvanced(order):
                 SpendingAdvancedView(order: order)
-            case .transferLearnMore(let order):
+            case let .transferLearnMore(order):
                 TransferLearnMoreView(order: order)
             case .settingUp:
                 SettingUpView()
             case .fundingAdvanced:
                 FundAdvancedOptions()
-            case .fundManual(let nodeUri):
+            case let .fundManual(nodeUri):
                 FundManualSetupView(initialNodeUri: nodeUri)
             case .fundManualSuccess:
                 FundManualSuccessView()
-            case .lnurlChannel(let channelData):
+            case let .lnurlChannel(channelData):
                 LnurlChannel(channelData: channelData)
             case .savingsIntro:
                 SavingsIntroView()
@@ -279,7 +279,7 @@ struct MainNavView: View {
                 ShopIntro()
             case .shopDiscover:
                 ShopDiscover()
-            case .shopMain(let page):
+            case let .shopMain(page):
                 ShopMain(page: page)
 
             // Widgets
@@ -287,9 +287,9 @@ struct MainNavView: View {
                 WidgetsIntroView()
             case .widgetsList:
                 WidgetsListView()
-            case .widgetDetail(let widgetType):
+            case let .widgetDetail(widgetType):
                 WidgetDetailView(id: widgetType)
-            case .widgetEdit(let widgetType):
+            case let .widgetEdit(widgetType):
                 WidgetEditView(id: widgetType)
 
             // Settings
@@ -426,6 +426,6 @@ struct BackToWalletToolbar: ViewModifier {
 
 extension View {
     func backToWalletButton() -> some View {
-        self.modifier(BackToWalletToolbar())
+        modifier(BackToWalletToolbar())
     }
 }

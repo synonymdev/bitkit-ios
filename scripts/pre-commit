@@ -1,15 +1,12 @@
 #!/bin/bash
 
-# Force color output for better readability
-export FORCE_COLOR=1
-
-echo "🔍 Checking staged files for lint issues..."
+echo "🔍 Checking staged Swift files for formatting issues..."
 
 # Get list of staged .swift files
-FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$')
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$')
 
 # Exit early if no Swift files are staged
-if [ -z "$FILES" ]; then
+if [ -z "$STAGED_FILES" ]; then
     echo "✨ No Swift files staged for commit."
     exit 0
 fi
@@ -17,63 +14,48 @@ fi
 # Initialize error flag
 HAS_ERRORS=0
 
-for FILE in $FILES; do
+# Create a temporary directory for staged content
+TEMP_DIR=$(mktemp -d)
+trap "rm -rf $TEMP_DIR" EXIT
+
+# Copy .swiftformat config to temp directory
+cp .swiftformat "$TEMP_DIR/"
+
+for FILE in $STAGED_FILES; do
     if [ ! -f "$FILE" ]; then
         continue
     fi
-
-    # Store original file path for output
-    ORIGINAL_FILE="$FILE"
     
-    # Extract project name from the original file path
-    PROJECT_NAME=$(echo "$ORIGINAL_FILE" | cut -d'/' -f1)
-
-    # Create a temporary directory with the same structure as the file
-    TEMP_DIR=$(mktemp -d)
+    # Create directory structure in temp
     mkdir -p "$TEMP_DIR/$(dirname "$FILE")"
     
-    # Copy the swift-format configuration
-    cp .swift-format "$TEMP_DIR/"
+    # Get staged content of the file
+    git show :"$FILE" > "$TEMP_DIR/$FILE" 2>/dev/null || {
+        echo "⚠️  Could not get staged content for $FILE, skipping..."
+        continue
+    }
     
-    # Get the base file (either from HEAD or empty for new files)
-    if git show HEAD:"$FILE" > /dev/null 2>&1; then
-        git show HEAD:"$FILE" > "$TEMP_DIR/$FILE"
-    else
-        touch "$TEMP_DIR/$FILE"
-    fi
-    
-    # Apply staged changes silently
-    git diff --cached "$FILE" | patch -s -N "$TEMP_DIR/$FILE"
-    
-    # Run swift-format lint and capture output while preserving colors
+    # Run swiftformat --lint on the staged content
     cd "$TEMP_DIR"
-    LINT_OUTPUT=$(script -q /dev/null swift-format lint "$FILE" 2>&1)
-    
-    # Remove the ^D character that script adds
-    LINT_OUTPUT=$(echo "$LINT_OUTPUT" | tr -d '\r')
-    
-    # Strip ANSI color codes for error checking
-    STRIPPED_OUTPUT=$(echo "$LINT_OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
-    
-    # Check if there are actual lint errors (lines containing ": warning: [" or ": error: [")
-    if echo "$STRIPPED_OUTPUT" | grep -q ": \(warning\|error\): \["; then
-        # Replace both the temporary file path and /private prefix with the original file path
-        echo "$LINT_OUTPUT" | sed "s|$TEMP_DIR/$FILE|$ORIGINAL_FILE|g" | sed "s|/private$PROJECT_NAME/|$PROJECT_NAME/|g"
-        echo "❌ Linting issues found in $ORIGINAL_FILE"
-        HAS_ERRORS=1
-    fi
+    LINT_OUTPUT=$(swiftformat --lint "$FILE" 2>&1)
+    LINT_EXIT_CODE=$?
     cd - > /dev/null
     
-    # Clean up temporary directory
-    rm -rf "$TEMP_DIR"
+    # Check if linting failed
+    if [ $LINT_EXIT_CODE -ne 0 ]; then
+        # Replace temp path with original path in output
+        echo "$LINT_OUTPUT" | sed "s|$TEMP_DIR/||g"
+        echo "❌ Formatting issues found in $FILE"
+        HAS_ERRORS=1
+    fi
 done
 
-# Exit with error if any staged changes failed linting
+# Exit with error if any files failed linting
 if [ $HAS_ERRORS -eq 1 ]; then
     echo ""
-    echo "🚫 Commit blocked: Linting issues found."
-    echo "Please fix the linting issues and try committing again."
+    echo "🚫 Commit blocked: Formatting issues found in staged files."
+    echo "Run 'swiftformat .' to fix formatting issues, then commit again."
     exit 1
 fi
 
-echo "✨ All staged changes passed linting."
+echo "✨ All staged changes passed formatting checks."

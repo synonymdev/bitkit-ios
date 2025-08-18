@@ -33,9 +33,9 @@ class SheetViewModel: ObservableObject {
             hideSheet()
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-                guard let self = self else { return }
-                self.activeSheetConfiguration = SheetConfiguration(id: id, data: data)
-                self.playHaptics(for: id)
+                guard let self else { return }
+                activeSheetConfiguration = SheetConfiguration(id: id, data: data)
+                playHaptics(for: id)
 
                 // Notify timed sheet manager
                 Task { @MainActor in

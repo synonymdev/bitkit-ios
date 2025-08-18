@@ -105,11 +105,10 @@ struct LnurlPayConfirm: View {
             ) {
                 // Check if we need to show warning for amounts over $100 USD
                 if settings.warnWhenSendingOver100 {
-                    let sats: UInt64
-                    if let invoice = app.scannedLightningInvoice {
-                        sats = wallet.sendAmountSats ?? invoice.amountSatoshis
+                    let sats: UInt64 = if let invoice = app.scannedLightningInvoice {
+                        wallet.sendAmountSats ?? invoice.amountSatoshis
                     } else {
-                        sats = 0
+                        0
                     }
 
                     // Convert to USD to check if over $100
@@ -231,7 +230,7 @@ struct LnurlPayConfirm: View {
                         continuation.resume(returning: true)
                     } else {
                         if let error = authenticationError {
-                            self.handleBiometricError(error)
+                            handleBiometricError(error)
                         }
                         continuation.resume(returning: false)
                     }
@@ -241,7 +240,7 @@ struct LnurlPayConfirm: View {
     }
 
     private func handleBiometricError(_ error: Error?) {
-        guard let error = error else { return }
+        guard let error else { return }
 
         let nsError = error as NSError
 
@@ -295,7 +294,8 @@ struct LnurlPayConfirm: View {
                         onFail: { reason in
                             Logger.error("LNURL payment failed: \(reason)")
                             continuation.resume(
-                                throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
+                            )
                             navigationPath.append(.failure)
                         }
                     )

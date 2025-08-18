@@ -21,7 +21,7 @@ class NotificationService: ObservableObject {
                 Logger.debug("Push notification permission granted, requesting device token")
                 // Request a fresh token - it will be automatically registered when received
                 self.requestDeviceToken()
-            } else if let error = error {
+            } else if let error {
                 Logger.error("Push notification permission denied: \(error)")
             } else {
                 Logger.debug("Push notification permission denied by user")
@@ -55,7 +55,7 @@ class NotificationService: ObservableObject {
         let result = try await CoreService.shared.blocktank.registerDeviceForNotifications(
             deviceToken: deviceToken,
             publicKey: keypair.publicKey.hex,
-            features: Env.pushNotificationFeatures.map { $0.feature },
+            features: Env.pushNotificationFeatures.map(\.feature),
             nodeId: nodeId,
             isoTimestamp: isoTimestamp,
             signature: signature

@@ -38,7 +38,6 @@ struct LightningConnectionsView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-
                 }
                 .padding(.top, 24)
                 .padding(.bottom, 16)
@@ -251,7 +250,7 @@ struct LightningConnectionsView: View {
 
     private var openChannels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
-        return channels.filter { $0.isChannelReady }
+        return channels.filter(\.isChannelReady)
     }
 
     private var closedConnections: [IBtOrder] {
@@ -296,8 +295,8 @@ struct LightningConnectionsView: View {
             let shortChannelIdString = String(shortChannelId)
             for order in orders {
                 if let orderChannel = order.channel,
-                    let orderShortChannelId = orderChannel.shortChannelId,
-                    orderShortChannelId == shortChannelIdString
+                   let orderShortChannelId = orderChannel.shortChannelId,
+                   orderShortChannelId == shortChannelIdString
                 {
                     return order
                 }
@@ -308,7 +307,7 @@ struct LightningConnectionsView: View {
         if let fundingTxo = channel.fundingTxo {
             for order in orders {
                 if let orderChannel = order.channel,
-                    orderChannel.fundingTx.id == fundingTxo.txid
+                   orderChannel.fundingTx.id == fundingTxo.txid
                 {
                     return order
                 }
@@ -319,7 +318,7 @@ struct LightningConnectionsView: View {
         let counterpartyNodeIdString = channel.counterpartyNodeId.description
         for order in orders {
             if let orderChannel = order.channel,
-                orderChannel.clientNodePubkey == counterpartyNodeIdString || orderChannel.lspNodePubkey == counterpartyNodeIdString
+               orderChannel.clientNodePubkey == counterpartyNodeIdString || orderChannel.lspNodePubkey == counterpartyNodeIdString
             {
                 return order
             }

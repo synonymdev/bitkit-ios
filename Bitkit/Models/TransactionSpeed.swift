@@ -14,8 +14,8 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
         } else if rawValue == "slow" {
             self = .slow
         } else if rawValue.starts(with: "custom_"),
-            let rateStr = rawValue.split(separator: "_").last,
-            let rate = UInt32(rateStr)
+                  let rateStr = rawValue.split(separator: "_").last,
+                  let rate = UInt32(rateStr)
         {
             self = .custom(satsPerVByte: rate)
         } else {
@@ -31,14 +31,14 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
             return "medium"
         case .slow:
             return "slow"
-        case .custom(let satsPerVByte):
+        case let .custom(satsPerVByte):
             return "custom_\(satsPerVByte)"
         }
     }
 
     public var customSetSpeed: String? {
         switch self {
-        case .custom(let satsPerVByte):
+        case let .custom(satsPerVByte):
             return "\(satsPerVByte) \(NSLocalizedString("common__sat_vbyte_compact", comment: ""))"
         default:
             return nil
@@ -53,7 +53,7 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
             return NSLocalizedString("fee__normal__title", comment: "")
         case .slow:
             return NSLocalizedString("fee__slow__title", comment: "")
-        case .custom(_):
+        case .custom:
             return NSLocalizedString("fee__custom__title", comment: "")
         }
     }
@@ -114,7 +114,7 @@ public enum TransactionSpeed: Equatable, RawRepresentable {
         switch (lhs, rhs) {
         case (.fast, .fast), (.medium, .medium), (.slow, .slow):
             return true
-        case (.custom(let lhsRate), .custom(let rhsRate)):
+        case let (.custom(lhsRate), .custom(rhsRate)):
             return lhsRate == rhsRate
         default:
             return false

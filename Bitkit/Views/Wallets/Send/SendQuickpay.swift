@@ -99,11 +99,13 @@ struct SendQuickpay: View {
 
         guard let bolt11 = bolt11Invoice else {
             throw NSError(
-                domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"])
+                domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "No Lightning invoice found"]
+            )
         }
 
         do {
-            // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different paths.
+            // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different
+            // paths.
             // So we need to handle all these cases here.
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 Task {
@@ -119,7 +121,8 @@ struct SendQuickpay: View {
                             onFail: { reason in
                                 Logger.error("Quickpay payment failed: \(reason)")
                                 continuation.resume(
-                                    throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason]))
+                                    throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
+                                )
                                 navigationPath.append(.failure)
                             }
                         )

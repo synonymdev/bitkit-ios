@@ -33,12 +33,11 @@ struct HighBalanceTimedSheet: TimedSheetItem {
         let totalBalance = UInt64(walletViewModel.totalBalanceSats)
 
         // Check if threshold is reached
-        let thresholdReached: Bool
-        if let usdConversion = currencyViewModel.convert(sats: totalBalance, to: "USD") {
-            thresholdReached = Double(truncating: usdConversion.value as NSDecimalNumber) > Self.BALANCE_THRESHOLD_USD
+        let thresholdReached: Bool = if let usdConversion = currencyViewModel.convert(sats: totalBalance, to: "USD") {
+            Double(truncating: usdConversion.value as NSDecimalNumber) > Self.BALANCE_THRESHOLD_USD
         } else {
             // Fallback to sats if exchange rates not available
-            thresholdReached = totalBalance > Self.BALANCE_THRESHOLD_SATS
+            totalBalance > Self.BALANCE_THRESHOLD_SATS
         }
 
         return isTimeoutOver && thresholdReached && belowMaxWarnings

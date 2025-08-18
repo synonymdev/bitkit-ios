@@ -44,7 +44,7 @@ struct WalletBalanceView: View {
         HStack {
             WalletBalanceView(
                 type: .onchain,
-                sats: 123456
+                sats: 123_456
             )
 
             Divider()
@@ -52,7 +52,7 @@ struct WalletBalanceView: View {
 
             WalletBalanceView(
                 type: .lightning,
-                sats: 123456
+                sats: 123_456
             )
         }
         .environmentObject(
@@ -61,7 +61,8 @@ struct WalletBalanceView: View {
                 vm.primaryDisplay = .bitcoin
                 vm.displayUnit = .modern
                 return vm
-            }())
+            }()
+        )
 
         Spacer()
 
@@ -69,7 +70,7 @@ struct WalletBalanceView: View {
         HStack {
             WalletBalanceView(
                 type: .onchain,
-                sats: 123456
+                sats: 123_456
             )
 
             Divider()
@@ -77,7 +78,7 @@ struct WalletBalanceView: View {
 
             WalletBalanceView(
                 type: .lightning,
-                sats: 123456
+                sats: 123_456
             )
         }
         .environmentObject(
@@ -87,7 +88,8 @@ struct WalletBalanceView: View {
                 vm.selectedCurrency = "USD"
                 vm.displayUnit = .modern
                 return vm
-            }())
+            }()
+        )
 
         Spacer()
 
@@ -95,7 +97,7 @@ struct WalletBalanceView: View {
         HStack {
             WalletBalanceView(
                 type: .onchain,
-                sats: 123456
+                sats: 123_456
             )
 
             Divider()
@@ -103,7 +105,7 @@ struct WalletBalanceView: View {
 
             WalletBalanceView(
                 type: .lightning,
-                sats: 123456
+                sats: 123_456
             )
         }
         .environmentObject(
@@ -113,7 +115,8 @@ struct WalletBalanceView: View {
                 vm.selectedCurrency = "EUR"
                 vm.displayUnit = .modern
                 return vm
-            }())
+            }()
+        )
 
         Spacer()
 
@@ -121,7 +124,7 @@ struct WalletBalanceView: View {
         HStack {
             WalletBalanceView(
                 type: .onchain,
-                sats: 123456
+                sats: 123_456
             )
 
             Divider()
@@ -129,7 +132,7 @@ struct WalletBalanceView: View {
 
             WalletBalanceView(
                 type: .lightning,
-                sats: 123456
+                sats: 123_456
             )
         }
         .environmentObject(
@@ -138,7 +141,8 @@ struct WalletBalanceView: View {
                 vm.primaryDisplay = .bitcoin
                 vm.displayUnit = .classic
                 return vm
-            }())
+            }()
+        )
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding()

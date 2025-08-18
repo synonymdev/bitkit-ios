@@ -11,7 +11,7 @@ struct PriceWidgetOptions: Codable, Equatable {
 /// A widget that displays cryptocurrency price information with chart
 struct PriceWidget: View {
     /// Configuration options for the widget
-    var options: PriceWidgetOptions = PriceWidgetOptions()
+    var options: PriceWidgetOptions = .init()
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false

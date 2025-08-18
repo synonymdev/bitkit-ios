@@ -7,11 +7,11 @@ struct FactsWidgetOptions: Codable, Equatable {
 
 struct FactsWidget: View {
     /// Configuration options for the widget
-    var options: FactsWidgetOptions = FactsWidgetOptions()
+    var options: FactsWidgetOptions = .init()
 
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
-    
+
     /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
@@ -39,7 +39,7 @@ struct FactsWidget: View {
         self.options = options
         self.isEditing = isEditing
         self.onEditingEnd = onEditingEnd
-        self._viewModel = StateObject(wrappedValue: viewModel)
+        _viewModel = StateObject(wrappedValue: viewModel)
     }
 
     var body: some View {

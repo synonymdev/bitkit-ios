@@ -1,8 +1,3 @@
-//
-//  AddressChecker.swift
-//  Bitkit
-//
-
 import Foundation
 
 struct AddressStats: Codable {
@@ -34,15 +29,16 @@ class AddressChecker {
         guard let url = URL(string: "\(Env.esploraServerUrl)/address/\(address)") else {
             throw AddressCheckerError.invalidUrl
         }
-        
+
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            
+
             guard let httpResponse = response as? HTTPURLResponse,
-                  httpResponse.statusCode == 200 else {
+                  httpResponse.statusCode == 200
+            else {
                 throw AddressCheckerError.invalidResponse
             }
-            
+
             let decoder = JSONDecoder()
             return try decoder.decode(AddressInfo.self, from: data)
         } catch let error as DecodingError {

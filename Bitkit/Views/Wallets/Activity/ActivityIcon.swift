@@ -1,5 +1,5 @@
-import SwiftUI
 import BitkitCore
+import SwiftUI
 
 struct ActivityIcon: View {
     let isLightning: Bool
@@ -11,16 +11,16 @@ struct ActivityIcon: View {
     init(activity: Activity, size: CGFloat = 32) {
         self.size = size
         switch activity {
-        case .lightning(let ln):
-            self.isLightning = true
-            self.status = ln.status
-            self.confirmed = nil
-            self.txType = ln.txType
-        case .onchain(let onchain):
-            self.isLightning = false
-            self.status = nil
-            self.confirmed = onchain.confirmed
-            self.txType = onchain.txType
+        case let .lightning(ln):
+            isLightning = true
+            status = ln.status
+            confirmed = nil
+            txType = ln.txType
+        case let .onchain(onchain):
+            isLightning = false
+            status = nil
+            confirmed = onchain.confirmed
+            txType = onchain.txType
         }
     }
 

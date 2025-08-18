@@ -23,9 +23,9 @@ struct ScannerView: View {
         ZStack {
             // Full screen scanner
             CodeScannerView(codeTypes: [.qr], shouldVibrateOnSuccess: false, isTorchOn: isFlashlightOn) { response in
-                if case .success(let result) = response {
+                if case let .success(result) = response {
                     handleScan(result.string)
-                } else if case .failure(let error) = response {
+                } else if case let .failure(error) = response {
                     Logger.error(error, context: "Failed to scan QR code")
                     app.toast(error)
                 }
@@ -139,7 +139,8 @@ struct ScannerView: View {
             app.toast(
                 type: .warning,
                 title: localizedString("wallet__send_clipboard_empty_title"),
-                description: localizedString("wallet__send_clipboard_empty_text"))
+                description: localizedString("wallet__send_clipboard_empty_text")
+            )
             return
         }
 
@@ -147,11 +148,11 @@ struct ScannerView: View {
     }
 
     func handleImageSelection(_ item: PhotosPickerItem?) async {
-        guard let item = item else { return }
+        guard let item else { return }
 
         do {
             guard let data = try await item.loadTransferable(type: Data.self),
-                let image = UIImage(data: data)
+                  let image = UIImage(data: data)
             else {
                 app.toast(
                     type: .error,
@@ -172,10 +173,10 @@ struct ScannerView: View {
             }
 
             let request = VNDetectBarcodesRequest { request, error in
-                if let error = error {
+                if let error {
                     Logger.error(error, context: "QR detection failed")
                     DispatchQueue.main.async {
-                        self.app.toast(
+                        app.toast(
                             type: .error,
                             title: "Detection Error",
                             description: "Failed to process the image for QR codes."
@@ -187,7 +188,7 @@ struct ScannerView: View {
                 guard let results = request.results as? [VNBarcodeObservation] else {
                     Logger.error("No barcode results found")
                     DispatchQueue.main.async {
-                        self.app.toast(
+                        app.toast(
                             type: .error,
                             title: "No QR Code Found",
                             description: "Sorry. Bitkit wasn't able to detect a QR code in this image."
@@ -199,10 +200,10 @@ struct ScannerView: View {
                 let qrResults = results.filter { $0.symbology == .qr }
 
                 guard let firstResult = qrResults.first,
-                    let payload = firstResult.payloadStringValue
+                      let payload = firstResult.payloadStringValue
                 else {
                     DispatchQueue.main.async {
-                        self.app.toast(
+                        app.toast(
                             type: .error,
                             title: "No QR Code Found",
                             description: "Sorry. Bitkit wasn't able to detect a QR code in this image."
@@ -212,7 +213,7 @@ struct ScannerView: View {
                 }
 
                 DispatchQueue.main.async {
-                    self.handleScan(payload)
+                    handleScan(payload)
                 }
             }
 
@@ -235,5 +236,4 @@ struct ScannerView: View {
 
         selectedItem = nil
     }
-
 }

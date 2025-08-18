@@ -101,7 +101,7 @@ struct LnurlAuthSheet: View {
 
     private var extractedDomain: String {
         guard let url = URL(string: config.authData.uri),
-            let host = url.host
+              let host = url.host
         else {
             return "Unknown Domain"
         }

@@ -1,6 +1,6 @@
 import SwiftUI
 
-//TODO: maybe move to a separate file
+// TODO: maybe move to a separate file
 enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case wallet
     case activity
@@ -88,7 +88,7 @@ struct DrawerView: View {
             if showMenu {
                 GeometryReader { geometry in
                     VStack(alignment: .leading, spacing: 0) {
-                        ForEach(DrawerMenuItem.allCases.filter { $0.isMainMenuItem }) { item in
+                        ForEach(DrawerMenuItem.allCases.filter(\.isMainMenuItem)) { item in
                             Button(action: {
                                 navigation.activeDrawerMenuItem = item
                                 closeMenu()
@@ -109,7 +109,7 @@ struct DrawerView: View {
                             .onChanged { value in
                                 currentDragOffset = max(0, value.translation.width)
                             }
-                            .onEnded { value in
+                            .onEnded { _ in
                                 let drawerWidth = geometry.size.width * 0.5
                                 let closeCompletionThreshold = drawerWidth - 100
 

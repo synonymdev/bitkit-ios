@@ -1,10 +1,3 @@
-//
-//  ToastView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/20.
-//
-
 import SwiftUI
 import UIKit
 
@@ -66,7 +59,6 @@ struct ToastView: View {
         case .error: return .redAccent
         }
     }
-
 }
 
 #Preview {

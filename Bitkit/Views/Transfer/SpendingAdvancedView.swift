@@ -1,10 +1,3 @@
-//
-//  SpendingAdvancedView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/12.
-//
-
 import BitkitCore
 import SwiftUI
 
@@ -54,7 +47,7 @@ struct SpendingAdvancedView: View {
                 HStack(spacing: 4) {
                     CaptionMText(localizedString("lightning__spending_advanced__fee"))
 
-                    if let feeEstimate = feeEstimate {
+                    if let feeEstimate {
                         MoneyText(sats: Int(feeEstimate), size: .bodySSB, symbol: true)
                     } else {
                         CaptionMText("—")

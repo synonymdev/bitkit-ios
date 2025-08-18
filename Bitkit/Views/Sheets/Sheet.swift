@@ -7,8 +7,8 @@ enum SheetSize {
         let screenHeight = UIScreen.screenHeight
         let safeAreaInsets =
             UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows.first?.safeAreaInsets ?? .zero
+                .compactMap { $0 as? UIWindowScene }
+                .first?.windows.first?.safeAreaInsets ?? .zero
         let headerHeight: CGFloat = 46
         let balanceHeight: CGFloat = 70
         let spacing: CGFloat = 32
@@ -72,7 +72,7 @@ struct SheetHeader: View {
             SubtitleText(title)
                 .frame(maxWidth: .infinity, alignment: .center)
 
-            if let action = action {
+            if let action {
                 action
             } else {
                 Spacer()
@@ -97,7 +97,7 @@ struct Sheet<Content: View>: View {
     let content: () -> Content
 
     init(id: SheetID, data: (any SheetItem)? = nil, @ViewBuilder content: @escaping () -> Content) {
-        self.configuration = SheetConfiguration(id: id, data: data)
+        configuration = SheetConfiguration(id: id, data: data)
         self.content = content
     }
 

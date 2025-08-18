@@ -10,7 +10,7 @@ struct LnurlWithdrawConfig {
     let initialRoute: LnurlWithdrawRoute
 
     init(view: LnurlWithdrawRoute = .amount) {
-        self.initialRoute = view
+        initialRoute = view
     }
 }
 
@@ -46,7 +46,7 @@ struct LnurlWithdrawSheet: View {
             LnurlWithdrawAmount(navigationPath: $navigationPath)
         case .confirm:
             LnurlWithdrawConfirm(navigationPath: $navigationPath)
-        case .failure(let amount):
+        case let .failure(amount):
             LnurlWithdrawFailure(navigationPath: $navigationPath, amount: amount)
         }
     }

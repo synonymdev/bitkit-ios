@@ -1,10 +1,3 @@
-//
-//  SavingsConfirmView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/09/13.
-//
-
 import LDKNode
 import SwiftUI
 
@@ -19,7 +12,7 @@ struct SavingsConfirmView: View {
 
     private var hasMultipleChannels: Bool {
         guard let channels = wallet.channels else { return false }
-        return channels.filter { $0.isChannelReady }.count > 1
+        return channels.filter(\.isChannelReady).count > 1
     }
 
     private var hasSelectedChannels: Bool {
@@ -28,7 +21,7 @@ struct SavingsConfirmView: View {
 
     private var channels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
-        let usableChannels = channels.filter { $0.isChannelReady }
+        let usableChannels = channels.filter(\.isChannelReady)
 
         if transfer.selectedChannelIds.isEmpty {
             return usableChannels
@@ -118,7 +111,8 @@ struct SavingsConfirmView: View {
                 {
                     let vm = TransferViewModel()
                     return vm
-                }())
+                }()
+            )
     }
     .preferredColorScheme(.dark)
 }

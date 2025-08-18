@@ -1,10 +1,3 @@
-//
-//  LnPeer.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/07/01.
-//
-
 import Foundation
 
 enum LnPeerError: Error {
@@ -27,7 +20,7 @@ struct LnPeer {
     let nodeId: String
     let host: String
     let port: UInt16
-    
+
     var address: String {
         return "\(host):\(port)"
     }
@@ -45,12 +38,12 @@ struct LnPeer {
         }
 
         nodeId = String(parts[0])
-        
+
         let addressParts = parts[1].split(separator: ":")
         guard addressParts.count == 2, let port = UInt16(addressParts[1]) else {
             throw LnPeerError.invalidAddressFormat
         }
-        
+
         host = String(addressParts[0])
         self.port = port
     }

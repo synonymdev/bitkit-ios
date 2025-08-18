@@ -1,17 +1,10 @@
-//
-//  TransferViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/03/12.
-//
-
 import BitkitCore
 import LDKNode
 import SwiftUI
 
 struct TransferUiState {
-    var order: IBtOrder? = nil
-    var defaultOrder: IBtOrder? = nil
+    var order: IBtOrder?
+    var defaultOrder: IBtOrder?
     var isAdvanced: Bool = false
 }
 
@@ -67,7 +60,7 @@ class TransferViewModel: ObservableObject {
     /// Calculates the total value of channels connected to Blocktank nodes
     func totalBtChannelsValueSats(blocktankInfo: IBtInfo?) -> UInt64 {
         guard let channels = lightningService.channels else { return 0 }
-        guard let btNodeIds = blocktankInfo?.nodes.map({ $0.pubkey }) else { return 0 }
+        guard let btNodeIds = blocktankInfo?.nodes.map(\.pubkey) else { return 0 }
 
         let btChannels = channels.filter { channel in
             btNodeIds.contains(channel.counterpartyNodeId)
@@ -118,56 +111,56 @@ class TransferViewModel: ObservableObject {
         Logger.debug("Starting to watch order \(orderId)")
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: frequencySecs, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            self.refreshTask?.cancel()
-            self.refreshTask = Task { @MainActor [weak self] in
-                guard let self = self else { return }
+            guard let self else { return }
+            refreshTask?.cancel()
+            refreshTask = Task { @MainActor [weak self] in
+                guard let self else { return }
 
                 do {
                     Logger.debug("Refreshing order \(orderId)")
-                    let orders = try await self.coreService.blocktank.orders(orderIds: [orderId], refresh: true)
+                    let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
                     guard let order = orders.first else {
                         Logger.error("Order not found \(orderId)", context: "TransferViewModel")
                         return
                     }
 
-                    let step = try await self.updateOrder(order: order)
-                    self.lightningSetupStep = step
+                    let step = try await updateOrder(order: order)
+                    lightningSetupStep = step
                     Logger.debug("LN setup step: \(step)")
 
                     if order.state2 == .expired {
                         Logger.error("Order expired \(orderId)", context: "TransferViewModel")
-                        self.stopPolling()
+                        stopPolling()
                         return
                     }
 
                     if step > 2 {
                         Logger.debug("Order settled, stopping polling")
-                        self.stopPolling()
+                        stopPolling()
                         return
                     }
                 } catch {
                     Logger.error(error, context: "Failed to watch order")
-                    self.stopPolling()
+                    stopPolling()
                 }
             }
         }
 
         refreshTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
+            guard let self else { return }
 
             do {
-                let orders = try await self.coreService.blocktank.orders(orderIds: [orderId], refresh: true)
+                let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
                 guard let order = orders.first else {
                     Logger.error("Order not found \(orderId)", context: "TransferViewModel")
                     return
                 }
 
-                let step = try await self.updateOrder(order: order)
-                self.lightningSetupStep = step
+                let step = try await updateOrder(order: order)
+                lightningSetupStep = step
             } catch {
                 Logger.error(error, context: "Failed in initial order check")
-                self.stopPolling()
+                stopPolling()
             }
         }
     }
@@ -220,7 +213,7 @@ class TransferViewModel: ObservableObject {
     func getDefaultLspBalance(clientBalanceSat: UInt64, maxLspBalance: UInt64) -> UInt64 {
         // Get current rates
         guard let rates = currencyService.loadCachedRates(),
-            let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
+              let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
         else {
             Logger.error("Failed to get rates for getDefaultLspBalance", context: "TransferViewModel")
             return 0
@@ -270,7 +263,7 @@ class TransferViewModel: ObservableObject {
     }
 
     private func calculateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) -> TransferValues {
-        guard let blocktankInfo = blocktankInfo else {
+        guard let blocktankInfo else {
             return TransferValues()
         }
 
@@ -348,22 +341,22 @@ class TransferViewModel: ObservableObject {
         coopCloseRetryTask?.cancel()
 
         coopCloseRetryTask = Task { @MainActor [weak self] in
-            guard let self = self else { return }
+            guard let self else { return }
 
             let giveUpTime = startTime.addingTimeInterval(giveUpInterval)
 
             while !Task.isCancelled && Date() < giveUpTime {
                 Logger.info("Trying coop close...")
                 do {
-                    let channelsFailedToCoopClose = try await closeChannels(channels: self.channelsToClose)
+                    let channelsFailedToCoopClose = try await closeChannels(channels: channelsToClose)
 
                     if channelsFailedToCoopClose.isEmpty {
-                        self.channelsToClose = []
+                        channelsToClose = []
                         Logger.info("Coop close success.")
                         return
                     } else {
-                        self.channelsToClose = channelsFailedToCoopClose
-                        Logger.info("Coop close failed: \(channelsFailedToCoopClose.map { $0.channelId })")
+                        channelsToClose = channelsFailedToCoopClose
+                        Logger.info("Coop close failed: \(channelsFailedToCoopClose.map(\.channelId))")
                     }
                 } catch {
                     Logger.error("Error during coop close retry", context: error.localizedDescription)

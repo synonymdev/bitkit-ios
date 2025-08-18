@@ -1,10 +1,3 @@
-//
-//  ActivityItemView.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/10/18.
-//
-
 import BitkitCore
 import LDKNode
 import SwiftUI
@@ -24,9 +17,9 @@ struct ActivityItemView: View {
 
     private var isSent: Bool {
         switch viewModel.activity {
-        case .lightning(let activity):
+        case let .lightning(activity):
             return activity.txType == .sent
-        case .onchain(let activity):
+        case let .onchain(activity):
             return activity.txType == .sent
         }
     }
@@ -44,7 +37,7 @@ struct ActivityItemView: View {
         switch viewModel.activity {
         case .lightning:
             return false
-        case .onchain(let activity):
+        case let .onchain(activity):
             return activity.isTransfer
         }
     }
@@ -55,9 +48,9 @@ struct ActivityItemView: View {
 
     private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64) {
         switch viewModel.activity {
-        case .lightning(let activity):
+        case let .lightning(activity):
             return (activity.timestamp, activity.fee, activity.value)
-        case .onchain(let activity):
+        case let .onchain(activity):
             return (activity.timestamp, activity.fee, activity.value)
         }
     }
@@ -87,7 +80,7 @@ struct ActivityItemView: View {
         case .lightning:
             // Lightning transactions can never be boosted
             return true
-        case .onchain(let activity):
+        case let .onchain(activity):
             // Disable boost for onchain if transaction is confirmed or already boosted
             return activity.confirmed == true || activity.isBoosted
         }
@@ -136,9 +129,9 @@ struct ActivityItemView: View {
     @ViewBuilder
     private var amountView: some View {
         switch viewModel.activity {
-        case .lightning(let activity):
+        case let .lightning(activity):
             MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
-        case .onchain(let activity):
+        case let .onchain(activity):
             MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
         }
     }
@@ -157,7 +150,7 @@ struct ActivityItemView: View {
 
             HStack(spacing: 4) {
                 switch viewModel.activity {
-                case .lightning(let activity):
+                case let .lightning(activity):
                     switch activity.status {
                     case .pending:
                         Image("hourglass-simple")
@@ -175,7 +168,7 @@ struct ActivityItemView: View {
                             .frame(width: 16, height: 16)
                         BodySSBText(localizedString("wallet__activity_failed"), textColor: .purpleAccent)
                     }
-                case .onchain(let activity):
+                case let .onchain(activity):
                     if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
@@ -185,7 +178,11 @@ struct ActivityItemView: View {
                         Image("hourglass-simple")
                             .foregroundColor(.yellowAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(localizedString("wallet__activity_confirms_in_boosted", variables: ["feeRateDescription": localizedString("fee__fast__shortDescription")]), textColor: .yellowAccent)
+                        BodySSBText(
+                            localizedString("wallet__activity_confirms_in_boosted",
+                                            variables: ["feeRateDescription": localizedString("fee__fast__shortDescription")]),
+                            textColor: .yellowAccent
+                        )
                     } else {
                         Image("hourglass-simple")
                             .foregroundColor(.brandAccent)
@@ -298,7 +295,8 @@ struct ActivityItemView: View {
                                 Task {
                                     await viewModel.removeTag(tag)
                                 }
-                            })
+                            }
+                        )
                     }
                 }
                 .padding(.bottom, 16)
@@ -310,7 +308,7 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var note: some View {
-        if case .lightning(let activity) = viewModel.activity {
+        if case let .lightning(activity) = viewModel.activity {
             if !activity.message.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     CaptionText(localizedString("wallet__activity_invoice_note"))
@@ -339,7 +337,8 @@ struct ActivityItemView: View {
                     title: localizedString("wallet__activity_assign"), size: .small,
                     icon: Image("user-plus")
                         .foregroundColor(accentColor),
-                    shouldExpand: true)
+                    shouldExpand: true
+                )
 
                 CustomButton(
                     title: localizedString("wallet__activity_tag"), size: .small,
@@ -347,12 +346,11 @@ struct ActivityItemView: View {
                         .foregroundColor(accentColor),
                     shouldExpand: true
                 ) {
-                    let activityId: String
-                    switch viewModel.activity {
-                    case .lightning(let activity):
-                        activityId = activity.id
-                    case .onchain(let activity):
-                        activityId = activity.id
+                    let activityId: String = switch viewModel.activity {
+                    case let .lightning(activity):
+                        activity.id
+                    case let .onchain(activity):
+                        activity.id
                     }
                     sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                 }
@@ -368,7 +366,7 @@ struct ActivityItemView: View {
                     shouldExpand: true
                 ) {
                     // Only show boost sheet for onchain activities
-                    if case .onchain(let onchainActivity) = viewModel.activity {
+                    if case let .onchain(onchainActivity) = viewModel.activity {
                         sheets.showSheet(.boost, data: BoostConfig(onchainActivity: onchainActivity))
                     }
                 }
@@ -430,13 +428,14 @@ struct ActivityItemView_Previews: PreviewProvider {
                         value: 50000,
                         fee: 1,
                         invoice:
-                            "lnbcrt30u1p5ppdlupp5rs2w7htserff3zcwaz3ds205y8zzj4ax82qx6f4zj0f0lxzs7nasdqqcqzzsxqy9gcqsp59h735hvajjauzewf5dsemldwgra9mrfff3eha0mwqx2n7tp4wlmq9p4gqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqysgqymzf4jnknunl6kxx2977xdy3g53m4wz9y8cds40v6ex89tct8tv8gzw40ddem70gfyr9nlfgadtzr6rk5cxuxknjx2j4ef998q8ga3sqhqlcux",
+                        "lnbcrt30u1p5ppdlupp5rs2w7htserff3zcwaz3ds205y8zzj4ax82qx6f4zj0f0lxzs7nasdqqcqzzsxqy9gcqsp59h735hvajjauzewf5dsemldwgra9mrfff3eha0mwqx2n7tp4wlmq9p4gqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqysgqymzf4jnknunl6kxx2977xdy3g53m4wz9y8cds40v6ex89tct8tv8gzw40ddem70gfyr9nlfgadtzr6rk5cxuxknjx2j4ef998q8ga3sqhqlcux",
                         message: "Splitting the lunch bill. Thanks for suggesting that amazing restaurant!",
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: nil,
                         createdAt: nil,
                         updatedAt: nil
-                    ))
+                    )
+                )
             )
             .environmentObject(CurrencyViewModel())
             .previewDisplayName("Lightning Payment")
@@ -448,7 +447,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                         id: "test-onchain-1",
                         txType: .received,
                         txId: "abc123",
-                        value: 100000,
+                        value: 100_000,
                         fee: 500,
                         feeRate: 8,
                         address: "bc1...",
@@ -462,7 +461,8 @@ struct ActivityItemView_Previews: PreviewProvider {
                         transferTxId: nil,
                         createdAt: nil,
                         updatedAt: nil
-                    ))
+                    )
+                )
             )
             .environmentObject(CurrencyViewModel())
             .previewDisplayName("Onchain Payment")

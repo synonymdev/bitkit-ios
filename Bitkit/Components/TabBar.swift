@@ -49,7 +49,8 @@ struct TabBar: View {
                                 BodySSBText(localizedString("wallet__send"))
                             }
                             .foregroundColor(.white)
-                        })
+                        }
+                    )
                     Spacer()
                     Spacer()
                     Spacer()
@@ -66,7 +67,8 @@ struct TabBar: View {
                                 BodySSBText(localizedString("wallet__receive"))
                             }
                             .foregroundColor(.white)
-                        })
+                        }
+                    )
                     Spacer()
                 }
                 .frame(height: 56)

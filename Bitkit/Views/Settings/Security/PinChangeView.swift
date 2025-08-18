@@ -179,7 +179,6 @@ struct PinChangeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-
             if step == .success {
                 successScreen
             } else {

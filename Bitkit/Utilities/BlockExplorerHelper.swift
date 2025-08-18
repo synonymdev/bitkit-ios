@@ -1,26 +1,18 @@
-//
-//  BlockExplorerHelper.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2025/06/27.
-//
-
 import Foundation
 import LDKNode
 import UIKit
 
 enum BlockExplorerService: String, CaseIterable {
-    case blockstream = "blockstream"
-    case mempool = "mempool"
+    case blockstream
+    case mempool
 }
 
 enum BlockExplorerType: String {
-    case tx = "tx"
-    case address = "address"
+    case tx
+    case address
 }
 
-struct BlockExplorerHelper {
-
+enum BlockExplorerHelper {
     /// Generates a block explorer URL for the given ID and type
     /// - Parameters:
     ///   - id: The transaction ID or address to look up
@@ -34,7 +26,6 @@ struct BlockExplorerHelper {
         network: LDKNode.Network = Env.network,
         service: BlockExplorerService = .mempool
     ) -> String {
-
         let isTestnet = network != .bitcoin
 
         switch service {

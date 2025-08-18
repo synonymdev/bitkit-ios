@@ -1,10 +1,3 @@
-//
-//  CryptoTests.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2024/09/13.
-//
-
 import XCTest
 
 final class CryptoTests: XCTestCase {
@@ -22,7 +15,8 @@ final class CryptoTests: XCTestCase {
         let derivationName = "encryption"
 
         let sharedSecret2 = try Crypto.generateSharedSecret(
-            privateKey: keyPair3.privateKey, nodePubkey: Data(keyPair4.publicKey).hex, derivationName: derivationName)
+            privateKey: keyPair3.privateKey, nodePubkey: Data(keyPair4.publicKey).hex, derivationName: derivationName
+        )
         XCTAssertEqual(sharedSecret2.count, 32)
         XCTAssertNotEqual(sharedSecret1, sharedSecret2)
 
@@ -38,9 +32,11 @@ final class CryptoTests: XCTestCase {
 
         // Generate shared secrets
         let aliceSharedSecret = try Crypto.generateSharedSecret(
-            privateKey: aliceKeyPair.privateKey, nodePubkey: Data(bobKeyPair.publicKey).hex, derivationName: "random123")
+            privateKey: aliceKeyPair.privateKey, nodePubkey: Data(bobKeyPair.publicKey).hex, derivationName: "random123"
+        )
         let bobSharedSecret = try Crypto.generateSharedSecret(
-            privateKey: bobKeyPair.privateKey, nodePubkey: Data(aliceKeyPair.publicKey).hex, derivationName: "random123")
+            privateKey: bobKeyPair.privateKey, nodePubkey: Data(aliceKeyPair.publicKey).hex, derivationName: "random123"
+        )
 
         // Ensure shared secrets are the same
         XCTAssertEqual(aliceSharedSecret, bobSharedSecret)
@@ -84,7 +80,8 @@ final class CryptoTests: XCTestCase {
         XCTAssertEqual("028ce542975d6d7b2307c92e527d507b03ffb3d897eb2e0830d29f40d5efd80ee3", sharedSecret.hex)
 
         let sharedSecret2 = try Crypto.generateSharedSecret(
-            privateKey: clientPrivateKey.hexaData, nodePubkey: serverPublicKey, derivationName: derivationName)
+            privateKey: clientPrivateKey.hexaData, nodePubkey: serverPublicKey, derivationName: derivationName
+        )
         XCTAssertEqual("3a9d552cb16dfae40feae644254c4ca46cab82e570de5662aacc4018e33b609b", sharedSecret2.hex)
 
         let encryptedPayload = Crypto.EncryptedPayload(cipher: ciphertext, iv: iv.hexaData, tag: tag.hexaData)

@@ -27,7 +27,7 @@ class WeatherService {
     private let coreService: CoreService
 
     private init() {
-        self.coreService = CoreService.shared
+        coreService = CoreService.shared
     }
 
     /// Fetches weather data from mempool.space API and fee estimates
@@ -101,7 +101,7 @@ class WeatherService {
         let (data, response) = try await URLSession.shared.data(from: url)
 
         guard let httpResponse = response as? HTTPURLResponse,
-            httpResponse.statusCode == 200
+              httpResponse.statusCode == 200
         else {
             throw URLError(.badServerResponse)
         }
@@ -115,11 +115,12 @@ class WeatherService {
             throw URLError(
                 .resourceUnavailable,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "Historical fee data is unavailable"
-                ])
+                    NSLocalizedDescriptionKey: "Historical fee data is unavailable",
+                ]
+            )
         }
 
-        let historical = history.map { $0.avgFee_50 }
+        let historical = history.map(\.avgFee_50)
         let sorted = historical.sorted()
 
         let lowThreshold = sorted[Int(Double(sorted.count) * percentileLow)]

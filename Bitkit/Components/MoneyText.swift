@@ -28,6 +28,7 @@ struct MoneyText: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     // MARK: - Computed Properties
+
     private var unit: PrimaryDisplay {
         unitType == .secondary ? (currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin) : currency.primaryDisplay
     }
@@ -61,15 +62,16 @@ struct MoneyText: View {
 }
 
 // MARK: - Helper Views
-extension MoneyText {
 
+extension MoneyText {
     @ViewBuilder
     private func textComponent(_ text: String) -> some View {
         switch size {
         case .display:
             DisplayText(
                 // Cap symbol font weight to ExtraBold
-                text, textColor: color, accentColor: symbolColor ?? .textSecondary, accentFont: size == .display ? Fonts.extraBold : nil)
+                text, textColor: color, accentColor: symbolColor ?? .textSecondary, accentFont: size == .display ? Fonts.extraBold : nil
+            )
         case .title:
             TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .bodyMSB:
@@ -83,6 +85,7 @@ extension MoneyText {
 }
 
 // MARK: - Helper Methods
+
 extension MoneyText {
     private var fiatSymbol: String {
         guard let converted = currency.convert(sats: UInt64(abs(sats))) else { return "$" }
@@ -107,8 +110,9 @@ extension MoneyText {
 }
 
 // MARK: - Preview Helpers
-extension MoneyText {
-    fileprivate static func previewCurrencyVM(
+
+private extension MoneyText {
+    static func previewCurrencyVM(
         primaryDisplay: PrimaryDisplay,
         currency: String,
         displayUnit: BitcoinDisplayUnit = .modern
@@ -120,7 +124,7 @@ extension MoneyText {
         return vm
     }
 
-    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+    static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
         let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm

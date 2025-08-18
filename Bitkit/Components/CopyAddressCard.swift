@@ -96,7 +96,8 @@ struct CopyAddressCard: View {
         CopyAddressPair(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", type: .onchain),
         CopyAddressPair(
             title: "Lightning Invoice", address: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5",
-            type: .lightning),
+            type: .lightning
+        ),
     ])
     .preferredColorScheme(.dark)
 }

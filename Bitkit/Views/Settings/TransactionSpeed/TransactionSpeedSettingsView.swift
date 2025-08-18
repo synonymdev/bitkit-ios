@@ -8,7 +8,7 @@ struct TransactionSpeedSettingsRow: View {
 
     var iconColor: Color {
         switch speed {
-        case .custom(_):
+        case .custom:
             return .textSecondary
         default:
             return .brandAccent

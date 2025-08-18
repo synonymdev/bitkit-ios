@@ -134,7 +134,7 @@ struct FundManualSetupView: View {
             )
         }
         .onAppear {
-            if let initialNodeUri = initialNodeUri {
+            if let initialNodeUri {
                 parseNodeUri(initialNodeUri)
             }
         }

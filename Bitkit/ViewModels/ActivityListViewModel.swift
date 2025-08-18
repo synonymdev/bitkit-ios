@@ -1,13 +1,6 @@
-//
-//  ActivityListViewModel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/12/17.
-//
-
+import BitkitCore
 import Combine
 import SwiftUI
-import BitkitCore
 
 @MainActor
 class ActivityListViewModel: ObservableObject {
@@ -35,7 +28,7 @@ class ActivityListViewModel: ObservableObject {
     @Published private(set) var recentlyUsedTags: [String] = []
 
     // Persistent storage for recently used tags
-    @AppStorage("recentlyUsedTags") private var recentlyUsedTagsData: Data = Data()
+    @AppStorage("recentlyUsedTags") private var recentlyUsedTagsData: Data = .init()
 
     private func updateAvailableTags() async {
         do {
@@ -91,12 +84,12 @@ class ActivityListViewModel: ObservableObject {
         // Setup search text subscription with debounce
         searchCancellable =
             $searchText
-            .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                Task { [weak self] in
-                    await self?.updateFilteredActivities()
+                .debounce(for: .milliseconds(300), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.updateFilteredActivities()
+                    }
                 }
-            }
 
         // Setup date range subscription
         dateRangeCancellable = Publishers.CombineLatest($startDate, $endDate)
@@ -109,11 +102,11 @@ class ActivityListViewModel: ObservableObject {
         // Setup tags subscription
         tagsCancellable =
             $selectedTags
-            .sink { [weak self] _ in
-                Task { [weak self] in
-                    await self?.updateFilteredActivities()
+                .sink { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.updateFilteredActivities()
+                    }
                 }
-            }
 
         Task {
             await syncState()
@@ -273,12 +266,11 @@ extension ActivityListViewModel {
         var earlier: [Activity] = []
 
         for activity in activities {
-            let timestamp: UInt64
-            switch activity {
-            case .lightning(let ln):
-                timestamp = ln.timestamp
-            case .onchain(let on):
-                timestamp = on.timestamp
+            let timestamp: UInt64 = switch activity {
+            case let .lightning(ln):
+                ln.timestamp
+            case let .onchain(on):
+                on.timestamp
             }
 
             let activityDate = Date(timeIntervalSince1970: TimeInterval(timestamp))
@@ -304,10 +296,9 @@ extension ActivityListViewModel {
         if !today.isEmpty {
             let headerDate =
                 today.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? now
@@ -318,10 +309,9 @@ extension ActivityListViewModel {
         if !yesterday.isEmpty {
             let headerDate =
                 yesterday.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? beginningOfYesterday
@@ -332,10 +322,9 @@ extension ActivityListViewModel {
         if !thisWeek.isEmpty {
             let headerDate =
                 thisWeek.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? beginningOfWeek
@@ -346,10 +335,9 @@ extension ActivityListViewModel {
         if !thisMonth.isEmpty {
             let headerDate =
                 thisMonth.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? beginningOfMonth
@@ -360,10 +348,9 @@ extension ActivityListViewModel {
         if !thisYear.isEmpty {
             let headerDate =
                 thisYear.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? beginningOfYear
@@ -374,10 +361,9 @@ extension ActivityListViewModel {
         if !earlier.isEmpty {
             let headerDate =
                 earlier.first.map { activity in
-                    let timestamp: UInt64
-                    switch activity {
-                    case .lightning(let ln): timestamp = ln.timestamp
-                    case .onchain(let on): timestamp = on.timestamp
+                    let timestamp: UInt64 = switch activity {
+                    case let .lightning(ln): ln.timestamp
+                    case let .onchain(on): on.timestamp
                     }
                     return Date(timeIntervalSince1970: TimeInterval(timestamp))
                 } ?? Date.distantPast

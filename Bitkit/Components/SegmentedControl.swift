@@ -17,13 +17,13 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
     @Namespace private var underlineNamespace
 
     init(selectedTab: Binding<T>, tabs: [T], activeColor: Color = .brandAccent) {
-        self._selectedTab = selectedTab
-        self.tabItems = tabs.map { TabItem($0) }
-        self.defaultActiveColor = activeColor
+        _selectedTab = selectedTab
+        tabItems = tabs.map { TabItem($0) }
+        defaultActiveColor = activeColor
     }
 
     init(selectedTab: Binding<T>, tabItems: [TabItem<T>], defaultActiveColor: Color = .brandAccent) {
-        self._selectedTab = selectedTab
+        _selectedTab = selectedTab
         self.tabItems = tabItems
         self.defaultActiveColor = defaultActiveColor
     }

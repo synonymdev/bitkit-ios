@@ -1,10 +1,3 @@
-//
-//  LightningService.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/06/28.
-//
-
 import CryptoKit
 import Foundation
 import LDKNode
@@ -39,9 +32,9 @@ class LightningService {
 
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
 
-        config.trustedPeers0conf = Env.trustedLnPeers.map { $0.nodeId }
+        config.trustedPeers0conf = Env.trustedLnPeers.map(\.nodeId)
         config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: Env.trustedLnPeers.map { $0.nodeId },
+            trustedPeersNoReserve: Env.trustedLnPeers.map(\.nodeId),
             perChannelReserveSats: 1
         )
 
@@ -75,6 +68,7 @@ class LightningService {
         Logger.debug("Building node...")
 
         // MARK: temp fix as we don't have VSS auth yet
+
         guard Env.network == .regtest else {
             fatalError("Do not run this on mainnet until VSS auth is implemented. Below hack is a temporary fix and not safe for mainnet.")
         }
@@ -177,7 +171,7 @@ class LightningService {
 
         for channel in node.listChannels() {
             var config = channel.config
-            config.maxDustHtlcExposure = .fixedLimit(limitMsat: 999999 * 1000)
+            config.maxDustHtlcExposure = .fixedLimit(limitMsat: 999_999 * 1000)
             try? node.updateChannelConfig(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId, channelConfig: config)
             Logger.info("Updated channel config for: \(channel.userChannelId)")
         }
@@ -233,7 +227,7 @@ class LightningService {
 
         // Temp fix to parse the BIP21 string to extract the lightning parameter until LDK-node exposes display from Bolt11 struct
         guard let url = URL(string: bip21),
-            let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+              let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
         else {
             throw NSError(domain: "LightningService", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Invalid BIP21 string format"])
         }
@@ -258,9 +252,9 @@ class LightningService {
 
         let totalNextOutboundHtlcLimitSats =
             channels
-            .filter { $0.isUsable }
-            .map { $0.nextOutboundHtlcLimitMsat }
-            .reduce(0, +) * 1000
+                .filter(\.isUsable)
+                .map(\.nextOutboundHtlcLimitMsat)
+                .reduce(0, +) * 1000
 
         guard totalNextOutboundHtlcLimitSats > amountSats else {
             Logger.warn("Insufficient outbound capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)")
@@ -281,9 +275,9 @@ class LightningService {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
-        
+
         Logger.info("Sending \(sats) sats to \(address)")
-        
+
         do {
             return try await ServiceQueue.background(.ldk) {
                 try node.onchainPayment().sendToAddress(
@@ -310,7 +304,8 @@ class LightningService {
             return try await ServiceQueue.background(.ldk) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
-                        invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params)
+                        invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params
+                    )
                 } else {
                     try node.bolt11Payment().send(invoice: .fromStr(invoiceStr: bolt11), sendingParameters: params)
                 }
@@ -320,7 +315,7 @@ class LightningService {
             throw error
         }
     }
-    
+
     func closeChannel(userChannelId: ChannelId, counterpartyNodeId: PublicKey) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
@@ -460,34 +455,31 @@ extension LightningService {
 
                 // TODO: actual event handler
                 switch event {
-                case .paymentSuccessful(let paymentId, let paymentHash, let paymentPreimage, let feePaidMsat):
+                case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
-                    break
-                case .paymentFailed(let paymentId, let paymentHash, let reason):
+                case let .paymentFailed(paymentId, paymentHash, reason):
                     Logger.info(
-                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)")
-                    break
-                case .paymentReceived(let paymentId, let paymentHash, let amountMsat, let feePaidMsat):
+                        "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)"
+                    )
+                case let .paymentReceived(paymentId, paymentHash, amountMsat, feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
-                    break
-                case .paymentClaimable(let paymentId, let paymentHash, let claimableAmountMsat, let claimDeadline, let customRecords):
+                case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, claimDeadline, customRecords):
                     Logger.info(
-                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)")
-                    break
-                case .channelPending(let channelId, let userChannelId, let formerTemporaryChannelId, let counterpartyNodeId, let fundingTxo):
+                        "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
+                    )
+                case let .channelPending(channelId, userChannelId, formerTemporaryChannelId, counterpartyNodeId, fundingTxo):
                     Logger.info(
                         "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
                     )
-                    break
-                case .channelReady(let channelId, let userChannelId, let counterpartyNodeId):
+                case let .channelReady(channelId, userChannelId, counterpartyNodeId):
                     Logger.info(
-                        "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")")
-                    break
-                case .channelClosed(let channelId, let userChannelId, let counterpartyNodeId, let reason):
+                        "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")"
+                    )
+                case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
                     Logger.info(
                         "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)"
                     )
-                case .paymentForwarded(_, _, _, _, _, _, _, _, _, _):
+                case .paymentForwarded:
                     break
                 }
             }
@@ -543,7 +535,7 @@ extension LightningService {
                 )
         }
     }
-    
+
     func accelerateByCpfp(txid: String, satsPerVbyte: UInt32? = nil, destinationAddress: String? = nil) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -558,7 +550,7 @@ extension LightningService {
                 )
         }
     }
-    
+
     func calculateCpfpFeeRate(parentTxid: String, urgent: Bool) async throws -> FeeRate {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

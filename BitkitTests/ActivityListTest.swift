@@ -1,12 +1,5 @@
-//
-//  ActivityListTest.swift
-//  BitkitTests
-//
-//  Created by Jason van den Berg on 2024/12/17.
-//
-
-import XCTest
 import BitkitCore
+import XCTest
 
 @testable import Bitkit
 
@@ -52,7 +45,8 @@ final class ActivityTests: XCTestCase {
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         // Insert the activity
         try await service.insert(lightningActivity)
@@ -97,7 +91,8 @@ final class ActivityTests: XCTestCase {
                 transferTxId: nil,
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         // Insert the activity
         try await service.insert(onchainActivity)
@@ -133,7 +128,8 @@ final class ActivityTests: XCTestCase {
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         try await service.insert(activity)
 
@@ -169,7 +165,8 @@ final class ActivityTests: XCTestCase {
                     preimage: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
             Activity.lightning(
                 LightningActivity(
                     id: "test-tag-filter-2",
@@ -183,7 +180,8 @@ final class ActivityTests: XCTestCase {
                     preimage: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
         ]
 
         // Insert activities and add tags
@@ -223,7 +221,8 @@ final class ActivityTests: XCTestCase {
                     preimage: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
             Activity.onchain(
                 OnchainActivity(
                     id: "test-unique-tags-2",
@@ -243,7 +242,8 @@ final class ActivityTests: XCTestCase {
                     transferTxId: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
         ]
 
         // Insert activities and add different combinations of tags
@@ -296,7 +296,8 @@ final class ActivityTests: XCTestCase {
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         try await service.insert(initialActivity)
 
@@ -314,7 +315,8 @@ final class ActivityTests: XCTestCase {
                 preimage: "preimage123",
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         // Update the activity
         try await service.update(id: "test-update-1", activity: updatedActivity)
@@ -349,7 +351,8 @@ final class ActivityTests: XCTestCase {
                 preimage: nil,
                 createdAt: nil,
                 updatedAt: nil
-            ))
+            )
+        )
 
         try await service.insert(activity)
 
@@ -384,7 +387,8 @@ final class ActivityTests: XCTestCase {
                     preimage: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
             Activity.onchain(
                 OnchainActivity(
                     id: "test-limit-2",
@@ -404,7 +408,8 @@ final class ActivityTests: XCTestCase {
                     transferTxId: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
             Activity.lightning(
                 LightningActivity(
                     id: "test-limit-3",
@@ -418,7 +423,8 @@ final class ActivityTests: XCTestCase {
                     preimage: nil,
                     createdAt: nil,
                     updatedAt: nil
-                )),
+                )
+            ),
         ]
 
         // Insert all activities

@@ -12,6 +12,7 @@ struct MoneyStack: View {
     @EnvironmentObject var settings: SettingsViewModel
 
     // MARK: - Constants
+
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
 
     var body: some View {
@@ -116,8 +117,9 @@ struct MoneyStack: View {
 }
 
 // MARK: - Helper Views
-extension MoneyStack {
-    fileprivate var eyeIconButton: some View {
+
+private extension MoneyStack {
+    var eyeIconButton: some View {
         Button(action: revealBalance) {
             Image("eye")
                 .resizable()
@@ -129,8 +131,9 @@ extension MoneyStack {
 }
 
 // MARK: - Helper Methods
-extension MoneyStack {
-    fileprivate func revealBalance() {
+
+private extension MoneyStack {
+    func revealBalance() {
         withAnimation(springAnimation) {
             settings.hideBalance = false
         }
@@ -139,9 +142,10 @@ extension MoneyStack {
 }
 
 // MARK: - Helper View Modifier
+
 extension View {
     @ViewBuilder
-    func conditionalGesture<G: Gesture>(_ condition: Bool, gesture: () -> G) -> some View {
+    func conditionalGesture(_ condition: Bool, gesture: () -> some Gesture) -> some View {
         if condition {
             self.gesture(gesture())
         } else {
@@ -151,8 +155,9 @@ extension View {
 }
 
 // MARK: - Preview Helpers
-extension MoneyStack {
-    fileprivate static func previewCurrencyVM(
+
+private extension MoneyStack {
+    static func previewCurrencyVM(
         primaryDisplay: PrimaryDisplay,
         currency: String,
         displayUnit: BitcoinDisplayUnit = .modern
@@ -164,7 +169,7 @@ extension MoneyStack {
         return vm
     }
 
-    fileprivate static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
+    static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
         let vm = SettingsViewModel()
         vm.hideBalance = hideBalance
         return vm

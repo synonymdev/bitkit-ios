@@ -1,10 +1,3 @@
-//
-//  SettingsListLabel.swift
-//  Bitkit
-//
-//  Created by Jason van den Berg on 2024/08/23.
-//
-
 import SwiftUI
 
 enum SettingsListRightIcon {
@@ -39,7 +32,7 @@ struct SettingsListLabel: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 0) {
-                if let iconName = iconName {
+                if let iconName {
                     Label {
                         BodyMText(title, textColor: .textPrimary)
                     } icon: {
@@ -52,18 +45,18 @@ struct SettingsListLabel: View {
 
                 Spacer()
 
-                if let toggle = toggle {
+                if let toggle {
                     Toggle("", isOn: toggle)
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
                         .disabled(disabled ?? false)
                 } else {
-                    if let rightText = rightText {
+                    if let rightText {
                         BodyMText(rightText, textColor: .textPrimary)
                             .padding(.trailing, 5)
                     }
 
-                    if let rightIcon = rightIcon {
+                    if let rightIcon {
                         switch rightIcon {
                         case .chevron:
                             Image("chevron")

@@ -38,12 +38,12 @@ struct ShopMain: View {
     private func handleMessage(_ message: String) {
         // Parse the message as a JSON-encoded string
         guard let messageData = message.data(using: .utf8),
-            let jsonString = try? JSONSerialization.jsonObject(with: messageData, options: .allowFragments) as? String,
-            let innerData = jsonString.data(using: .utf8),
-            let json = try? JSONSerialization.jsonObject(with: innerData) as? [String: Any],
-            let event = json["event"] as? String,
-            event == "payment_intent",
-            let paymentUri = json["paymentUri"] as? String
+              let jsonString = try? JSONSerialization.jsonObject(with: messageData, options: .allowFragments) as? String,
+              let innerData = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: innerData) as? [String: Any],
+              let event = json["event"] as? String,
+              event == "payment_intent",
+              let paymentUri = json["paymentUri"] as? String
         else {
             return
         }
@@ -117,10 +117,10 @@ struct WebView: UIViewRepresentable {
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             // Inject JavaScript to capture postMessage events
             let script = """
-                    window.addEventListener('message', function(event) {
-                        window.webkit.messageHandlers.messageHandler.postMessage(JSON.stringify(event.data));
-                    });
-                """
+                window.addEventListener('message', function(event) {
+                    window.webkit.messageHandlers.messageHandler.postMessage(JSON.stringify(event.data));
+                });
+            """
             webView.evaluateJavaScript(script)
         }
     }
