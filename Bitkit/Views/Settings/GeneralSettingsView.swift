@@ -5,10 +5,18 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+                NavigationLink(value: Route.languageSettings) {
+                    SettingsListLabel(
+                        title: localizedString("settings__general__language"),
+                        rightText: languageManager.currentLanguageDisplayName
+                    )
+                }
+
                 NavigationLink(value: Route.currencySettings) {
                     SettingsListLabel(
                         title: localizedString("settings__general__currency_local"),

@@ -28,13 +28,13 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
 
     var label: String {
         switch self {
-        case .wallet: return localizedString("wallet__drawer__wallet").uppercased()
-        case .activity: return localizedString("wallet__drawer__activity").uppercased()
-        case .contacts: return localizedString("wallet__drawer__contacts").uppercased()
-        case .profile: return localizedString("wallet__drawer__profile").uppercased()
-        case .widgets: return localizedString("wallet__drawer__widgets").uppercased()
-        case .shop: return localizedString("wallet__drawer__shop").uppercased()
-        case .settings: return localizedString("wallet__drawer__settings").uppercased()
+        case .wallet: return localizedString("wallet__drawer__wallet")
+        case .activity: return localizedString("wallet__drawer__activity")
+        case .contacts: return localizedString("wallet__drawer__contacts")
+        case .profile: return localizedString("wallet__drawer__profile")
+        case .widgets: return localizedString("wallet__drawer__widgets")
+        case .shop: return localizedString("wallet__drawer__shop")
+        case .settings: return localizedString("wallet__drawer__settings")
         case .appStatus: return localizedString("settings__status__title")
         }
     }
@@ -153,7 +153,7 @@ struct DrawerView: View {
                     .resizable()
                     .foregroundColor(.white)
                     .frame(width: 24, height: 24)
-                Text(item.label)
+                Text(item.label.uppercased())
                     .font(.custom(Fonts.black, size: 24))
                     .foregroundColor(.white)
                     .kerning(-1)

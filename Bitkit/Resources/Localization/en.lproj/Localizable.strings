@@ -593,6 +593,9 @@
 "settings__general__tags" = "Tags";
 "settings__general__tags_previously" = "Previously used tags";
 "settings__general__app_icon" = "App Icon";
+"settings__general__language" = "Language";
+"settings__general__language_title" = "Language";
+"settings__general__language_other" = "Interface language";
 "settings__widgets__nav_title" = "Widgets";
 "settings__widgets__showWidgets" = "Widgets";
 "settings__widgets__showWidgetTitles" = "Show Widget Titles";
