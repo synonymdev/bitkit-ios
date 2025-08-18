@@ -17,22 +17,22 @@ enum FeeCondition: String, Codable {
     var title: String {
         switch self {
         case .good:
-            return localizedString("widgets__weather__condition__good__title")
+            return t("widgets__weather__condition__good__title")
         case .average:
-            return localizedString("widgets__weather__condition__average__title")
+            return t("widgets__weather__condition__average__title")
         case .poor:
-            return localizedString("widgets__weather__condition__poor__title")
+            return t("widgets__weather__condition__poor__title")
         }
     }
 
     var description: String {
         switch self {
         case .good:
-            return localizedString("widgets__weather__condition__good__description")
+            return t("widgets__weather__condition__good__description")
         case .average:
-            return localizedString("widgets__weather__condition__average__description")
+            return t("widgets__weather__condition__average__description")
         case .poor:
-            return localizedString("widgets__weather__condition__poor__description")
+            return t("widgets__weather__condition__poor__description")
         }
     }
 
@@ -93,7 +93,7 @@ struct WeatherWidget: View {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
                 } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(localizedString("widgets__weather__error"))
+                    WidgetContentBuilder.errorView(t("widgets__weather__error"))
                 } else if let data = viewModel.weatherData {
                     VStack(spacing: 16) {
                         // Status condition with icon
@@ -121,7 +121,7 @@ struct WeatherWidget: View {
                                 if options.showMedian {
                                     HStack(spacing: 0) {
                                         HStack {
-                                            BodySSBText(localizedString("widgets__weather__current_fee"), textColor: .textSecondary)
+                                            BodySSBText(t("widgets__weather__current_fee"), textColor: .textSecondary)
                                                 .lineLimit(1)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -138,7 +138,7 @@ struct WeatherWidget: View {
                                 if options.showNextBlockFee {
                                     HStack(spacing: 0) {
                                         HStack {
-                                            BodySSBText(localizedString("widgets__weather__next_block"), textColor: .textSecondary)
+                                            BodySSBText(t("widgets__weather__next_block"), textColor: .textSecondary)
                                                 .lineLimit(1)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .leading)

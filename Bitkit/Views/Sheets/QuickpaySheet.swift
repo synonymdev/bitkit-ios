@@ -14,12 +14,12 @@ struct QuickpaySheet: View {
     var body: some View {
         Sheet(id: .quickpay, data: config) {
             SheetIntro(
-                navTitle: localizedString("settings__quickpay__nav_title"),
-                title: localizedString("settings__quickpay__intro__title"),
-                description: localizedString("settings__quickpay__intro__description"),
+                navTitle: t("settings__quickpay__nav_title"),
+                title: t("settings__quickpay__intro__title"),
+                description: t("settings__quickpay__intro__description"),
                 image: "fast-forward",
-                continueText: localizedString("common__learn_more"),
-                cancelText: localizedString("common__later"),
+                continueText: t("common__learn_more"),
+                cancelText: t("common__later"),
                 accentColor: .greenAccent,
                 testID: "QuickpaySheet",
                 onCancel: onLater,

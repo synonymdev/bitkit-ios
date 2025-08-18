@@ -146,7 +146,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: localizedString("widgets__widget__source"),
+                    title: t("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                     isChecked: blocksOptions.showSource
                 )
@@ -247,7 +247,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: localizedString("widgets__widget__source"),
+                    title: t("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                     isChecked: blocksOptions.showSource
                 )
@@ -274,7 +274,7 @@ enum WidgetEditItemFactory {
             WidgetEditItem(
                 key: "showSource",
                 type: .toggleItem,
-                title: localizedString("widgets__widget__source"),
+                title: t("widgets__widget__source"),
                 valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
                 isChecked: factsOptions.showSource
             )
@@ -315,7 +315,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: localizedString("widgets__widget__source"),
+                    title: t("widgets__widget__source"),
                     valueView: AnyView(BodySSBText(data.publisher, textColor: .textSecondary)),
                     isChecked: newsOptions.showSource
                 )
@@ -346,7 +346,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showSource",
                     type: .toggleItem,
-                    title: localizedString("widgets__widget__source"),
+                    title: t("widgets__widget__source"),
                     valueView: AnyView(BodySSBText("Bitcoin Magazine", textColor: .textSecondary)),
                     isChecked: newsOptions.showSource
                 )
@@ -410,7 +410,7 @@ enum WidgetEditItemFactory {
             WidgetEditItem(
                 key: "showSource",
                 type: .toggleItem,
-                title: localizedString("widgets__widget__source"),
+                title: t("widgets__widget__source"),
                 valueView: AnyView(BodySSBText("Bitfinex.com", textColor: .textSecondary)),
                 isChecked: priceOptions.showSource
             )
@@ -451,7 +451,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showMedian",
                     type: .toggleItem,
-                    title: localizedString("widgets__weather__current_fee"),
+                    title: t("widgets__weather__current_fee"),
                     value: data.currentFee,
                     isChecked: weatherOptions.showMedian
                 )
@@ -461,7 +461,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showNextBlockFee",
                     type: .toggleItem,
-                    title: localizedString("widgets__weather__next_block"),
+                    title: t("widgets__weather__next_block"),
                     value: "\(data.nextBlockFee) ₿/vByte",
                     isChecked: weatherOptions.showNextBlockFee
                 )
@@ -492,7 +492,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showMedian",
                     type: .toggleItem,
-                    title: localizedString("widgets__weather__current_fee"),
+                    title: t("widgets__weather__current_fee"),
                     value: "$0.50",
                     isChecked: weatherOptions.showMedian
                 )
@@ -502,7 +502,7 @@ enum WidgetEditItemFactory {
                 WidgetEditItem(
                     key: "showNextBlockFee",
                     type: .toggleItem,
-                    title: localizedString("widgets__weather__next_block"),
+                    title: t("widgets__weather__next_block"),
                     value: "15 ₿/vByte",
                     isChecked: weatherOptions.showNextBlockFee
                 )

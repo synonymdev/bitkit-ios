@@ -33,7 +33,7 @@ struct SpendingAdvancedView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                DisplayText(localizedString("lightning__spending_advanced__title"), accentColor: .purpleAccent)
+                DisplayText(t("lightning__spending_advanced__title"), accentColor: .purpleAccent)
 
                 // Receiving capacity input
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
@@ -45,7 +45,7 @@ struct SpendingAdvancedView: View {
 
                 // Fee estimate
                 HStack(spacing: 4) {
-                    CaptionMText(localizedString("lightning__spending_advanced__fee"))
+                    CaptionMText(t("lightning__spending_advanced__fee"))
 
                     if let feeEstimate {
                         MoneyText(sats: Int(feeEstimate), size: .bodySSB, symbol: true)
@@ -72,7 +72,7 @@ struct SpendingAdvancedView: View {
             Spacer()
 
             CustomButton(
-                title: localizedString("common__continue"),
+                title: t("common__continue"),
                 isDisabled: !isValid
             ) {
                 do {
@@ -91,7 +91,7 @@ struct SpendingAdvancedView: View {
             .padding(.vertical, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .padding(.top, 16)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
@@ -113,21 +113,21 @@ struct SpendingAdvancedView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 16) {
-            NumberPadActionButton(text: localizedString("common__min")) {
+            NumberPadActionButton(text: t("common__min")) {
                 Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
                 overrideSats = transfer.transferValues.minLspBalance
             }
 
             Spacer()
 
-            NumberPadActionButton(text: localizedString("common__default")) {
+            NumberPadActionButton(text: t("common__default")) {
                 Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
                 overrideSats = transfer.transferValues.defaultLspBalance
             }
 
             Spacer()
 
-            NumberPadActionButton(text: localizedString("common__max")) {
+            NumberPadActionButton(text: t("common__max")) {
                 Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
                 overrideSats = transfer.transferValues.maxLspBalance
             }

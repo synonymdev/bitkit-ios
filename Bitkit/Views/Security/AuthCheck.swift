@@ -17,11 +17,11 @@ struct AuthCheck: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return NSLocalizedString("security__bio_touch_id", comment: "")
+            return t("security__bio_touch_id")
         case .faceID:
-            return NSLocalizedString("security__bio_face_id", comment: "")
+            return t("security__bio_face_id")
         default:
-            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
@@ -77,12 +77,12 @@ struct AuthCheck: View {
 
         if remainingAttempts == 1 {
             // Last attempt warning
-            errorMessage = NSLocalizedString(
+            errorMessage = t(
                 "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
             )
         } else {
             // Show remaining attempts
-            errorMessage = localizedString(
+            errorMessage = t(
                 "security__pin_attempts", comment: "%d attempts remaining. Forgot your PIN?", variables: ["attemptsRemaining": "\(remainingAttempts)"]
             )
         }
@@ -99,7 +99,7 @@ struct AuthCheck: View {
         }
 
         // Request biometric authentication
-        let reason = localizedString("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
+        let reason = t("security__bio_confirm", variables: ["biometricsName": biometryTypeName])
 
         context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, authenticationError in
             DispatchQueue.main.async {
@@ -127,7 +127,7 @@ struct AuthCheck: View {
                 .frame(width: 279, height: 82)
                 .padding(.bottom, 47)
 
-            BodyMSBText(localizedString("security__pin_enter"))
+            BodyMSBText(t("security__pin_enter"))
 
             VStack(alignment: .center, spacing: 0) {
                 Spacer()
@@ -135,7 +135,7 @@ struct AuthCheck: View {
                 // Biometric button (if enabled and available, and failed once)
                 if settings.useBiometrics && isBiometricAvailable && biometricFailedOnce {
                     CustomButton(
-                        title: localizedString("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
+                        title: t("security__pin_use_biometrics", variables: ["biometricsName": biometryTypeName]),
                         size: .small,
                         icon: Image(Env.biometryType == .touchID ? "touch-id" : "face-id")
                             .resizable()

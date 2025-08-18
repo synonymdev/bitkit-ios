@@ -30,7 +30,7 @@ struct ReceivedTx: View {
 
     var body: some View {
         let isOnchain = config.details.type == .onchain
-        let title = isOnchain ? localizedString("wallet__payment_received") : localizedString("wallet__instant_payment_received")
+        let title = isOnchain ? t("wallet__payment_received") : t("wallet__instant_payment_received")
 
         Sheet(id: .receivedTx, data: config) {
             ZStack {

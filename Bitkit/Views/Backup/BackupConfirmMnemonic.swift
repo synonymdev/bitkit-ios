@@ -11,10 +11,10 @@ struct BackupConfirmMnemonic: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__mnemonic_confirm"), showBackButton: true)
+            SheetHeader(title: t("security__mnemonic_confirm"), showBackButton: true)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__mnemonic_confirm_tap"))
+                BodyMText(t("security__mnemonic_confirm_tap"))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 16)
 
@@ -62,7 +62,7 @@ struct BackupConfirmMnemonic: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__continue"),
+                        title: t("common__continue"),
                         isDisabled: selectedWords != mnemonic,
                     ) {
                         if let passphrase, !passphrase.isEmpty {

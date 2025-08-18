@@ -61,12 +61,12 @@ struct ScannerView: View {
 
             // UI Elements on top of camera
             VStack {
-                SheetHeader(title: localizedString("other__qr_scan"), showBackButton: showBackButton)
+                SheetHeader(title: t("other__qr_scan"), showBackButton: showBackButton)
 
                 Spacer()
 
                 CustomButton(
-                    title: localizedString("other__qr_paste"),
+                    title: t("other__qr_paste"),
                     icon: Image("clipboard")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -127,8 +127,8 @@ struct ScannerView: View {
                 Logger.error(error, context: "Failed to read data from QR")
                 app.toast(
                     type: .error,
-                    title: localizedString("other__qr_error_header"),
-                    description: localizedString("other__qr_error_text")
+                    title: t("other__qr_error_header"),
+                    description: t("other__qr_error_text")
                 )
             }
         }
@@ -138,8 +138,8 @@ struct ScannerView: View {
         guard let uri = UIPasteboard.general.string else {
             app.toast(
                 type: .warning,
-                title: localizedString("wallet__send_clipboard_empty_title"),
-                description: localizedString("wallet__send_clipboard_empty_text")
+                title: t("wallet__send_clipboard_empty_title"),
+                description: t("wallet__send_clipboard_empty_text")
             )
             return
         }

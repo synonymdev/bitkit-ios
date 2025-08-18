@@ -12,19 +12,19 @@ struct SpendingConfirm: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(localizedString("lightning__transfer__confirm"), accentColor: .purpleAccent)
+            DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
             if let order = transfer.uiState.order {
                 VStack(spacing: 24) {
                     HStack {
                         FeeDisplayRow(
-                            label: localizedString("lightning__spending_confirm__network_fee"),
+                            label: t("lightning__spending_confirm__network_fee"),
                             amount: order.networkFeeSat
                         )
                         .frame(maxWidth: .infinity)
 
                         FeeDisplayRow(
-                            label: localizedString("lightning__spending_confirm__lsp_fee"),
+                            label: t("lightning__spending_confirm__lsp_fee"),
                             amount: order.serviceFeeSat
                         )
                         .frame(maxWidth: .infinity)
@@ -32,13 +32,13 @@ struct SpendingConfirm: View {
 
                     HStack {
                         FeeDisplayRow(
-                            label: localizedString("lightning__spending_confirm__amount"),
+                            label: t("lightning__spending_confirm__amount"),
                             amount: order.clientBalanceSat
                         )
                         .frame(maxWidth: .infinity)
 
                         FeeDisplayRow(
-                            label: localizedString("lightning__spending_confirm__total"),
+                            label: t("lightning__spending_confirm__total"),
                             amount: order.feeSat
                         )
                         .frame(maxWidth: .infinity)
@@ -59,16 +59,16 @@ struct SpendingConfirm: View {
                 }
 
                 HStack(spacing: 16) {
-                    CustomButton(title: localizedString("common__learn_more"), size: .small) {
+                    CustomButton(title: t("common__learn_more"), size: .small) {
                         navigation.navigate(.transferLearnMore(order: order))
                     }
 
                     if transfer.uiState.isAdvanced {
-                        CustomButton(title: localizedString("lightning__spending_confirm__default"), size: .small) {
+                        CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
                             transfer.onDefaultClick()
                         }
                     } else {
-                        CustomButton(title: localizedString("common__advanced"), size: .small) {
+                        CustomButton(title: t("common__advanced"), size: .small) {
                             navigation.navigate(.spendingAdvanced(order: order))
                         }
                     }
@@ -79,7 +79,7 @@ struct SpendingConfirm: View {
 
                 if !hideSwipeButton {
                     SwipeButton(
-                        title: localizedString("lightning__transfer__swipe"),
+                        title: t("lightning__transfer__swipe"),
                         accentColor: .purpleAccent
                     ) {
                         isPaying = true
@@ -104,7 +104,7 @@ struct SpendingConfirm: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)

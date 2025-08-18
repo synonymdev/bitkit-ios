@@ -62,7 +62,7 @@ struct BlocksWidget: View {
                 if viewModel.isLoading {
                     WidgetContentBuilder.loadingView()
                 } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(localizedString("widgets__blocks__error"))
+                    WidgetContentBuilder.errorView(t("widgets__blocks__error"))
                 } else if let data = viewModel.blockData {
                     VStack(spacing: 0) {
                         // Display block data rows based on options

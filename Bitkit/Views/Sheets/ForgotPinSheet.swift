@@ -16,10 +16,10 @@ struct ForgotPinSheet: View {
     var body: some View {
         Sheet(id: .forgotPin, data: config) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: localizedString("security__pin_forgot_title"))
+                SheetHeader(title: t("security__pin_forgot_title"))
 
                 VStack(spacing: 0) {
-                    BodyMText(localizedString("security__pin_forgot_text"))
+                    BodyMText(t("security__pin_forgot_text"))
 
                     Spacer()
 
@@ -30,7 +30,7 @@ struct ForgotPinSheet: View {
 
                     Spacer()
 
-                    CustomButton(title: localizedString("security__pin_forgot_reset")) {
+                    CustomButton(title: t("security__pin_forgot_reset")) {
                         onReset()
                     }
                 }

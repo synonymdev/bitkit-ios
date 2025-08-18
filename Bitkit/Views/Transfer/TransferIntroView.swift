@@ -6,10 +6,10 @@ struct TransferIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("lightning__transfer_intro__title"),
-            description: localizedString("lightning__transfer_intro__text"),
+            title: t("lightning__transfer_intro__title"),
+            description: t("lightning__transfer_intro__text"),
             imageName: "lightning",
-            buttonText: localizedString("lightning__transfer_intro__button"),
+            buttonText: t("lightning__transfer_intro__button"),
             onButtonPress: {
                 app.hasSeenTransferToSpendingIntro = true
                 navigation.navigate(.fundingOptions)

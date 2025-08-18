@@ -22,9 +22,9 @@ struct WidgetEditView: View {
 
     // Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
-        let name = localizedString("widgets__\(id.rawValue)__name")
+        let name = t("widgets__\(id.rawValue)__name")
         let fiatSymbol = currency.symbol
-        let description = localizedString("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
+        let description = t("widgets__\(id.rawValue)__description", variables: ["fiatSymbol": fiatSymbol])
         let icon = "\(id.rawValue)-widget"
         return (name: name, description: description, icon: icon)
     }
@@ -58,7 +58,7 @@ struct WidgetEditView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             BodyMText(
-                localizedString("widgets__widget__edit_description", variables: ["name": widget.name]),
+                t("widgets__widget__edit_description", variables: ["name": widget.name]),
                 textColor: .textSecondary
             )
             .padding(.vertical)
@@ -80,7 +80,7 @@ struct WidgetEditView: View {
 
             HStack(spacing: 16) {
                 CustomButton(
-                    title: localizedString("common__reset"),
+                    title: t("common__reset"),
                     variant: .secondary,
                     size: .large,
                     isDisabled: !(editLogic?.hasEdited ?? false),
@@ -91,7 +91,7 @@ struct WidgetEditView: View {
                 .accessibilityIdentifier("WidgetEditReset")
 
                 CustomButton(
-                    title: localizedString("common__preview"),
+                    title: t("common__preview"),
                     variant: .primary,
                     size: .large,
                     isDisabled: !(editLogic?.hasEnabledOption ?? false),
@@ -102,7 +102,7 @@ struct WidgetEditView: View {
             }
             .padding(.top, 16)
         }
-        .navigationTitle(localizedString("widgets__widget__edit"))
+        .navigationTitle(t("widgets__widget__edit"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
         .padding(.horizontal, 16)

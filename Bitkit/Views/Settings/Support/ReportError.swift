@@ -6,7 +6,7 @@ struct ReportError: View {
     var body: some View {
         VStack(spacing: 0) {
             BodyMText(
-                localizedString("settings__support__text_unsuccess"),
+                t("settings__support__text_unsuccess"),
                 textColor: .textSecondary
             )
             .padding(.top, 16)
@@ -22,12 +22,12 @@ struct ReportError: View {
             Spacer()
 
             CustomButton(
-                title: localizedString("settings__support__text_unsuccess_button")
+                title: t("settings__support__text_unsuccess_button")
             ) {
                 dismiss()
             }
         }
-        .navigationTitle(localizedString("settings__support__title_unsuccess"))
+        .navigationTitle(t("settings__support__title_unsuccess"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()

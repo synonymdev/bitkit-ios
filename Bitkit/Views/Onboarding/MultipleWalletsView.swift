@@ -5,12 +5,12 @@ struct MultipleWalletsView: View {
         VStack(spacing: 0) {
             OnboardingContent(
                 imageName: "phone",
-                title: NSLocalizedString("onboarding__multiple_header", comment: ""),
-                text: NSLocalizedString("onboarding__multiple_text", comment: ""),
+                title: t("onboarding__multiple_header"),
+                text: t("onboarding__multiple_text"),
                 accentColor: .yellow
             )
 
-            CustomButton(title: NSLocalizedString("common__understood", comment: ""), destination: RestoreWalletView())
+            CustomButton(title: t("common__understood"), destination: RestoreWalletView())
         }
         .padding(.horizontal, 32)
         .bottomSafeAreaPadding()

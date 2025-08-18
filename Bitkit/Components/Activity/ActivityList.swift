@@ -43,7 +43,7 @@ struct ActivityList: View {
                 }
             }
         } else {
-            BodyMText(localizedString("wallet__activity_no"))
+            BodyMText(t("wallet__activity_no"))
                 .padding()
         }
     }

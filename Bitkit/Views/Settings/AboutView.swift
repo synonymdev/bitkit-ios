@@ -10,7 +10,7 @@ struct AboutView: View {
     }
 
     private var shareText: String {
-        return localizedString(
+        return t(
             "settings__about__shareText",
             variables: ["appStoreUrl": Env.appStoreUrl, "playStoreUrl": Env.playStoreUrl]
         )
@@ -18,28 +18,28 @@ struct AboutView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            BodyMText(localizedString("settings__about__text"))
+            BodyMText(t("settings__about__text"))
                 .padding(.vertical, 16)
 
             VStack(spacing: 0) {
                 Button(action: {
                     openURL(URL(string: Env.termsOfServiceUrl)!)
                 }) {
-                    SettingsListLabel(title: localizedString("settings__about__legal"))
+                    SettingsListLabel(title: t("settings__about__legal"))
                 }
 
                 ShareLink(
                     item: shareText,
                     message: Text(shareText)
                 ) {
-                    SettingsListLabel(title: localizedString("settings__about__share"))
+                    SettingsListLabel(title: t("settings__about__share"))
                 }
 
                 Button(action: {
                     openURL(URL(string: Env.githubReleasesUrl)!)
                 }) {
                     SettingsListLabel(
-                        title: localizedString("settings__about__version"),
+                        title: t("settings__about__version"),
                         rightText: appVersion,
                         rightIcon: nil
                     )
@@ -60,7 +60,7 @@ struct AboutView: View {
 
             Social()
         }
-        .navigationTitle(localizedString("settings__about__title"))
+        .navigationTitle(t("settings__about__title"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.top, 16)
         .padding(.horizontal, 16)

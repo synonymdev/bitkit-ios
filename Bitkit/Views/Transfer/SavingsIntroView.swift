@@ -6,10 +6,10 @@ struct SavingsIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("lightning__savings_intro__title"),
-            description: localizedString("lightning__savings_intro__text"),
+            title: t("lightning__savings_intro__title"),
+            description: t("lightning__savings_intro__text"),
             imageName: "piggybank-right",
-            buttonText: localizedString("lightning__savings_intro__button"),
+            buttonText: t("lightning__savings_intro__button"),
             onButtonPress: {
                 app.hasSeenTransferToSavingsIntro = true
                 navigation.navigate(.savingsAvailability)
@@ -18,7 +18,7 @@ struct SavingsIntroView: View {
             testID: "SavingsIntro"
         )
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
     }
 }

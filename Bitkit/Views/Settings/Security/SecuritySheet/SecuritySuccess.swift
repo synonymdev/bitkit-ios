@@ -8,27 +8,27 @@ struct SecuritySuccess: View {
     private var biometryTypeName: String {
         switch Env.biometryType {
         case .touchID:
-            return NSLocalizedString("security__bio_touch_id", comment: "")
+            return t("security__bio_touch_id")
         case .faceID:
-            return NSLocalizedString("security__bio_face_id", comment: "")
+            return t("security__bio_face_id")
         default:
-            return NSLocalizedString("security__bio_face_id", comment: "") // Default to Face ID
+            return t("security__bio_face_id") // Default to Face ID
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__success_title"))
+            SheetHeader(title: t("security__success_title"))
                 .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
                 BodyMText(
                     settings.useBiometrics
-                        ? localizedString(
+                        ? t(
                             "security__success_bio",
                             variables: ["biometricsName": biometryTypeName]
                         )
-                        : localizedString("security__success_no_bio"),
+                        : t("security__success_no_bio"),
                     textColor: .textSecondary,
                 )
 
@@ -42,7 +42,7 @@ struct SecuritySuccess: View {
                 Spacer()
 
                 HStack(alignment: .center, spacing: 0) {
-                    BodyMSBText(localizedString("security__success_payments"))
+                    BodyMSBText(t("security__success_payments"))
 
                     Spacer()
 
@@ -52,7 +52,7 @@ struct SecuritySuccess: View {
                 }
                 .padding(.bottom, 32)
 
-                CustomButton(title: localizedString("common__ok")) {
+                CustomButton(title: t("common__ok")) {
                     sheets.hideSheet()
                 }
             }

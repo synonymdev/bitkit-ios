@@ -50,29 +50,29 @@ struct ShopDiscover: View {
     // Featured cards data
     private let cards: [ShopCard] = [
         ShopCard(
-            title: localizedString("other__shop__discover__gift-cards__title"),
-            description: localizedString("other__shop__discover__gift-cards__description"),
+            title: t("other__shop__discover__gift-cards__title"),
+            description: t("other__shop__discover__gift-cards__description"),
             imageName: "gift-figure",
             color: .green24,
             route: "gift-cards"
         ),
         ShopCard(
-            title: localizedString("other__shop__discover__esims__title"),
-            description: localizedString("other__shop__discover__esims__description"),
+            title: t("other__shop__discover__esims__title"),
+            description: t("other__shop__discover__esims__description"),
             imageName: "globe-sphere",
             color: .yellow24,
             route: "esims"
         ),
         ShopCard(
-            title: localizedString("other__shop__discover__refill__title"),
-            description: localizedString("other__shop__discover__refill__description"),
+            title: t("other__shop__discover__refill__title"),
+            description: t("other__shop__discover__refill__description"),
             imageName: "phone",
             color: .purple24,
             route: "refill"
         ),
         ShopCard(
-            title: localizedString("other__shop__discover__travel__title"),
-            description: localizedString("other__shop__discover__travel__description"),
+            title: t("other__shop__discover__travel__title"),
+            description: t("other__shop__discover__travel__description"),
             imageName: "rocket2",
             color: .red24,
             route: "buy/travel"
@@ -107,7 +107,7 @@ struct ShopDiscover: View {
                     .padding(.bottom, 16)
 
                     VStack {
-                        CaptionText(localizedString("other__shop__discover__label"))
+                        CaptionText(t("other__shop__discover__label"))
                             .textCase(.uppercase)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -130,7 +130,7 @@ struct ShopDiscover: View {
                 .padding(.horizontal, 16)
             }
         }
-        .navigationTitle(localizedString("other__shop__discover__nav_title"))
+        .navigationTitle(t("other__shop__discover__nav_title"))
         .navigationBarTitleDisplayMode(.inline)
         .backToWalletButton()
     }

@@ -33,11 +33,11 @@ struct ReceiveQr: View {
         var description: String {
             switch self {
             case .savings:
-                return localizedString("lightning__savings")
+                return t("lightning__savings")
             case .unified:
                 return "Auto"
             case .spending:
-                return localizedString("lightning__spending")
+                return t("lightning__spending")
             }
         }
     }
@@ -68,7 +68,7 @@ struct ReceiveQr: View {
 
             VStack(spacing: 0) {
                 SheetHeader(
-                    title: localizedString("wallet__receive_bitcoin"),
+                    title: t("wallet__receive_bitcoin"),
                     action:
                     AnyView(
                         Button(action: {
@@ -215,7 +215,7 @@ struct ReceiveQr: View {
                     if !wallet.onchainAddress.isEmpty {
                         pairs.append(
                             CopyAddressPair(
-                                title: localizedString("wallet__receive_bitcoin_invoice"),
+                                title: t("wallet__receive_bitcoin_invoice"),
                                 address: wallet.onchainAddress,
                                 type: .onchain
                             )
@@ -226,7 +226,7 @@ struct ReceiveQr: View {
                     if let cjitInvoice {
                         pairs.append(
                             CopyAddressPair(
-                                title: localizedString("wallet__receive_lightning_invoice"),
+                                title: t("wallet__receive_lightning_invoice"),
                                 address: cjitInvoice,
                                 type: .lightning
                             )
@@ -237,7 +237,7 @@ struct ReceiveQr: View {
                     if !wallet.bolt11.isEmpty {
                         pairs.append(
                             CopyAddressPair(
-                                title: localizedString("wallet__receive_lightning_invoice"),
+                                title: t("wallet__receive_lightning_invoice"),
                                 address: wallet.bolt11,
                                 type: .lightning
                             )
@@ -248,7 +248,7 @@ struct ReceiveQr: View {
                     if !wallet.onchainAddress.isEmpty {
                         pairs.append(
                             CopyAddressPair(
-                                title: localizedString("wallet__receive_bitcoin_invoice"),
+                                title: t("wallet__receive_bitcoin_invoice"),
                                 address: wallet.onchainAddress,
                                 type: .onchain
                             )
@@ -258,7 +258,7 @@ struct ReceiveQr: View {
                     if !wallet.bolt11.isEmpty {
                         pairs.append(
                             CopyAddressPair(
-                                title: localizedString("wallet__receive_lightning_invoice"),
+                                title: t("wallet__receive_lightning_invoice"),
                                 address: wallet.bolt11,
                                 type: .lightning
                             )
@@ -283,7 +283,7 @@ struct ReceiveQr: View {
         VStack(spacing: 0) {
             if showingCjitOnboarding {
                 CustomButton(
-                    title: localizedString("wallet__receive_spending"),
+                    title: t("wallet__receive_spending"),
                     icon: Image("bolt").foregroundColor(.purpleAccent),
                     isDisabled: wallet.nodeLifecycleState != .running
                 ) {

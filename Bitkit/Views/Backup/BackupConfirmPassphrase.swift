@@ -9,14 +9,14 @@ struct BackupConfirmPassphrase: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__pass_confirm"), showBackButton: true)
+            SheetHeader(title: t("security__pass_confirm"), showBackButton: true)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__pass_confirm_text"))
+                BodyMText(t("security__pass_confirm_text"))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 32)
 
-                TextField(localizedString("security__pass").capitalized, text: $enteredText)
+                TextField(t("security__pass").capitalized, text: $enteredText)
                     .focused($isTextFieldFocused)
                     .autocapitalization(.none)
                     .autocorrectionDisabled(true)
@@ -27,7 +27,7 @@ struct BackupConfirmPassphrase: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__continue"),
+                        title: t("common__continue"),
                         isDisabled: enteredText != passphrase,
                     ) {
                         navigationPath.append(.reminder)

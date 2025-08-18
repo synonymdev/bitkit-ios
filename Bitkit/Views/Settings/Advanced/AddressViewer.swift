@@ -69,7 +69,7 @@ struct AddressViewer: View {
                             .onTapGesture {
                                 UIPasteboard.general.string = displayAddress
                                 Haptics.play(.copiedToClipboard)
-                                app.toast(type: .success, title: NSLocalizedString("common__copied", comment: ""), description: displayAddress)
+                                app.toast(type: .success, title: t("common__copied"), description: displayAddress)
                             }
                     }
 
@@ -84,7 +84,7 @@ struct AddressViewer: View {
                                 type: .address
                             )
                         } label: {
-                            CaptionText(NSLocalizedString("wallet__activity_explorer", comment: ""), textColor: .white80)
+                            CaptionText(t("wallet__activity_explorer"), textColor: .white80)
                         }
                         .disabled(displayAddress.isEmpty)
                     }
@@ -102,7 +102,7 @@ struct AddressViewer: View {
                     .frame(width: 24, height: 24)
                     .foregroundColor(.white64)
                 TextField(
-                    NSLocalizedString("common__search", comment: ""), text: $searchText, backgroundColor: .clear,
+                    t("common__search"), text: $searchText, backgroundColor: .clear,
                     font: .custom(Fonts.regular, size: 17)
                 )
             }
@@ -242,7 +242,7 @@ struct AddressViewer: View {
 
                             // Check Balances Button
                             CustomButton(
-                                title: NSLocalizedString("settings__addr__check_balances", comment: ""),
+                                title: t("settings__addr__check_balances"),
                                 variant: .primary,
                                 size: .small,
                                 isLoading: isLoadingBalances,
@@ -425,7 +425,7 @@ struct AddressRow: View {
         .onLongPressGesture(minimumDuration: 0.5) {
             UIPasteboard.general.string = address
             Haptics.play(.copiedToClipboard)
-            app.toast(type: .success, title: NSLocalizedString("common__copied", comment: ""), description: address)
+            app.toast(type: .success, title: t("common__copied"), description: address)
         }
     }
 

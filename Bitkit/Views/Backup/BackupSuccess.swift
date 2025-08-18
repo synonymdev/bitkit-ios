@@ -6,10 +6,10 @@ struct BackupSuccess: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("security__mnemonic_result_header"), showBackButton: true)
+            SheetHeader(title: t("security__mnemonic_result_header"), showBackButton: true)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__mnemonic_result_text"), accentColor: .textPrimary, accentFont: Fonts.bold)
+                BodyMText(t("security__mnemonic_result_text"), accentColor: .textPrimary, accentFont: Fonts.bold)
 
                 Spacer()
 
@@ -22,7 +22,7 @@ struct BackupSuccess: View {
                 Spacer()
 
                 CustomButton(
-                    title: localizedString("common__ok"),
+                    title: t("common__ok"),
                 ) {
                     app.backupVerified = true
                     navigationPath.append(.devices)

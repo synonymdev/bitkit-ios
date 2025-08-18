@@ -618,10 +618,10 @@ private struct FlexibleTextView: View {
 #Preview {
     ScrollView {
         HStack {
-            DisplayText(NSLocalizedString("onboarding__empty_wallet", comment: ""))
+            DisplayText(t("onboarding__empty_wallet"))
                 .background(Color.red.opacity(0.1))
 
-            DisplayText(NSLocalizedString("onboarding__welcome_title", comment: ""))
+            DisplayText(t("onboarding__welcome_title"))
                 .background(Color.blue.opacity(0.1))
         }
         .padding(.bottom, 20)
@@ -635,7 +635,7 @@ private struct FlexibleTextView: View {
         }
         .padding(.bottom, 20)
 
-        DisplayText(NSLocalizedString("onboarding__slide0_header", comment: ""))
+        DisplayText(t("onboarding__slide0_header"))
             .background(Color.orange.opacity(0.1))
             .padding(.bottom, 20)
 

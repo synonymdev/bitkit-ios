@@ -14,17 +14,17 @@ struct IntroView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                DisplayText(NSLocalizedString("onboarding__welcome_title", comment: ""))
+                DisplayText(t("onboarding__welcome_title"))
 
-                BodyMText(NSLocalizedString("onboarding__welcome_text", comment: ""), textColor: .textSecondary, accentColor: .brandAccent)
+                BodyMText(t("onboarding__welcome_text"), textColor: .textSecondary, accentColor: .brandAccent)
                     .padding(.top, 14)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             HStack(spacing: 16) {
-                CustomButton(title: NSLocalizedString("onboarding__get_started", comment: ""), destination: OnboardingSlider())
+                CustomButton(title: t("onboarding__get_started"), destination: OnboardingSlider())
                 CustomButton(
-                    title: NSLocalizedString("onboarding__skip_intro", comment: ""),
+                    title: t("onboarding__skip_intro"),
                     variant: .secondary,
                     destination: OnboardingSlider(currentTab: 4)
                 )

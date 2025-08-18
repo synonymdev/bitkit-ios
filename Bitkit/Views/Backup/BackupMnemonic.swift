@@ -9,10 +9,10 @@ struct BackupMnemonicView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: localizedString("security__mnemonic_your"))
+            SheetHeader(title: t("security__mnemonic_your"))
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__mnemonic_write", variables: ["length": "\(mnemonic.count)"]))
+                BodyMText(t("security__mnemonic_write", variables: ["length": "\(mnemonic.count)"]))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 16)
 
@@ -43,7 +43,7 @@ struct BackupMnemonicView: View {
                         Button(action: {
                             showMnemonic = true
                         }) {
-                            BodySSBText(localizedString("security__mnemonic_reveal"))
+                            BodySSBText(t("security__mnemonic_reveal"))
                                 .frame(width: 154, height: 56)
                                 .background(Color.black50)
                                 .cornerRadius(64)
@@ -63,17 +63,17 @@ struct BackupMnemonicView: View {
                     if Env.isDebug || Env.isTestFlight {
                         let mnemonicString = mnemonic.joined(separator: " ")
                         UIPasteboard.general.string = mnemonicString
-                        app.toast(type: .success, title: localizedString("common__copied"), description: "Mnemonic copied to clipboard")
+                        app.toast(type: .success, title: t("common__copied"), description: "Mnemonic copied to clipboard")
                     }
                 }
 
-                BodySText(localizedString("security__mnemonic_never_share"), accentColor: .brandAccent)
+                BodySText(t("security__mnemonic_never_share"), accentColor: .brandAccent)
 
                 Spacer()
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: localizedString("common__continue"),
+                        title: t("common__continue"),
                         isDisabled: !showMnemonic,
                     ) {
                         let route =
@@ -104,8 +104,8 @@ struct BackupMnemonicView: View {
             } else {
                 app.toast(
                     type: .error,
-                    title: localizedString("security__mnemonic_error"),
-                    description: localizedString("security__mnemonic_error_description")
+                    title: t("security__mnemonic_error"),
+                    description: t("security__mnemonic_error_description")
                 )
             }
 
@@ -113,8 +113,8 @@ struct BackupMnemonicView: View {
         } catch {
             app.toast(
                 type: .error,
-                title: localizedString("security__mnemonic_error"),
-                description: localizedString("security__mnemonic_error_description")
+                title: t("security__mnemonic_error"),
+                description: t("security__mnemonic_error_description")
             )
         }
     }

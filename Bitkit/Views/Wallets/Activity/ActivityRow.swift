@@ -34,22 +34,22 @@ private struct TransactionStatusText: View {
         if txType == .sent {
             switch status {
             case .failed:
-                BodyMSBText(localizedString("wallet__activity_failed"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_failed"), textColor: .textPrimary)
             case .pending:
-                BodyMSBText(localizedString("wallet__activity_pending"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_pending"), textColor: .textPrimary)
             case .succeeded:
-                BodyMSBText(localizedString("wallet__activity_sent"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_sent"), textColor: .textPrimary)
             case .none:
                 EmptyView()
             }
         } else {
             switch status {
             case .failed:
-                BodyMSBText(localizedString("wallet__activity_failed"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_failed"), textColor: .textPrimary)
             case .pending:
-                BodyMSBText(localizedString("wallet__activity_pending"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_pending"), textColor: .textPrimary)
             case .succeeded:
-                BodyMSBText(localizedString("wallet__activity_received"), textColor: .textPrimary)
+                BodyMSBText(t("wallet__activity_received"), textColor: .textPrimary)
             case .none:
                 EmptyView()
             }
@@ -59,9 +59,9 @@ private struct TransactionStatusText: View {
     @ViewBuilder
     private var onchainStatus: some View {
         if txType == .sent {
-            BodyMSBText(localizedString("wallet__activity_sent"), textColor: .textPrimary)
+            BodyMSBText(t("wallet__activity_sent"), textColor: .textPrimary)
         } else {
-            BodyMSBText(localizedString("wallet__activity_received"), textColor: .textPrimary)
+            BodyMSBText(t("wallet__activity_received"), textColor: .textPrimary)
         }
     }
 }

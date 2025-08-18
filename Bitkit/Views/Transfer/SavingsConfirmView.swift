@@ -36,9 +36,9 @@ struct SavingsConfirmView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            DisplayText(localizedString("lightning__transfer__confirm"), accentColor: .brandAccent)
+            DisplayText(t("lightning__transfer__confirm"), accentColor: .brandAccent)
 
-            CaptionMText(localizedString("lightning__savings_confirm__label"))
+            CaptionMText(t("lightning__savings_confirm__label"))
                 .padding(.top, 32)
 
             MoneyText(sats: Int(totalSats), size: .display, symbol: true)
@@ -46,11 +46,11 @@ struct SavingsConfirmView: View {
             if hasMultipleChannels {
                 HStack(spacing: 16) {
                     if hasSelectedChannels {
-                        CustomButton(title: localizedString("lightning__savings_confirm__transfer_all"), size: .small) {
+                        CustomButton(title: t("lightning__savings_confirm__transfer_all"), size: .small) {
                             transfer.setSelectedChannelIds([])
                         }
                     } else {
-                        CustomButton(title: localizedString("common__advanced"), size: .small) {
+                        CustomButton(title: t("common__advanced"), size: .small) {
                             navigation.navigate(.savingsAdvanced)
                         }
                     }
@@ -72,7 +72,7 @@ struct SavingsConfirmView: View {
 
             if !hideSwipeButton {
                 SwipeButton(
-                    title: localizedString("lightning__transfer__swipe"),
+                    title: t("lightning__transfer__swipe"),
                     accentColor: .brandAccent
                 ) {
                     do {
@@ -93,7 +93,7 @@ struct SavingsConfirmView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.horizontal, 16)
         .padding(.top, 16)

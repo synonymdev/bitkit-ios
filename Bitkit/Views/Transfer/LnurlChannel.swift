@@ -33,11 +33,11 @@ struct LnurlChannel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            DisplayText(localizedString("other__lnurl_channel_title"), accentColor: .purpleAccent)
+            DisplayText(t("other__lnurl_channel_title"), accentColor: .purpleAccent)
                 .padding(.top, 32)
                 .padding(.bottom, 8)
 
-            BodyMText(localizedString("other__lnurl_channel_message"))
+            BodyMText(t("other__lnurl_channel_message"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             if isLoadingChannelInfo {
@@ -48,7 +48,7 @@ struct LnurlChannel: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if channelInfo != nil {
-                CaptionMText(localizedString("other__lnurl_channel_lsp"))
+                CaptionMText(t("other__lnurl_channel_lsp"))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 48)
                     .padding(.bottom, 16)
@@ -56,7 +56,7 @@ struct LnurlChannel: View {
                 // Node
                 VStack(spacing: 0) {
                     HStack(alignment: .center) {
-                        CaptionBText(localizedString("other__lnurl_channel_node"), textColor: .textPrimary)
+                        CaptionBText(t("other__lnurl_channel_node"), textColor: .textPrimary)
                         Spacer()
                         CaptionBText(parsedUri.nodeId.ellipsis(maxLength: 16), textColor: .textPrimary)
                     }
@@ -68,7 +68,7 @@ struct LnurlChannel: View {
                 // Host
                 VStack(spacing: 0) {
                     HStack(alignment: .center) {
-                        CaptionBText(localizedString("other__lnurl_channel_host"), textColor: .textPrimary)
+                        CaptionBText(t("other__lnurl_channel_host"), textColor: .textPrimary)
                         Spacer()
                         CaptionBText(parsedUri.host, textColor: .textPrimary)
                     }
@@ -80,7 +80,7 @@ struct LnurlChannel: View {
                 // Port
                 VStack(spacing: 0) {
                     HStack(alignment: .center) {
-                        CaptionBText(localizedString("other__lnurl_channel_port"), textColor: .textPrimary)
+                        CaptionBText(t("other__lnurl_channel_port"), textColor: .textPrimary)
                         Spacer()
                         CaptionBText(String(parsedUri.port), textColor: .textPrimary)
                     }
@@ -102,7 +102,7 @@ struct LnurlChannel: View {
 
             HStack(spacing: 16) {
                 CustomButton(
-                    title: localizedString("common__cancel"),
+                    title: t("common__cancel"),
                     variant: .secondary,
                     size: .large
                 ) {
@@ -110,7 +110,7 @@ struct LnurlChannel: View {
                 }
 
                 CustomButton(
-                    title: localizedString("common__connect"),
+                    title: t("common__connect"),
                     variant: .primary,
                     size: .large,
                     isDisabled: channelInfo == nil || isLoadingChannelInfo,
@@ -124,7 +124,7 @@ struct LnurlChannel: View {
         }
         .padding(.horizontal, 16)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("other__lnurl_channel_header"))
+        .navigationTitle(t("other__lnurl_channel_header"))
         .backToWalletButton()
         .task {
             await fetchChannelInfo()

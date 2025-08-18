@@ -6,7 +6,7 @@ struct DisablePinView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            BodyMText(localizedString("security__pin_disable_text"))
+            BodyMText(t("security__pin_disable_text"))
 
             Spacer()
 
@@ -20,9 +20,9 @@ struct DisablePinView: View {
             Spacer()
 
             CustomButton(
-                title: localizedString("security__pin_disable_button"),
+                title: t("security__pin_disable_button"),
                 destination: PinCheckView(
-                    title: localizedString("security__pin_enter"),
+                    title: t("security__pin_enter"),
                     explanation: "",
                     onCancel: {},
                     onPinVerified: { pin in
@@ -38,7 +38,7 @@ struct DisablePinView: View {
                 )
             )
         }
-        .navigationTitle(localizedString("security__pin_disable_title"))
+        .navigationTitle(t("security__pin_disable_title"))
         .navigationBarTitleDisplayMode(.inline)
         .padding(.top, 16)
         .padding(.horizontal, 16)

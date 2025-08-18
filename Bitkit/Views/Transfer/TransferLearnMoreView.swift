@@ -11,15 +11,15 @@ struct TransferLearnMoreView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(localizedString("lightning__liquidity__title"), accentColor: .purpleAccent)
+            DisplayText(t("lightning__liquidity__title"), accentColor: .purpleAccent)
                 .padding(.bottom, 16)
 
-            BodyMText(localizedString("lightning__liquidity__text"))
+            BodyMText(t("lightning__liquidity__text"))
 
             Spacer()
 
             VStack(alignment: .leading, spacing: 16) {
-                SubtitleText(localizedString("lightning__liquidity__label"))
+                SubtitleText(t("lightning__liquidity__label"))
                 LightningChannel(
                     capacity: order.lspBalanceSat + order.clientBalanceSat,
                     localBalance: order.clientBalanceSat,
@@ -29,13 +29,13 @@ struct TransferLearnMoreView: View {
                 )
             }
 
-            CustomButton(title: localizedString("common__understood")) {
+            CustomButton(title: t("common__understood")) {
                 dismiss()
             }
             .padding(.top, 32)
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .padding(.top, 16)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()

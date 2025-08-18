@@ -8,16 +8,16 @@ struct FundingOptions: View {
 
     var text: String {
         if app.isGeoBlocked == true {
-            return localizedString("lightning__funding__text_blocked")
+            return t("lightning__funding__text_blocked")
         } else {
-            return localizedString("lightning__funding__text")
+            return t("lightning__funding__text")
         }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             DisplayText(
-                localizedString("lightning__funding__title"),
+                t("lightning__funding__title"),
                 accentColor: .purpleAccent
             )
             .padding(.bottom, 8)
@@ -29,7 +29,7 @@ struct FundingOptions: View {
             VStack(spacing: 8) {
                 RectangleButton(
                     icon: Image("transfer").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
-                    title: localizedString("lightning__funding__button1"),
+                    title: t("lightning__funding__button1"),
                     isDisabled: wallet.totalOnchainSats == 0 || app.isGeoBlocked == true
                 ) {
                     navigation.navigate(.spendingIntro)
@@ -37,7 +37,7 @@ struct FundingOptions: View {
 
                 RectangleButton(
                     icon: Image("qr").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
-                    title: localizedString("lightning__funding__button2"),
+                    title: t("lightning__funding__button2"),
                     isDisabled: app.isGeoBlocked == true
                 ) {
                     navigation.reset()
@@ -46,7 +46,7 @@ struct FundingOptions: View {
 
                 RectangleButton(
                     icon: Image("external").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
-                    title: localizedString("lightning__funding__button3")
+                    title: t("lightning__funding__button3")
                 ) {
                     navigation.navigate(.fundingAdvanced)
                 }
@@ -55,7 +55,7 @@ struct FundingOptions: View {
             Spacer()
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)

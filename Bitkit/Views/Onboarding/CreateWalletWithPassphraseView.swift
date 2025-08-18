@@ -22,20 +22,20 @@ struct CreateWalletWithPassphraseView: View {
 
             OnboardingContent(
                 imageName: "padlock2",
-                title: NSLocalizedString("onboarding__passphrase_header", comment: ""),
-                text: NSLocalizedString("onboarding__passphrase_text", comment: ""),
+                title: t("onboarding__passphrase_header"),
+                text: t("onboarding__passphrase_text"),
                 accentColor: .brandAccent
             )
             .frame(maxHeight: .infinity)
 
             TextField(
-                NSLocalizedString("onboarding__passphrase", comment: ""),
+                t("onboarding__passphrase"),
                 text: $bip39Passphrase
             )
             .padding(.bottom, 28)
 
             CustomButton(
-                title: NSLocalizedString("onboarding__create_new_wallet", comment: ""),
+                title: t("onboarding__create_new_wallet"),
                 isDisabled: !isValidPassphrase
             ) {
                 do {

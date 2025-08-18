@@ -5,10 +5,10 @@ struct BackupDevices: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("security__mnemonic_multiple_header"), showBackButton: true)
+            SheetHeader(title: t("security__mnemonic_multiple_header"), showBackButton: true)
 
             VStack(spacing: 0) {
-                BodyMText(localizedString("security__mnemonic_multiple_text"))
+                BodyMText(t("security__mnemonic_multiple_text"))
 
                 Spacer()
 
@@ -21,7 +21,7 @@ struct BackupDevices: View {
                 Spacer()
 
                 CustomButton(
-                    title: localizedString("common__ok"),
+                    title: t("common__ok"),
                 ) {
                     navigationPath.append(.metadata)
                 }

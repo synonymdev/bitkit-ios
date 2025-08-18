@@ -6,7 +6,7 @@ struct DefaultUnitSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                CaptionText(NSLocalizedString("settings__general__unit_display", comment: "").uppercased())
+                CaptionText(t("settings__general__unit_display").uppercased())
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -14,7 +14,7 @@ struct DefaultUnitSettingsView: View {
                     currency.primaryDisplay = .bitcoin
                 }) {
                     SettingsListLabel(
-                        title: NSLocalizedString("settings__general__unit_bitcoin", comment: ""),
+                        title: t("settings__general__unit_bitcoin"),
                         iconName: "b-unit",
                         rightIcon: currency.primaryDisplay == .bitcoin ? .checkmark : nil
                     )
@@ -34,13 +34,13 @@ struct DefaultUnitSettingsView: View {
                     .buttonStyle(PlainButtonStyle())
                 }
 
-                BodyMText(localizedString("settings__general__unit_note", comment: "", variables: ["currency": currency.selectedCurrency]))
+                BodyMText(t("settings__general__unit_note", variables: ["currency": currency.selectedCurrency]))
                     .padding(.vertical, 16)
             }
             .padding(.horizontal, 16)
 
             VStack(alignment: .leading, spacing: 8) {
-                CaptionText(NSLocalizedString("settings__general__denomination_label", comment: "").uppercased())
+                CaptionText(t("settings__general__denomination_label").uppercased())
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -58,7 +58,7 @@ struct DefaultUnitSettingsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(NSLocalizedString("settings__general__unit_title", comment: ""))
+        .navigationTitle(t("settings__general__unit_title"))
     }
 }
 

@@ -87,11 +87,11 @@ struct BoostSheet: View {
     var body: some View {
         Sheet(id: .boost, data: config) {
             VStack(alignment: .leading, spacing: 0) {
-                SheetHeader(title: localizedString("wallet__boost_title"))
+                SheetHeader(title: t("wallet__boost_title"))
 
                 VStack(spacing: 16) {
                     BodyMText(
-                        localizedString("wallet__boost_fee_recomended"),
+                        t("wallet__boost_fee_recomended"),
                         textColor: .textSecondary
                     )
                     .multilineTextAlignment(.center)
@@ -164,12 +164,12 @@ struct BoostSheet: View {
 
                             VStack(alignment: .leading, spacing: 2) {
                                 BodyMSBText(
-                                    localizedString("wallet__boost"),
+                                    t("wallet__boost"),
                                     textColor: .white
                                 )
 
                                 FootnoteText(
-                                    "\(localizedString("settings__fee__fast__description"))",
+                                    "\(t("settings__fee__fast__description"))",
                                     textColor: .textSecondary
                                 )
                             }
@@ -216,7 +216,7 @@ struct BoostSheet: View {
                 Spacer()
 
                 SwipeButton(
-                    title: localizedString("wallet__boost_swipe"),
+                    title: t("wallet__boost_swipe"),
                     accentColor: .yellowAccent
                 ) {
                     try await performBoost()
@@ -325,8 +325,8 @@ struct BoostSheet: View {
                     fetchingFees = false
                     app.toast(
                         type: .error,
-                        title: localizedString("common__error"),
-                        description: localizedString("wallet__boost_fee_error")
+                        title: t("common__error"),
+                        description: t("wallet__boost_fee_error")
                     )
                 }
             }
@@ -345,8 +345,8 @@ struct BoostSheet: View {
             Logger.error("Fee rate not set or invalid when attempting boost: \(feeRateToUse)", context: "BoostSheet.performBoost")
             app.toast(
                 type: .error,
-                title: localizedString("common__error"),
-                description: localizedString("wallet__boost_fee_not_set")
+                title: t("common__error"),
+                description: t("wallet__boost_fee_not_set")
             )
             throw AppError(message: "Fee rate not set", debugMessage: "Fee rate not set or invalid when attempting boost: \(feeRateToUse)")
         }
@@ -356,8 +356,8 @@ struct BoostSheet: View {
             Logger.error("Fee rate too low for boost: \(feeRateToUse) < \(minFeeRate) sat/vbyte", context: "BoostSheet.performBoost")
             app.toast(
                 type: .error,
-                title: localizedString("common__error"),
-                description: localizedString("wallet__min_possible_fee_rate_msg")
+                title: t("common__error"),
+                description: t("wallet__min_possible_fee_rate_msg")
             )
             throw AppError(message: "Fee rate too low", debugMessage: "Fee rate \(feeRateToUse) is below minimum \(minFeeRate) sat/vbyte")
         }
@@ -389,8 +389,8 @@ struct BoostSheet: View {
             // Show success message after everything is synced
             app.toast(
                 type: .success,
-                title: localizedString("wallet__boost_success_title"),
-                description: localizedString("wallet__boost_success_msg")
+                title: t("wallet__boost_success_title"),
+                description: t("wallet__boost_success_msg")
             )
 
             Logger.info("Boost transaction completed successfully, hiding sheet", context: "BoostSheet.performBoost")
@@ -408,7 +408,7 @@ struct BoostSheet: View {
 
             app.toast(
                 type: .error,
-                title: localizedString("wallet__boost_error"),
+                title: t("wallet__boost_error"),
                 description: error.localizedDescription
             )
 

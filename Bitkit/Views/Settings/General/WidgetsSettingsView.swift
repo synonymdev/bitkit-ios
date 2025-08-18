@@ -7,18 +7,18 @@ struct WidgetsSettingsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 SettingsListLabel(
-                    title: localizedString("settings__widgets__showWidgets"),
+                    title: t("settings__widgets__showWidgets"),
                     toggle: $settings.showWidgets
                 )
 
                 SettingsListLabel(
-                    title: localizedString("settings__widgets__showWidgetTitles"),
+                    title: t("settings__widgets__showWidgetTitles"),
                     toggle: $settings.showWidgetTitles
                 )
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(localizedString("settings__widgets__nav_title"))
+        .navigationTitle(t("settings__widgets__nav_title"))
     }
 }
 

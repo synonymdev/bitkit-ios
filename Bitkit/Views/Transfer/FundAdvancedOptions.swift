@@ -9,12 +9,12 @@ struct FundAdvancedOptions: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     DisplayText(
-                        localizedString("lightning__funding_advanced__title"),
+                        t("lightning__funding_advanced__title"),
                         accentColor: .purpleAccent
                     )
                     .padding(.bottom, 8)
 
-                    BodyMText(localizedString("lightning__funding_advanced__text"))
+                    BodyMText(t("lightning__funding_advanced__text"))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.bottom, 32)
 
@@ -26,7 +26,7 @@ struct FundAdvancedOptions: View {
                                     .scaledToFit()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.purpleAccent),
-                                title: localizedString("lightning__funding_advanced__button1")
+                                title: t("lightning__funding_advanced__button1")
                             )
                         }
 
@@ -36,7 +36,7 @@ struct FundAdvancedOptions: View {
                                 .scaledToFit()
                                 .frame(width: 32, height: 32)
                                 .foregroundColor(.purpleAccent),
-                            title: localizedString("lightning__funding_advanced__button2")
+                            title: t("lightning__funding_advanced__button2")
                         ) {
                             navigation.navigate(.fundManual(nodeUri: nil))
                         }
@@ -47,7 +47,7 @@ struct FundAdvancedOptions: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__funding_advanced__nav_title"))
+        .navigationTitle(t("lightning__funding_advanced__nav_title"))
         .backToWalletButton()
         .padding(.top, 16)
         .padding(.horizontal, 16)

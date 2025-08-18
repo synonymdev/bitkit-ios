@@ -20,7 +20,7 @@ struct LnurlPayAmount: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: localizedString("wallet__lnurl_p_title"), showBackButton: true)
+            SheetHeader(title: t("wallet__lnurl_p_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
                 AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newAmount in
@@ -31,14 +31,14 @@ struct LnurlPayAmount: View {
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    AvailableAmount(label: localizedString("wallet__send_available_spending"), amount: wallet.totalLightningSats)
+                    AvailableAmount(label: t("wallet__send_available_spending"), amount: wallet.totalLightningSats)
                         .onTapGesture {
                             overrideSats = UInt64(wallet.totalLightningSats)
                         }
 
                     Spacer()
 
-                    NumberPadActionButton(text: localizedString("common__max"), color: .brandAccent) {
+                    NumberPadActionButton(text: t("common__max"), color: .brandAccent) {
                         overrideSats = maxAmount
                     }
 
@@ -59,7 +59,7 @@ struct LnurlPayAmount: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: !isValid) {
+            CustomButton(title: t("common__continue"), isDisabled: !isValid) {
                 onContinue()
             }
             .padding(.top, 16)
@@ -74,8 +74,8 @@ struct LnurlPayAmount: View {
 
         if amount < minSendable {
             app.toast(
-                type: .error, title: localizedString("wallet__lnurl_pay__error_min__title"),
-                description: localizedString("wallet__lnurl_pay__error_min__description", variables: ["amount": "\(minSendable)"])
+                type: .error, title: t("wallet__lnurl_pay__error_min__title"),
+                description: t("wallet__lnurl_pay__error_min__description", variables: ["amount": "\(minSendable)"])
             )
             return
         }

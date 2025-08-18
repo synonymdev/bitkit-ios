@@ -26,26 +26,26 @@ struct PinChangeView: View {
     var navTitle: String {
         switch step {
         case .verifyCurrentPin:
-            return NSLocalizedString("security__cp_title", comment: "Change PIN")
+            return t("security__cp_title", comment: "Change PIN")
         case .enterNewPin:
-            return NSLocalizedString("security__cp_setnew_title", comment: "Set new PIN title")
+            return t("security__cp_setnew_title", comment: "Set new PIN title")
         case .confirmNewPin:
-            return NSLocalizedString("security__cp_retype_title", comment: "Retype New PIN")
+            return t("security__cp_retype_title", comment: "Retype New PIN")
         case .success:
-            return NSLocalizedString("security__cp_changed_title", comment: "PIN changed title")
+            return t("security__cp_changed_title", comment: "PIN changed title")
         }
     }
 
     var description: String {
         switch step {
         case .verifyCurrentPin:
-            return NSLocalizedString("security__cp_text", comment: "Change PIN description")
+            return t("security__cp_text", comment: "Change PIN description")
         case .enterNewPin:
-            return NSLocalizedString("security__cp_setnew_text", comment: "Set new PIN description")
+            return t("security__cp_setnew_text", comment: "Set new PIN description")
         case .confirmNewPin:
-            return NSLocalizedString("security__cp_retype_text", comment: "Retype PIN description")
+            return t("security__cp_retype_text", comment: "Retype PIN description")
         case .success:
-            return NSLocalizedString("security__cp_changed_text", comment: "PIN changed description")
+            return t("security__cp_changed_text", comment: "PIN changed description")
         }
     }
 
@@ -102,14 +102,14 @@ struct PinChangeView: View {
             Haptics.notify(.success)
         } catch {
             Logger.error("Failed to change PIN: \(error)", context: "PinChangeView")
-            errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+            errorMessage = t("security__cp_try_again", comment: "Try again, this is not the same PIN")
             pinInput = ""
             Haptics.notify(.error)
         }
     }
 
     private func handlePinMismatch() {
-        errorMessage = NSLocalizedString("security__cp_try_again", comment: "Try again, this is not the same PIN")
+        errorMessage = t("security__cp_try_again", comment: "Try again, this is not the same PIN")
         step = .enterNewPin
         newPin = ""
         resetPinInput()
@@ -154,13 +154,13 @@ struct PinChangeView: View {
 
         if remainingAttempts == 1 {
             // Last attempt warning
-            errorMessage = NSLocalizedString(
+            errorMessage = t(
                 "security__pin_last_attempt",
                 comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
             )
         } else {
             // Show remaining attempts
-            errorMessage = localizedString(
+            errorMessage = t(
                 "security__pin_attempts",
                 comment: "%d attempts remaining. Forgot your PIN?",
                 variables: ["attemptsRemaining": "\(remainingAttempts)"]
@@ -203,7 +203,7 @@ struct PinChangeView: View {
 
     private var successScreen: some View {
         VStack(spacing: 0) {
-            BodyMText(localizedString("security__cp_changed_text"))
+            BodyMText(t("security__cp_changed_text"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 32)
 
@@ -216,7 +216,7 @@ struct PinChangeView: View {
 
             Spacer()
 
-            CustomButton(title: localizedString("common__ok")) {
+            CustomButton(title: t("common__ok")) {
                 dismiss()
             }
         }

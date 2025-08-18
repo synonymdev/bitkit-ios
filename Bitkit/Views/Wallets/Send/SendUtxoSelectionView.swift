@@ -24,7 +24,7 @@ struct SendUtxoSelectionView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: NSLocalizedString("wallet__selection_title", comment: ""), showBackButton: true)
+            SheetHeader(title: t("wallet__selection_title"), showBackButton: true)
 
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -50,7 +50,7 @@ struct SendUtxoSelectionView: View {
             // Bottom summary
             VStack(spacing: 8) {
                 HStack {
-                    BodyMText(NSLocalizedString("wallet__selection_total_required", comment: "").uppercased(), textColor: .textSecondary)
+                    BodyMText(t("wallet__selection_total_required").uppercased(), textColor: .textSecondary)
                     Spacer()
                     BodyMSBText("\(formatSats(totalRequiredSats))", textColor: .textPrimary)
                 }
@@ -59,14 +59,14 @@ struct SendUtxoSelectionView: View {
                 Divider()
 
                 HStack {
-                    BodyMText(NSLocalizedString("wallet__selection_total_selected", comment: "").uppercased(), textColor: .textSecondary)
+                    BodyMText(t("wallet__selection_total_selected").uppercased(), textColor: .textSecondary)
                     Spacer()
                     BodyMSBText("\(formatSats(totalSelectedSats))", textColor: totalSelectedSats >= totalRequiredSats ? .greenAccent : .redAccent)
                 }
             }
             .padding(.bottom, 16)
 
-            CustomButton(title: localizedString("common__continue"), isDisabled: selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats) {
+            CustomButton(title: t("common__continue"), isDisabled: selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats) {
                 do {
                     wallet.selectedUtxo = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
 

@@ -5,10 +5,10 @@ struct SpendingIntroView: View {
 
     var body: some View {
         OnboardingView(
-            title: localizedString("lightning__spending_intro__title"),
-            description: localizedString("lightning__spending_intro__text"),
+            title: t("lightning__spending_intro__title"),
+            description: t("lightning__spending_intro__text"),
             imageName: "coin-stack-x",
-            buttonText: localizedString("lightning__spending_intro__button"),
+            buttonText: t("lightning__spending_intro__button"),
             onButtonPress: {
                 navigation.navigate(.spendingAmount)
             },
@@ -17,7 +17,7 @@ struct SpendingIntroView: View {
             testID: "SpendingIntro"
         )
         .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(localizedString("lightning__transfer__nav_title"))
+        .navigationTitle(t("lightning__transfer__nav_title"))
         .backToWalletButton()
     }
 }
