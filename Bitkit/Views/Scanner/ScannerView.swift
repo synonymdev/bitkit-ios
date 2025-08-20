@@ -3,21 +3,30 @@ import PhotosUI
 import SwiftUI
 import Vision
 
-let headerHeight: CGFloat = 60
-let buttonHeight: CGFloat = 56
-let spacing: CGFloat = 16
-let headerSpace = headerHeight + spacing
-let buttonSpace = buttonHeight + spacing
-
 struct ScannerView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+
+    var isFullScreen: Bool = false
     var showBackButton: Bool = false
 
     @State private var isFlashlightOn = false
     @State private var selectedItem: PhotosPickerItem?
+
+    let buttonHeight: CGFloat = 56
+    let spacing: CGFloat = 16
+
+    var headerSpace: CGFloat {
+        let headerHeight: CGFloat = isFullScreen ? 100 : 60
+        return headerHeight + spacing
+    }
+
+    var buttonSpace: CGFloat {
+        return buttonHeight + spacing
+    }
 
     var body: some View {
         ZStack {
@@ -61,7 +70,9 @@ struct ScannerView: View {
 
             // UI Elements on top of camera
             VStack {
-                SheetHeader(title: t("other__qr_scan"), showBackButton: showBackButton)
+                if !isFullScreen {
+                    SheetHeader(title: t("other__qr_scan"), showBackButton: showBackButton)
+                }
 
                 Spacer()
 
@@ -104,17 +115,24 @@ struct ScannerView: View {
                     .background(isFlashlightOn ? Color.white32 : Color.clear)
                     .clipShape(Circle())
                 }
-                .padding(.top, headerSpace + spacing)
+                .padding(.top, isFullScreen ? 32 : headerSpace + spacing)
                 .padding(.horizontal, spacing * 2)
             }
         }
-        .navigationBarHidden(true)
+        .navigationBarHidden(!isFullScreen)
     }
 
     func handleScan(_ uri: String) {
         Haptics.play(.scanSuccess)
 
         Task { @MainActor in
+            // Check if we're scanning from Electrum settings
+            if isElectrumScanContext() {
+                handleElectrumScan(uri)
+                return
+            }
+
+            // Handle regular payment scanning
             do {
                 try await app.handleScannedData(uri)
                 PaymentNavigationHelper.openPaymentSheet(
@@ -132,6 +150,42 @@ struct ScannerView: View {
                 )
             }
         }
+    }
+
+    private func isElectrumScanContext() -> Bool {
+        // Check if we're in the Electrum settings flow
+        return navigation.path.contains(.electrumSettings)
+    }
+
+    private func handleElectrumScan(_ uri: String) {
+        Task {
+            // Handle Electrum server QR
+            if let result = await settings.onElectrumScan(uri) {
+                if result.success {
+                    app.toast(
+                        type: .success,
+                        title: t("settings__es__server_updated_title"),
+                        description: t("settings__es__server_updated_message", variables: ["host": result.host, "port": result.port])
+                    )
+                } else {
+                    app.toast(
+                        type: .warning,
+                        title: t("settings__es__error_peer"),
+                        description: result.errorMessage ?? t("settings__es__server_error_description")
+                    )
+                }
+            } else {
+                // Invalid Electrum server QR
+                app.toast(
+                    type: .error,
+                    title: t("settings__es__error_peer"),
+                    description: t("settings__es__error_invalid_http")
+                )
+            }
+        }
+
+        // Navigate back to Electrum settings
+        navigation.navigateBack()
     }
 
     func handlePaste() async {

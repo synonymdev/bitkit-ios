@@ -39,7 +39,9 @@ class NotificationService: UNNotificationServiceExtension {
             }
 
             do {
-                try await LightningService.shared.setup(walletIndex: self.walletIndex) // Assume first wallet for now
+                // TODO: For notification extension, use default Electrum server URL for now
+                let electrumServerUrl = Env.electrumServerUrl
+                try await LightningService.shared.setup(walletIndex: self.walletIndex, electrumServerUrl: electrumServerUrl)
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
                     self.handleLdkEvent(event: event)

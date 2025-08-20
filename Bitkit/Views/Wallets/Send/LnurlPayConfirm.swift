@@ -82,14 +82,18 @@ struct LnurlPayConfirm: View {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
                                 .padding(.bottom, 8)
 
-                            TextField(t("wallet__lnurl_pay_confirm__comment_placeholder"), text: $comment)
-                                .lineLimit(3 ... 3)
-                                .onChange(of: comment) { newValue in
-                                    let maxLength = Int(commentAllowed)
-                                    if newValue.count > maxLength {
-                                        comment = String(newValue.prefix(maxLength))
-                                    }
+                            TextField(
+                                t("wallet__lnurl_pay_confirm__comment_placeholder"),
+                                text: $comment,
+                                axis: .vertical
+                            )
+                            .lineLimit(3 ... 3)
+                            .onChange(of: comment) { newValue in
+                                let maxLength = Int(commentAllowed)
+                                if newValue.count > maxLength {
+                                    comment = String(newValue.prefix(maxLength))
                                 }
+                            }
                         }
                         .padding(.vertical)
                         .frame(maxWidth: .infinity, alignment: .leading)

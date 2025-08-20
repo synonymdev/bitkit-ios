@@ -67,92 +67,65 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
 
     // PIN Management
-    @Published private(set) var pinEnabled: Bool = false
-    @AppStorage("pinFailedAttempts") private var pinFailedAttempts: Int = 0
+    @Published internal(set) var pinEnabled: Bool = false
+    @AppStorage("pinFailedAttempts") var pinFailedAttempts: Int = 0
 
-    private func updatePinEnabledState() {
-        let newState = checkPinExists()
-        if pinEnabled != newState {
-            pinEnabled = newState
-            Logger.debug("PIN enabled state updated to \(newState)", context: "SettingsViewModel")
-        }
-    }
+    // Electrum Server Settings
+    @Published var electrumHost: String = ""
+    @Published var electrumPort: String = ""
+    @Published var electrumSelectedProtocol: ElectrumProtocol = .tcp
+    @Published var electrumCurrentServer: ElectrumServer
+    @Published var electrumIsConnected: Bool = false
+    @Published var electrumIsLoading: Bool = false
 
-    private func checkPinExists() -> Bool {
-        do {
-            return try Keychain.exists(key: .securityPin)
-        } catch {
-            Logger.error("Failed to check if PIN exists in keychain: \(error)", context: "SettingsViewModel")
-            return false
-        }
-    }
+    // Services
+    let lightningService: LightningService
+    let electrumConfigService: ElectrumConfigService
 
-    func setPin(_ pin: String) throws {
-        try Keychain.saveString(key: .securityPin, str: pin)
-        updatePinEnabledState()
-    }
+    // MARK: - Initialization
 
-    func pinCheck(pin: String) -> Bool {
-        do {
-            guard let storedPin = try Keychain.loadString(key: .securityPin) else {
-                return false
-            }
+    init(lightningService: LightningService = .shared, electrumConfigService: ElectrumConfigService = ElectrumConfigService()) {
+        self.lightningService = lightningService
+        self.electrumConfigService = electrumConfigService
 
-            let isCorrect = storedPin == pin
+        // Initialize electrumCurrentServer with current server (stored or default)
+        electrumCurrentServer = electrumConfigService.getCurrentServer()
 
-            if isCorrect {
-                // Reset failed attempts on successful PIN entry
-                pinFailedAttempts = 0
-            } else {
-                // Increment failed attempts
-                pinFailedAttempts += 1
-            }
-
-            return isCorrect
-        } catch {
-            Logger.error("Failed to check PIN from keychain: \(error)", context: "SettingsViewModel")
-            return false
-        }
-    }
-
-    func getRemainingPinAttempts() -> Int {
-        return max(0, Env.pinAttempts - pinFailedAttempts)
-    }
-
-    func hasExceededPinAttempts() -> Bool {
-        return pinFailedAttempts >= Env.pinAttempts
-    }
-
-    func resetPinAttempts() {
-        pinFailedAttempts = 0
-    }
-
-    func resetPinSettings() {
-        pinEnabled = false
-        pinFailedAttempts = 0
-        requirePinOnLaunch = true
-        requirePinWhenIdle = false
-        requirePinForPayments = false
-        useBiometrics = false
-        Logger.debug("PIN settings reset after app wipe", context: "SettingsViewModel")
-    }
-
-    func removePin(pin: String, resetSettings: Bool = true) throws {
-        guard pinCheck(pin: pin) else {
-            throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
-        }
-        try Keychain.delete(key: .securityPin)
-
-        if resetSettings {
-            // Reset all PIN-related settings when PIN is disabled
-            requirePinOnLaunch = true
-            requirePinWhenIdle = false
-            requirePinForPayments = false
-            useBiometrics = false
+        if hideBalanceOnOpen {
+            hideBalance = true
         }
 
         updatePinEnabledState()
+        checkNotificationPermission()
+
+        // Set up callback for registration status changes
+        NotificationService.shared.onRegistrationStatusChanged = { [weak self] registered in
+            self?.notificationServerRegistered = registered
+        }
     }
+
+    // MARK: - Computed Properties
+
+    var electrumHasEdited: Bool {
+        let formHost = electrumHost.trimmingCharacters(in: .whitespaces)
+        let formPort = electrumPort.trimmingCharacters(in: .whitespaces)
+        let formProtocol = electrumSelectedProtocol
+
+        let hostChanged = formHost != electrumCurrentServer.host
+        let portChanged = formPort != electrumCurrentServer.portString
+        let protocolChanged = formProtocol != electrumCurrentServer.protocolType
+
+        return hostChanged || portChanged || protocolChanged
+    }
+
+    var electrumCanConnect: Bool {
+        return electrumHasEdited || !electrumIsConnected
+    }
+
+    // Notifications
+    @Published var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
+    @Published var notificationServerRegistered: Bool = false
+    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
 
     // Widget Settings
     @AppStorage("showWidgets") var showWidgets: Bool = true
@@ -177,30 +150,6 @@ class SettingsViewModel: ObservableObject {
         }
         set {
             _coinSelectionAlgorithm = newValue.stringValue
-        }
-    }
-
-    @Published var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
-    @Published var notificationServerRegistered: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
-
-    func checkNotificationPermission() {
-        NotificationService.shared.checkNotificationPermission { status in
-            self.notificationAuthorizationStatus = status
-        }
-    }
-
-    init() {
-        if hideBalanceOnOpen {
-            hideBalance = true
-        }
-
-        updatePinEnabledState()
-        checkNotificationPermission()
-
-        // Set up callback for registration status changes
-        NotificationService.shared.onRegistrationStatusChanged = { [weak self] registered in
-            self?.notificationServerRegistered = registered
         }
     }
 }
