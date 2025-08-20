@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AdvancedSettingsView: View {
-    @StateObject private var suggestionsManager = SuggestionsManager.shared
+    @EnvironmentObject var suggestionsManager: SuggestionsManager
     @State private var showingResetAlert = false
 
     var body: some View {

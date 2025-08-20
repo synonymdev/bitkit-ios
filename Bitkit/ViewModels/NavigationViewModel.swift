@@ -29,6 +29,7 @@ enum Route: Hashable {
     case savingsConfirm
     case savingsAdvanced
     case savingsProgress
+    case scanner
 
     // Shop
     case shopIntro

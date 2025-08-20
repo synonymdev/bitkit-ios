@@ -106,7 +106,7 @@ enum Env {
             return
                 appStorageUrl
                     .appendingPathComponent("bitcoin")
-                    .appendingPathComponent("wallet\(walletIndex)/electrs")
+                    .appendingPathComponent("wallet\(walletIndex)/ldk")
         case .testnet:
             fatalError("Testnet network not implemented")
         case .signet:

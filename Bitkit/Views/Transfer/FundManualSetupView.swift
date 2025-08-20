@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FundManualSetupView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -103,14 +104,13 @@ struct FundManualSetupView: View {
                 Spacer()
 
                 HStack {
-                    // Scan QR button
                     CustomButton(
                         title: t("lightning__external_manual__scan"),
                         variant: .secondary,
-                        destination: ScannerView()
-                    )
+                    ) {
+                        navigation.navigate(.scanner)
+                    }
 
-                    // Continue button
                     CustomButton(
                         title: t("common__continue"),
                         variant: .primary,

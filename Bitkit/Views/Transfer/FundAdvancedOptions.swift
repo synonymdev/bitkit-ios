@@ -19,7 +19,7 @@ struct FundAdvancedOptions: View {
                         .padding(.bottom, 32)
 
                     VStack(spacing: 8) {
-                        NavigationLink(destination: ScannerView()) {
+                        NavigationLink(value: Route.scanner) {
                             RectangleButton(
                                 icon: Image("scan")
                                     .resizable()
