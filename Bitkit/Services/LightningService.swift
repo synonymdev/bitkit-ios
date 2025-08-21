@@ -13,7 +13,7 @@ class LightningService {
 
     private init() {}
 
-    func setup(walletIndex: Int) async throws {
+    func setup(walletIndex: Int, electrumServerUrl: String = Env.electrumServerUrl) async throws {
         Logger.debug("Checking lightning process lock...")
         try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
@@ -54,7 +54,7 @@ class LightningService {
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
 
-        builder.setChainSourceElectrum(serverUrl: Env.electrumServerUrl, config: electrumConfig)
+        builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
         } else {
@@ -91,6 +91,28 @@ class LightningService {
         // Clear memory
         mnemonic = ""
         passphrase = nil
+    }
+
+    func restartWithElectrumServer(_ serverUrl: String) async throws {
+        Logger.info("Restarting node with new Electrum server: \(serverUrl)")
+
+        // Stop the current node if it exists, ignore errors if already stopped
+        if node != nil {
+            do {
+                try await stop()
+            } catch {
+                Logger.debug("Node was already stopped or failed to stop: \(error)")
+                // Clear the node reference anyway
+                node = nil
+                try? StateLocker.unlock(.lightning)
+            }
+        }
+
+        // Restart the node with the new configuration
+        try await setup(walletIndex: currentWalletIndex, electrumServerUrl: serverUrl)
+        try await start()
+
+        Logger.info("Node restarted successfully with new Electrum server")
     }
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc

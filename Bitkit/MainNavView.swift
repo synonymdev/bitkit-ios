@@ -273,6 +273,8 @@ struct MainNavView: View {
                     .backToWalletButton()
             case .profileIntro:
                 ProfileIntroView()
+            case .scanner:
+                ScannerScreen()
 
             // Shop
             case .shopIntro:
@@ -358,8 +360,7 @@ struct MainNavView: View {
             case .node:
                 NodeStateView()
             case .electrumSettings:
-                Text("Coming Soon")
-                    .backToWalletButton()
+                ElectrumSettingsScreen()
             case .addressViewer:
                 AddressViewer()
 

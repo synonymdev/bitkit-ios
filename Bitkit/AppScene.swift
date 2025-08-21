@@ -1,3 +1,4 @@
+import LDKNode
 import SwiftUI
 
 struct AppScene: View {
@@ -14,6 +15,7 @@ struct AppScene: View {
     @StateObject private var transfer = TransferViewModel()
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var settings = SettingsViewModel()
+    @StateObject private var suggestionsManager = SuggestionsManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -62,6 +64,7 @@ struct AppScene: View {
             .environmentObject(transfer)
             .environmentObject(widgets)
             .environmentObject(settings)
+            .environmentObject(suggestionsManager)
             .onAppear {
                 if !settings.requirePinOnLaunch {
                     isPinVerified = true
@@ -173,7 +176,7 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        wallet.addOnEvent(id: "activity-sync") { [weak activity] _ in
+        wallet.addOnEvent(id: "activity-sync") { [weak activity] (_: Event) in
             // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
             Task { try? await activity?.syncLdkNodePayments() }
         }
