@@ -5,12 +5,8 @@ import SwiftUI
 
 @MainActor
 class AppViewModel: ObservableObject {
-    // Decoded from bitkit-core
-    @Published var scannedLightningInvoice: LightningInvoice?
-    // Should be removed once we have the string on the above struct: https://github.com/synonymdev/bitkit-core/issues/4
-    @Published var scannedLightningBolt11Invoice: String?
-
     // Send flow
+    @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
 
@@ -238,7 +234,6 @@ extension AppViewModel {
 
     private func handleScannedLightningInvoice(_ invoice: LightningInvoice, bolt11: String, onchainInvoice: OnChainInvoice? = nil) {
         scannedLightningInvoice = invoice
-        scannedLightningBolt11Invoice = bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
         scannedOnchainInvoice = onchainInvoice // Keep onchain invoice if provided
         selectedWalletToPayFrom = .lightning
 
@@ -356,7 +351,6 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
-        scannedLightningBolt11Invoice = nil
     }
 }
 

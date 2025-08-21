@@ -19,8 +19,8 @@ struct PaymentNavigationHelper {
             return false
         }
 
-        // Onchain invoices don't use quickpay
-        guard app.scannedOnchainInvoice == nil else {
+        // We need a lightning invoice to use quickpay
+        guard app.scannedLightningInvoice != nil else {
             return false
         }
 
@@ -37,11 +37,7 @@ struct PaymentNavigationHelper {
         }
 
         // Check regular lightning invoice
-        if let lightningInvoice = app.scannedLightningInvoice {
-            return lightningInvoice.amountSatoshis <= quickpayAmountSats
-        }
-
-        return false
+        return app.scannedLightningInvoice!.amountSatoshis <= quickpayAmountSats
     }
 
     /// Centralized method to open the appropriate sheet based on the current state

@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum SendRoute {
+enum SendRoute: Hashable {
     case options
     case manual
     case scan
@@ -8,7 +8,7 @@ enum SendRoute {
     case utxoSelection
     case confirm
     case quickpay
-    case success
+    case success(String)
     case failure
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -64,11 +64,10 @@ struct SendSheet: View {
             SendConfirmationView(navigationPath: $navigationPath)
         case .quickpay:
             SendQuickpay(navigationPath: $navigationPath)
-        case .success:
-            SendSuccess()
+        case let .success(paymentId):
+            SendSuccess(paymentId: paymentId)
         case .failure:
-            // SendFailure()
-            Text("Failure")
+            SendFailure()
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
