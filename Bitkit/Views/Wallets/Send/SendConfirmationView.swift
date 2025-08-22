@@ -4,12 +4,12 @@ import SwiftUI
 
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
     @Binding var navigationPath: [SendRoute]
-    @State private var primaryDisplay: PrimaryDisplay = .bitcoin
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
     @State private var showPinCheck = false
@@ -40,7 +40,7 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                    MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
                         .padding(.bottom, 32)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
@@ -226,89 +226,87 @@ struct SendConfirmationView: View {
 
     private func performPayment() async throws {
         do {
-            if app.selectedWalletToPayFrom == .lightning, let bolt11 = app.scannedLightningBolt11Invoice {
-                // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying
-                // different paths.
-                // So we need to handle all these cases here.
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    Task {
-                        do {
-                            let paymentHash = try await wallet.send(
-                                bolt11: bolt11,
-                                sats: wallet.sendAmountSats,
-                                onSuccess: {
-                                    Logger.info("Lightning payment successful")
-                                    continuation.resume()
-                                    navigationPath.append(.success)
-                                },
-                                onFail: { reason in
-                                    Logger.error("Lightning payment failed: \(reason)")
-                                    app.toast(type: .error, title: "Payment failed", description: reason)
-                                    continuation.resume(
-                                        throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
-                                    )
-                                }
-                            )
-                            Logger.info("Lightning send initiated with payment hash: \(paymentHash)")
-                        } catch {
-                            continuation.resume(throwing: error)
-                        }
-                    }
-                }
+            if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+                let amount = invoice.amountSatoshis
+                // Set the amount for the success screen
+                wallet.sendAmountSats = amount
+
+                // Perform the Lightning payment
+                let paymentHash = try await wallet.send(bolt11: invoice.bolt11, sats: amount)
+                Logger.info("Lightning payment successful: \(paymentHash)")
+                navigationPath.append(.success(paymentHash))
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                let sats = wallet.sendAmountSats ?? invoice.amountSatoshis
-                let txid = try await wallet.send(address: invoice.address, sats: sats)
+                let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
+                let txid = try await wallet.send(address: invoice.address, sats: amount)
 
                 Logger.info("Onchain send result txid: \(txid)")
 
-                // TODO: this send function returns instantly, find a way to check it was actually sent before reseting send state
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-                navigationPath.append(.success)
+                navigationPath.append(.success(txid))
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]
                 )
             }
         } catch {
-            app.toast(error)
-            Logger.error("Error sending: \(error)")
-            throw error // Passing error up to SwipeButton so it knows to reset state
-        }
-    }
+            Logger.error("Payment failed: \(error)")
 
-    @ViewBuilder
-    func toView(_ address: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            CaptionMText(t("wallet__send_to"))
-            BodyMBoldText(address.ellipsis(maxLength: 20), textColor: .textPrimary)
+            // TODO: remove toast and use failure screen instead
+            app.toast(error)
+
+            // TODO: this is a hack to make sure the navigation binding is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                navigationPath.append(.failure)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 16)
     }
 
     @ViewBuilder
     func onchainView(_ invoice: OnChainInvoice) -> some View {
-        VStack {
-            toView(invoice.address)
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionMText(t("wallet__send_to"))
+                BodySSBText(invoice.address.ellipsis(maxLength: 20))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.vertical)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Divider()
+            Divider()
 
-            // HStack {
-            //     VStack(alignment: .leading) {
-            //         Text("Speed and fee")
-            //             .foregroundColor(.secondary)
-            //             .font(.caption)
-            //         Text("TODO")
-            //     }
-            //     Spacer()
-            //     VStack(alignment: .leading) {
-            //         Text("Confirming in")
-            //             .foregroundColor(.secondary)
-            //             .font(.caption)
-            //         Text("TODO")
-            //     }
-            // }
-            // .padding(.vertical)
+            HStack {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("wallet__send_fee_and_speed"))
+                    HStack(spacing: 0) {
+                        Image("timer")
+                            .foregroundColor(.brandAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 6)
+
+                        // TODO: implement fee settings
+                        BodySSBText("(TODO)")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("wallet__send_confirming_in"))
+                    HStack(spacing: 0) {
+                        Image("timer")
+                            .foregroundColor(.brandAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 6)
+
+                        // TODO: get actual confirmation time
+                        BodySSBText("(TODO)")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.vertical)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
         }
@@ -316,54 +314,64 @@ struct SendConfirmationView: View {
 
     @ViewBuilder
     func lightningView(_: LightningInvoice) -> some View {
-        VStack {
-            toView(app.scannedLightningBolt11Invoice ?? "")
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionMText(t("wallet__send_invoice"))
+                BodySSBText(app.scannedLightningInvoice?.bolt11.ellipsis(maxLength: 20) ?? "")
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .padding(.vertical)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
 
             HStack {
-                VStack(alignment: .leading) {
-                    Text(t("wallet__send_fee_and_speed"))
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                    Text("1")
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("wallet__send_fee_and_speed"))
+                    HStack(spacing: 0) {
+                        Image("bolt-hollow")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 6)
+
+                        // TODO: get actual fee
+                        BodySSBText("Instant (±$0.01)")
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
                 Spacer()
-                VStack(alignment: .leading) {
-                    Text("Confirms in")
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                    Text("1 second")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("wallet__send_invoice_expiration"))
+                    HStack(spacing: 0) {
+                        Image("timer-alt")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 6)
+
+                        // TODO: get actual fee
+                        BodySSBText("Expires in 10 minutes")
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
+
+            if let description = app.scannedLightningInvoice?.description, !description.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    CaptionMText(t("wallet__note"))
+                    BodySSBText(description)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.bottom, 16)
+
+                Divider()
+            }
         }
     }
-}
-
-#Preview {
-    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
-        .sheet(
-            isPresented: .constant(true),
-            content: {
-                NavigationStack {
-                    SendConfirmationView(navigationPath: .constant([]))
-                        .environmentObject(AppViewModel())
-                        .environmentObject(SheetViewModel())
-                        .environmentObject(WalletViewModel())
-                        .environmentObject(SettingsViewModel())
-                        .environmentObject(
-                            {
-                                let vm = CurrencyViewModel()
-                                vm.primaryDisplay = .bitcoin
-                                return vm
-                            }()
-                        )
-                }
-                .presentationDetents([.height(UIScreen.screenHeight - 120)])
-            }
-        )
-        .preferredColorScheme(.dark)
 }

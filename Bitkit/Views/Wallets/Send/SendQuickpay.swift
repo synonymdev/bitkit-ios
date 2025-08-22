@@ -59,7 +59,7 @@ struct SendQuickpay: View {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
             if let invoice = app.scannedLightningInvoice {
-                MoneyStack(sats: Int(invoice.amountSatoshis))
+                MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
             }
 
             Spacer()
@@ -70,7 +70,10 @@ struct SendQuickpay: View {
 
             DisplayText(t("wallet__send_quickpay__title"), accentColor: .purpleAccent)
         }
-        .padding(.horizontal)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .sheetBackground()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             Task {
                 try await performPayment()
@@ -92,9 +95,9 @@ struct SendQuickpay: View {
                 callbackUrl: lnurlPayData.callback,
                 amount: amount
             )
-        } else if let scannedInvoice = app.scannedLightningBolt11Invoice {
-            wallet.sendAmountSats = app.scannedLightningInvoice?.amountSatoshis ?? 0
-            bolt11Invoice = scannedInvoice
+        } else if let scannedInvoice = app.scannedLightningInvoice {
+            wallet.sendAmountSats = scannedInvoice.amountSatoshis
+            bolt11Invoice = scannedInvoice.bolt11
         }
 
         guard let bolt11 = bolt11Invoice else {
@@ -104,38 +107,19 @@ struct SendQuickpay: View {
         }
 
         do {
-            // A LN payment can throw an error right away, be successful right away, or take a while to complete/fail because it's retrying different
-            // paths.
-            // So we need to handle all these cases here.
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                Task {
-                    do {
-                        let paymentHash = try await wallet.send(
-                            bolt11: bolt11,
-                            sats: wallet.sendAmountSats,
-                            onSuccess: {
-                                Logger.info("Quickpay payment successful")
-                                continuation.resume()
-                                navigationPath.append(.success)
-                            },
-                            onFail: { reason in
-                                Logger.error("Quickpay payment failed: \(reason)")
-                                continuation.resume(
-                                    throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
-                                )
-                                navigationPath.append(.failure)
-                            }
-                        )
-                        Logger.info("Quickpay send initiated with payment hash: \(paymentHash)")
-                    } catch {
-                        continuation.resume(throwing: error)
-                    }
-                }
-            }
+            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats)
+            Logger.info("Quickpay payment successful: \(paymentHash)")
+            navigationPath.append(.success(paymentHash))
         } catch {
-            Logger.error("Error sending: \(error)")
-            navigationPath.append(.failure)
-            throw error // Passing error up to SwipeButton so it knows to reset state
+            Logger.error("Quickpay payment failed: \(error)")
+
+            // TODO: remove toast and use failure screen instead
+            app.toast(error)
+
+            // TODO: this is a hack to make sure the navigation binding is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                navigationPath.append(.failure)
+            }
         }
     }
 }

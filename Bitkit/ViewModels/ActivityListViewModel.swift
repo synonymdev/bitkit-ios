@@ -44,9 +44,9 @@ class ActivityListViewModel: ObservableObject {
         recentlyUsedTags.removeAll { $0 == tag }
         // Add to the front of the list
         recentlyUsedTags.insert(tag, at: 0)
-        // Keep only the most recent 20 tags to prevent unlimited growth
-        if recentlyUsedTags.count > 20 {
-            recentlyUsedTags = Array(recentlyUsedTags.prefix(20))
+        // Keep only the most recent 10 tags to prevent unlimited growth
+        if recentlyUsedTags.count > 10 {
+            recentlyUsedTags = Array(recentlyUsedTags.prefix(10))
         }
 
         // Persist to storage
@@ -192,6 +192,32 @@ class ActivityListViewModel: ObservableObject {
 
     func getActivities(withTag tag: String) async throws -> [Activity] {
         try await coreService.activity.get(tags: [tag])
+    }
+
+    /// Find activity by payment hash or transaction ID
+    func findActivity(byPaymentId paymentId: String) async throws -> Activity {
+        guard !paymentId.isEmpty else {
+            throw AppError(message: "Payment ID is empty", debugMessage: nil)
+        }
+
+        let activities = try await coreService.activity.get(filter: .all, limit: 50)
+        let activity = activities.first { activity in
+            switch activity {
+            case let .lightning(ln):
+                return ln.id == paymentId
+            case let .onchain(on):
+                return on.txId == paymentId
+            }
+        }
+
+        guard let activity else {
+            throw AppError(
+                message: "Activity not found",
+                debugMessage: "Could not find activity for payment ID: \(paymentId)"
+            )
+        }
+
+        return activity
     }
 
     func getAllPossibleTags() async throws -> [String] {

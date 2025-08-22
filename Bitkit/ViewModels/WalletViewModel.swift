@@ -268,31 +268,73 @@ class WalletViewModel: ObservableObject {
         Logger.info("Selected UTXOs: \(String(describing: selectedUtxo))")
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, onSuccess: @escaping () -> Void, onFail: @escaping (String) -> Void) async throws -> PaymentHash {
+    // NOTE: Let's keep this here for now until we are sure new version below is working
+    // func send(
+    //     bolt11: String,
+    //     sats: UInt64? = nil,
+    //     onSuccess: @escaping (PaymentHash) -> Void,
+    //     onFail: @escaping (String) -> Void,
+    // ) async throws -> PaymentHash {
+    //     let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
+    //     let eventId = String(hash)
+
+    //     // Add event listener for this specific payment
+    //     addOnEvent(id: eventId) { event in
+    //         switch event {
+    //         case let .paymentSuccessful(paymentId, paymentHash, _, _):
+    //             if paymentHash == hash {
+    //                 self.removeOnEvent(id: eventId)
+    //                 onSuccess(paymentHash)
+    //             }
+    //         case .paymentFailed(paymentId: _, let paymentHash, let reason):
+    //             // TODO: this is not working for routeNotFound
+    //             if paymentHash == hash {
+    //                 self.removeOnEvent(id: eventId)
+    //                 onFail(reason.debugDescription)
+    //             }
+    //         default:
+    //             onFail("Unknown error")
+    //         }
+    //     }
+
+    //     syncState()
+    //     return hash
+    // }
+
+    /// Sends a lightning payment and waits for the result using async/await
+    /// A LN payment can throw an error right away, be successful right away,
+    /// or take a while to complete/fail because it's retrying different paths.
+    /// So we need to handle all these cases here.
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         let eventId = String(hash)
 
-        // Add event listener for this specific payment
-        addOnEvent(id: eventId) { event in
-            switch event {
-            case let .paymentSuccessful(paymentId, paymentHash, _, _):
-                if paymentHash == hash {
-                    self.removeOnEvent(id: eventId)
-                    onSuccess()
+        return try await withCheckedThrowingContinuation { continuation in
+            // Add event listener for this specific payment
+            addOnEvent(id: eventId) { event in
+                switch event {
+                case let .paymentSuccessful(paymentId, paymentHash, _, _):
+                    if paymentHash == hash {
+                        self.removeOnEvent(id: eventId)
+                        continuation.resume(returning: paymentHash)
+                    }
+                case .paymentFailed(paymentId: _, let paymentHash, let reason):
+                    // TODO: this is not working for routeNotFound
+                    if paymentHash == hash {
+                        self.removeOnEvent(id: eventId)
+                        continuation.resume(throwing: NSError(
+                            domain: "Lightning",
+                            code: -1,
+                            userInfo: [NSLocalizedDescriptionKey: reason.debugDescription]
+                        ))
+                    }
+                default:
+                    break
                 }
-            case .paymentFailed(paymentId: _, let paymentHash, let reason):
-                // TODO: this is not working for routeNotFound
-                if paymentHash == hash {
-                    self.removeOnEvent(id: eventId)
-                    onFail(reason.debugDescription)
-                }
-            default:
-                break
             }
-        }
 
-        syncState()
-        return hash
+            syncState()
+        }
     }
 
     func closeChannel(_ channel: ChannelDetails) async throws {
