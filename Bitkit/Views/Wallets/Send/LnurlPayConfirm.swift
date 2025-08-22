@@ -277,37 +277,26 @@ struct LnurlPayConfirm: View {
         let amount = wallet.sendAmountSats ?? lnurlPayData.minSendable
 
         // Fetch the Lightning invoice from LNURL
-        let bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
+        let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
             callbackUrl: lnurlPayData.callback,
             amount: amount,
             comment: comment.isEmpty ? nil : comment
         )
 
-        // Perform the Lightning payment
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            Task {
-                do {
-                    let paymentHash = try await wallet.send(
-                        bolt11: bolt11Invoice,
-                        sats: wallet.sendAmountSats,
-                        onSuccess: {
-                            Logger.info("LNURL payment successful")
-                            continuation.resume()
-                            navigationPath.append(.success)
-                        },
-                        onFail: { reason in
-                            Logger.error("LNURL payment failed: \(reason)")
-                            continuation.resume(
-                                throwing: NSError(domain: "Lightning", code: -1, userInfo: [NSLocalizedDescriptionKey: reason])
-                            )
-                            navigationPath.append(.failure)
-                        }
-                    )
-                    Logger.info("LNURL send initiated with payment hash: \(paymentHash)")
-                } catch {
-                    continuation.resume(throwing: error)
-                    navigationPath.append(.failure)
-                }
+        do {
+            // Perform the Lightning payment
+            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats)
+            Logger.info("LNURL payment successful: \(paymentHash)")
+            navigationPath.append(.success(paymentHash))
+        } catch {
+            Logger.error("LNURL payment failed: \(error)")
+
+            // TODO: remove toast and use failure screen instead
+            app.toast(error)
+
+            // TODO: this is a hack to make sure the navigation binding is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                navigationPath.append(.failure)
             }
         }
     }

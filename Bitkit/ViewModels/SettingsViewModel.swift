@@ -58,7 +58,6 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
-    @AppStorage("showRecentlyPaidContacts") var showRecentlyPaidContacts: Bool = true // TODO: probably not going to be in anytime soon
     @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = true
     @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = false
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
