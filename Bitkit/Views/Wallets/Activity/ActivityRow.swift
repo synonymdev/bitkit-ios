@@ -90,13 +90,20 @@ struct ActivityRow: View {
         }
     }
 
-    @ViewBuilder
-    private var amountView: some View {
+    private var amount: Int {
         switch item {
         case let .lightning(activity):
-            MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
+            if activity.txType == .sent {
+                return Int(activity.value + (activity.fee ?? 0))
+            } else {
+                return Int(activity.value)
+            }
         case let .onchain(activity):
-            MoneyCell(sats: Int(activity.value), prefix: amountPrefix)
+            if activity.txType == .sent {
+                return Int(activity.value + activity.fee)
+            } else {
+                return Int(activity.value)
+            }
         }
     }
 
@@ -126,7 +133,8 @@ struct ActivityRow: View {
             }
 
             Spacer()
-            amountView
+
+            MoneyCell(sats: amount, prefix: amountPrefix)
         }
         .padding(.vertical, 8)
     }

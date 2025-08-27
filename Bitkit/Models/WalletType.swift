@@ -21,4 +21,8 @@ enum WalletType {
             return "ln"
         }
     }
+
+    mutating func toggle() {
+        self = self == .lightning ? .onchain : .lightning
+    }
 }

@@ -32,19 +32,30 @@ struct ActivityExplorerView: View {
         return URL(string: "\(baseUrl)/tx/\(txId)")
     }
 
-    @ViewBuilder
-    private var amountView: some View {
+    private var amountPrefix: String {
         switch item {
         case let .lightning(activity):
-            MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
+            return activity.txType == .sent ? "-" : "+"
         case let .onchain(activity):
-            MoneyStack(sats: Int(activity.value), prefix: activity.txType == .sent ? "-" : "+", showSymbol: false)
+            return activity.txType == .sent ? "-" : "+"
         }
     }
 
-    @ViewBuilder
-    private var activityTypeIcon: some View {
-        ActivityIcon(activity: item, size: 48)
+    private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64, txType: PaymentType) {
+        switch item {
+        case let .lightning(activity):
+            return (activity.timestamp, activity.fee, activity.value, activity.txType)
+        case let .onchain(activity):
+            return (activity.timestamp, activity.fee, activity.value, activity.txType)
+        }
+    }
+
+    private var amount: Int {
+        if activity.txType == .sent {
+            return Int(activity.value + (activity.fee ?? 0))
+        } else {
+            return Int(activity.value)
+        }
     }
 
     private struct InfoSection: View {
@@ -75,9 +86,9 @@ struct ActivityExplorerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .bottom) {
-                amountView
+                MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                 Spacer()
-                activityTypeIcon
+                ActivityIcon(activity: item, size: 48)
             }
             .padding(.vertical)
             .padding(.bottom, 16)

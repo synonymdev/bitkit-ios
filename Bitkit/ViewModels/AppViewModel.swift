@@ -245,15 +245,9 @@ extension AppViewModel {
     }
 
     private func handleScannedOnchainInvoice(_ invoice: OnChainInvoice) {
+        selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice
         scannedLightningInvoice = nil
-        selectedWalletToPayFrom = .onchain
-
-        if invoice.amountSatoshis > 0 {
-            Logger.debug("Found amount in invoice, proceeding with payment")
-        } else {
-            Logger.debug("No amount found in invoice, proceeding entering amount manually")
-        }
     }
 
     private func handleLnurlPayInvoice(_ data: LnurlPayData) {
@@ -333,16 +327,6 @@ extension AppViewModel {
     private func handleNodeUri(_ url: String, _ network: NetworkType) {
         sheetViewModel.hideSheet()
         navigationViewModel.navigate(.fundManual(nodeUri: url))
-    }
-
-    var invoiceRequiresCustomAmount: Bool? {
-        if let invoice = scannedLightningInvoice {
-            return invoice.amountSatoshis == 0
-        } else if let invoice = scannedOnchainInvoice {
-            return invoice.amountSatoshis == 0
-        } else {
-            return nil
-        }
     }
 
     func resetSendState() {

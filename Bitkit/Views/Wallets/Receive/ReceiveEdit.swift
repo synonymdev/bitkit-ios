@@ -117,7 +117,7 @@ struct ReceiveEdit: View {
             HStack(spacing: 16) {
                 NumberPadActionButton(
                     text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                    imageName: "transfer",
+                    imageName: "arrow-up-down",
                     color: .brandAccent
                 ) {
                     withAnimation {

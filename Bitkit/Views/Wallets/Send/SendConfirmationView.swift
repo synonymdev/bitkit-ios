@@ -16,6 +16,7 @@ struct SendConfirmationView: View {
     @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
+    @State private var transactionFee: Int = 0
 
     private var biometryTypeName: String {
         switch Env.biometryType {
@@ -35,17 +36,17 @@ struct SendConfirmationView: View {
     }
 
     var body: some View {
-        VStack {
+        VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__send_review"), showBackButton: true)
 
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 0) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
-                        .padding(.bottom, 32)
+                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                        .padding(.bottom, 44)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 44)
                     onchainView(invoice)
                 }
             }
@@ -54,10 +55,7 @@ struct SendConfirmationView: View {
 
             Spacer()
 
-            SwipeButton(
-                title: t("wallet__send_swipe"),
-                accentColor: .greenAccent
-            ) {
+            SwipeButton(title: t("wallet__send_swipe"), accentColor: .greenAccent) {
                 // Check if we need to show warning for amounts over $100 USD
                 if settings.warnWhenSendingOver100 {
                     let sats: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -114,6 +112,14 @@ struct SendConfirmationView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            await calculateTransactionFee()
+        }
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+            Task {
+                await calculateTransactionFee()
+            }
+        }
         .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
             Button(t("common__dialog_cancel"), role: .cancel) {
                 alertContinuation?.resume(returning: false)
@@ -227,7 +233,7 @@ struct SendConfirmationView: View {
     private func performPayment() async throws {
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                let amount = invoice.amountSatoshis
+                let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
 
@@ -238,6 +244,9 @@ struct SendConfirmationView: View {
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let txid = try await wallet.send(address: invoice.address, sats: amount)
+
+                // Set the amount for the success screen
+                wallet.sendAmountSats = amount
 
                 Logger.info("Onchain send result txid: \(txid)")
 
@@ -269,38 +278,54 @@ struct SendConfirmationView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .padding(.vertical)
+            .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
 
             HStack {
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("wallet__send_fee_and_speed"))
-                    HStack(spacing: 0) {
-                        Image("timer")
-                            .foregroundColor(.brandAccent)
-                            .frame(width: 16, height: 16)
-                            .padding(.trailing, 6)
+                Button(action: {
+                    navigationPath.append(.feeRate)
+                }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CaptionMText(t("wallet__send_fee_and_speed"))
+                        HStack(spacing: 0) {
+                            Image(wallet.selectedSpeed.iconName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .foregroundColor(wallet.selectedSpeed.iconColor)
+                                .frame(width: 16, height: 16)
+                                .padding(.trailing, 4)
 
-                        // TODO: implement fee settings
-                        BodySSBText("(TODO)")
+                            if transactionFee > 0 {
+                                let feeText = "\(wallet.selectedSpeed.displayTitle) ("
+                                HStack(spacing: 0) {
+                                    BodySSBText(feeText)
+                                    MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                                    BodySSBText(")")
+                                }
+
+                                Image("pencil")
+                                    .foregroundColor(.textPrimary)
+                                    .frame(width: 12, height: 12)
+                                    .padding(.leading, 6)
+                            }
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
 
                 VStack(alignment: .leading, spacing: 8) {
                     CaptionMText(t("wallet__send_confirming_in"))
                     HStack(spacing: 0) {
-                        Image("timer")
+                        Image("clock")
                             .foregroundColor(.brandAccent)
                             .frame(width: 16, height: 16)
-                            .padding(.trailing, 6)
+                            .padding(.trailing, 4)
 
-                        // TODO: get actual confirmation time
-                        BodySSBText("(TODO)")
+                        BodySSBText(wallet.selectedSpeed.displayDescription)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,7 +346,7 @@ struct SendConfirmationView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            .padding(.vertical)
+            .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Divider()
@@ -333,7 +358,7 @@ struct SendConfirmationView: View {
                         Image("bolt-hollow")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
-                            .padding(.trailing, 6)
+                            .padding(.trailing, 4)
 
                         // TODO: get actual fee
                         BodySSBText("Instant (±$0.01)")
@@ -349,7 +374,7 @@ struct SendConfirmationView: View {
                         Image("timer-alt")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
-                            .padding(.trailing, 6)
+                            .padding(.trailing, 4)
 
                         // TODO: get actual fee
                         BodySSBText("Expires in 10 minutes")
@@ -371,6 +396,33 @@ struct SendConfirmationView: View {
                 .padding(.bottom, 16)
 
                 Divider()
+            }
+        }
+    }
+
+    private func calculateTransactionFee() async {
+        guard let address = app.scannedOnchainInvoice?.address,
+              let amountSats = wallet.sendAmountSats,
+              let feeRate = wallet.selectedFeeRateSatsPerVByte
+        else {
+            return
+        }
+
+        do {
+            let fee = try await wallet.calculateTotalFee(
+                address: address,
+                amountSats: amountSats,
+                satsPerVByte: feeRate,
+                utxosToSpend: wallet.selectedUtxos
+            )
+
+            await MainActor.run {
+                transactionFee = Int(fee)
+            }
+        } catch {
+            Logger.error("Failed to calculate actual fee: \(error)")
+            await MainActor.run {
+                transactionFee = 0
             }
         }
     }

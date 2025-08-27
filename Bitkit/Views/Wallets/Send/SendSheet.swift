@@ -7,6 +7,8 @@ enum SendRoute: Hashable {
     case amount
     case utxoSelection
     case confirm
+    case feeRate
+    case feeCustom
     case quickpay
     case success(String)
     case failure
@@ -33,7 +35,12 @@ struct SendSheetItem: SheetItem {
 }
 
 struct SendSheet: View {
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
     let config: SendSheetItem
+
     @State private var navigationPath: [SendRoute] = []
 
     var body: some View {
@@ -43,6 +50,17 @@ struct SendSheet: View {
                     .navigationDestination(for: SendRoute.self) { route in
                         viewForRoute(route)
                     }
+            }
+        }
+        .onAppear {
+            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+
+            Task {
+                do {
+                    try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+                } catch {
+                    Logger.error("Failed to set default fee rate: \(error)")
+                }
             }
         }
     }
@@ -62,6 +80,10 @@ struct SendSheet: View {
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
             SendConfirmationView(navigationPath: $navigationPath)
+        case .feeRate:
+            SendFeeRate(navigationPath: $navigationPath)
+        case .feeCustom:
+            SendFeeCustom(navigationPath: $navigationPath)
         case .quickpay:
             SendQuickpay(navigationPath: $navigationPath)
         case let .success(paymentId):
