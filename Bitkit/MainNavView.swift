@@ -126,7 +126,6 @@ struct MainNavView: View {
             item: $sheets.sendSheetItem,
             onDismiss: {
                 sheets.hideSheet()
-                app.resetSendState()
             }
         ) {
             config in SendSheet(config: config)

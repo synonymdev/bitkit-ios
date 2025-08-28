@@ -107,8 +107,6 @@ struct TabBar: View {
     }
 
     private func onSendPress() {
-        // TODO: find a better place to reset send state
-        app.resetSendState()
         sheets.showSheet(.send)
     }
 

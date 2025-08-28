@@ -97,7 +97,7 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
 
-        let satsPerVbyte = fees.getSatsPerVbyte(for: speed)
+        let satsPerVbyte = speed.getFeeRate(from: fees)
 
         let paymentHash = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
         lightningSetupStep = 0

@@ -207,7 +207,7 @@ class LightningService {
         Logger.debug("Syncing LDK...")
         try await ServiceQueue.background(.ldk) {
             try node.syncWallets()
-            //            try? self.setMaxDustHtlcExposureForCurrentChannels()
+            // try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
         Logger.info("LDK synced")
     }
@@ -298,7 +298,7 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        Logger.info("Sending \(sats) sats to \(address)")
+        Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte")
 
         do {
             return try await ServiceQueue.background(.ldk) {
@@ -584,6 +584,40 @@ extension LightningService {
                     parentTxid: parentTxid,
                     urgent: urgent
                 )
+        }
+    }
+}
+
+// MARK: Fees
+
+extension LightningService {
+    /// Calculates the total fee for a transaction
+    /// - Parameters:
+    ///   - address: The destination address
+    ///   - amountSats: The amount to send in satoshis
+    ///   - satsPerVByte: The fee rate in satoshis per virtual byte
+    ///   - utxosToSpend: Optional specific UTXOs to spend
+    /// - Returns: The total fee in satoshis
+    /// - Throws: ServiceError if node is not setup or calculation fails
+    func calculateTotalFee(
+        address: String,
+        amountSats: UInt64,
+        satsPerVByte: UInt32,
+        utxosToSpend: [SpendableUtxo]? = nil
+    ) async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            let fee = try node.onchainPayment().calculateTotalFee(
+                address: address,
+                amountSats: amountSats,
+                feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVByte),
+                utxosToSpend: utxosToSpend
+            )
+
+            return fee
         }
     }
 }

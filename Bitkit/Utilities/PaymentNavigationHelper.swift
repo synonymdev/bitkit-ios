@@ -72,16 +72,26 @@ struct PaymentNavigationHelper {
             return
         }
 
-        // If nil then it's not an invoice we're dealing with
-        if app.invoiceRequiresCustomAmount == true {
-            sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
-        } else if app.invoiceRequiresCustomAmount == false {
-            // Regular lightning/onchain invoice
-            if shouldUseQuickpay {
+        // Handle lightning invoice
+        if app.scannedLightningInvoice != nil {
+            let amount = app.scannedLightningInvoice!.amountSatoshis
+
+            if amount > 0 && shouldUseQuickpay {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .quickpay))
             } else {
-                sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
+                if amount == 0 {
+                    sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+                } else {
+                    sheetViewModel.showSheet(.send, data: SendConfig(view: .confirm))
+                }
             }
+            return
+        }
+
+        // Handle onchain invoice
+        if app.scannedOnchainInvoice != nil {
+            sheetViewModel.showSheet(.send, data: SendConfig(view: .amount))
+            return
         }
     }
 
@@ -106,18 +116,22 @@ struct PaymentNavigationHelper {
             }
         }
 
-        // If nil then it's not an invoice we're dealing with
-        if app.invoiceRequiresCustomAmount == true {
-            return .amount
-        } else if app.invoiceRequiresCustomAmount == false {
-            // Regular lightning/onchain invoice
-            if shouldUseQuickpay {
+        // Handle lightning invoice
+        if app.scannedLightningInvoice != nil {
+            let amount = app.scannedLightningInvoice!.amountSatoshis
+
+            if amount > 0 && shouldUseQuickpay {
                 return .quickpay
             } else {
-                return .confirm
+                if amount == 0 {
+                    return .amount
+                } else {
+                    return .confirm
+                }
             }
         }
 
+        // Handle onchain invoice
         return .amount
     }
 }

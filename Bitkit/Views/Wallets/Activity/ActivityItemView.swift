@@ -46,12 +46,20 @@ struct ActivityItemView: View {
         isSent ? "-" : "+"
     }
 
-    private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64) {
+    private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64, txType: PaymentType) {
         switch viewModel.activity {
         case let .lightning(activity):
-            return (activity.timestamp, activity.fee, activity.value)
+            return (activity.timestamp, activity.fee, activity.value, activity.txType)
         case let .onchain(activity):
-            return (activity.timestamp, activity.fee, activity.value)
+            return (activity.timestamp, activity.fee, activity.value, activity.txType)
+        }
+    }
+
+    private var amount: Int {
+        if activity.txType == .sent {
+            return Int(activity.value + (activity.fee ?? 0))
+        } else {
+            return Int(activity.value)
         }
     }
 
@@ -89,9 +97,9 @@ struct ActivityItemView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .bottom) {
-                amountView
+                MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                 Spacer()
-                activityTypeIcon
+                ActivityIcon(activity: viewModel.activity, size: 48)
             }
             .padding(.vertical)
 
@@ -124,21 +132,6 @@ struct ActivityItemView: View {
                 }
             }
         }
-    }
-
-    @ViewBuilder
-    private var amountView: some View {
-        switch viewModel.activity {
-        case let .lightning(activity):
-            MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
-        case let .onchain(activity):
-            MoneyStack(sats: Int(activity.value), prefix: amountPrefix, showSymbol: false)
-        }
-    }
-
-    @ViewBuilder
-    private var activityTypeIcon: some View {
-        ActivityIcon(activity: viewModel.activity, size: 48)
     }
 
     @ViewBuilder
@@ -249,7 +242,7 @@ struct ActivityItemView: View {
                         Image("user")
                             .foregroundColor(accentColor)
                             .frame(width: 16, height: 16)
-                        BodySSBText("\(activity.value)")
+                        MoneyText(sats: Int(activity.value), size: .bodySSB)
                     }
                     .padding(.bottom, 16)
 
@@ -267,7 +260,7 @@ struct ActivityItemView: View {
                             Image("timer")
                                 .foregroundColor(accentColor)
                                 .frame(width: 16, height: 16)
-                            BodySSBText("\(fee)")
+                            MoneyText(sats: Int(fee), size: .bodySSB)
                         }
                         .padding(.bottom, 16)
 
