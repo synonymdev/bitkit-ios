@@ -10,6 +10,7 @@ struct NumberPadActionButton: View {
     var imageName: String?
     var color: Color = .purpleAccent
     var variant: NumberPadActionButtonVariant = .primary
+    var disabled: Bool = false
     var action: () -> Void
 
     var body: some View {
@@ -26,7 +27,7 @@ struct NumberPadActionButton: View {
                         .frame(width: 16, height: 16)
                 }
 
-                CaptionMText(text.uppercased(), textColor: color)
+                CaptionMText(text, textColor: color)
             }
             .frame(height: 28)
             .padding(.horizontal, 8)
@@ -37,6 +38,7 @@ struct NumberPadActionButton: View {
             )
             .cornerRadius(8)
         }
+        .disabled(disabled)
     }
 }
 
@@ -67,7 +69,7 @@ struct NumberPadActionButton: View {
 
             NumberPadActionButton(
                 text: "Bitcoin",
-                imageName: "transfer"
+                imageName: "arrow-up-down"
             ) {
                 print("Currency toggle tapped")
             }

@@ -19,7 +19,8 @@ class WalletViewModel: ObservableObject {
     // Send flow
     @Published var sendAmountSats: UInt64?
     @Published var selectedFeeRateSatsPerVByte: UInt32?
-    @Published var selectedUtxo: [SpendableUtxo]?
+    @Published var selectedSpeed: TransactionSpeed = .normal
+    @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
 
     // LNURL withdraw flow
@@ -206,19 +207,24 @@ class WalletViewModel: ObservableObject {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
 
-        if let selectedUtxo {
-            Logger.info("Using selected UTXO for send: \(selectedUtxo)")
+        if let selectedUtxos {
+            Logger.info("Using selected UTXO for send: \(selectedUtxos)")
         } else {
             Logger.warn("No UTXO selected, using default selection algorithm.")
         }
 
         let txid = try await lightningService.send(
-            address: address, sats: sats, satsPerVbyte: selectedFeeRateSatsPerVByte, utxosToSpend: selectedUtxo
+            address: address,
+            sats: sats,
+            satsPerVbyte: selectedFeeRateSatsPerVByte,
+            utxosToSpend: selectedUtxos
         )
+
         Task {
             // Best to auto sync on chain so we have latest state
             try await sync()
         }
+
         return txid
     }
 
@@ -235,7 +241,7 @@ class WalletViewModel: ObservableObject {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
 
-        selectedFeeRateSatsPerVByte = fees.getSatsPerVbyte(for: speed)
+        selectedFeeRateSatsPerVByte = speed.getFeeRate(from: fees)
 
         Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
     }
@@ -258,14 +264,70 @@ class WalletViewModel: ObservableObject {
             "Selecting UTXOs with algorithm: \(coinSelectionAlgorythm), target amount: \(sendAmountSats) sats, fee rate: \(selectedFeeRateSatsPerVByte) sats/vbyte"
         )
 
-        selectedUtxo = try await lightningService.selectUtxosWithAlgorithm(
+        selectedUtxos = try await lightningService.selectUtxosWithAlgorithm(
             targetAmountSats: sendAmountSats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             coinSelectionAlgorythm: coinSelectionAlgorythm,
             utxos: nil
         )
 
-        Logger.info("Selected UTXOs: \(String(describing: selectedUtxo))")
+        Logger.info("Selected UTXOs: \(String(describing: selectedUtxos))")
+    }
+
+    /// Gets fee limits for custom fee input
+    /// - Returns: Tuple with (minFee, maxFee) in sat/vB
+    func getFeeLimits() async -> (minFee: UInt32, maxFee: UInt32) {
+        do {
+            guard let fees = try await coreService.blocktank.fees(refresh: false) else {
+                return (minFee: 1, maxFee: 999)
+            }
+
+            let slowRate = TransactionSpeed.slow.getFeeRate(from: fees)
+            let fastRate = TransactionSpeed.fast.getFeeRate(from: fees)
+
+            // Set minimum to slow rate, maximum to 3x fast rate (capped at 999)
+            let minFee = slowRate
+            // TODO: check what the max fee rate should be
+            let maxFee = min(fastRate * 3, 999)
+
+            return (minFee: minFee, maxFee: maxFee)
+        } catch {
+            Logger.error("Failed to get fee limits: \(error)")
+            return (minFee: 1, maxFee: 999)
+        }
+    }
+
+    /// Gets the current fee estimates for display
+    /// - Returns: FeeRates object with current network rates, or nil if unavailable
+    func getCurrentFeeEstimates() async -> FeeRates? {
+        do {
+            return try await coreService.blocktank.fees(refresh: false)
+        } catch {
+            Logger.error("Failed to get fee estimates: \(error)")
+            return nil
+        }
+    }
+
+    /// Calculates the fee for a transaction
+    /// - Parameters:
+    ///   - address: The destination address
+    ///   - amountSats: The amount to send in satoshis
+    ///   - satsPerVByte: The fee rate in satoshis per virtual byte
+    ///   - utxosToSpend: Optional specific UTXOs to spend
+    /// - Returns: The actual fee in satoshis
+    /// - Throws: Error if calculation fails
+    func calculateTotalFee(
+        address: String,
+        amountSats: UInt64,
+        satsPerVByte: UInt32,
+        utxosToSpend: [SpendableUtxo]? = nil
+    ) async throws -> UInt64 {
+        return try await lightningService.calculateTotalFee(
+            address: address,
+            amountSats: amountSats,
+            satsPerVByte: satsPerVByte,
+            utxosToSpend: utxosToSpend
+        )
     }
 
     // NOTE: Let's keep this here for now until we are sure new version below is working
@@ -457,6 +519,14 @@ class WalletViewModel: ObservableObject {
         formatter.decimalSeparator = "."
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.string(from: NSNumber(value: btcAmount)) ?? "0"
+    }
+
+    func resetSendState(speed: TransactionSpeed) {
+        sendAmountSats = nil
+        selectedFeeRateSatsPerVByte = nil
+        selectedUtxos = nil
+        availableUtxos = []
+        selectedSpeed = speed
     }
 
     func wipe() async throws {

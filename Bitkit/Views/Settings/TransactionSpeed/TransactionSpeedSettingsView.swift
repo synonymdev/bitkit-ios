@@ -76,10 +76,10 @@ struct TransactionSpeedSettingsView: View {
                     Divider()
 
                     TransactionSpeedSettingsRow(
-                        speed: .medium,
-                        isSelected: settings.defaultTransactionSpeed == .medium,
+                        speed: .normal,
+                        isSelected: settings.defaultTransactionSpeed == .normal,
                         onSelect: {
-                            settings.defaultTransactionSpeed = .medium
+                            settings.defaultTransactionSpeed = .normal
                         }
                     )
 

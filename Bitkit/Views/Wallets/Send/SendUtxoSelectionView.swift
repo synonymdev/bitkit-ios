@@ -68,7 +68,7 @@ struct SendUtxoSelectionView: View {
 
             CustomButton(title: t("common__continue"), isDisabled: selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats) {
                 do {
-                    wallet.selectedUtxo = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
+                    wallet.selectedUtxos = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
 
                     navigationPath.append(.confirm)
                 } catch {

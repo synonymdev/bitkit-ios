@@ -19,9 +19,9 @@ struct FundManualConfirmView: View {
         do {
             let coreService = CoreService.shared
             if let feeRates = try await coreService.blocktank.fees(refresh: refresh) {
-                let fastSatsPerVbyte = feeRates.getSatsPerVbyte(for: .fast)
+                let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
                 let estimatedTxSize: UInt64 = 250 // TODO: find a way to pre calculate actual tx size
-                networkFeeSat = UInt64(fastSatsPerVbyte) * estimatedTxSize
+                networkFeeSat = UInt64(fastFeeRate) * estimatedTxSize
             }
         } catch {
             Logger.error("Failed to fetch fee rates: \(error)")

@@ -58,7 +58,7 @@ struct SpendingAmount: View {
         HStack(spacing: 8) {
             NumberPadActionButton(
                 text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
-                imageName: "transfer"
+                imageName: "arrow-up-down"
             ) {
                 withAnimation {
                     currency.togglePrimaryDisplay()
