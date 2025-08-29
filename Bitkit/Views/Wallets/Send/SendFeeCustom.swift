@@ -50,7 +50,7 @@ struct SendFeeCustom: View {
 
                 Spacer()
 
-                NumPad { key in
+                NumberPad { key in
                     handleNumberPadInput(key)
                 }
 

@@ -53,7 +53,7 @@ struct CustomSpeedView: View {
 
             Spacer()
 
-            NumPad { key in
+            NumberPad { key in
                 handleNumberPadInput(key)
             }
 
