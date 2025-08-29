@@ -25,14 +25,14 @@ struct PinInput: View {
                 Spacer()
             }
 
-            NumPad { key in
-                handleNumPadInput(key)
+            NumberPad { key in
+                handleNumberPadInput(key)
             }
             .background(Color.black)
         }
     }
 
-    private func handleNumPadInput(_ key: String) {
+    private func handleNumberPadInput(_ key: String) {
         if key == "delete" {
             if !pinInput.isEmpty {
                 pinInput = String(pinInput.dropLast())
