@@ -79,6 +79,7 @@ struct ConvertedAmount {
             formatter.numberStyle = .decimal
             formatter.minimumFractionDigits = 8
             formatter.maximumFractionDigits = 8
+            formatter.decimalSeparator = "."
             let formattedValue = formatter.string(from: btcValue as NSDecimalNumber) ?? "0"
             return BitcoinDisplayComponents(symbol: "₿", value: formattedValue)
         }

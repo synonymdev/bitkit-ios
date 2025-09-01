@@ -83,6 +83,8 @@ extension CurrencyService {
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
         formatter.locale = Locale.current
+        formatter.decimalSeparator = "."
+        formatter.groupingSeparator = ","
 
         guard let formatted = formatter.string(from: value as NSDecimalNumber) else {
             return nil
