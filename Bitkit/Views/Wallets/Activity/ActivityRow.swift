@@ -6,6 +6,7 @@ private struct TransactionStatusText: View {
     let isLightning: Bool
     let status: PaymentState?
     let confirmed: Bool?
+    let isTransfer: Bool
 
     init(txType: PaymentType, activity: Activity) {
         self.txType = txType
@@ -14,10 +15,12 @@ private struct TransactionStatusText: View {
             isLightning = true
             status = ln.status
             confirmed = nil
+            isTransfer = false
         case let .onchain(onchain):
             isLightning = false
             status = nil
             confirmed = onchain.confirmed
+            isTransfer = onchain.isTransfer
         }
     }
 
