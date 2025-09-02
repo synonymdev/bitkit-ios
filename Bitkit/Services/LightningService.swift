@@ -227,40 +227,26 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        let bip21 = try await ServiceQueue.background(.ldk) {
+        let bolt11 = try await ServiceQueue.background(.ldk) {
             if let amountSats {
                 try node
-                    .unifiedQrPayment()
+                    .bolt11Payment()
                     .receive(
-                        amountSats: amountSats,
-                        message: description,
-                        expirySec: expirySecs
+                        amountMsat: amountSats * 1000,
+                        description: Bolt11InvoiceDescription.direct(description: description),
+                        expirySecs: expirySecs
                     )
             } else {
                 try node
-                    .unifiedQrPayment()
-                    .receive(
-                        amountSats: 0,
-                        message: description,
-                        expirySec: expirySecs
+                    .bolt11Payment()
+                    .receiveVariableAmount(
+                        description: Bolt11InvoiceDescription.direct(description: description),
+                        expirySecs: expirySecs
                     )
             }
         }
 
-        // Temp fix to parse the BIP21 string to extract the lightning parameter until LDK-node exposes display from Bolt11 struct
-        guard let url = URL(string: bip21),
-              let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
-        else {
-            throw NSError(domain: "LightningService", code: 1001, userInfo: [NSLocalizedDescriptionKey: "Invalid BIP21 string format"])
-        }
-
-        guard let bolt11 = queryItems.first(where: { $0.name == "lightning" })?.value else {
-            throw NSError(
-                domain: "LightningService", code: 1002, userInfo: [NSLocalizedDescriptionKey: "Lightning invoice parameter not found in BIP21 string"]
-            )
-        }
-
-        return bolt11
+        return bolt11.description
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
