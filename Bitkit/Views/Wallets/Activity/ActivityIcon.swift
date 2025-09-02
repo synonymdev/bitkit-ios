@@ -7,6 +7,7 @@ struct ActivityIcon: View {
     let confirmed: Bool?
     let txType: PaymentType
     let size: CGFloat
+    let isBoosted: Bool
 
     init(activity: Activity, size: CGFloat = 32) {
         self.size = size
@@ -16,11 +17,13 @@ struct ActivityIcon: View {
             status = ln.status
             confirmed = nil
             txType = ln.txType
+            isBoosted = false
         case let .onchain(onchain):
             isLightning = false
             status = nil
             confirmed = onchain.confirmed
             txType = onchain.txType
+            isBoosted = onchain.isBoosted
         }
     }
 
@@ -48,6 +51,13 @@ struct ActivityIcon: View {
                     size: size
                 )
             }
+        } else if isBoosted && !(confirmed ?? false) {
+            CircularIcon(
+                icon: "timer-alt",
+                iconColor: .yellow,
+                backgroundColor: .yellow16,
+                size: size
+            )
         } else {
             CircularIcon(
                 icon: txType == .sent ? "arrow-up" : "arrow-down",
