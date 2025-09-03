@@ -115,7 +115,7 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 16) {
             icon
-
+            
             VStack(alignment: .leading, spacing: 4) {
                 switch item {
                 case let .lightning(activity):
@@ -136,23 +136,45 @@ struct ActivityRow: View {
                     if activity.isTransfer {
                         switch activity.txType {
                         case .sent:
-                            CaptionBText("wallet__activity_transfer_spending_done")
+                            let captionText = if activity.confirmed {
+                                "wallet__activity_transfer_spending_done"
+                            } else {
+                                t(
+                                    "wallet__activity_transfer_spending_pending",
+                                    variables: [
+                                        "duration": formattedTime,
+                                    ]
+                                )
+                            }
+                            
+                            CaptionBText(captionText)
                         case .received:
-                            CaptionBText("wallet__activity_transfer_savings_done")
+                            let captionText = if activity.confirmed {
+                                "wallet__activity_transfer_savings_done"
+                            } else {
+                                t(
+                                    "wallet__activity_transfer_savings_pending",
+                                    variables: [
+                                        "duration": formattedTime,
+                                    ]
+                                )
+                            }
+                            
+                            CaptionBText(captionText)
                         }
                     } else {
                         CaptionBText(formattedTime)
                     }
                 }
             }
-
+            
             Spacer()
-
+            
             MoneyCell(sats: amount, prefix: amountPrefix)
         }
         .padding(.vertical, 8)
     }
-
+    
     @ViewBuilder
     var icon: some View {
         ActivityIcon(activity: item, size: 32)
