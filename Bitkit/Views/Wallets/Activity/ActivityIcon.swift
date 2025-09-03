@@ -8,6 +8,7 @@ struct ActivityIcon: View {
     let txType: PaymentType
     let size: CGFloat
     let isBoosted: Bool
+    let isTransfer: Bool
 
     init(activity: Activity, size: CGFloat = 32) {
         self.size = size
@@ -18,12 +19,14 @@ struct ActivityIcon: View {
             confirmed = nil
             txType = ln.txType
             isBoosted = false
+            isTransfer = false
         case let .onchain(onchain):
             isLightning = false
             status = nil
             confirmed = onchain.confirmed
             txType = onchain.txType
             isBoosted = onchain.isBoosted
+            isTransfer = onchain.isTransfer
         }
     }
 
@@ -59,8 +62,9 @@ struct ActivityIcon: View {
                 size: size
             )
         } else {
+            let paymentIcon = txType == PaymentType.sent ? "arrow-up" : "arrow-down"
             CircularIcon(
-                icon: txType == .sent ? "arrow-up" : "arrow-down",
+                icon: isTransfer ? "arrow-up-down" : paymentIcon,
                 iconColor: .brandAccent,
                 backgroundColor: .brand16,
                 size: size
