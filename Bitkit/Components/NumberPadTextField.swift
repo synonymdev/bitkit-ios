@@ -10,30 +10,57 @@ struct NumberPadTextField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Secondary display (always shows the opposite of primary)
-            MoneyText(
-                sats: Int(viewModel.amountSats),
-                unitType: .secondary,
-                size: .caption,
-                symbol: true,
-                color: .textSecondary
-            )
-            .transition(
-                .move(edge: .bottom)
-                    .combined(with: .opacity)
-                    .combined(with: .scale(scale: 1.5, anchor: .topLeading))
-            )
+            if currency.primaryDisplay == .bitcoin {
+                // Secondary display (fiat)
+                MoneyText(
+                    sats: Int(viewModel.amountSats),
+                    unitType: .secondary,
+                    size: .caption,
+                    symbol: true,
+                    color: .textSecondary
+                )
+                .transition(
+                    .move(edge: .bottom)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
+                )
 
-            // Primary display
-            HStack {
-                primaryDisplayView
-                Spacer()
+                // Primary display (bitcoin)
+                HStack {
+                    primaryDisplayView
+                    Spacer()
+                }
+                .transition(
+                    .move(edge: .top)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 0.5, anchor: .topLeading))
+                )
+            } else {
+                // Secondary display (bitcoin)
+                MoneyText(
+                    sats: Int(viewModel.amountSats),
+                    unitType: .secondary,
+                    size: .caption,
+                    symbol: true,
+                    color: .textSecondary
+                )
+                .transition(
+                    .move(edge: .bottom)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
+                )
+
+                // Primary display (fiat)
+                HStack {
+                    primaryDisplayView
+                    Spacer()
+                }
+                .transition(
+                    .move(edge: .top)
+                        .combined(with: .opacity)
+                        .combined(with: .scale(scale: 0.5, anchor: .topLeading))
+                )
             }
-            .transition(
-                .move(edge: .top)
-                    .combined(with: .opacity)
-                    .combined(with: .scale(scale: 0.5, anchor: .topLeading))
-            )
         }
         .contentShape(Rectangle())
         .animation(springAnimation, value: currency.primaryDisplay)
