@@ -25,7 +25,9 @@ private struct TransactionStatusText: View {
     }
 
     var body: some View {
-        if isLightning {
+        if isTransfer {
+            BodyMSBText(t("wallet__activity_transfer"), textColor: .textPrimary)
+        } else if isLightning {
             lightningStatus
         } else {
             onchainStatus
