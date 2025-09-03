@@ -132,8 +132,17 @@ struct ActivityRow: View {
                     } else {
                         CaptionBText(formattedTime)
                     }
-                case .onchain:
-                    CaptionBText(formattedTime)
+                case let .onchain(activity):
+                    if activity.isTransfer {
+                        switch activity.txType {
+                        case .sent:
+                            CaptionBText("wallet__activity_transfer_spending_done")
+                        case .received:
+                            CaptionBText("wallet__activity_transfer_savings_done")
+                        }
+                    } else {
+                        CaptionBText(formattedTime)
+                    }
                 }
             }
 
