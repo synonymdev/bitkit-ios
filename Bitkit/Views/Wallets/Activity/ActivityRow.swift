@@ -115,7 +115,7 @@ struct ActivityRow: View {
     var body: some View {
         HStack(spacing: 16) {
             icon
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 switch item {
                 case let .lightning(activity):
@@ -146,7 +146,7 @@ struct ActivityRow: View {
                                     ]
                                 )
                             }
-                            
+
                             CaptionBText(captionText)
                         case .received:
                             let captionText = if activity.confirmed {
@@ -159,7 +159,7 @@ struct ActivityRow: View {
                                     ]
                                 )
                             }
-                            
+
                             CaptionBText(captionText)
                         }
                     } else {
@@ -167,14 +167,14 @@ struct ActivityRow: View {
                     }
                 }
             }
-            
+
             Spacer()
-            
+
             MoneyCell(sats: amount, prefix: amountPrefix)
         }
         .padding(.vertical, 8)
     }
-    
+
     @ViewBuilder
     var icon: some View {
         ActivityIcon(activity: item, size: 32)
