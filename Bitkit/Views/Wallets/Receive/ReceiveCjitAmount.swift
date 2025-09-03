@@ -9,11 +9,14 @@ struct ReceiveCjitAmount: View {
 
     @Binding var navigationPath: [ReceiveRoute]
 
-    @State private var amountSats: UInt64 = 0
-    @State private var overrideSats: UInt64?
+    @StateObject private var amountViewModel = AmountInputViewModel()
 
     var minimumAmount: UInt64 {
         blocktank.minCjitSats ?? 0
+    }
+
+    var amountSats: UInt64 {
+        amountViewModel.amountSats
     }
 
     var body: some View {
@@ -21,11 +24,10 @@ struct ReceiveCjitAmount: View {
             SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 16) {
-                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newSats in
-                    Haptics.play(.buttonTap)
-                    amountSats = newSats
-                    overrideSats = nil
-                }
+                NumberPadTextField(viewModel: amountViewModel)
+                    .onTapGesture {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    }
 
                 Spacer()
 
@@ -35,7 +37,7 @@ struct ReceiveCjitAmount: View {
                         amount: Int(minimumAmount)
                     )
                     .onTapGesture {
-                        overrideSats = minimumAmount
+                        amountViewModel.updateFromSats(minimumAmount, currency: currency)
                     }
 
                     Spacer()
@@ -46,11 +48,18 @@ struct ReceiveCjitAmount: View {
                         color: .brandAccent
                     ) {
                         withAnimation {
-                            currency.togglePrimaryDisplay()
+                            amountViewModel.togglePrimaryDisplay(currency: currency)
                         }
                     }
                 }
                 .padding(.bottom, 12)
+
+                NumberPad(
+                    type: amountViewModel.getNumberPadType(currency: currency),
+                    errorKey: amountViewModel.errorKey
+                ) { key in
+                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                }
             }
 
             Divider()
