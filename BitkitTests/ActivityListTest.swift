@@ -135,7 +135,7 @@ final class ActivityTests: XCTestCase {
 
         // Add tags
         let tags = ["test", "payment"]
-        try await service.appendTag(toActivity: "test-tags-1", tags)
+        try await service.appendTags(toActivity: "test-tags-1", tags)
 
         // Retrieve tags
         let retrievedTags = try await service.tags(forActivity: "test-tags-1")
@@ -188,12 +188,12 @@ final class ActivityTests: XCTestCase {
         for activity in activities {
             try await service.insert(activity)
             if case let .lightning(lightning) = activity {
-                try await service.appendTag(toActivity: lightning.id, ["test-tag"])
+                try await service.appendTags(toActivity: lightning.id, ["test-tag"])
             }
         }
 
         // Add an additional tag to one activity
-        try await service.appendTag(toActivity: "test-tag-filter-1", ["special"])
+        try await service.appendTags(toActivity: "test-tag-filter-1", ["special"])
 
         // Test filtering by tag
         let testTagActivities = try await service.get(tags: ["test-tag"], sortDirection: .desc)
@@ -252,10 +252,10 @@ final class ActivityTests: XCTestCase {
         }
 
         // Add tags to first activity
-        try await service.appendTag(toActivity: "test-unique-tags-1", ["payment", "important", "personal"])
+        try await service.appendTags(toActivity: "test-unique-tags-1", ["payment", "important", "personal"])
 
         // Add tags to second activity
-        try await service.appendTag(toActivity: "test-unique-tags-2", ["payment", "business", "onchain"])
+        try await service.appendTags(toActivity: "test-unique-tags-2", ["payment", "business", "onchain"])
 
         // Get all unique tags
         let uniqueTags = try await service.allPossibleTags()
@@ -265,7 +265,7 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(uniqueTags.count, 5)
 
         // Add duplicate tags to verify they don't create duplicates in unique tags
-        try await service.appendTag(toActivity: "test-unique-tags-1", ["payment", "business"])
+        try await service.appendTags(toActivity: "test-unique-tags-1", ["payment", "business"])
         let uniqueTagsAfterDuplicates = try await service.allPossibleTags()
         XCTAssertEqual(Set(uniqueTagsAfterDuplicates), Set(["payment", "important", "personal", "business", "onchain"]))
         XCTAssertEqual(uniqueTagsAfterDuplicates.count, 5)

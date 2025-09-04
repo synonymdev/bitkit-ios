@@ -3,11 +3,13 @@ import LocalAuthentication
 import SwiftUI
 
 struct SendConfirmationView: View {
+    @EnvironmentObject var activityListViewModel: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var tagManager: TagManager
 
     @Binding var navigationPath: [SendRoute]
     @State private var showWarningAlert = false
@@ -52,6 +54,9 @@ struct SendConfirmationView: View {
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            TagSelectionView(navigationPath: $navigationPath)
+                .padding(.top, 16)
 
             Spacer()
 
@@ -240,6 +245,10 @@ struct SendConfirmationView: View {
                 // Perform the Lightning payment
                 let paymentHash = try await wallet.send(bolt11: invoice.bolt11, sats: amount)
                 Logger.info("Lightning payment successful: \(paymentHash)")
+
+                // Apply tags to the Lightning payment
+                await applyTagsToPayment(paymentId: paymentHash)
+
                 navigationPath.append(.success(paymentHash))
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -249,6 +258,9 @@ struct SendConfirmationView: View {
                 wallet.sendAmountSats = amount
 
                 Logger.info("Onchain send result txid: \(txid)")
+
+                // Apply tags to the transaction
+                await applyTagsToPayment(paymentId: txid)
 
                 navigationPath.append(.success(txid))
             } else {
@@ -265,6 +277,25 @@ struct SendConfirmationView: View {
             // TODO: this is a hack to make sure the navigation binding is ready
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 navigationPath.append(.failure)
+            }
+        }
+    }
+
+    private func applyTagsToPayment(paymentId: String) async {
+        if !tagManager.selectedTags.isEmpty {
+            Logger.info("Applying tags to payment: \(tagManager.selectedTagsArray)")
+
+            Task {
+                do {
+                    try await activityListViewModel.findActivityAndAddTags(
+                        paymentHashOrTxId: paymentId,
+                        tags: tagManager.selectedTagsArray
+                    )
+                    Logger.info("Applied tags to payment: \(tagManager.selectedTagsArray)")
+                } catch {
+                    Logger.warn("Failed to apply tags to payment \(paymentId): \(error)")
+                    // Don't fail the payment if tagging fails
+                }
             }
         }
     }

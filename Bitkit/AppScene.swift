@@ -16,6 +16,7 @@ struct AppScene: View {
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var settings = SettingsViewModel()
     @StateObject private var suggestionsManager = SuggestionsManager()
+    @StateObject private var tagManager = TagManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -65,6 +66,7 @@ struct AppScene: View {
             .environmentObject(widgets)
             .environmentObject(settings)
             .environmentObject(suggestionsManager)
+            .environmentObject(tagManager)
             .onAppear {
                 if !settings.requirePinOnLaunch {
                     isPinVerified = true
