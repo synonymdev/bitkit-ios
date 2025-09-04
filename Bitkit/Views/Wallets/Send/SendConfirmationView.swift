@@ -12,13 +12,48 @@ struct SendConfirmationView: View {
     @EnvironmentObject var tagManager: TagManager
 
     @Binding var navigationPath: [SendRoute]
-    @State private var showWarningAlert = false
-    @State private var alertContinuation: CheckedContinuation<Bool, Error>?
     @State private var showPinCheck = false
     @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
+
+    // Warning system
+    private enum WarningType: String, CaseIterable {
+        case amount
+        case balance
+        case fee
+        case feePercentage
+        case minimumFee
+
+        var title: String {
+            switch self {
+            case .minimumFee:
+                return t("wallet__send_dialog5_title")
+            default:
+                return t("common__are_you_sure")
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .amount:
+                return t("wallet__send_dialog1")
+            case .balance:
+                return t("wallet__send_dialog2")
+            case .fee:
+                return t("wallet__send_dialog4")
+            case .feePercentage:
+                return t("wallet__send_dialog3")
+            case .minimumFee:
+                return t("wallet__send_dialog5_description")
+            }
+        }
+    }
+
+    @State private var currentWarning: WarningType?
+    @State private var pendingWarnings: [WarningType] = []
+    @State private var warningContinuation: CheckedContinuation<Bool, Error>?
 
     private var biometryTypeName: String {
         switch Env.biometryType {
@@ -61,28 +96,12 @@ struct SendConfirmationView: View {
             Spacer()
 
             SwipeButton(title: t("wallet__send_swipe"), accentColor: .greenAccent) {
-                // Check if we need to show warning for amounts over $100 USD
-                if settings.warnWhenSendingOver100 {
-                    let sats: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                        wallet.sendAmountSats ?? invoice.amountSatoshis
-                    } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                        wallet.sendAmountSats ?? invoice.amountSatoshis
-                    } else {
-                        0
-                    }
-
-                    // Convert to USD to check if over $100
-                    if let usdAmount = currency.convert(sats: sats, to: "USD") {
-                        if usdAmount.value > 100.0 {
-                            showWarningAlert = true
-                            // Wait for the alert to be dismissed
-                            let shouldProceed = try await waitForAlertDismissal()
-                            if !shouldProceed {
-                                // User cancelled, throw error to reset SwipeButton
-                                throw CancellationError()
-                            }
-                            // User confirmed, continue with authentication if needed
-                        }
+                // Validate payment and show warnings if needed
+                let warnings = await validatePayment()
+                if !warnings.isEmpty {
+                    let shouldProceed = try await showWarnings(warnings)
+                    if !shouldProceed {
+                        throw CancellationError()
                     }
                 }
 
@@ -125,18 +144,6 @@ struct SendConfirmationView: View {
                 await calculateTransactionFee()
             }
         }
-        .alert(t("common__are_you_sure"), isPresented: $showWarningAlert) {
-            Button(t("common__dialog_cancel"), role: .cancel) {
-                alertContinuation?.resume(returning: false)
-                alertContinuation = nil
-            }
-            Button(t("wallet__send_yes")) {
-                alertContinuation?.resume(returning: true)
-                alertContinuation = nil
-            }
-        } message: {
-            Text(t("wallet__send_dialog1"))
-        }
         .alert(
             t("security__bio_error_title"),
             isPresented: $showingBiometricError
@@ -146,6 +153,25 @@ struct SendConfirmationView: View {
             }
         } message: {
             Text(biometricErrorMessage)
+        }
+        .alert(
+            currentWarning?.title ?? "",
+            isPresented: .constant(currentWarning != nil)
+        ) {
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                warningContinuation?.resume(returning: false)
+                warningContinuation = nil
+                currentWarning = nil
+            }
+            Button(t("wallet__send_yes")) {
+                warningContinuation?.resume(returning: true)
+                warningContinuation = nil
+                currentWarning = nil
+            }
+        } message: {
+            if let warning = currentWarning {
+                Text(warning.message)
+            }
         }
         .navigationDestination(isPresented: $showPinCheck) {
             PinCheckView(
@@ -160,12 +186,6 @@ struct SendConfirmationView: View {
                     pinCheckContinuation = nil
                 }
             )
-        }
-    }
-
-    private func waitForAlertDismissal() async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
-            alertContinuation = continuation
         }
     }
 
@@ -279,6 +299,83 @@ struct SendConfirmationView: View {
                 navigationPath.append(.failure)
             }
         }
+    }
+
+    private func validatePayment() async -> [WarningType] {
+        var warnings: [WarningType] = []
+
+        let amount: UInt64 = if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+            wallet.sendAmountSats ?? invoice.amountSatoshis
+        } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+            wallet.sendAmountSats ?? invoice.amountSatoshis
+        } else {
+            0
+        }
+
+        // Check if amount > 50% of balance
+        if app.selectedWalletToPayFrom == .lightning {
+            let lightningBalance = wallet.totalLightningSats
+            if amount > lightningBalance / 2 {
+                warnings.append(.balance)
+            }
+        } else {
+            let onchainBalance = wallet.totalOnchainSats
+            if amount > onchainBalance / 2 {
+                warnings.append(.balance)
+            }
+        }
+
+        // Check if amount > $100 and warning is enabled
+        if settings.warnWhenSendingOver100 {
+            if let usdAmount = currency.convert(sats: amount, to: "USD") {
+                if usdAmount.value > 100.0 {
+                    warnings.append(.amount)
+                }
+            }
+        }
+
+        // Check if fee > $10 (only for onchain)
+        if app.selectedWalletToPayFrom == .onchain {
+            if let feeUsd = currency.convert(sats: UInt64(transactionFee), to: "USD") {
+                if feeUsd.value > 10.0 {
+                    warnings.append(.fee)
+                }
+            }
+
+            // Check if fee > 50% of send amount
+            if transactionFee > 0 && UInt64(transactionFee) > amount / 2 {
+                warnings.append(.feePercentage)
+            }
+
+            // TODO: add minimum fee warning
+            // Check minimum fee warning
+            // if let feeRate = wallet.selectedFeeRateSatsPerVByte,
+            //    let minimumFee = wallet.minimumFeeRateSatsPerVByte,
+            //    feeRate <= minimumFee {
+            //     warnings.append(.minimumFee)
+            // }
+        }
+
+        return warnings
+    }
+
+    private func showWarnings(_ warnings: [WarningType]) async throws -> Bool {
+        pendingWarnings = warnings
+
+        while !pendingWarnings.isEmpty {
+            let warning = pendingWarnings.removeFirst()
+
+            let shouldProceed = try await withCheckedThrowingContinuation { continuation in
+                warningContinuation = continuation
+                currentWarning = warning
+            }
+
+            if !shouldProceed {
+                return false
+            }
+        }
+
+        return true
     }
 
     private func applyTagsToPayment(paymentId: String) async {
