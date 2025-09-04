@@ -5,9 +5,8 @@ struct AvailableAmount: View {
     let amount: Int
 
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 8) {
             CaptionMText(label)
-                .padding(.bottom, 5)
 
             MoneyText(sats: amount, size: .bodySSB, symbol: true)
                 .padding(.bottom, 5)
