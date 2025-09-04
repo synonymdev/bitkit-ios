@@ -4,26 +4,30 @@ import SwiftUI
 struct NumberPadTextField: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @ObservedObject var viewModel: AmountInputViewModel
-    var isFocused: Bool = false
+
+    var showConversion: Bool = true
+    var isFocused: Bool = true
 
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 8) {
             if currency.primaryDisplay == .bitcoin {
-                // Secondary display (fiat)
-                MoneyText(
-                    sats: Int(viewModel.amountSats),
-                    unitType: .secondary,
-                    size: .caption,
-                    symbol: true,
-                    color: .textSecondary
-                )
-                .transition(
-                    .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
-                )
+                if showConversion {
+                    // Secondary display (fiat)
+                    MoneyText(
+                        sats: Int(viewModel.amountSats),
+                        unitType: .secondary,
+                        size: .caption,
+                        symbol: true,
+                        color: .textSecondary
+                    )
+                    .transition(
+                        .move(edge: .bottom)
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 1.5, anchor: .topLeading))
+                    )
+                }
 
                 // Primary display (bitcoin)
                 HStack {
@@ -36,19 +40,21 @@ struct NumberPadTextField: View {
                         .combined(with: .scale(scale: 0.5, anchor: .topLeading))
                 )
             } else {
-                // Secondary display (bitcoin)
-                MoneyText(
-                    sats: Int(viewModel.amountSats),
-                    unitType: .secondary,
-                    size: .caption,
-                    symbol: true,
-                    color: .textSecondary
-                )
-                .transition(
-                    .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
-                )
+                if showConversion {
+                    // Secondary display (bitcoin)
+                    MoneyText(
+                        sats: Int(viewModel.amountSats),
+                        unitType: .secondary,
+                        size: .caption,
+                        symbol: true,
+                        color: .textSecondary
+                    )
+                    .transition(
+                        .move(edge: .bottom)
+                            .combined(with: .opacity)
+                            .combined(with: .scale(scale: 1.5, anchor: .topLeading))
+                    )
+                }
 
                 // Primary display (fiat)
                 HStack {

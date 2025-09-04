@@ -11,16 +11,19 @@ struct SpendingAdvancedView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.dismiss) var dismiss
 
-    @State private var receivingSatsAmount: UInt64 = 0
-    @State private var overrideSats: UInt64?
+    @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var feeEstimate: UInt64?
 
+    var receivingAmountSats: UInt64 {
+        amountViewModel.amountSats
+    }
+
     private var isValid: Bool {
-        let isAboveMin = receivingSatsAmount >= transfer.transferValues.minLspBalance
-        let isBelowMax = receivingSatsAmount <= transfer.transferValues.maxLspBalance
+        let isAboveMin = receivingAmountSats >= transfer.transferValues.minLspBalance
+        let isBelowMax = receivingAmountSats <= transfer.transferValues.maxLspBalance
 
         let result = isAboveMin && isBelowMax
-        // Logger.debug("isValid computed - receivingSatsAmount: \(receivingSatsAmount)")
+        // Logger.debug("isValid computed - receivingAmountSats: \(receivingAmountSats)")
         // Logger.debug("Min LSP balance: \(transfer.transferValues.minLspBalance)")
         // Logger.debug("Max LSP balance: \(transfer.transferValues.maxLspBalance)")
         // Logger.debug("Is above min? \(isAboveMin), Is below max? \(isBelowMax)")
@@ -32,16 +35,15 @@ struct SpendingAdvancedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
                 DisplayText(t("lightning__spending_advanced__title"), accentColor: .purpleAccent)
+                    .padding(.top, 16)
 
-                // Receiving capacity input
-                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
-                    receivingSatsAmount = newSats
-                    overrideSats = nil
-                    updateFeeEstimate()
-                }
-                .padding(.vertical, 8)
+                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
+                    .onTapGesture {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    }
+                    .padding(.top, 32)
 
                 // Fee estimate
                 HStack(spacing: 4) {
@@ -54,7 +56,7 @@ struct SpendingAdvancedView: View {
                     }
                 }
                 .frame(height: 20)
-                .padding(.bottom, 8)
+                .padding(.top, 16)
 
                 Spacer()
 
@@ -65,30 +67,34 @@ struct SpendingAdvancedView: View {
                     actionButtons
                 }
                 .padding(.vertical, 8)
-            }
 
-            Divider()
+                Divider()
 
-            Spacer()
+                NumberPad(
+                    type: amountViewModel.getNumberPadType(currency: currency),
+                    errorKey: amountViewModel.errorKey
+                ) { key in
+                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                }
 
-            CustomButton(
-                title: t("common__continue"),
-                isDisabled: !isValid
-            ) {
-                do {
-                    // Create a new order with the specified receiving capacity
-                    let newOrder = try await blocktank.createOrder(
-                        spendingBalanceSats: order.clientBalanceSat,
-                        receivingBalanceSats: receivingSatsAmount
-                    )
+                CustomButton(
+                    title: t("common__continue"),
+                    isDisabled: !isValid
+                ) {
+                    do {
+                        // Create a new order with the specified receiving capacity
+                        let newOrder = try await blocktank.createOrder(
+                            spendingBalanceSats: order.clientBalanceSat,
+                            receivingBalanceSats: receivingAmountSats
+                        )
 
-                    transfer.onAdvancedOrderCreated(order: newOrder)
-                    dismiss()
-                } catch {
-                    app.toast(error)
+                        transfer.onAdvancedOrderCreated(order: newOrder)
+                        dismiss()
+                    } catch {
+                        app.toast(error)
+                    }
                 }
             }
-            .padding(.vertical, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(t("lightning__transfer__nav_title"))
@@ -102,11 +108,10 @@ struct SpendingAdvancedView: View {
             )
 
             // Set initial receiving capacity to the default LSP balance
-            receivingSatsAmount = transfer.transferValues.defaultLspBalance
-            overrideSats = transfer.transferValues.defaultLspBalance
+            amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             updateFeeEstimate()
         }
-        .onChange(of: receivingSatsAmount) { _ in
+        .onChange(of: receivingAmountSats) { _ in
             updateFeeEstimate()
         }
     }
@@ -115,33 +120,33 @@ struct SpendingAdvancedView: View {
         HStack(spacing: 16) {
             NumberPadActionButton(text: t("common__min")) {
                 Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
-                overrideSats = transfer.transferValues.minLspBalance
+                amountViewModel.updateFromSats(transfer.transferValues.minLspBalance, currency: currency)
             }
 
             Spacer()
 
             NumberPadActionButton(text: t("common__default")) {
                 Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
-                overrideSats = transfer.transferValues.defaultLspBalance
+                amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             }
 
             Spacer()
 
             NumberPadActionButton(text: t("common__max")) {
                 Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
-                overrideSats = transfer.transferValues.maxLspBalance
+                amountViewModel.updateFromSats(transfer.transferValues.maxLspBalance, currency: currency)
             }
         }
     }
 
     private func updateFeeEstimate() {
-        Logger.debug("Starting fee estimate update for receivingSatsAmount: \(receivingSatsAmount)")
+        Logger.debug("Starting fee estimate update for receivingAmountSats: \(receivingAmountSats)")
         Task {
             do {
                 feeEstimate = nil
                 let estimate = try await blocktank.estimateOrderFee(
                     spendingBalanceSats: order.clientBalanceSat,
-                    receivingBalanceSats: receivingSatsAmount
+                    receivingBalanceSats: receivingAmountSats
                 )
                 feeEstimate = estimate.feeSat
                 Logger.debug("Fee estimate updated successfully: \(estimate.feeSat)")

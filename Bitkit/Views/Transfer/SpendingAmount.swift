@@ -8,8 +8,11 @@ struct SpendingAmount: View {
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    @State private var satsAmount: UInt64 = 0
-    @State private var overrideSats: UInt64?
+    @StateObject private var amountViewModel = AmountInputViewModel()
+
+    var satsAmount: UInt64 {
+        amountViewModel.amountSats
+    }
 
     // TODO: Calculate the maximum amount that can be transferred once we can get fees from a tx without sending it
     // https://github.com/synonymdev/bitkit/blob/aa7271970282675068cc9edda4455d74aa3b6c3c/src/screens/Transfer/SpendingAmount.tsx
@@ -17,23 +20,36 @@ struct SpendingAmount: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
+                .padding(.top, 16)
 
-            AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
-                satsAmount = newSats
-                overrideSats = nil
-            }
-            .padding(.top, 32)
+            NumberPadTextField(viewModel: amountViewModel, showConversion: false)
+                .onTapGesture {
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
+                }
+                .padding(.top, 32)
 
             Spacer()
 
             HStack(alignment: .bottom) {
                 AvailableAmount(label: t("wallet__send_available"), amount: wallet.totalBalanceSats)
+                    .onTapGesture {
+                        amountViewModel.updateFromSats(UInt64(wallet.totalBalanceSats), currency: currency)
+                    }
+
                 Spacer()
+
                 actionButtons
             }
-            .padding(.vertical, 8)
+            .padding(.bottom, 12)
 
             Divider()
+
+            NumberPad(
+                type: amountViewModel.getNumberPadType(currency: currency),
+                errorKey: amountViewModel.errorKey
+            ) { key in
+                amountViewModel.handleNumberPadInput(key, currency: currency)
+            }
 
             CustomButton(title: t("common__continue"), isDisabled: satsAmount == 0) {
                 do {
@@ -44,7 +60,6 @@ struct SpendingAmount: View {
                     app.toast(error)
                 }
             }
-            .padding(.top, 16)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(t("lightning__transfer__nav_title"))
@@ -61,16 +76,17 @@ struct SpendingAmount: View {
                 imageName: "arrow-up-down"
             ) {
                 withAnimation {
-                    currency.togglePrimaryDisplay()
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
                 }
             }
 
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
-                overrideSats = UInt64(wallet.totalBalanceSats) / 4
+                amountViewModel.updateFromSats(UInt64(wallet.totalBalanceSats) / 4, currency: currency)
             }
 
             NumberPadActionButton(text: t("common__max")) {
-                overrideSats = UInt64(Double(wallet.totalBalanceSats) * 0.9) // TODO: can't actually use max, need to estimate fees
+                // TODO: can't actually use max, need to estimate fees
+                amountViewModel.updateFromSats(UInt64(Double(wallet.totalBalanceSats) * 0.9), currency: currency)
             }
         }
     }

@@ -7,71 +7,79 @@ struct FundManualAmountView: View {
 
     let lnPeer: LnPeer
 
-    @State private var satsAmount: UInt64 = 0
-    @State private var overrideSats: UInt64?
+    @StateObject private var amountViewModel = AmountInputViewModel()
+
+    var amountSats: UInt64 {
+        amountViewModel.amountSats
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
                 DisplayText(t("lightning__external_amount__title"), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
-                // Visible balance display that acts as a button
-                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats) { newSats in
-                    satsAmount = newSats
-                    overrideSats = nil
-                }
-                .padding(.vertical, 16)
+                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
+                    .onTapGesture {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    }
+                    .padding(.vertical, 32)
 
                 Spacer()
 
                 HStack(alignment: .bottom) {
                     AvailableAmount(label: t("wallet__send_available"), amount: wallet.totalOnchainSats)
                         .onTapGesture {
-                            overrideSats = UInt64(wallet.totalOnchainSats)
+                            amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats), currency: currency)
                         }
 
                     Spacer()
 
-                    amountButtons
+                    numberPadButtons
                 }
-                .padding(.vertical, 8)
+                .padding(.bottom, 12)
+
+                Divider()
+
+                NumberPad(
+                    type: amountViewModel.getNumberPadType(currency: currency),
+                    errorKey: amountViewModel.errorKey
+                ) { key in
+                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                }
+
+                CustomButton(
+                    title: t("common__continue"),
+                    isDisabled: amountSats == 0,
+                    destination: FundManualConfirmView(lnPeer: lnPeer, satsAmount: amountSats)
+                )
             }
-            .padding(.horizontal, 16)
-
-            Spacer()
-
-            CustomButton(
-                title: t("common__continue"),
-                isDisabled: satsAmount == 0,
-                destination: FundManualConfirmView(lnPeer: lnPeer, satsAmount: satsAmount)
-            )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
         }
-        .background(Color.black)
         .navigationTitle(t("lightning__connections"))
         .navigationBarTitleDisplayMode(.inline)
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
         .backToWalletButton()
+        .bottomSafeAreaPadding()
     }
 
-    private var amountButtons: some View {
+    private var numberPadButtons: some View {
         HStack(spacing: 8) {
             NumberPadActionButton(
                 text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
                 imageName: "arrow-up-down"
             ) {
                 withAnimation {
-                    currency.togglePrimaryDisplay()
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
                 }
             }
 
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
-                overrideSats = UInt64(wallet.totalOnchainSats) / 4
+                amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats) / 4, currency: currency)
             }
 
             NumberPadActionButton(text: t("common__max")) {
-                overrideSats = UInt64(wallet.totalOnchainSats)
+                amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats), currency: currency)
             }
         }
     }

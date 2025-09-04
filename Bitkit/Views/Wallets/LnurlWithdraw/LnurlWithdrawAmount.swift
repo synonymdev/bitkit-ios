@@ -5,9 +5,8 @@ struct LnurlWithdrawAmount: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @Binding var navigationPath: [LnurlWithdrawRoute]
-    @State private var amount: UInt64 = 0
-    @State private var overrideSats: UInt64?
-    @FocusState private var isAmountFocused: Bool
+
+    @StateObject private var amountViewModel = AmountInputViewModel()
 
     var minAmount: Int {
         Int((app.lnurlWithdrawData!.minWithdrawable ?? 1000) / 1000)
@@ -15,6 +14,10 @@ struct LnurlWithdrawAmount: View {
 
     var maxAmount: Int {
         Int((app.lnurlWithdrawData!.maxWithdrawable) / 1000)
+    }
+
+    var amount: UInt64 {
+        amountViewModel.amountSats
     }
 
     var isValid: Bool {
@@ -25,18 +28,19 @@ struct LnurlWithdrawAmount: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
-            VStack(alignment: .leading, spacing: 16) {
-                AmountInput(primaryDisplay: $currency.primaryDisplay, overrideSats: $overrideSats, showConversion: true) { newAmount in
-                    amount = newAmount
-                }
-                .padding(.vertical, 16)
+            VStack(alignment: .leading, spacing: 0) {
+                NumberPadTextField(viewModel: amountViewModel)
+                    .onTapGesture {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    }
+                    .padding(.vertical, 16)
 
                 Spacer()
 
                 HStack(alignment: .bottom) {
                     AvailableAmount(label: t("wallet__lnurl_w_max"), amount: maxAmount)
                         .onTapGesture {
-                            overrideSats = UInt64(maxAmount)
+                            amountViewModel.updateFromSats(UInt64(maxAmount), currency: currency)
                         }
 
                     Spacer()
@@ -47,21 +51,23 @@ struct LnurlWithdrawAmount: View {
                         color: .brandAccent
                     ) {
                         withAnimation {
-                            currency.togglePrimaryDisplay()
+                            amountViewModel.togglePrimaryDisplay(currency: currency)
                         }
                     }
                 }
-                .padding(.vertical, 8)
+                .padding(.bottom, 12)
+
+                NumberPad(
+                    type: amountViewModel.getNumberPadType(currency: currency),
+                    errorKey: amountViewModel.errorKey
+                ) { key in
+                    amountViewModel.handleNumberPadInput(key, currency: currency)
+                }
+
+                CustomButton(title: t("common__continue"), isDisabled: !isValid) {
+                    onContinue()
+                }
             }
-
-            Divider()
-
-            Spacer()
-
-            CustomButton(title: t("common__continue"), isDisabled: !isValid) {
-                onContinue()
-            }
-            .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -71,12 +77,11 @@ struct LnurlWithdrawAmount: View {
     private func onContinue() {
         // If minimum is above the amount the user entered, automatically set amount to that minimum
         if amount < minAmount {
-            amount = UInt64(minAmount)
+            amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
         }
 
         wallet.lnurlWithdrawAmount = amount
 
-        // TODO: hide number pad
         navigationPath.append(.confirm)
     }
 }
