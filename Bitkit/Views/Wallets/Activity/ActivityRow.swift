@@ -6,6 +6,7 @@ private struct TransactionStatusText: View {
     let isLightning: Bool
     let status: PaymentState?
     let confirmed: Bool?
+    let isTransfer: Bool
 
     init(txType: PaymentType, activity: Activity) {
         self.txType = txType
@@ -14,15 +15,19 @@ private struct TransactionStatusText: View {
             isLightning = true
             status = ln.status
             confirmed = nil
+            isTransfer = false
         case let .onchain(onchain):
             isLightning = false
             status = nil
             confirmed = onchain.confirmed
+            isTransfer = onchain.isTransfer
         }
     }
 
     var body: some View {
-        if isLightning {
+        if isTransfer {
+            BodyMSBText(t("wallet__activity_transfer"), textColor: .textPrimary)
+        } else if isLightning {
             lightningStatus
         } else {
             onchainStatus
@@ -127,8 +132,39 @@ struct ActivityRow: View {
                     } else {
                         CaptionBText(formattedTime)
                     }
-                case .onchain:
-                    CaptionBText(formattedTime)
+                case let .onchain(activity):
+                    if activity.isTransfer {
+                        switch activity.txType {
+                        case .sent:
+                            let captionText = if activity.confirmed {
+                                "wallet__activity_transfer_spending_done"
+                            } else {
+                                t(
+                                    "wallet__activity_transfer_spending_pending",
+                                    variables: [
+                                        "duration": formattedTime,
+                                    ]
+                                )
+                            }
+
+                            CaptionBText(captionText)
+                        case .received:
+                            let captionText = if activity.confirmed {
+                                "wallet__activity_transfer_savings_done"
+                            } else {
+                                t(
+                                    "wallet__activity_transfer_savings_pending",
+                                    variables: [
+                                        "duration": formattedTime,
+                                    ]
+                                )
+                            }
+
+                            CaptionBText(captionText)
+                        }
+                    } else {
+                        CaptionBText(formattedTime)
+                    }
                 }
             }
 
