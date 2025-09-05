@@ -9,6 +9,7 @@ enum SendRoute: Hashable {
     case confirm
     case feeRate
     case feeCustom
+    case tag
     case quickpay
     case success(String)
     case failure
@@ -38,6 +39,7 @@ struct SendSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var tagManager: TagManager
 
     let config: SendSheetItem
 
@@ -53,6 +55,7 @@ struct SendSheet: View {
             }
         }
         .onAppear {
+            tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
 
             Task {
@@ -84,6 +87,8 @@ struct SendSheet: View {
             SendFeeRate(navigationPath: $navigationPath)
         case .feeCustom:
             SendFeeCustom(navigationPath: $navigationPath)
+        case .tag:
+            SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
             SendQuickpay(navigationPath: $navigationPath)
         case let .success(paymentId):

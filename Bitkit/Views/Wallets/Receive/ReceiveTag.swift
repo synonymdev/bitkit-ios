@@ -3,7 +3,7 @@ import SwiftUI
 struct ReceiveTag: View {
     @Binding var navigationPath: [ReceiveRoute]
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var activityListViewModel: ActivityListViewModel
+    @EnvironmentObject private var tagManager: TagManager
 
     @State private var newTag: String = ""
     @State private var isLoading: Bool = false
@@ -13,14 +13,12 @@ struct ReceiveTag: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__tags_add"), showBackButton: true)
 
-            let tagsToShow = activityListViewModel.recentlyUsedTags
-
-            if !tagsToShow.isEmpty {
+            if !tagManager.lastUsedTags.isEmpty {
                 CaptionMText(t("wallet__tags_previously"))
                     .padding(.bottom, 16)
 
                 WrappingHStack(spacing: 8) {
-                    ForEach(tagsToShow, id: \.self) { tag in
+                    ForEach(tagManager.lastUsedTags, id: \.self) { tag in
                         Tag(
                             tag,
                             onPress: {
@@ -64,7 +62,6 @@ struct ReceiveTag: View {
         guard !tag.isEmpty else { return }
         isLoading = true
         do {
-            // try await activityListViewModel.appendTag(toActivity: activityId, tags: [tag])
             navigationPath.removeLast()
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)

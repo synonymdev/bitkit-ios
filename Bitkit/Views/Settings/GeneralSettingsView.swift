@@ -1,10 +1,10 @@
 import SwiftUI
 
 struct GeneralSettingsView: View {
-    @EnvironmentObject var activityViewModel: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var tagManager: TagManager
     @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
@@ -38,11 +38,11 @@ struct GeneralSettingsView: View {
                     )
                 }
 
-                if !activityViewModel.recentlyUsedTags.isEmpty {
+                if !tagManager.lastUsedTags.isEmpty {
                     NavigationLink(value: Route.tagSettings) {
                         SettingsListLabel(
                             title: t("settings__general__tags"),
-                            rightText: String(activityViewModel.recentlyUsedTags.count)
+                            rightText: String(tagManager.lastUsedTags.count)
                         )
                     }
                 }

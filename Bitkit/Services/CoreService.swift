@@ -230,7 +230,7 @@ class ActivityService {
 
     // MARK: - Tag Methods
 
-    func appendTag(toActivity id: String, _ tags: [String]) async throws {
+    func appendTags(toActivity id: String, _ tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try addTags(activityId: id, tags: tags)
         }
@@ -427,7 +427,7 @@ class ActivityService {
                 let numTags = Int.random(in: 0 ... 3)
                 if numTags > 0 {
                     let tags = Array(Set((0 ..< numTags).map { _ in possibleTags.randomElement()! }))
-                    try await self.appendTag(toActivity: id, tags)
+                    try await self.appendTags(toActivity: id, tags)
                 }
             }
         }

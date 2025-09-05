@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct TagSettingsView: View {
-    @EnvironmentObject var activityViewModel: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var tagManager: TagManager
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -14,12 +14,12 @@ struct TagSettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 WrappingHStack(spacing: 8) {
-                    ForEach(activityViewModel.recentlyUsedTags, id: \.self) { tag in
+                    ForEach(tagManager.lastUsedTags, id: \.self) { tag in
                         Tag(
                             tag,
                             icon: .trash,
                             onDelete: {
-                                activityViewModel.removeFromRecentlyUsedTags(tag)
+                                tagManager.removeFromLastUsedTags(tag)
                             }
                         )
                     }
@@ -28,17 +28,5 @@ struct TagSettingsView: View {
             .padding(.horizontal, 16)
         }
         .navigationTitle(t("settings__general__tags"))
-        .task {
-            await activityViewModel.syncState()
-        }
     }
-}
-
-#Preview {
-    NavigationStack {
-        TagSettingsView()
-            .environmentObject(ActivityListViewModel())
-            .environmentObject(AppViewModel())
-    }
-    .preferredColorScheme(.dark)
 }

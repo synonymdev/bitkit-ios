@@ -25,10 +25,6 @@ class ActivityListViewModel: ObservableObject {
     private var tagsCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
-    @Published private(set) var recentlyUsedTags: [String] = []
-
-    // Persistent storage for recently used tags
-    @AppStorage("recentlyUsedTags") private var recentlyUsedTagsData: Data = .init()
 
     private func updateAvailableTags() async {
         do {
@@ -39,47 +35,12 @@ class ActivityListViewModel: ObservableObject {
         }
     }
 
-    private func addToRecentlyUsedTags(_ tag: String) {
-        // Remove the tag if it already exists
-        recentlyUsedTags.removeAll { $0 == tag }
-        // Add to the front of the list
-        recentlyUsedTags.insert(tag, at: 0)
-        // Keep only the most recent 10 tags to prevent unlimited growth
-        if recentlyUsedTags.count > 10 {
-            recentlyUsedTags = Array(recentlyUsedTags.prefix(10))
-        }
-
-        // Persist to storage
-        saveRecentlyUsedTags()
-    }
-
-    private func loadRecentlyUsedTags() {
-        do {
-            let tags = try JSONDecoder().decode([String].self, from: recentlyUsedTagsData)
-            recentlyUsedTags = tags
-        } catch {
-            // If no saved data or decode fails, start with empty array
-            recentlyUsedTags = []
-        }
-    }
-
-    private func saveRecentlyUsedTags() {
-        do {
-            recentlyUsedTagsData = try JSONEncoder().encode(recentlyUsedTags)
-        } catch {
-            Logger.error(error, context: "Failed to persist recently used tags")
-        }
-    }
-
     init(
         coreService: CoreService = .shared,
-        lightningService: LightningService = .shared
+        lightningService: LightningService = .shared,
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
-
-        // Load persisted recently used tags
-        loadRecentlyUsedTags()
 
         // Setup search text subscription with debounce
         searchCancellable =
@@ -224,12 +185,8 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.allPossibleTags()
     }
 
-    func appendTag(toActivity activityId: String, tags: [String]) async throws {
-        try await coreService.activity.appendTag(toActivity: activityId, tags)
-        // Add tags to recently used list
-        for tag in tags {
-            addToRecentlyUsedTags(tag)
-        }
+    func appendTags(toActivity activityId: String, tags: [String]) async throws {
+        try await coreService.activity.appendTags(toActivity: activityId, tags)
         // Refresh the activities after adding a tag
         await syncState()
     }
@@ -244,9 +201,25 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.tags(forActivity: activityId)
     }
 
-    func removeFromRecentlyUsedTags(_ tag: String) {
-        recentlyUsedTags.removeAll { $0 == tag }
-        saveRecentlyUsedTags()
+    func findActivityAndAddTags(paymentHashOrTxId: String, tags: [String]) async throws {
+        guard !tags.isEmpty else { return }
+
+        // Find the activity by payment ID
+        let activity = try await tryNTimes(
+            toTry: { try await findActivity(byPaymentId: paymentHashOrTxId) },
+            times: 12,
+            interval: 5
+        )
+
+        let activityId = switch activity {
+        case let .lightning(lightning): lightning.id
+        case let .onchain(onchain): onchain.id
+        }
+
+        // Apply tags to the activity
+        try await appendTags(toActivity: activityId, tags: tags)
+
+        Logger.info("Applied tags to activity: \(tags)")
     }
 
     // MARK: - Boost Methods
