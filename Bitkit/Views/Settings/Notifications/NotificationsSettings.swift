@@ -25,6 +25,8 @@ struct NotificationsSettings: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
+                NavigationBar(title: t("settings__notifications__nav_title"))
+
                 SettingsListLabel(
                     title: t("settings__notifications__settings__toggle"),
                     toggle: Binding(
@@ -105,8 +107,7 @@ struct NotificationsSettings: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationTitle(t("settings__notifications__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .onAppear {
             settings.checkNotificationPermission()
         }

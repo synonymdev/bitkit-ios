@@ -5,8 +5,11 @@ struct SupportView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("settings__support__title"))
+                .padding(.bottom, 16)
+
             BodyMText(t("settings__support__text"))
-                .padding(.vertical, 16)
+                .padding(.bottom, 16)
 
             VStack(spacing: 0) {
                 NavigationLink(value: Route.reportIssue) {
@@ -20,9 +23,7 @@ struct SupportView: View {
                 }
 
                 NavigationLink(value: Route.appStatus) {
-                    SettingsListLabel(
-                        title: t("settings__support__status")
-                    )
+                    SettingsListLabel(title: t("settings__support__status"))
                 }
             }
 
@@ -39,9 +40,7 @@ struct SupportView: View {
 
             Social()
         }
-        .navigationTitle(t("settings__support__title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

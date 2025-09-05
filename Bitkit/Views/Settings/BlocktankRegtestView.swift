@@ -38,17 +38,20 @@ struct BlocktankRegtestView: View {
     @State private var showingResult = false
 
     var body: some View {
-        List {
-            serverInfoSection
-            depositSection
-            miningSection
-            lightningPaymentSection
-            channelCloseSection
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: "Blocktank Regtest")
+                .padding(.horizontal, 16)
+
+            List {
+                serverInfoSection
+                depositSection
+                miningSection
+                lightningPaymentSection
+                channelCloseSection
+            }
         }
-        .navigationTitle("Blocktank Regtest")
-        .safeAreaInset(edge: .bottom) {
-            Color.clear.frame(height: 100)
-        }
+        .navigationBarHidden(true)
+        .bottomSafeAreaPadding()
         .onAppear {
             depositAddress = wallet.onchainAddress
         }

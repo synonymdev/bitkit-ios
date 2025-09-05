@@ -94,72 +94,74 @@ struct BackupSettings: View {
     @EnvironmentObject var sheets: SheetViewModel
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button(action: {
-                        sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
-                    }) {
-                        SettingsListLabel(title: t("settings__backup__wallet"))
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__backup_title"))
+
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button(action: {
+                            sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
+                        }) {
+                            SettingsListLabel(title: t("settings__backup__wallet"))
+                        }
+
+                        NavigationLink(value: Route.resetAndRestore) {
+                            SettingsListLabel(title: t("settings__backup__reset"))
+                        }
+
+                        SettingsLabel(t("settings__backup__latest"))
+                            .padding(.top, 16)
+
+                        StatusItemView(
+                            imageName: "bolt-hollow",
+                            title: t("settings__backup__category_connections"),
+                            status: .required(1_718_281_828)
+                        )
+                        StatusItemView(
+                            imageName: "note",
+                            title: t("settings__backup__category_connection_receipts"),
+                            status: .synced(1_718_281_828)
+                        )
+                        StatusItemView(
+                            imageName: "arrow-up-down",
+                            title: t("settings__backup__category_transaction_log"),
+                            status: .synced(1_718_281_828)
+                        )
+                        StatusItemView(
+                            imageName: "rewind",
+                            title: t("settings__backup__category_wallet"),
+                            status: .synced(1_718_281_828)
+                        )
+                        StatusItemView(
+                            imageName: "gear-six",
+                            title: t("settings__backup__category_settings"),
+                            status: .running
+                        )
+                        StatusItemView(
+                            imageName: "bolt-hollow",
+                            title: t("settings__backup__category_widgets"),
+                            status: .running
+                        )
+                        StatusItemView(
+                            imageName: "tag",
+                            title: t("settings__backup__category_tags"),
+                            status: .running
+                        )
+                        StatusItemView(
+                            imageName: "users",
+                            title: t("settings__backup__category_contacts"),
+                            status: .running
+                        )
+
+                        Spacer()
                     }
-
-                    NavigationLink(value: Route.resetAndRestore) {
-                        SettingsListLabel(title: t("settings__backup__reset"))
-                    }
-
-                    SettingsLabel(t("settings__backup__latest"))
-                        .padding(.top, 16)
-
-                    StatusItemView(
-                        imageName: "bolt-hollow",
-                        title: t("settings__backup__category_connections"),
-                        status: .required(1_718_281_828)
-                    )
-                    StatusItemView(
-                        imageName: "note",
-                        title: t("settings__backup__category_connection_receipts"),
-                        status: .synced(1_718_281_828)
-                    )
-                    StatusItemView(
-                        imageName: "arrow-up-down",
-                        title: t("settings__backup__category_transaction_log"),
-                        status: .synced(1_718_281_828)
-                    )
-                    StatusItemView(
-                        imageName: "rewind",
-                        title: t("settings__backup__category_wallet"),
-                        status: .synced(1_718_281_828)
-                    )
-                    StatusItemView(
-                        imageName: "gear-six",
-                        title: t("settings__backup__category_settings"),
-                        status: .running
-                    )
-                    StatusItemView(
-                        imageName: "bolt-hollow",
-                        title: t("settings__backup__category_widgets"),
-                        status: .running
-                    )
-                    StatusItemView(
-                        imageName: "tag",
-                        title: t("settings__backup__category_tags"),
-                        status: .running
-                    )
-                    StatusItemView(
-                        imageName: "users",
-                        title: t("settings__backup__category_contacts"),
-                        status: .running
-                    )
-
-                    Spacer()
+                    .frame(minHeight: geometry.size.height)
+                    .bottomSafeAreaPadding()
                 }
-                .frame(minHeight: geometry.size.height)
-                .padding(.top, 16)
-                .padding(.horizontal, 16)
-                .bottomSafeAreaPadding()
             }
         }
-        .navigationTitle(t("settings__backup_title"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
     }
 }

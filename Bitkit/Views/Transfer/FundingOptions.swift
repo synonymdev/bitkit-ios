@@ -16,6 +16,9 @@ struct FundingOptions: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(
                 t("lightning__funding__title"),
                 accentColor: .purpleAccent
@@ -54,10 +57,7 @@ struct FundingOptions: View {
 
             Spacer()
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .task {
             await app.checkGeoStatus()

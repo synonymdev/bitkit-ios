@@ -90,13 +90,15 @@ enum Route: Hashable {
 
 @MainActor
 class NavigationViewModel: ObservableObject {
-    // Drawer menu
-    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
-
     @Published var path: [Route] = []
+    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
 
     var currentRoute: Route? {
         path.last
+    }
+
+    var canGoBack: Bool {
+        return !path.isEmpty
     }
 
     func navigate(_ route: Route) {
@@ -109,5 +111,6 @@ class NavigationViewModel: ObservableObject {
 
     func reset() {
         path.removeLast(path.count)
+        activeDrawerMenuItem = .wallet
     }
 }

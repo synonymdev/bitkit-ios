@@ -22,6 +22,9 @@ struct SavingsAdvancedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(t("lightning__savings_advanced__title"), accentColor: .brandAccent)
                 .padding(.bottom, 16)
 
@@ -49,11 +52,8 @@ struct SavingsAdvancedView: View {
                 dismiss()
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .padding(.top, 16)
         .bottomSafeAreaPadding()
         .task {
             if transfer.selectedChannelIds.isEmpty, let channels = wallet.channels {

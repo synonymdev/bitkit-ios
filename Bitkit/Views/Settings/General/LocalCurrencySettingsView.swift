@@ -40,32 +40,37 @@ struct LocalCurrencySettingsView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            if !availableMostUsed.isEmpty {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__general__currency_local_title"))
+
+            ScrollView(showsIndicators: false) {
+                if !availableMostUsed.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        CaptionText(t("settings__general__currency_most_used").uppercased())
+                            .padding(.vertical, 16)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        ForEach(availableMostUsed, id: \.quote) { rate in
+                            currencyRow(rate)
+                        }
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(t("settings__general__currency_most_used").uppercased())
+                    CaptionText(t("settings__general__currency_other").uppercased())
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    ForEach(availableMostUsed, id: \.quote) { rate in
+                    ForEach(otherCurrencies, id: \.quote) { rate in
                         currencyRow(rate)
                     }
                 }
-                .padding(.horizontal, 16)
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionText(t("settings__general__currency_other").uppercased())
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                ForEach(otherCurrencies, id: \.quote) { rate in
-                    currencyRow(rate)
-                }
-            }
-            .padding(.horizontal, 16)
         }
-        .navigationTitle(t("settings__general__currency_local_title"))
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        // TODO: Fix search
         .searchable(text: $searchText, prompt: t("common__search"))
     }
 }

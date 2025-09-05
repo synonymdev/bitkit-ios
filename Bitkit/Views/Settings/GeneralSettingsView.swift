@@ -8,69 +8,74 @@ struct GeneralSettingsView: View {
     @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                NavigationLink(value: Route.languageSettings) {
-                    SettingsListLabel(
-                        title: t("settings__general__language"),
-                        rightText: languageManager.currentLanguageDisplayName
-                    )
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__general_title"))
 
-                NavigationLink(value: Route.currencySettings) {
-                    SettingsListLabel(
-                        title: t("settings__general__currency_local"),
-                        rightText: currency.selectedCurrency
-                    )
-                }
-
-                NavigationLink(value: Route.unitSettings) {
-                    SettingsListLabel(
-                        title: t("settings__general__unit"),
-                        rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
-                    )
-                }
-
-                NavigationLink(value: Route.transactionSpeedSettings) {
-                    SettingsListLabel(
-                        title: t("settings__general__speed"),
-                        rightText: settings.defaultTransactionSpeed.displayTitle
-                    )
-                }
-
-                if !tagManager.lastUsedTags.isEmpty {
-                    NavigationLink(value: Route.tagSettings) {
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    NavigationLink(value: Route.languageSettings) {
                         SettingsListLabel(
-                            title: t("settings__general__tags"),
-                            rightText: String(tagManager.lastUsedTags.count)
+                            title: t("settings__general__language"),
+                            rightText: languageManager.currentLanguageDisplayName
+                        )
+                    }
+
+                    NavigationLink(value: Route.currencySettings) {
+                        SettingsListLabel(
+                            title: t("settings__general__currency_local"),
+                            rightText: currency.selectedCurrency
+                        )
+                    }
+
+                    NavigationLink(value: Route.unitSettings) {
+                        SettingsListLabel(
+                            title: t("settings__general__unit"),
+                            rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
+                        )
+                    }
+
+                    NavigationLink(value: Route.transactionSpeedSettings) {
+                        SettingsListLabel(
+                            title: t("settings__general__speed"),
+                            rightText: settings.defaultTransactionSpeed.displayTitle
+                        )
+                    }
+
+                    if !tagManager.lastUsedTags.isEmpty {
+                        NavigationLink(value: Route.tagSettings) {
+                            SettingsListLabel(
+                                title: t("settings__general__tags"),
+                                rightText: String(tagManager.lastUsedTags.count)
+                            )
+                        }
+                    }
+
+                    NavigationLink(value: Route.widgetsSettings) {
+                        SettingsListLabel(
+                            title: t("settings__widgets__nav_title"),
+                            rightText: settings.showWidgets ? "On" : "Off"
+                        )
+                    }
+
+                    NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
+                        SettingsListLabel(
+                            title: t("settings__quickpay__nav_title"),
+                            rightText: settings.enableQuickpay ? "On" : "Off"
+                        )
+                    }
+
+                    NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
+                        SettingsListLabel(
+                            title: t("settings__notifications__nav_title"),
+                            rightText: settings.notificationServerRegistered ? "On" : "Off"
                         )
                     }
                 }
-
-                NavigationLink(value: Route.widgetsSettings) {
-                    SettingsListLabel(
-                        title: t("settings__widgets__nav_title"),
-                        rightText: settings.showWidgets ? "On" : "Off"
-                    )
-                }
-
-                NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
-                    SettingsListLabel(
-                        title: t("settings__quickpay__nav_title"),
-                        rightText: settings.enableQuickpay ? "On" : "Off"
-                    )
-                }
-
-                NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
-                    SettingsListLabel(
-                        title: t("settings__notifications__nav_title"),
-                        rightText: settings.notificationServerRegistered ? "On" : "Off"
-                    )
-                }
             }
-            .padding(.horizontal, 16)
         }
-        .navigationTitle(t("settings__general_title"))
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

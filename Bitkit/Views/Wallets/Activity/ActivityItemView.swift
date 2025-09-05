@@ -96,12 +96,14 @@ struct ActivityItemView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            NavigationBar(title: navigationTitle)
+
             HStack(alignment: .bottom) {
                 MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                 Spacer()
                 ActivityIcon(activity: viewModel.activity, size: 48)
             }
-            .padding(.vertical)
+            .padding(.bottom, 16)
 
             statusSection
             timestampSection
@@ -112,8 +114,7 @@ struct ActivityItemView: View {
 
             Spacer()
         }
-        .navigationTitle(navigationTitle)
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .onChange(of: sheets.addTagSheetItem) { item in

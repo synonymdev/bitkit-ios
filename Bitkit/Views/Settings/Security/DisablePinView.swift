@@ -6,6 +6,9 @@ struct DisablePinView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("security__pin_disable_title"))
+                .padding(.bottom, 16)
+
             BodyMText(t("security__pin_disable_text"))
 
             Spacer()
@@ -38,9 +41,7 @@ struct DisablePinView: View {
                 )
             )
         }
-        .navigationTitle(t("security__pin_disable_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

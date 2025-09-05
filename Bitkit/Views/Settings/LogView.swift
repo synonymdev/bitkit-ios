@@ -21,6 +21,7 @@ struct LogView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Log Files")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarItems(
             trailing:
             Button(action: {

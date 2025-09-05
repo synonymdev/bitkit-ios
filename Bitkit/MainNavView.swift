@@ -175,12 +175,10 @@ struct MainNavView: View {
                 HomeView()
             case .activity:
                 AllActivityView()
-                    .backToWalletButton()
             case .contacts:
                 if app.hasSeenContactsIntro {
                     // ContactsView()
                     Text("Coming Soon")
-                        .backToWalletButton()
                 } else {
                     ContactsIntroView()
                 }
@@ -188,13 +186,11 @@ struct MainNavView: View {
                 if app.hasSeenProfileIntro {
                     // ProfileView()
                     Text("Coming Soon")
-                        .backToWalletButton()
                 } else {
                     ProfileIntroView()
                 }
             case .settings:
                 MainSettings()
-                    .backToWalletButton()
             case .shop:
                 if app.hasSeenShopIntro {
                     ShopDiscover()
@@ -209,165 +205,94 @@ struct MainNavView: View {
                 }
             case .appStatus:
                 AppStatusView()
-                    .backToWalletButton()
             }
         }
         .navigationDestination(for: Route.self) { screenValue in
             switch screenValue {
-            case .activityList:
-                AllActivityView()
-            case let .activityDetail(activity):
-                ActivityItemView(item: activity)
-            case let .activityExplorer(activity):
-                ActivityExplorerView(item: activity)
-            case .buyBitcoin:
-                BuyBitcoinView()
-            case .contacts:
-                // ContactsView()
-                Text("Coming Soon")
-                    .backToWalletButton()
-            case .contactsIntro:
-                ContactsIntroView()
-            case .savingsWallet:
-                SavingsWalletView()
-            case .spendingWallet:
-                SpendingWalletView()
-            case .transferIntro:
-                TransferIntroView()
-            case .fundingOptions:
-                FundingOptions()
-            case .spendingIntro:
-                SpendingIntroView()
-            case .spendingAmount:
-                SpendingAmount()
-            case .spendingConfirm:
-                SpendingConfirm()
-            case let .spendingAdvanced(order):
-                SpendingAdvancedView(order: order)
-            case let .transferLearnMore(order):
-                TransferLearnMoreView(order: order)
-            case .settingUp:
-                SettingUpView()
-            case .fundingAdvanced:
-                FundAdvancedOptions()
-            case let .fundManual(nodeUri):
-                FundManualSetupView(initialNodeUri: nodeUri)
-            case .fundManualSuccess:
-                FundManualSuccessView()
-            case let .lnurlChannel(channelData):
-                LnurlChannel(channelData: channelData)
-            case .savingsIntro:
-                SavingsIntroView()
-            case .savingsAvailability:
-                SavingsAvailabilityView()
-            case .savingsConfirm:
-                SavingsConfirmView()
-            case .savingsAdvanced:
-                SavingsAdvancedView()
-            case .savingsProgress:
-                SavingsProgressView()
-            case .profile:
-                // ProfileView()
-                Text("Coming Soon")
-                    .backToWalletButton()
-            case .profileIntro:
-                ProfileIntroView()
-            case .scanner:
-                ScannerScreen()
+            case .activityList: AllActivityView()
+            case let .activityDetail(activity): ActivityItemView(item: activity)
+            case let .activityExplorer(activity): ActivityExplorerView(item: activity)
+            case .buyBitcoin: BuyBitcoinView()
+            case .contacts: Text("Coming Soon")
+            case .contactsIntro: ContactsIntroView()
+            case .savingsWallet: SavingsWalletView()
+            case .spendingWallet: SpendingWalletView()
+            case .transferIntro: TransferIntroView()
+            case .fundingOptions: FundingOptions()
+            case .spendingIntro: SpendingIntroView()
+            case .spendingAmount: SpendingAmount()
+            case .spendingConfirm: SpendingConfirm()
+            case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
+            case let .transferLearnMore(order): TransferLearnMoreView(order: order)
+            case .settingUp: SettingUpView()
+            case .fundingAdvanced: FundAdvancedOptions()
+            case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
+            case .fundManualSuccess: FundManualSuccessView()
+            case let .lnurlChannel(channelData): LnurlChannel(channelData: channelData)
+            case .savingsIntro: SavingsIntroView()
+            case .savingsAvailability: SavingsAvailabilityView()
+            case .savingsConfirm: SavingsConfirmView()
+            case .savingsAdvanced: SavingsAdvancedView()
+            case .savingsProgress: SavingsProgressView()
+            case .profile: Text("Coming Soon")
+            case .profileIntro: ProfileIntroView()
+            case .scanner: ScannerScreen()
 
             // Shop
-            case .shopIntro:
-                ShopIntro()
-            case .shopDiscover:
-                ShopDiscover()
-            case let .shopMain(page):
-                ShopMain(page: page)
+            case .shopIntro: ShopIntro()
+            case .shopDiscover: ShopDiscover()
+            case let .shopMain(page): ShopMain(page: page)
 
             // Widgets
-            case .widgetsIntro:
-                WidgetsIntroView()
-            case .widgetsList:
-                WidgetsListView()
-            case let .widgetDetail(widgetType):
-                WidgetDetailView(id: widgetType)
-            case let .widgetEdit(widgetType):
-                WidgetEditView(id: widgetType)
+            case .widgetsIntro: WidgetsIntroView()
+            case .widgetsList: WidgetsListView()
+            case let .widgetDetail(widgetType): WidgetDetailView(id: widgetType)
+            case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)
 
             // Settings
-            case .settings:
-                MainSettings()
-            case .generalSettings:
-                GeneralSettingsView()
-            case .securitySettings:
-                SecurityPrivacySettingsView()
-            case .backupSettings:
-                BackupSettings()
-            case .advancedSettings:
-                AdvancedSettingsView()
-            case .support:
-                SupportView()
-            case .about:
-                AboutView()
-            case .devSettings:
-                DevSettingsView()
+            case .settings: MainSettings()
+            case .generalSettings: GeneralSettingsView()
+            case .securitySettings: SecurityPrivacySettingsView()
+            case .backupSettings: BackupSettings()
+            case .advancedSettings: AdvancedSettingsView()
+            case .support: SupportView()
+            case .about: AboutView()
+            case .devSettings: DevSettingsView()
 
             // General settings
-            case .languageSettings:
-                LanguageSettingsScreen()
-            case .currencySettings:
-                LocalCurrencySettingsView()
-            case .unitSettings:
-                DefaultUnitSettingsView()
-            case .transactionSpeedSettings:
-                TransactionSpeedSettingsView()
-            case .quickpay:
-                QuickpaySettings()
-            case .quickpayIntro:
-                QuickpayIntroView()
-            case .customSpeedSettings:
-                CustomSpeedView()
-            case .tagSettings:
-                TagSettingsView()
-            case .widgetsSettings:
-                WidgetsSettingsView()
-            case .notifications:
-                NotificationsSettings()
-            case .notificationsIntro:
-                NotificationsIntro()
+            case .languageSettings: LanguageSettingsScreen()
+            case .currencySettings: LocalCurrencySettingsView()
+            case .unitSettings: DefaultUnitSettingsView()
+            case .transactionSpeedSettings: TransactionSpeedSettingsView()
+            case .quickpay: QuickpaySettings()
+            case .quickpayIntro: QuickpayIntroView()
+            case .customSpeedSettings: CustomSpeedView()
+            case .tagSettings: TagSettingsView()
+            case .widgetsSettings: WidgetsSettingsView()
+            case .notifications: NotificationsSettings()
+            case .notificationsIntro: NotificationsIntro()
 
             // Security settings
-            case .disablePin:
-                DisablePinView()
-            case .changePin:
-                PinChangeView()
+            case .disablePin: DisablePinView()
+            case .changePin: PinChangeView()
 
             // Backup settings
-            case .resetAndRestore:
-                ResetAndRestore()
+            case .resetAndRestore: ResetAndRestore()
 
             // Support settings
-            case .reportIssue:
-                ReportIssue()
-            case .appStatus:
-                AppStatusView()
+            case .reportIssue: ReportIssue()
+            case .appStatus: AppStatusView()
 
             // Advanced settings
-            case .coinSelection:
-                CoinSelectionSettingsView()
-            case .connections:
-                LightningConnectionsView()
-            case .node:
-                NodeStateView()
-            case .electrumSettings:
-                ElectrumSettingsScreen()
-            case .addressViewer:
-                AddressViewer()
+            case .coinSelection: CoinSelectionSettingsView()
+            case .connections: LightningConnectionsView()
+            case .node: NodeStateView()
+            case .electrumSettings: ElectrumSettingsScreen()
+            case .addressViewer: AddressViewer()
 
             // Dev settings
-            case .blocktankRegtest:
-                BlocktankRegtestView()
-            case .logs:
-                LogView()
+            case .blocktankRegtest: BlocktankRegtestView()
+            case .logs: LogView()
             }
         }
     }
@@ -397,35 +322,5 @@ struct MainNavView: View {
                 )
             }
         }
-    }
-}
-
-// MARK: - View Modifiers
-
-struct BackToWalletToolbar: ViewModifier {
-    @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var navigation: NavigationViewModel
-
-    func body(content: Content) -> some View {
-        content
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        navigation.activeDrawerMenuItem = .wallet
-                        navigation.reset()
-                    }) {
-                        Image("x-mark")
-                            .resizable()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(.white)
-                    }
-                }
-            }
-    }
-}
-
-extension View {
-    func backToWalletButton() -> some View {
-        modifier(BackToWalletToolbar())
     }
 }
