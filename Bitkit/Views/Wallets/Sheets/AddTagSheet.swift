@@ -22,8 +22,9 @@ struct AddTagSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var activityListViewModel: ActivityListViewModel
+    @EnvironmentObject private var tagManager: TagManager
+
     let config: AddTagSheetItem
-    var previewTags: [String]? = nil
 
     private var activityId: String {
         config.activityId
@@ -37,14 +38,12 @@ struct AddTagSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 SheetHeader(title: t("wallet__tags_add"))
 
-                let tagsToShow = previewTags ?? activityListViewModel.recentlyUsedTags
-
-                if !tagsToShow.isEmpty {
+                if !tagManager.lastUsedTags.isEmpty {
                     CaptionMText(t("wallet__tags_previously"))
                         .padding(.bottom, 16)
 
                     WrappingHStack(spacing: 8) {
-                        ForEach(tagsToShow, id: \.self) { tag in
+                        ForEach(tagManager.lastUsedTags, id: \.self) { tag in
                             Tag(
                                 tag,
                                 onPress: {
@@ -84,29 +83,12 @@ struct AddTagSheet: View {
         guard !tag.isEmpty else { return }
         isLoading = true
         do {
-            try await activityListViewModel.appendTag(toActivity: activityId, tags: [tag])
+            tagManager.addToLastUsedTags(tag)
+            try await activityListViewModel.appendTags(toActivity: activityId, tags: [tag])
             sheets.hideSheet()
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
         }
         isLoading = false
     }
-}
-
-#Preview {
-    VStack {}.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color.gray6)
-        .sheet(
-            isPresented: .constant(true),
-            content: {
-                AddTagSheet(
-                    config: AddTagSheetItem(activityId: "test-activity-id"),
-                    previewTags: ["Lunch", "Mom", "Dad", "Conference", "Dinner", "Tip", "Friend", "Gift"]
-                )
-                .environmentObject(AppViewModel())
-                .environmentObject(SheetViewModel())
-                .environmentObject(ActivityListViewModel())
-                .presentationDetents([.height(400)])
-            }
-        )
-        .preferredColorScheme(.dark)
 }
