@@ -57,11 +57,14 @@ struct WidgetEditView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("widgets__widget__edit"))
+                .padding(.bottom, 16)
+
             BodyMText(
                 t("widgets__widget__edit_description", variables: ["name": widget.name]),
                 textColor: .textSecondary
             )
-            .padding(.vertical)
+            .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
@@ -102,9 +105,7 @@ struct WidgetEditView: View {
             }
             .padding(.top, 16)
         }
-        .navigationTitle(t("widgets__widget__edit"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .onAppear {
             if editLogic == nil {

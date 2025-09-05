@@ -60,6 +60,8 @@ struct AddressViewer: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("settings__adv__address_viewer"))
+
             // Header with QR Code
             VStack(spacing: 16) {
                 HStack(alignment: .top, spacing: 16) {
@@ -92,8 +94,7 @@ struct AddressViewer: View {
                     Spacer()
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 24)
+            .padding(.bottom, 24)
 
             // Search Bar
             HStack(spacing: 0) {
@@ -110,7 +111,6 @@ struct AddressViewer: View {
             .padding(.horizontal)
             .background(Color.white10)
             .cornerRadius(32)
-            .padding(.horizontal, 20)
             .padding(.bottom, 16)
 
             // Address Type Toggle
@@ -137,13 +137,12 @@ struct AddressViewer: View {
                     await loadAddresses()
                 }
             }
-            .padding(.horizontal, 20)
             .padding(.bottom, 16)
 
             // Address List with Sticky Bottom Buttons
             ZStack(alignment: .bottom) {
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         LazyVStack(spacing: 8) {
                             // Top anchor for scroll to top and visibility detector
                             Color.clear
@@ -197,14 +196,6 @@ struct AddressViewer: View {
 
                     // Sticky Bottom Buttons
                     VStack(spacing: 0) {
-                        // Gradient overlay for smooth transition
-                        LinearGradient(
-                            gradient: Gradient(colors: [Color.gray6.opacity(0), Color.gray6]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 20)
-
                         // Button container
                         HStack(spacing: 12) {
                             // Scroll to top button
@@ -251,14 +242,13 @@ struct AddressViewer: View {
                                 await checkBalances()
                             }
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 20)
-                        .background(Color.gray6)
                     }
                 }
             }
         }
-        .background(Color.gray6)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .task {
             await loadAddresses()
         }
@@ -408,17 +398,8 @@ struct AddressRow: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Group {
-                if isSelected {
-                    Color.brandAccent
-                } else {
-                    Color.white08
-                }
-            }
-        )
+        .background(isSelected ? Color.brandAccent : Color.white08)
         .cornerRadius(8)
-        .padding(.horizontal, 20)
         .onTapGesture {
             onTap()
         }

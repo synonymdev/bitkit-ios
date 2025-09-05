@@ -90,13 +90,17 @@ struct DrawerView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(DrawerMenuItem.allCases.filter(\.isMainMenuItem)) { item in
                             Button(action: {
+                                navigation.reset()
                                 navigation.activeDrawerMenuItem = item
+                                // navigation.navigate(Route.shop)
                                 closeMenu()
                             }) {
                                 menuItemContent(item: item)
                             }
                         }
+
                         Spacer()
+
                         appStatus()
                             .padding(.horizontal, 24)
                             .padding(.bottom, 16)

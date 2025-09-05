@@ -21,18 +21,17 @@ struct ShopMain: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("other__shop__main__nav_title"))
+
             WebView(
                 url: uri,
                 webView: $webView,
                 onMessage: handleMessage
             )
             .padding(.top, 16)
-            .padding(.horizontal, 16)
         }
-        .navigationTitle(t("other__shop__main__nav_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(false)
-        .backToWalletButton()
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
     }
 
     private func handleMessage(_ message: String) {

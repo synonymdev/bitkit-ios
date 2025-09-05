@@ -11,180 +11,175 @@ struct LightningConnectionDetailView: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Channel Visualization
-                VStack(spacing: 16) {
-                    LightningChannel(
-                        capacity: channel.channelValueSats,
-                        localBalance: channel.outboundCapacityMsat / 1000,
-                        remoteBalance: channel.inboundCapacityMsat / 1000,
-                        status: channelStatus,
-                        showLabels: true
-                    )
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: title)
+                .padding(.bottom, 16)
 
-                // STATUS Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        CaptionText(t("lightning__status").uppercased(), textColor: .textSecondary)
-                        Spacer()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    // Channel Visualization
+                    VStack(spacing: 16) {
+                        LightningChannel(
+                            capacity: channel.channelValueSats,
+                            localBalance: channel.outboundCapacityMsat / 1000,
+                            remoteBalance: channel.inboundCapacityMsat / 1000,
+                            status: channelStatus,
+                            showLabels: true
+                        )
                     }
-                    .padding(.horizontal, 16)
 
-                    VStack(spacing: 0) {
-                        HStack {
-                            Image(statusIcon)
-                                .foregroundColor(statusColor)
-                                .font(.caption)
-                                .frame(width: 32, height: 32)
-                                .background(statusColor.opacity(0.16))
-                                .cornerRadius(200)
-
-                            BodyMText(statusText, textColor: statusColor)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                    }
-                }
-
-                // ORDER DETAILS Section
-                if let order = linkedOrder {
+                    // STATUS Section
                     VStack(alignment: .leading, spacing: 16) {
                         HStack {
-                            CaptionText(t("lightning__order_details").uppercased(), textColor: .textSecondary)
+                            CaptionText(t("lightning__status").uppercased(), textColor: .textSecondary)
                             Spacer()
                         }
-                        .padding(.horizontal, 16)
 
                         VStack(spacing: 0) {
-                            DetailRow(label: t("lightning__order"), value: order.id, isFirst: true)
+                            HStack {
+                                Image(statusIcon)
+                                    .foregroundColor(statusColor)
+                                    .font(.caption)
+                                    .frame(width: 32, height: 32)
+                                    .background(statusColor.opacity(0.16))
+                                    .cornerRadius(200)
 
-                            if let formattedDate = formatDate(order.createdAt) {
-                                Divider().padding(.horizontal, 16)
-                                DetailRow(label: t("lightning__opened_on"), value: formattedDate)
+                                BodyMText(statusText, textColor: statusColor)
+                                Spacer()
+                            }
+                            .padding(.vertical, 12)
+                        }
+                    }
+
+                    // ORDER DETAILS Section
+                    if let order = linkedOrder {
+                        VStack(alignment: .leading, spacing: 16) {
+                            HStack {
+                                CaptionText(t("lightning__order_details").uppercased(), textColor: .textSecondary)
+                                Spacer()
                             }
 
-                            Divider().padding(.horizontal, 16)
+                            VStack(spacing: 0) {
+                                DetailRow(label: t("lightning__order"), value: order.id, isFirst: true)
+
+                                if let formattedDate = formatDate(order.createdAt) {
+                                    Divider().padding(.horizontal, 16)
+                                    DetailRow(label: t("lightning__opened_on"), value: formattedDate)
+                                }
+
+                                Divider().padding(.horizontal, 16)
+                                DetailRow(
+                                    label: t("lightning__transaction"),
+                                    value: truncateString(order.payment.onchain.address, length: 16)
+                                )
+                                Divider().padding(.horizontal, 16)
+                                DetailRow(
+                                    label: t("lightning__order_fee"), value: "₿ \(formatNumber(order.feeSat))", isLast: true
+                                )
+                            }
+                        }
+                    }
+
+                    // BALANCE Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            CaptionText(t("lightning__balance").uppercased(), textColor: .textSecondary)
+                            Spacer()
+                        }
+
+                        VStack(spacing: 0) {
                             DetailRow(
-                                label: t("lightning__transaction"),
-                                value: truncateString(order.payment.onchain.address, length: 16)
+                                label: t("lightning__receiving_label"),
+                                value: "₿ \(formatNumber(channel.inboundCapacityMsat / 1000))", isFirst: true
                             )
                             Divider().padding(.horizontal, 16)
                             DetailRow(
-                                label: t("lightning__order_fee"), value: "₿ \(formatNumber(order.feeSat))", isLast: true
+                                label: t("lightning__spending_label"),
+                                value: "₿ \(formatNumber(channel.outboundCapacityMsat / 1000))"
+                            )
+                            Divider().padding(.horizontal, 16)
+                            DetailRow(
+                                label: t("lightning__reserve_balance"),
+                                value: "₿ \(formatNumber(channel.unspendablePunishmentReserve ?? 0))"
+                            )
+                            Divider().padding(.horizontal, 16)
+                            DetailRow(
+                                label: t("lightning__total_size"), value: "₿ \(formatNumber(channel.channelValueSats))",
+                                isLast: true
                             )
                         }
                     }
-                }
 
-                // BALANCE Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        CaptionText(t("lightning__balance").uppercased(), textColor: .textSecondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
+                    // FEES Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            CaptionText(t("lightning__fees").uppercased(), textColor: .textSecondary)
+                            Spacer()
+                        }
 
-                    VStack(spacing: 0) {
-                        DetailRow(
-                            label: t("lightning__receiving_label"),
-                            value: "₿ \(formatNumber(channel.inboundCapacityMsat / 1000))", isFirst: true
-                        )
-                        Divider().padding(.horizontal, 16)
-                        DetailRow(
-                            label: t("lightning__spending_label"),
-                            value: "₿ \(formatNumber(channel.outboundCapacityMsat / 1000))"
-                        )
-                        Divider().padding(.horizontal, 16)
-                        DetailRow(
-                            label: t("lightning__reserve_balance"),
-                            value: "₿ \(formatNumber(channel.unspendablePunishmentReserve ?? 0))"
-                        )
-                        Divider().padding(.horizontal, 16)
-                        DetailRow(
-                            label: t("lightning__total_size"), value: "₿ \(formatNumber(channel.channelValueSats))",
-                            isLast: true
-                        )
-                    }
-                }
-
-                // FEES Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        CaptionText(t("lightning__fees").uppercased(), textColor: .textSecondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-
-                    VStack(spacing: 0) {
-                        DetailRow(label: t("lightning__base_fee"), value: "₿ 1", isFirst: true)
-                        Divider().padding(.horizontal, 16)
-                        DetailRow(label: "Receiving base fee", value: "₿ 1", isLast: true) // TODO: Add localization key for receiving base fee
-                    }
-                }
-
-                // OTHER Section
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        CaptionText(t("lightning__other").uppercased(), textColor: .textSecondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-
-                    VStack(spacing: 0) {
-                        let hasDate = isValidDate(linkedOrder?.createdAt)
-
-                        if hasDate, let formattedDate = formatDate(linkedOrder?.createdAt ?? "") {
-                            DetailRow(
-                                label: t("lightning__opened_on"),
-                                value: formattedDate,
-                                isFirst: true
-                            )
+                        VStack(spacing: 0) {
+                            DetailRow(label: t("lightning__base_fee"), value: "₿ 1", isFirst: true)
                             Divider().padding(.horizontal, 16)
-                            DetailRow(
-                                label: t("lightning__channel_node_id"),
-                                value: truncateString(channel.counterpartyNodeId.description, length: 16), isLast: true
-                            )
-                        } else {
-                            DetailRow(
-                                label: t("lightning__channel_node_id"),
-                                value: truncateString(channel.counterpartyNodeId.description, length: 16),
-                                isFirst: true, isLast: true
-                            )
+                            DetailRow(label: "Receiving base fee", value: "₿ 1", isLast: true) // TODO: Add localization key for receiving base fee
                         }
                     }
-                }
 
-                // Bottom buttons
-                HStack(spacing: 16) {
-                    CustomButton(
-                        title: t("lightning__support"),
-                        variant: .secondary,
-                        shouldExpand: true
-                    ) {
-                        // Handle support action
+                    // OTHER Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            CaptionText(t("lightning__other").uppercased(), textColor: .textSecondary)
+                            Spacer()
+                        }
+
+                        VStack(spacing: 0) {
+                            let hasDate = isValidDate(linkedOrder?.createdAt)
+
+                            if hasDate, let formattedDate = formatDate(linkedOrder?.createdAt ?? "") {
+                                DetailRow(
+                                    label: t("lightning__opened_on"),
+                                    value: formattedDate,
+                                    isFirst: true
+                                )
+                                Divider().padding(.horizontal, 16)
+                                DetailRow(
+                                    label: t("lightning__channel_node_id"),
+                                    value: truncateString(channel.counterpartyNodeId.description, length: 16), isLast: true
+                                )
+                            } else {
+                                DetailRow(
+                                    label: t("lightning__channel_node_id"),
+                                    value: truncateString(channel.counterpartyNodeId.description, length: 16),
+                                    isFirst: true, isLast: true
+                                )
+                            }
+                        }
                     }
 
-                    if channelStatus == .open {
+                    // Bottom buttons
+                    HStack(spacing: 16) {
                         CustomButton(
-                            title: t("lightning__close_conn"),
-                            variant: .primary,
-                            shouldExpand: true,
-                            destination: CloseConnectionConfirmation(channel: channel)
-                        )
+                            title: t("lightning__support"),
+                            variant: .secondary,
+                            shouldExpand: true
+                        ) {
+                            // Handle support action
+                        }
+
+                        if channelStatus == .open {
+                            CustomButton(
+                                title: t("lightning__close_conn"),
+                                variant: .primary,
+                                shouldExpand: true,
+                                destination: CloseConnectionConfirmation(channel: channel)
+                            )
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 32)
             }
         }
-        .background(Color.black)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 
     // MARK: - Computed Properties
@@ -236,7 +231,6 @@ struct LightningConnectionDetailView: View {
             Spacer()
             CaptionBText(value, textColor: .white)
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 

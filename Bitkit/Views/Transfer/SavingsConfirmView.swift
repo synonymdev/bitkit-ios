@@ -35,11 +35,15 @@ struct SavingsConfirmView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(t("lightning__transfer__confirm"), accentColor: .brandAccent)
 
             CaptionMText(t("lightning__savings_confirm__label"))
                 .padding(.top, 32)
+                .padding(.bottom, 16)
 
             MoneyText(sats: Int(totalSats), size: .display, symbol: true)
 
@@ -92,11 +96,8 @@ struct SavingsConfirmView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .padding(.top, 16)
         .bottomSafeAreaPadding()
     }
 }

@@ -35,9 +35,11 @@ struct SpendingAdvancedView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(t("lightning__spending_advanced__title"), accentColor: .purpleAccent)
-                    .padding(.top, 16)
 
                 NumberPadTextField(viewModel: amountViewModel, showConversion: false)
                     .onTapGesture {
@@ -96,9 +98,7 @@ struct SpendingAdvancedView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {

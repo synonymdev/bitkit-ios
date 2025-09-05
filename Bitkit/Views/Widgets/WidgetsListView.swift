@@ -1,33 +1,27 @@
 import SwiftUI
 
 struct WidgetsListView: View {
-    @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var widgets: WidgetsViewModel
-
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
-                ForEach(WidgetType.allCases, id: \.rawValue) { widgetType in
-                    WidgetListItem(id: widgetType)
+        VStack(spacing: 0) {
+            NavigationBar(title: t("widgets__add"))
+
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(WidgetType.allCases, id: \.rawValue) { widgetType in
+                        WidgetListItem(id: widgetType)
+                    }
                 }
+                .padding(.top)
             }
-            .padding(.top)
-            .padding(.horizontal)
         }
-        .navigationTitle(t("widgets__add"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
     }
 }
 
 #Preview {
     NavigationStack {
         WidgetsListView()
-            .environmentObject(AppViewModel())
-            .environmentObject(NavigationViewModel())
-            .environmentObject(CurrencyViewModel())
-            .environmentObject(WidgetsViewModel())
     }
     .preferredColorScheme(.dark)
 }

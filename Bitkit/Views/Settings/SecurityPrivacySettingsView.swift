@@ -30,116 +30,122 @@ struct SecurityPrivacySettingsView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // Privacy Settings Section
-                SettingsListLabel(
-                    title: t("settings__security__swipe_balance_to_hide"),
-                    toggle: $settings.swipeBalanceToHide
-                )
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__security__title"))
+                .padding(.bottom, 16)
 
-                SettingsListLabel(
-                    title: t("settings__security__hide_balance_on_open"),
-                    toggle: $settings.hideBalanceOnOpen
-                )
-
-                SettingsListLabel(
-                    title: t("settings__security__clipboard"),
-                    toggle: $settings.readClipboard
-                )
-
-                SettingsListLabel(
-                    title: t("settings__security__warn_100"),
-                    toggle: $settings.warnWhenSendingOver100
-                )
-
-                // PIN Code Section
-                if !settings.pinEnabled {
-                    Button {
-                        sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
-                    } label: {
-                        SettingsListLabel(
-                            title: t("settings__security__pin"),
-                            rightText: t("settings__security__pin_disabled")
-                        )
-                    }
-                } else {
-                    NavigationLink(value: Route.disablePin) {
-                        SettingsListLabel(
-                            title: t("settings__security__pin"),
-                            rightText: t("settings__security__pin_enabled")
-                        )
-                    }
-                }
-
-                if settings.pinEnabled {
-                    NavigationLink(value: Route.changePin) {
-                        SettingsListLabel(
-                            title: t("settings__security__pin_change")
-                        )
-                    }
-
-                    Button {
-                        showPinCheckForLaunch = true
-                    } label: {
-                        SettingsListLabel(
-                            title: t("settings__security__pin_launch"),
-                            rightIcon: nil,
-                            toggle: Binding(
-                                get: { settings.requirePinOnLaunch },
-                                set: { _ in showPinCheckForLaunch = true }
-                            )
-                        )
-                    }
-
-                    Button {
-                        showPinCheckForIdle = true
-                    } label: {
-                        SettingsListLabel(
-                            title: t("settings__security__pin_idle"),
-                            rightIcon: nil,
-                            toggle: Binding(
-                                get: { settings.requirePinWhenIdle },
-                                set: { _ in showPinCheckForIdle = true }
-                            )
-                        )
-                    }
-
-                    Button {
-                        showPinCheckForPayments = true
-                    } label: {
-                        SettingsListLabel(
-                            title: t("settings__security__pin_payments"),
-                            rightIcon: nil,
-                            toggle: Binding(
-                                get: { settings.requirePinForPayments },
-                                set: { _ in showPinCheckForPayments = true }
-                            )
-                        )
-                    }
-
-                    // Biometrics toggle with custom handling
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Privacy Settings Section
                     SettingsListLabel(
-                        title: t(
-                            "settings__security__use_bio",
-                            variables: ["biometryTypeName": biometryTypeName]
-                        ),
-                        toggle: Binding(
-                            get: { settings.useBiometrics },
-                            set: { newValue in
-                                handleBiometricToggle(newValue)
-                            }
-                        )
+                        title: t("settings__security__swipe_balance_to_hide"),
+                        toggle: $settings.swipeBalanceToHide
                     )
 
-                    // Footer text for Biometrics
-                    BodySText(t("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
-                        .padding(.top, 16)
+                    SettingsListLabel(
+                        title: t("settings__security__hide_balance_on_open"),
+                        toggle: $settings.hideBalanceOnOpen
+                    )
+
+                    SettingsListLabel(
+                        title: t("settings__security__clipboard"),
+                        toggle: $settings.readClipboard
+                    )
+
+                    SettingsListLabel(
+                        title: t("settings__security__warn_100"),
+                        toggle: $settings.warnWhenSendingOver100
+                    )
+
+                    // PIN Code Section
+                    if !settings.pinEnabled {
+                        Button {
+                            sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
+                        } label: {
+                            SettingsListLabel(
+                                title: t("settings__security__pin"),
+                                rightText: t("settings__security__pin_disabled")
+                            )
+                        }
+                    } else {
+                        NavigationLink(value: Route.disablePin) {
+                            SettingsListLabel(
+                                title: t("settings__security__pin"),
+                                rightText: t("settings__security__pin_enabled")
+                            )
+                        }
+                    }
+
+                    if settings.pinEnabled {
+                        NavigationLink(value: Route.changePin) {
+                            SettingsListLabel(
+                                title: t("settings__security__pin_change")
+                            )
+                        }
+
+                        Button {
+                            showPinCheckForLaunch = true
+                        } label: {
+                            SettingsListLabel(
+                                title: t("settings__security__pin_launch"),
+                                rightIcon: nil,
+                                toggle: Binding(
+                                    get: { settings.requirePinOnLaunch },
+                                    set: { _ in showPinCheckForLaunch = true }
+                                )
+                            )
+                        }
+
+                        Button {
+                            showPinCheckForIdle = true
+                        } label: {
+                            SettingsListLabel(
+                                title: t("settings__security__pin_idle"),
+                                rightIcon: nil,
+                                toggle: Binding(
+                                    get: { settings.requirePinWhenIdle },
+                                    set: { _ in showPinCheckForIdle = true }
+                                )
+                            )
+                        }
+
+                        Button {
+                            showPinCheckForPayments = true
+                        } label: {
+                            SettingsListLabel(
+                                title: t("settings__security__pin_payments"),
+                                rightIcon: nil,
+                                toggle: Binding(
+                                    get: { settings.requirePinForPayments },
+                                    set: { _ in showPinCheckForPayments = true }
+                                )
+                            )
+                        }
+
+                        // Biometrics toggle with custom handling
+                        SettingsListLabel(
+                            title: t(
+                                "settings__security__use_bio",
+                                variables: ["biometryTypeName": biometryTypeName]
+                            ),
+                            toggle: Binding(
+                                get: { settings.useBiometrics },
+                                set: { newValue in
+                                    handleBiometricToggle(newValue)
+                                }
+                            )
+                        )
+
+                        // Footer text for Biometrics
+                        BodySText(t("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
+                            .padding(.top, 16)
+                    }
                 }
+                .bottomSafeAreaPadding()
             }
-            .padding(.horizontal, 16)
         }
-        .navigationTitle(t("settings__security__title"))
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .navigationDestination(isPresented: $showPinCheckForLaunch) {
             PinCheckView(
                 title: t("security__pin_enter"),

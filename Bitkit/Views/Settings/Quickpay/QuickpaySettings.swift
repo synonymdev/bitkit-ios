@@ -8,55 +8,56 @@ struct QuickpaySettings: View {
     private let sliderSteps: [Double] = [1, 5, 10, 20, 50]
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    SettingsListLabel(
-                        title: t("settings__quickpay__settings__toggle"),
-                        toggle: $settings.enableQuickpay
-                    )
-                    .padding(.top, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__quickpay__nav_title"))
 
-                    BodyMText(
-                        t("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
-                    )
-                    .padding(.top, 16)
-
-                    VStack(alignment: .leading, spacing: 16) {
-                        CaptionText(
-                            t("settings__quickpay__settings__label").uppercased(),
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingsListLabel(
+                            title: t("settings__quickpay__settings__toggle"),
+                            toggle: $settings.enableQuickpay
                         )
 
-                        CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
+                        BodyMText(
+                            t("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
+                        )
+                        .padding(.top, 16)
+
+                        VStack(alignment: .leading, spacing: 16) {
+                            CaptionText(
+                                t("settings__quickpay__settings__label").uppercased(),
+                            )
+
+                            CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
+                        }
+                        .padding(.top, 32)
+
+                        VStack {
+                            Spacer()
+
+                            Image("fast-forward")
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxWidth: 256, maxHeight: 256)
+
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 32)
+
+                        BodySText(
+                            t("settings__quickpay__settings__note"),
+                            textColor: .textSecondary
+                        )
                     }
-                    .padding(.top, 32)
-
-                    VStack {
-                        Spacer()
-
-                        Image("fast-forward")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: 256, maxHeight: 256)
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 32)
-
-                    BodySText(
-                        t("settings__quickpay__settings__note"),
-                        textColor: .textSecondary
-                    )
+                    .frame(minHeight: geometry.size.height)
+                    .bottomSafeAreaPadding()
                 }
-                .frame(minHeight: geometry.size.height)
-                .padding(.horizontal, 16)
-                .bottomSafeAreaPadding()
             }
         }
-        .navigationTitle(t("settings__quickpay__nav_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
     }
 }

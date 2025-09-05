@@ -29,24 +29,20 @@ struct AllActivityView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
+                NavigationBar(title: t("wallet__activity_all"))
+                    .padding(.bottom, 16)
+
                 ActivityListFilter(viewModel: activity)
-                    .padding(.horizontal)
+                    .padding(.bottom, 16)
 
                 SegmentedControl<ActivityTab>(selectedTab: $selectedTab, tabs: ActivityTab.allCases)
-                    .padding(.top)
                     .padding(.bottom, 8)
-                    .padding(.horizontal)
             }
-            // TODO: add blur, glow and drop shadow
-            .padding(.top, 100)
-            .background(Color.white10)
-            .cornerRadius(20, corners: [.bottomLeft, .bottomRight])
 
             ScrollView(showsIndicators: false) {
                 ActivityList(viewType: .all)
                     /// Leave some space for TabBar
                     .padding(.bottom, 130)
-                    .padding(.horizontal)
                     .scrollDismissesKeyboard(.interactively)
                     .highPriorityGesture(
                         DragGesture(minimumDistance: 20, coordinateSpace: .local)
@@ -100,10 +96,9 @@ struct AllActivityView: View {
             }
             .transition(.move(edge: .leading).combined(with: .opacity))
         }
-        .ignoresSafeArea(edges: .top)
-        .navigationTitle("All Activity")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.clear, for: .navigationBar)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

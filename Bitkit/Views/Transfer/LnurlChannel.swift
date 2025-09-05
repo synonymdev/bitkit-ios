@@ -33,8 +33,10 @@ struct LnurlChannel: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("other__lnurl_channel_header"))
+                .padding(.bottom, 16)
+
             DisplayText(t("other__lnurl_channel_title"), accentColor: .purpleAccent)
-                .padding(.top, 32)
                 .padding(.bottom, 8)
 
             BodyMText(t("other__lnurl_channel_message"))
@@ -122,10 +124,8 @@ struct LnurlChannel: View {
                 }
             }
         }
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("other__lnurl_channel_header"))
-        .backToWalletButton()
         .task {
             await fetchChannelInfo()
         }

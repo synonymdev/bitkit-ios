@@ -108,6 +108,9 @@ struct SettingUpView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: navTitle, showBackButton: false)
+                .padding(.bottom, 16)
+
             VStack(alignment: .leading, spacing: 16) {
                 DisplayText(title, accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
@@ -177,11 +180,7 @@ struct SettingUpView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .navigationTitle(navTitle)
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .interactiveDismissDisabled()

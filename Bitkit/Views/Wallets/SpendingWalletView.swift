@@ -1,13 +1,15 @@
 import SwiftUI
 
 struct SpendingWalletView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("wallet__spending__title"), icon: "ln")
+
             MoneyStack(
                 sats: wallet.totalLightningSats,
                 showSymbol: true,
@@ -16,13 +18,11 @@ struct SpendingWalletView: View {
             )
             .padding(.top)
 
-            Divider()
-                .padding(.top, 16)
-
             if wallet.totalLightningSats > 0 {
                 if let channels = wallet.channels, !channels.isEmpty {
                     transferButton
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.top, 32)
                 }
 
                 ScrollView(showsIndicators: false) {
@@ -46,15 +46,14 @@ struct SpendingWalletView: View {
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .navigationTitle(t("wallet__spending__title"))
+        .navigationBarHidden(true)
         .padding(.horizontal)
         .frame(maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .topTrailing) {
+        .background(alignment: .topTrailing) {
             Image("coin-stack-x-2")
                 .resizable()
                 .frame(width: 256, height: 256)
                 .offset(x: 128)
-                .offset(y: -80)
         }
         .animation(.spring(response: 0.3), value: wallet.totalLightningSats)
         .overlay {
@@ -82,7 +81,6 @@ struct SpendingWalletView: View {
                 navigation.navigate(.savingsIntro)
             }
         }
-        .padding(.top)
     }
 }
 
