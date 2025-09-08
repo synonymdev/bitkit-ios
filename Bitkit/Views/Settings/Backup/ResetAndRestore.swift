@@ -9,34 +9,39 @@ struct ResetAndRestore: View {
     @State private var showAlert = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            BodyMText(t("security__reset_text"))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 32)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__backup__title"))
 
-            Spacer()
+            VStack(spacing: 0) {
+                BodyMText(t("security__reset_text"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 32)
 
-            Image("restore")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 256, height: 256)
-                .frame(maxWidth: .infinity, alignment: .center)
+                Spacer()
 
-            Spacer()
+                Image("restore")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 256, height: 256)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
-            HStack(spacing: 16) {
-                CustomButton(
-                    title: t("security__reset_button_backup"),
-                    variant: .secondary
-                ) {
-                    sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
-                }
+                Spacer()
 
-                CustomButton(title: t("security__reset_button_reset")) {
-                    showAlert = true
+                HStack(spacing: 16) {
+                    CustomButton(
+                        title: t("security__reset_button_backup"),
+                        variant: .secondary
+                    ) {
+                        sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
+                    }
+
+                    CustomButton(title: t("security__reset_button_reset")) {
+                        showAlert = true
+                    }
                 }
             }
         }
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .accessibilityIdentifier("ResetAndRestore")

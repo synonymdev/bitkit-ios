@@ -15,9 +15,11 @@ struct FundManualAmountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__connections"))
+                .padding(.bottom, 16)
+
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(t("lightning__external_amount__title"), accentColor: .purpleAccent)
-                    .padding(.top, 16)
 
                 NumberPadTextField(viewModel: amountViewModel, showConversion: false)
                     .onTapGesture {
@@ -55,11 +57,8 @@ struct FundManualAmountView: View {
                 )
             }
         }
-        .navigationTitle(t("lightning__connections"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .backToWalletButton()
         .bottomSafeAreaPadding()
     }
 

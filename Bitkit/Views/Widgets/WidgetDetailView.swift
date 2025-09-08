@@ -60,6 +60,9 @@ struct WidgetDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("widgets__widget__nav_title"))
+                .padding(.bottom, 16)
+
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     HeadlineText(widget.name.replacingOccurrences(of: " ", with: "\n"))
@@ -151,12 +154,8 @@ struct WidgetDetailView: View {
                 .padding(.top, 16)
             }
         }
-        .padding(.top)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .frame(maxHeight: .infinity)
-        .navigationTitle(t("widgets__widget__nav_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
         .alert(
             t("widgets__delete__title"),
             isPresented: $showDeleteAlert,

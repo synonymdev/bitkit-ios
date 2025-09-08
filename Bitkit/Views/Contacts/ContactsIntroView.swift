@@ -6,6 +6,7 @@ struct ContactsIntroView: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("slashtags__contacts"),
             title: t("slashtags__onboarding_header"),
             description: t("slashtags__onboarding_text"),
             imageName: "group",
@@ -17,9 +18,7 @@ struct ContactsIntroView: View {
             imagePosition: .center,
             testID: "ContactsIntro"
         )
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("slashtags__contacts"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 
