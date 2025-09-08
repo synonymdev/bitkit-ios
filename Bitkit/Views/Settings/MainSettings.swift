@@ -11,92 +11,95 @@ struct MainSettings: View {
     @State private var cogTapCount = 0
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    NavigationLink(value: Route.generalSettings) {
-                        SettingsListLabel(
-                            title: t("settings__general_title"),
-                            iconName: "gear-six"
-                        )
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__settings"))
 
-                    NavigationLink(value: Route.securitySettings) {
-                        SettingsListLabel(
-                            title: t("settings__security_title"),
-                            iconName: "shield"
-                        )
-                    }
-
-                    NavigationLink(value: Route.backupSettings) {
-                        SettingsListLabel(
-                            title: t("settings__backup_title"),
-                            iconName: "rewind"
-                        )
-                    }
-
-                    NavigationLink(value: Route.advancedSettings) {
-                        SettingsListLabel(
-                            title: t("settings__advanced_title"),
-                            iconName: "sliders"
-                        )
-                    }
-
-                    NavigationLink(value: Route.support) {
-                        SettingsListLabel(
-                            title: t("settings__support_title"),
-                            iconName: "chat"
-                        )
-                    }
-
-                    NavigationLink(value: Route.about) {
-                        SettingsListLabel(
-                            title: t("settings__about_title"),
-                            iconName: "info"
-                        )
-                    }
-
-                    if showDevSettings {
-                        NavigationLink(value: Route.devSettings) {
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        NavigationLink(value: Route.generalSettings) {
                             SettingsListLabel(
-                                title: t("settings__dev_title"),
-                                iconName: "game-controller"
+                                title: t("settings__general_title"),
+                                iconName: "gear-six"
                             )
                         }
-                    }
 
-                    Spacer()
-                        .frame(minHeight: 32)
+                        NavigationLink(value: Route.securitySettings) {
+                            SettingsListLabel(
+                                title: t("settings__security_title"),
+                                iconName: "shield"
+                            )
+                        }
 
-                    Image("cog")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 256, height: 256)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .onTapGesture {
-                            cogTapCount += 1
+                        NavigationLink(value: Route.backupSettings) {
+                            SettingsListLabel(
+                                title: t("settings__backup_title"),
+                                iconName: "rewind"
+                            )
+                        }
 
-                            // Toggle dev settings every 5 taps
-                            if cogTapCount >= 5 {
-                                showDevSettings.toggle()
-                                cogTapCount = 0
+                        NavigationLink(value: Route.advancedSettings) {
+                            SettingsListLabel(
+                                title: t("settings__advanced_title"),
+                                iconName: "sliders"
+                            )
+                        }
 
-                                app.toast(
-                                    type: .success,
-                                    title: t(showDevSettings ? "settings__dev_enabled_title" : "settings__dev_disabled_title"),
-                                    description: t(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message")
+                        NavigationLink(value: Route.support) {
+                            SettingsListLabel(
+                                title: t("settings__support_title"),
+                                iconName: "chat"
+                            )
+                        }
+
+                        NavigationLink(value: Route.about) {
+                            SettingsListLabel(
+                                title: t("settings__about_title"),
+                                iconName: "info"
+                            )
+                        }
+
+                        if showDevSettings {
+                            NavigationLink(value: Route.devSettings) {
+                                SettingsListLabel(
+                                    title: t("settings__dev_title"),
+                                    iconName: "game-controller"
                                 )
                             }
                         }
 
-                    Spacer()
-                        .frame(minHeight: 32)
+                        Spacer()
+                            .frame(minHeight: 32)
+
+                        Image("cog")
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 256, height: 256)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .onTapGesture {
+                                cogTapCount += 1
+
+                                // Toggle dev settings every 5 taps
+                                if cogTapCount >= 5 {
+                                    showDevSettings.toggle()
+                                    cogTapCount = 0
+
+                                    app.toast(
+                                        type: .success,
+                                        title: t(showDevSettings ? "settings__dev_enabled_title" : "settings__dev_disabled_title"),
+                                        description: t(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message")
+                                    )
+                                }
+                            }
+
+                        Spacer()
+                            .frame(minHeight: 32)
+                    }
+                    .frame(minHeight: geometry.size.height)
                 }
-                .frame(minHeight: geometry.size.height)
-                .padding(.horizontal, 16)
             }
         }
-        .navigationTitle(t("settings__settings"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
     }
 }

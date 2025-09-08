@@ -14,6 +14,7 @@ struct BuyBitcoinView: View {
             imagePosition: .center,
             testID: "BuyBitcoin"
         )
+        .navigationBarHidden(true)
     }
 }
 

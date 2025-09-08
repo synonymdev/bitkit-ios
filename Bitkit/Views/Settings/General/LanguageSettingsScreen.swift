@@ -24,19 +24,24 @@ struct LanguageSettingsScreen: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(t("settings__general__language_other"))
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__general__language_title"))
 
-                ForEach(SupportedLanguage.allLanguages, id: \.id) { language in
-                    languageRow(language)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptionMText(t("settings__general__language_other"))
+                        .padding(.vertical, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    ForEach(SupportedLanguage.allLanguages, id: \.id) { language in
+                        languageRow(language)
+                    }
                 }
             }
         }
-        .navigationTitle(t("settings__general__language_title"))
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .alert("Language Changed", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {

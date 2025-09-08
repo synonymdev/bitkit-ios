@@ -12,19 +12,13 @@ struct CloseConnectionConfirmation: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 16) {
-                BodyMText(
-                    t("lightning__close_text"),
-                    textColor: .textSecondary
-                )
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: .infinity, alignment: .center)
-            }
-            .padding(.horizontal, 16)
+            NavigationBar(title: t("lightning__close_conn"))
+                .padding(.bottom, 16)
+
+            BodyMText(t("lightning__close_text"), accentFont: Fonts.bold)
 
             Spacer()
 
-            // Warning illustration
             Image("exclamation-mark")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -33,7 +27,6 @@ struct CloseConnectionConfirmation: View {
 
             Spacer()
 
-            // Bottom buttons
             HStack(spacing: 16) {
                 CustomButton(
                     title: t("common__cancel"),
@@ -46,7 +39,6 @@ struct CloseConnectionConfirmation: View {
 
                 CustomButton(
                     title: t("lightning__close_button"),
-                    variant: .primary,
                     isDisabled: isClosing,
                     shouldExpand: true
                 ) {
@@ -55,11 +47,10 @@ struct CloseConnectionConfirmation: View {
                     }
                 }
             }
-            .padding(.horizontal, 32)
-            .padding(.bottom, 32)
         }
-        .navigationTitle(t("lightning__close_conn"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 
     private func closeChannel() async {

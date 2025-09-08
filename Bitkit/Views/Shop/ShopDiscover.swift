@@ -80,59 +80,62 @@ struct ShopDiscover: View {
     ]
 
     var body: some View {
-        GeometryReader { geometry in
-            let cardSize = (geometry.size.width - 32 - 16) / 2
-
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    LazyVGrid(
-                        columns: [
-                            GridItem(.flexible(), spacing: 16),
-                            GridItem(.flexible(), spacing: 16),
-                        ],
-                        spacing: 16
-                    ) {
-                        ForEach(cards) { card in
-                            ShopDiscoverCard(
-                                title: card.title,
-                                description: card.description,
-                                imageName: card.imageName,
-                                color: card.color,
-                                size: cardSize
-                            ) {
-                                navigation.navigate(.shopMain(page: card.route))
-                            }
-                        }
-                    }
-                    .padding(.bottom, 16)
-
-                    VStack {
-                        CaptionText(t("other__shop__discover__label"))
-                            .textCase(.uppercase)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(height: 50)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 8)
-
-                    LazyVStack(spacing: 0) {
-                        ForEach(categories) { category in
-                            ShopCategoryRow(
-                                title: category.title,
-                                iconName: category.iconName
-                            ) {
-                                navigation.navigate(.shopMain(page: category.route))
-                            }
-                        }
-                    }
-                }
-                .padding(.top, 16)
+        VStack(spacing: 0) {
+            NavigationBar(title: t("other__shop__discover__nav_title"))
                 .padding(.horizontal, 16)
+
+            GeometryReader { geometry in
+                let cardSize = (geometry.size.width - 32 - 16) / 2
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        LazyVGrid(
+                            columns: [
+                                GridItem(.flexible(), spacing: 16),
+                                GridItem(.flexible(), spacing: 16),
+                            ],
+                            spacing: 16
+                        ) {
+                            ForEach(cards) { card in
+                                ShopDiscoverCard(
+                                    title: card.title,
+                                    description: card.description,
+                                    imageName: card.imageName,
+                                    color: card.color,
+                                    size: cardSize
+                                ) {
+                                    navigation.navigate(.shopMain(page: card.route))
+                                }
+                            }
+                        }
+                        .padding(.bottom, 16)
+
+                        VStack {
+                            CaptionText(t("other__shop__discover__label"))
+                                .textCase(.uppercase)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 50)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.bottom, 8)
+
+                        LazyVStack(spacing: 0) {
+                            ForEach(categories) { category in
+                                ShopCategoryRow(
+                                    title: category.title,
+                                    iconName: category.iconName
+                                ) {
+                                    navigation.navigate(.shopMain(page: category.route))
+                                }
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                    .padding(.horizontal, 16)
+                }
             }
         }
-        .navigationTitle(t("other__shop__discover__nav_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 

@@ -6,6 +6,7 @@ struct ShopIntro: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("other__shop__intro__title"),
             title: t("other__shop__intro__title"),
             description: t("other__shop__intro__description"),
             imageName: "bag",
@@ -18,7 +19,7 @@ struct ShopIntro: View {
             imagePosition: .center,
             testID: "ShopIntro"
         )
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 

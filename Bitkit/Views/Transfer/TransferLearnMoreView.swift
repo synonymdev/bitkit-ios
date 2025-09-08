@@ -11,6 +11,9 @@ struct TransferLearnMoreView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(t("lightning__liquidity__title"), accentColor: .purpleAccent)
                 .padding(.bottom, 16)
 
@@ -34,9 +37,7 @@ struct TransferLearnMoreView: View {
             }
             .padding(.top, 32)
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

@@ -5,17 +5,22 @@ struct AppStatusView: View {
     @EnvironmentObject private var wallet: WalletViewModel
 
     var body: some View {
-        List {
-            internetStatusView
-            NavigationLink(value: Route.node) {
-                lightningNodeStatusView
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__status__title"))
+
+            List {
+                internetStatusView
+                NavigationLink(value: Route.node) {
+                    lightningNodeStatusView
+                }
+                lightningConnectionStatusView // TODO: navigate to channel list view
             }
-            lightningConnectionStatusView // TODO: navigate to channel list view
+            .scrollContentBackground(.hidden)
+            .listStyle(PlainListStyle())
         }
-        .navigationTitle(t("settings__status__title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .scrollContentBackground(.hidden)
-        .listStyle(PlainListStyle())
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .onAppear {
             wallet.syncState()
         }

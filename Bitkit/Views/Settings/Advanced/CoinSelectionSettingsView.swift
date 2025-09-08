@@ -114,76 +114,80 @@ struct CoinSelectionSettingsView: View {
     @StateObject private var settingsViewModel = SettingsViewModel()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // COIN SELECTION METHOD Section
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        BodyMText(
-                            t("settings__adv__cs_method"),
-                            textColor: .textSecondary
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-                        Spacer()
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__adv__coin_selection"))
+                .padding(.bottom, 16)
 
-                    VStack(spacing: 0) {
-                        ForEach(CoinSelectionMethod.allCases, id: \.self) { method in
-                            VStack {
-                                CoinSelectionMethodOption(
-                                    method: method,
-                                    isSelected: settingsViewModel.coinSelectionMethod == method
-                                ) {
-                                    settingsViewModel.coinSelectionMethod = method
-                                }
-
-                                if method != CoinSelectionMethod.allCases.last {
-                                    Divider()
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                        }
-                    }
-                }
-
-                // AUTOPILOT MODE Section (only show if Autopilot is selected)
-                if settingsViewModel.coinSelectionMethod == .autopilot {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // COIN SELECTION METHOD Section
                     VStack(alignment: .leading, spacing: 0) {
                         HStack {
                             BodyMText(
-                                t("settings__adv__cs_auto_mode"),
+                                t("settings__adv__cs_method"),
                                 textColor: .textSecondary
                             )
-                            .padding(.horizontal, 16)
-                            .padding(.top, 24)
                             .padding(.bottom, 8)
+
                             Spacer()
                         }
 
                         VStack(spacing: 0) {
-                            ForEach(CoinSelectionAlgorithm.supportedAlgorithms, id: \.self) { algorithm in
+                            ForEach(CoinSelectionMethod.allCases, id: \.self) { method in
                                 VStack {
-                                    CoinSelectionAlgorithmOption(
-                                        algorithm: algorithm,
-                                        isSelected: settingsViewModel.coinSelectionAlgorithm == algorithm
+                                    CoinSelectionMethodOption(
+                                        method: method,
+                                        isSelected: settingsViewModel.coinSelectionMethod == method
                                     ) {
-                                        settingsViewModel.coinSelectionAlgorithm = algorithm
+                                        settingsViewModel.coinSelectionMethod = method
+                                    }
+
+                                    if method != CoinSelectionMethod.allCases.last {
+                                        Divider()
                                     }
                                 }
-                                .padding(.horizontal, 16)
                             }
                         }
                     }
-                }
 
-                // Add spacing at the bottom
-                Spacer()
-                    .frame(height: 32)
+                    // AUTOPILOT MODE Section (only show if Autopilot is selected)
+                    if settingsViewModel.coinSelectionMethod == .autopilot {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                BodyMText(
+                                    t("settings__adv__cs_auto_mode"),
+                                    textColor: .textSecondary
+                                )
+                                .padding(.top, 24)
+                                .padding(.bottom, 8)
+
+                                Spacer()
+                            }
+
+                            VStack(spacing: 0) {
+                                ForEach(CoinSelectionAlgorithm.supportedAlgorithms, id: \.self) { algorithm in
+                                    VStack {
+                                        CoinSelectionAlgorithmOption(
+                                            algorithm: algorithm,
+                                            isSelected: settingsViewModel.coinSelectionAlgorithm == algorithm
+                                        ) {
+                                            settingsViewModel.coinSelectionAlgorithm = algorithm
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Add spacing at the bottom
+                    Spacer()
+                        .frame(height: 32)
+                }
             }
         }
-        .navigationTitle(t("settings__adv__coin_selection"))
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 }
 

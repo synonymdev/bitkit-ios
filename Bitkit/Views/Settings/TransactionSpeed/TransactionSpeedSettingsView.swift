@@ -59,58 +59,61 @@ struct TransactionSpeedSettingsView: View {
     @State private var customRate: String = ""
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(t("settings__general__speed_default"))
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__general__speed_title"))
+                .padding(.bottom, 16)
 
-                VStack(spacing: 0) {
-                    TransactionSpeedSettingsRow(
-                        speed: .fast,
-                        isSelected: settings.defaultTransactionSpeed == .fast,
-                        onSelect: {
-                            settings.defaultTransactionSpeed = .fast
-                        }
-                    )
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptionMText(t("settings__general__speed_default"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Divider()
+                    VStack(spacing: 0) {
+                        TransactionSpeedSettingsRow(
+                            speed: .fast,
+                            isSelected: settings.defaultTransactionSpeed == .fast,
+                            onSelect: {
+                                settings.defaultTransactionSpeed = .fast
+                            }
+                        )
 
-                    TransactionSpeedSettingsRow(
-                        speed: .normal,
-                        isSelected: settings.defaultTransactionSpeed == .normal,
-                        onSelect: {
-                            settings.defaultTransactionSpeed = .normal
-                        }
-                    )
+                        Divider()
 
-                    Divider()
+                        TransactionSpeedSettingsRow(
+                            speed: .normal,
+                            isSelected: settings.defaultTransactionSpeed == .normal,
+                            onSelect: {
+                                settings.defaultTransactionSpeed = .normal
+                            }
+                        )
 
-                    TransactionSpeedSettingsRow(
-                        speed: .slow,
-                        isSelected: settings.defaultTransactionSpeed == .slow,
-                        onSelect: {
-                            settings.defaultTransactionSpeed = .slow
-                        }
-                    )
+                        Divider()
 
-                    Divider()
+                        TransactionSpeedSettingsRow(
+                            speed: .slow,
+                            isSelected: settings.defaultTransactionSpeed == .slow,
+                            onSelect: {
+                                settings.defaultTransactionSpeed = .slow
+                            }
+                        )
 
-                    TransactionSpeedSettingsRow(
-                        speed: .custom(satsPerVByte: 1), // Placeholder
-                        isSelected: {
-                            if case .custom = settings.defaultTransactionSpeed { true } else { false }
-                        }(),
-                        onSelect: {
-                            navigation.navigate(.customSpeedSettings)
-                        },
-                        customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed
-                    )
+                        Divider()
+
+                        TransactionSpeedSettingsRow(
+                            speed: .custom(satsPerVByte: 1), // Placeholder
+                            isSelected: {
+                                if case .custom = settings.defaultTransactionSpeed { true } else { false }
+                            }(),
+                            onSelect: {
+                                navigation.navigate(.customSpeedSettings)
+                            },
+                            customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed
+                        )
+                    }
                 }
             }
         }
-        .navigationTitle(t("settings__general__speed_title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

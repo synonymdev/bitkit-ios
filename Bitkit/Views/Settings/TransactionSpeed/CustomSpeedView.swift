@@ -20,6 +20,9 @@ struct CustomSpeedView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__general__speed_fee_custom"))
+                .padding(.bottom, 16)
+
             CaptionMText(t("common__sat_vbyte"))
                 .padding(.bottom, 16)
 
@@ -67,9 +70,7 @@ struct CustomSpeedView: View {
             }
             .padding(.top, 16)
         }
-        .navigationTitle(t("settings__general__speed_fee_custom"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .onAppear {

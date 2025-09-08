@@ -85,12 +85,14 @@ struct ActivityExplorerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("wallet__activity_bitcoin_received"))
+                .padding(.bottom, 16)
+
             HStack(alignment: .bottom) {
                 MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                 Spacer()
                 ActivityIcon(activity: item, size: 48)
             }
-            .padding(.vertical)
             .padding(.bottom, 16)
 
             if let onchain {
@@ -142,7 +144,7 @@ struct ActivityExplorerView: View {
             Spacer()
 
             if onchain != nil {
-                CustomButton(title: t("common__open_block_explorer"), shouldExpand: true) {
+                CustomButton(title: t("wallet__activity_explorer"), shouldExpand: true) {
                     if let onchain,
                        let url = getBlockExplorerUrl(txId: onchain.txId)
                     {
@@ -151,9 +153,7 @@ struct ActivityExplorerView: View {
                 }
             }
         }
-        .navigationTitle(t("wallet__activity_bitcoin_received"))
-        .navigationBarTitleDisplayMode(.inline)
-        .backToWalletButton()
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

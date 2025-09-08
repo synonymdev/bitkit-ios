@@ -13,6 +13,7 @@ struct NotificationsIntro: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("settings__notifications__nav_title"),
             title: t("settings__notifications__intro__title"),
             description: t("settings__notifications__intro__text"),
             imageName: "bell-figure",
@@ -22,7 +23,6 @@ struct NotificationsIntro: View {
             imagePosition: .center,
             testID: "NotificationsIntro"
         )
-        .navigationTitle(t("settings__notifications__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }

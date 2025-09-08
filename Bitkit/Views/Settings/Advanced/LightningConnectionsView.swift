@@ -11,57 +11,152 @@ struct LightningConnectionsView: View {
     @State private var isRefreshing = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header section with spending balance and receiving capacity
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        CaptionMText(t("lightning__spending_label"))
-                        HStack(spacing: 4) {
-                            Image("arrow-up")
-                                .resizable()
-                                .frame(width: 22, height: 22)
-                                .foregroundColor(.purpleAccent)
-                            TitleText(formatNumber(spendingBalance), textColor: .purpleAccent)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(
+                title: t("lightning__connections"),
+                action: AnyView(
+                    NavigationLink(value: Route.fundingOptions) {
+                        Image(systemName: "plus")
+                            .foregroundColor(.white)
+                    }
+                )
+            )
+            .padding(.bottom, 16)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    // Header section with spending balance and receiving capacity
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            CaptionMText(t("lightning__spending_label"))
+                            HStack(spacing: 4) {
+                                Image("arrow-up")
+                                    .resizable()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundColor(.purpleAccent)
+                                TitleText(formatNumber(spendingBalance), textColor: .purpleAccent)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            CaptionMText(t("lightning__receiving_label"))
+                            HStack(spacing: 4) {
+                                Image("arrow-down")
+                                    .resizable()
+                                    .frame(width: 22, height: 22)
+                                    .foregroundColor(.white)
+                                TitleText(formatNumber(receivingCapacity), textColor: .white)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.bottom, 16)
+
+                    Divider()
+
+                    // Pending Connections section
+                    if !pendingChannels.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                CaptionMText(t("lightning__conn_pending"))
+                                    .padding(.top, 32)
+                                    .padding(.bottom, 16)
+                                Spacer()
+                            }
+
+                            ForEach(Array(pendingChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                NavigationLink(
+                                    destination: LightningConnectionDetailView(
+                                        channel: channel,
+                                        linkedOrder: findLinkedOrder(for: channel),
+                                        title: "\(t("lightning__connection")) \(index + 1)"
+                                    )
+                                ) {
+                                    VStack(spacing: 0) {
+                                        HStack {
+                                            SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                            Spacer()
+                                            Image("chevron")
+                                                .resizable()
+                                                .foregroundColor(.textSecondary)
+                                                .frame(width: 24, height: 24)
+                                        }
+                                        .padding(.bottom, 12)
+
+                                        LightningChannel(
+                                            capacity: channel.channelValueSats,
+                                            localBalance: channel.outboundCapacityMsat / 1000,
+                                            remoteBalance: channel.inboundCapacityMsat / 1000,
+                                            status: .pending
+                                        )
+                                        .padding(.bottom, 16)
+
+                                        Divider()
+                                    }
+                                    .opacity(0.64)
+                                }
+                            }
+                        }
+                        .padding(.bottom, 16)
+                    }
+
+                    // Open Connections section
+                    if !openChannels.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                CaptionMText(t("lightning__conn_open"))
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 16)
+                                Spacer()
+                            }
+
+                            ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                NavigationLink(
+                                    destination: LightningConnectionDetailView(
+                                        channel: channel,
+                                        linkedOrder: findLinkedOrder(for: channel),
+                                        title: "\(t("lightning__connection")) \(index + 1)"
+                                    )
+                                ) {
+                                    VStack(spacing: 0) {
+                                        HStack {
+                                            SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                            Spacer()
+                                            Image("chevron")
+                                                .resizable()
+                                                .foregroundColor(.textSecondary)
+                                                .frame(width: 24, height: 24)
+                                        }
+                                        .padding(.bottom, 12)
+
+                                        LightningChannel(
+                                            capacity: channel.channelValueSats,
+                                            localBalance: channel.outboundCapacityMsat / 1000,
+                                            remoteBalance: channel.inboundCapacityMsat / 1000,
+                                            status: .open
+                                        )
+                                        .padding(.bottom, 16)
+
+                                        Divider()
+                                    }
+                                    .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
+                                }
+                            }
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        CaptionMText(t("lightning__receiving_label"))
-                        HStack(spacing: 4) {
-                            Image("arrow-down")
-                                .resizable()
-                                .frame(width: 22, height: 22)
-                                .foregroundColor(.white)
-                            TitleText(formatNumber(receivingCapacity), textColor: .white)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                    // Closed Connections section
+                    if showClosedConnections && !closedConnections.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack {
+                                CaptionMText(t("lightning__conn_closed"))
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 16)
+                                Spacer()
+                            }
 
-                Divider()
-
-                // Pending Connections section
-                if !pendingChannels.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            CaptionMText(t("lightning__conn_pending"))
-                                .padding(.top, 32)
-                                .padding(.bottom, 16)
-                            Spacer()
-                        }
-
-                        ForEach(Array(pendingChannels.enumerated()), id: \.element.channelId) { index, channel in
-                            NavigationLink(
-                                destination: LightningConnectionDetailView(
-                                    channel: channel,
-                                    linkedOrder: findLinkedOrder(for: channel),
-                                    title: "\(t("lightning__connection")) \(index + 1)"
-                                )
-                            ) {
+                            ForEach(Array(closedConnections.enumerated()), id: \.element.id) { index, order in
                                 VStack(spacing: 0) {
                                     HStack {
                                         SubtitleText("\(t("lightning__connection")) \(index + 1)")
@@ -74,140 +169,47 @@ struct LightningConnectionsView: View {
                                     .padding(.bottom, 12)
 
                                     LightningChannel(
-                                        capacity: channel.channelValueSats,
-                                        localBalance: channel.outboundCapacityMsat / 1000,
-                                        remoteBalance: channel.inboundCapacityMsat / 1000,
-                                        status: .pending
+                                        capacity: order.lspBalanceSat + order.clientBalanceSat,
+                                        localBalance: order.clientBalanceSat,
+                                        remoteBalance: order.lspBalanceSat,
+                                        status: .closed
                                     )
                                     .padding(.bottom, 16)
 
                                     Divider()
                                 }
                                 .opacity(0.64)
-                            }
-                        }
-                    }
-                    .padding(.bottom, 16)
-                }
-
-                // Open Connections section
-                if !openChannels.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            CaptionMText(t("lightning__conn_open"))
-                                .padding(.top, 16)
-                                .padding(.bottom, 16)
-                            Spacer()
-                        }
-
-                        ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
-                            NavigationLink(
-                                destination: LightningConnectionDetailView(
-                                    channel: channel,
-                                    linkedOrder: findLinkedOrder(for: channel),
-                                    title: "\(t("lightning__connection")) \(index + 1)"
-                                )
-                            ) {
-                                VStack(spacing: 0) {
-                                    HStack {
-                                        SubtitleText("\(t("lightning__connection")) \(index + 1)")
-                                        Spacer()
-                                        Image("chevron")
-                                            .resizable()
-                                            .foregroundColor(.textSecondary)
-                                            .frame(width: 24, height: 24)
-                                    }
-                                    .padding(.bottom, 12)
-
-                                    LightningChannel(
-                                        capacity: channel.channelValueSats,
-                                        localBalance: channel.outboundCapacityMsat / 1000,
-                                        remoteBalance: channel.inboundCapacityMsat / 1000,
-                                        status: .open
-                                    )
-                                    .padding(.bottom, 16)
-
-                                    Divider()
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    // Handle tap for order details
                                 }
-                                .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
                             }
                         }
+                        .padding(.bottom, 16)
                     }
-                }
 
-                // Closed Connections section
-                if showClosedConnections && !closedConnections.isEmpty {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            CaptionMText(t("lightning__conn_closed"))
-                                .padding(.top, 16)
-                                .padding(.bottom, 16)
-                            Spacer()
+                    if !closedConnections.isEmpty {
+                        // Show Closed & Failed button
+                        CustomButton(
+                            title: showClosedConnections
+                                ? t("lightning__conn_closed_hide")
+                                : t("lightning__conn_closed_show"),
+                            variant: .tertiary,
+                        ) {
+                            showClosedConnections.toggle()
                         }
-
-                        ForEach(Array(closedConnections.enumerated()), id: \.element.id) { index, order in
-                            VStack(spacing: 0) {
-                                HStack {
-                                    SubtitleText("\(t("lightning__connection")) \(index + 1)")
-                                    Spacer()
-                                    Image("chevron")
-                                        .resizable()
-                                        .foregroundColor(.textSecondary)
-                                        .frame(width: 24, height: 24)
-                                }
-                                .padding(.bottom, 12)
-
-                                LightningChannel(
-                                    capacity: order.lspBalanceSat + order.clientBalanceSat,
-                                    localBalance: order.clientBalanceSat,
-                                    remoteBalance: order.lspBalanceSat,
-                                    status: .closed
-                                )
-                                .padding(.bottom, 16)
-
-                                Divider()
-                            }
-                            .opacity(0.64)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                // Handle tap for order details
-                            }
-                        }
+                        .padding(.top, 16)
                     }
-                    .padding(.bottom, 16)
-                }
 
-                if !closedConnections.isEmpty {
-                    // Show Closed & Failed button
-                    CustomButton(
-                        title: showClosedConnections
-                            ? t("lightning__conn_closed_hide")
-                            : t("lightning__conn_closed_show"),
-                        variant: .tertiary,
-                    ) {
-                        showClosedConnections.toggle()
-                    }
-                    .padding(.top, 16)
+                    Spacer()
+                        .frame(height: 32)
                 }
-
-                Spacer()
-                    .frame(height: 32)
             }
-            .padding(.horizontal, 16)
         }
-        .background(Color.black)
-        .navigationTitle(t("lightning__connections"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .refreshable {
             await refreshData()
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(value: Route.fundingOptions) {
-                    Image(systemName: "plus")
-                        .foregroundColor(.white)
-                }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             HStack(spacing: 16) {
@@ -228,7 +230,6 @@ struct LightningConnectionsView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
         }
     }
 

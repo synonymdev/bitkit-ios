@@ -5,12 +5,10 @@ struct ReportError: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(
-                t("settings__support__text_unsuccess"),
-                textColor: .textSecondary
-            )
-            .padding(.top, 16)
-            .padding(.bottom, 32)
+            NavigationBar(title: t("settings__support__title_unsuccess"))
+                .padding(.bottom, 16)
+
+            BodyMText(t("settings__support__text_unsuccess"))
 
             Spacer()
 
@@ -27,8 +25,7 @@ struct ReportError: View {
                 dismiss()
             }
         }
-        .navigationTitle(t("settings__support__title_unsuccess"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

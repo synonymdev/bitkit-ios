@@ -33,14 +33,21 @@ struct NodeStateView: View {
     @State private var closingChannels: [String] = []
 
     var body: some View {
-        List {
-            statusSection
-            nodeIdSection
-            peersSection
-            channelsSection
-            balanceSection
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__node_info"))
+                .padding(.horizontal, 16)
+
+            List {
+                statusSection
+                nodeIdSection
+                peersSection
+                channelsSection
+                balanceSection
+            }
         }
-        .navigationBarTitle("Node State")
+        .navigationBarHidden(true)
+        // .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
     }
 
     var statusSection: some View {

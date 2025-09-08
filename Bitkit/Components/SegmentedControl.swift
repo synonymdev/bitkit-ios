@@ -58,5 +58,6 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .frame(height: 36)
     }
 }
