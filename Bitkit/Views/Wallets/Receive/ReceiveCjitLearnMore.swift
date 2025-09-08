@@ -4,11 +4,9 @@ import SwiftUI
 struct ReceiveCjitLearnMore: View {
     let entry: IcJitEntry
     let receiveAmountSats: UInt64
+    let isAdditional: Bool
 
     @Environment(\.dismiss) var dismiss
-
-    // TODO: check if additional CJIT
-    let isAdditional = false
 
     var text: String {
         isAdditional

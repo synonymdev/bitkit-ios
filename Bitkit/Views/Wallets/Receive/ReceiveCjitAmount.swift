@@ -67,19 +67,8 @@ struct ReceiveCjitAmount: View {
             Spacer()
 
             CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount) {
-                // Wait until node is running if it's in starting state
-                if await wallet.waitForNodeToRun() {
-                    // Only proceed if node is running
-                    do {
-                        let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
-                        navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats))
-                    } catch {
-                        app.toast(error)
-                        Logger.error(error)
-                    }
-                } else {
-                    // Show error if node is not running or timed out
-                    app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
+                Task {
+                    await onContinue()
                 }
             }
         }
@@ -88,6 +77,23 @@ struct ReceiveCjitAmount: View {
         .sheetBackground()
         .task {
             try? await blocktank.refreshMinCjitSats()
+        }
+    }
+
+    private func onContinue() async {
+        // Wait until node is running if it's in starting state
+        if await wallet.waitForNodeToRun() {
+            // Only proceed if node is running
+            do {
+                let entry = try await blocktank.createCjit(amountSats: amountSats, description: "Bitkit")
+                navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: false))
+            } catch {
+                app.toast(error)
+                Logger.error(error)
+            }
+        } else {
+            // Show error if node is not running or timed out
+            app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
         }
     }
 }
