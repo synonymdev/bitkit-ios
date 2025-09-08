@@ -19,8 +19,10 @@ struct SpendingAmount: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
-                .padding(.top, 16)
 
             NumberPadTextField(viewModel: amountViewModel, showConversion: false)
                 .onTapGesture {
@@ -61,10 +63,7 @@ struct SpendingAmount: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

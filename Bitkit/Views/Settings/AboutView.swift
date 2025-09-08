@@ -18,6 +18,9 @@ struct AboutView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__about__title"))
+                .padding(.bottom, 16)
+
             BodyMText(t("settings__about__text"))
                 .padding(.vertical, 16)
 
@@ -60,9 +63,7 @@ struct AboutView: View {
 
             Social()
         }
-        .navigationTitle(t("settings__about__title"))
-        .navigationBarTitleDisplayMode(.inline)
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

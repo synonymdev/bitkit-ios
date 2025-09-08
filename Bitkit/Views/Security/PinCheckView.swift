@@ -66,6 +66,9 @@ struct PinCheckView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: title, showMenuButton: false)
+                .padding(.bottom, 16)
+
             BodyMText(explanation, textColor: .textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.bottom, 40)
@@ -82,11 +85,9 @@ struct PinCheckView: View {
 
             Spacer()
         }
-        .padding()
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
         .background(Color.black)
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {

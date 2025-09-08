@@ -31,6 +31,8 @@ struct FundManualConfirmView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
+                NavigationBar(title: t("lightning__connections"))
+
                 DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
                     .padding(.top, 16)
 
@@ -102,10 +104,7 @@ struct FundManualConfirmView: View {
                 EmptyView()
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__connections"))
-        .backToWalletButton()
-        .background(Color.black)
+        .navigationBarHidden(true)
         .task {
             // Load fees first with cached data, then refresh
             await loadFees(refresh: false)

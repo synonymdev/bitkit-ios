@@ -5,6 +5,7 @@ struct SpendingIntroView: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("lightning__transfer__nav_title"),
             title: t("lightning__spending_intro__title"),
             description: t("lightning__spending_intro__text"),
             imageName: "coin-stack-x",
@@ -16,9 +17,7 @@ struct SpendingIntroView: View {
             imagePosition: .center,
             testID: "SpendingIntro"
         )
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 

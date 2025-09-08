@@ -1,13 +1,15 @@
 import SwiftUI
 
 struct SavingsWalletView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("wallet__savings__title"), icon: "btc")
+
             MoneyStack(
                 sats: wallet.totalOnchainSats,
                 showSymbol: true,
@@ -16,13 +18,11 @@ struct SavingsWalletView: View {
             )
             .padding(.top)
 
-            Divider()
-                .padding(.top, 16)
-
             if wallet.totalOnchainSats > 0 {
                 if !(app.isGeoBlocked ?? true) {
                     transferButton
                         .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.top, 32)
                 }
 
                 ScrollView(showsIndicators: false) {
@@ -46,15 +46,14 @@ struct SavingsWalletView: View {
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .navigationTitle(t("wallet__savings__title"))
+        .navigationBarHidden(true)
         .padding(.horizontal)
         .frame(maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .topTrailing) {
+        .background(alignment: .topTrailing) {
             Image("piggybank")
                 .resizable()
                 .frame(width: 256, height: 256)
                 .offset(x: 110)
-                .offset(y: -80)
         }
         .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
         .overlay {
@@ -82,7 +81,6 @@ struct SavingsWalletView: View {
                 navigation.navigate(.transferIntro)
             }
         }
-        .padding(.top)
     }
 }
 

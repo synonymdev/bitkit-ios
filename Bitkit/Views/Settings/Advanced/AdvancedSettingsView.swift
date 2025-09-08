@@ -5,125 +5,129 @@ struct AdvancedSettingsView: View {
     @State private var showingResetAlert = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                // PAYMENTS Section
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__advanced_title"))
+
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        BodyMText(
-                            t("settings__adv__section_payments"),
-                            textColor: .textSecondary
-                        )
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
+                    // PAYMENTS Section
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            BodyMText(
+                                t("settings__adv__section_payments"),
+                                textColor: .textSecondary
+                            )
+                            .padding(.bottom, 8)
 
+                            Spacer()
+                        }
+
+                        // Maybe never implemented
+                        // NavigationLink(destination: Text("Coming soon")) {
+                        //     SettingsListLabel(
+                        //         title: t("settings__adv__address_type"),
+                        //         rightText: "Native Segwit"
+                        //     )
+                        // }
+
+                        NavigationLink(value: Route.coinSelection) {
+                            SettingsListLabel(
+                                title: t("settings__adv__coin_selection")
+                            )
+                        }
+
+                        // NavigationLink(destination: Text("Coming soon")) {
+                        //     SettingsListLabel(
+                        //         title: t("settings__adv__payment_preference")
+                        //     )
+                        // }
+
+                        // NavigationLink(destination: Text("Coming soon")) {
+                        //     SettingsListLabel(
+                        //         title: t("settings__adv__gap_limit")
+                        //     )
+                        // }
+                    }
+
+                    // NETWORKS Section
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            BodyMText(
+                                t("settings__adv__section_networks"),
+                                textColor: .textSecondary
+                            )
+                            .padding(.top, 24)
+                            .padding(.bottom, 8)
+
+                            Spacer()
+                        }
+
+                        NavigationLink(value: Route.connections) {
+                            SettingsListLabel(
+                                title: t("settings__adv__lightning_connections")
+                            )
+                        }
+
+                        NavigationLink(value: Route.node) {
+                            SettingsListLabel(
+                                title: t("settings__adv__lightning_node")
+                            )
+                        }
+
+                        NavigationLink(value: Route.electrumSettings) {
+                            SettingsListLabel(
+                                title: t("settings__adv__electrum_server")
+                            )
+                        }
+
+                        NavigationLink(destination: Text("Coming soon")) {
+                            SettingsListLabel(
+                                title: t("settings__adv__rgs_server")
+                            )
+                        }
+                    }
+
+                    // OTHER Section
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            BodyMText(
+                                t("settings__adv__section_other"),
+                                textColor: .textSecondary
+                            )
+                            .padding(.top, 24)
+                            .padding(.bottom, 8)
+                            Spacer()
+                        }
+
+                        NavigationLink(value: Route.addressViewer) {
+                            SettingsListLabel(
+                                title: t("settings__adv__address_viewer")
+                            )
+                        }
+
+                        // SettingsListLabel(
+                        //     title: t("settings__adv__rescan"),
+                        //     rightIcon: nil
+                        // )
+
+                        Button(action: {
+                            showingResetAlert = true
+                        }) {
+                            SettingsListLabel(
+                                title: t("settings__adv__suggestions_reset")
+                            )
+                        }
+
+                        // Add spacing at the bottom for the last section
                         Spacer()
+                            .frame(height: 32)
                     }
-
-                    // Maybe never implemented
-                    // NavigationLink(destination: Text("Coming soon")) {
-                    //     SettingsListLabel(
-                    //         title: t("settings__adv__address_type"),
-                    //         rightText: "Native Segwit"
-                    //     )
-                    // }
-
-                    NavigationLink(value: Route.coinSelection) {
-                        SettingsListLabel(
-                            title: t("settings__adv__coin_selection")
-                        )
-                    }
-
-                    // NavigationLink(destination: Text("Coming soon")) {
-                    //     SettingsListLabel(
-                    //         title: t("settings__adv__payment_preference")
-                    //     )
-                    // }
-
-                    // NavigationLink(destination: Text("Coming soon")) {
-                    //     SettingsListLabel(
-                    //         title: t("settings__adv__gap_limit")
-                    //     )
-                    // }
-                }
-
-                // NETWORKS Section
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        BodyMText(
-                            t("settings__adv__section_networks"),
-                            textColor: .textSecondary
-                        )
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-
-                        Spacer()
-                    }
-
-                    NavigationLink(value: Route.connections) {
-                        SettingsListLabel(
-                            title: t("settings__adv__lightning_connections")
-                        )
-                    }
-
-                    NavigationLink(value: Route.node) {
-                        SettingsListLabel(
-                            title: t("settings__adv__lightning_node")
-                        )
-                    }
-
-                    NavigationLink(value: Route.electrumSettings) {
-                        SettingsListLabel(
-                            title: t("settings__adv__electrum_server")
-                        )
-                    }
-
-                    NavigationLink(destination: Text("Coming soon")) {
-                        SettingsListLabel(
-                            title: t("settings__adv__rgs_server")
-                        )
-                    }
-                }
-
-                // OTHER Section
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        BodyMText(
-                            t("settings__adv__section_other"),
-                            textColor: .textSecondary
-                        )
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-                        Spacer()
-                    }
-
-                    NavigationLink(value: Route.addressViewer) {
-                        SettingsListLabel(
-                            title: t("settings__adv__address_viewer")
-                        )
-                    }
-
-                    // SettingsListLabel(
-                    //     title: t("settings__adv__rescan"),
-                    //     rightIcon: nil
-                    // )
-
-                    Button(action: {
-                        showingResetAlert = true
-                    }) {
-                        SettingsListLabel(
-                            title: t("settings__adv__suggestions_reset")
-                        )
-                    }
-
-                    // Add spacing at the bottom for the last section
-                    Spacer()
-                        .frame(height: 32)
                 }
             }
-            .padding(.horizontal, 16)
         }
-        .navigationTitle(t("settings__advanced_title"))
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
         .alert(isPresented: $showingResetAlert) {
             Alert(
                 title: Text(t("settings__adv__reset_title")),

@@ -179,6 +179,8 @@ struct PinChangeView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: navTitle, showBackButton: step != .success)
+
             if step == .success {
                 successScreen
             } else {
@@ -187,9 +189,7 @@ struct PinChangeView: View {
                 pinInputSection
             }
         }
-        .navigationTitle(navTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(step == .success)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

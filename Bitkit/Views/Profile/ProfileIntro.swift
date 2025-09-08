@@ -6,6 +6,7 @@ struct ProfileIntroView: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("slashtags__profile"),
             title: t("slashtags__onboarding_profile1_header"),
             description: t("slashtags__onboarding_profile1_text"),
             imageName: "crown",
@@ -17,9 +18,7 @@ struct ProfileIntroView: View {
             imagePosition: .center,
             testID: "ProfileIntro"
         )
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("slashtags__profile"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 

@@ -5,6 +5,9 @@ struct SavingsAvailabilityView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("lightning__transfer__nav_title"))
+                .padding(.bottom, 16)
+
             DisplayText(t("lightning__availability__title"), accentColor: .brandAccent)
 
             BodyMText(t("lightning__availability__text"), accentFont: Fonts.bold)
@@ -32,10 +35,7 @@ struct SavingsAvailabilityView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__transfer__nav_title"))
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

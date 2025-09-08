@@ -1,17 +1,14 @@
 import SwiftUI
 
 struct ReportSuccess: View {
-    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var navigation: NavigationViewModel
 
     var body: some View {
         VStack(spacing: 0) {
-            BodyMText(
-                t("settings__support__text_success"),
-                textColor: .textSecondary
-            )
-            .padding(.top, 16)
-            .padding(.bottom, 32)
+            NavigationBar(title: t("settings__support__title_success"))
+                .padding(.bottom, 16)
+
+            BodyMText(t("settings__support__text_success"))
 
             Spacer()
 
@@ -22,15 +19,11 @@ struct ReportSuccess: View {
 
             Spacer()
 
-            CustomButton(
-                title: t("settings__support__text_success_button")
-            ) {
-                // TODO: Implement navigation to wallet
-                dismiss()
+            CustomButton(title: t("settings__support__text_success_button")) {
+                navigation.reset()
             }
         }
-        .navigationTitle(t("settings__support__title_success"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
     }

@@ -9,12 +9,14 @@ struct FundManualSuccessView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__transfer_success__nav_title"), showBackButton: false)
+                .padding(.bottom, 16)
+
             VStack(alignment: .leading, spacing: 16) {
                 DisplayText(
                     t("lightning__external_success__title"),
                     accentColor: .purpleAccent
                 )
-                .padding(.top, 16)
 
                 BodyMText(
                     t("lightning__external_success__text"),
@@ -41,11 +43,8 @@ struct FundManualSuccessView: View {
             }
             .padding(.horizontal, 16)
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        .navigationBarHidden(true)
         .interactiveDismissDisabled()
-        .navigationTitle(t("lightning__transfer_success__nav_title"))
-        .backToWalletButton()
     }
 }
 

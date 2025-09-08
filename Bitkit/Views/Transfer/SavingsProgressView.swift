@@ -42,6 +42,9 @@ struct SavingsProgressContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: navTitle)
+                .padding(.bottom, 16)
+
             DisplayText(title, accentColor: .brandAccent)
                 .padding(.bottom, 16)
 
@@ -107,11 +110,7 @@ struct SavingsProgressContentView: View {
                 navigation.reset()
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .navigationTitle(navTitle)
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .interactiveDismissDisabled()

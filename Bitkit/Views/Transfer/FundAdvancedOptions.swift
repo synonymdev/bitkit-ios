@@ -5,7 +5,10 @@ struct FundAdvancedOptions: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__funding_advanced__nav_title"))
+                .padding(.bottom, 16)
+
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     DisplayText(
@@ -46,10 +49,7 @@ struct FundAdvancedOptions: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__funding_advanced__nav_title"))
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
     }
 }

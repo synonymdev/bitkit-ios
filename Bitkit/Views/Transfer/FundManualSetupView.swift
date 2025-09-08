@@ -46,7 +46,10 @@ struct FundManualSetupView: View {
 
     var body: some View {
         ZStack {
-            VStack {
+            VStack(spacing: 0) {
+                NavigationBar(title: t("lightning__external__nav_title"))
+                    .padding(.bottom, 16)
+
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         DisplayText(
@@ -120,10 +123,7 @@ struct FundManualSetupView: View {
                 }
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle(t("lightning__external__nav_title"))
-        .backToWalletButton()
-        .padding(.top, 16)
+        .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .alert(isPresented: $showAlert) {

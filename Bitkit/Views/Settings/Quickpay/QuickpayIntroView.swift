@@ -6,6 +6,7 @@ struct QuickpayIntroView: View {
 
     var body: some View {
         OnboardingView(
+            navTitle: t("settings__quickpay__nav_title"),
             title: t("settings__quickpay__intro__title"),
             description: t("settings__quickpay__intro__description"),
             imageName: "fast-forward",
@@ -18,8 +19,7 @@ struct QuickpayIntroView: View {
             imagePosition: .center,
             testID: "QuickpayIntro"
         )
-        .navigationTitle(t("settings__quickpay__nav_title"))
-        .backToWalletButton()
+        .navigationBarHidden(true)
     }
 }
 

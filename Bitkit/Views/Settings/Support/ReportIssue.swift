@@ -93,79 +93,82 @@ struct ReportIssue: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    BodyMText(t("settings__support__report_text"))
-                        .padding(.top, 16)
-                        .padding(.bottom, 32)
+        VStack(alignment: .leading, spacing: 0) {
+            NavigationBar(title: t("settings__support__report"))
 
-                    VStack(alignment: .leading, spacing: 26) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            CaptionText(t("settings__support__label_address").uppercased())
+            GeometryReader { geometry in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        BodyMText(t("settings__support__report_text"))
+                            .padding(.top, 16)
+                            .padding(.bottom, 32)
 
-                            TextField(
-                                t("settings__support__placeholder_address"),
-                                text: $email
-                            )
-                            .keyboardType(.emailAddress)
-                            .autocapitalization(.none)
-                            .autocorrectionDisabled()
-                        }
+                        VStack(alignment: .leading, spacing: 26) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                CaptionText(t("settings__support__label_address").uppercased())
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            CaptionText(
-                                t("settings__support__label_message").uppercased(),
-                                textColor: .textSecondary
-                            )
-
-                            ZStack(alignment: .topLeading) {
-                                if message.isEmpty {
-                                    Text(t("settings__support__placeholder_message"))
-                                        .foregroundColor(.textSecondary)
-                                        .font(.custom(Fonts.semiBold, size: 15))
-                                        .padding(4)
-                                }
-
-                                TextEditor(text: $message)
-                                    .font(.custom(Fonts.semiBold, size: 15))
-                                    .foregroundColor(.textPrimary)
-                                    .accentColor(.brandAccent)
-                                    .scrollContentBackground(.hidden)
-                                    .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                                    .padding(4)
-                                    .frame(minHeight: 200, maxHeight: .infinity)
+                                TextField(
+                                    t("settings__support__placeholder_address"),
+                                    text: $email
+                                )
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled()
                             }
-                            .frame(minHeight: 120)
-                            .padding()
-                            .background(Color.white10)
-                            .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 8) {
+                                CaptionText(
+                                    t("settings__support__label_message").uppercased(),
+                                    textColor: .textSecondary
+                                )
+
+                                ZStack(alignment: .topLeading) {
+                                    if message.isEmpty {
+                                        Text(t("settings__support__placeholder_message"))
+                                            .foregroundColor(.textSecondary)
+                                            .font(.custom(Fonts.semiBold, size: 15))
+                                            .padding(4)
+                                    }
+
+                                    TextEditor(text: $message)
+                                        .font(.custom(Fonts.semiBold, size: 15))
+                                        .foregroundColor(.textPrimary)
+                                        .accentColor(.brandAccent)
+                                        .scrollContentBackground(.hidden)
+                                        .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
+                                        .padding(4)
+                                        .frame(minHeight: 200, maxHeight: .infinity)
+                                }
+                                .frame(minHeight: 120)
+                                .padding()
+                                .background(Color.white10)
+                                .cornerRadius(8)
+                            }
+                        }
+
+                        Spacer(minLength: 16)
+
+                        CustomButton(
+                            title: t("settings__support__text_button"),
+                            isDisabled: !isFormValid,
+                            isLoading: isLoading
+                        ) {
+                            await sendRequest()
                         }
                     }
-
-                    Spacer(minLength: 16)
-
-                    CustomButton(
-                        title: t("settings__support__text_button"),
-                        isDisabled: !isFormValid,
-                        isLoading: isLoading
-                    ) {
-                        await sendRequest()
-                    }
+                    .frame(minHeight: geometry.size.height)
+                    .bottomSafeAreaPadding()
                 }
-                .frame(minHeight: geometry.size.height)
-                .padding(.horizontal, 16)
-                .bottomSafeAreaPadding()
+                .scrollDismissesKeyboard(.interactively)
             }
-            .navigationTitle(t("settings__support__report"))
-            .navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
-            .navigationDestination(isPresented: $showingSuccess) {
-                ReportSuccess()
-            }
-            .navigationDestination(isPresented: $showingError) {
-                ReportError()
-            }
+        }
+        .navigationBarHidden(true)
+        .padding(.horizontal, 16)
+        .navigationDestination(isPresented: $showingSuccess) {
+            ReportSuccess()
+        }
+        .navigationDestination(isPresented: $showingError) {
+            ReportError()
         }
     }
 }
