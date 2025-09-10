@@ -1,17 +1,43 @@
 import SwiftUI
 
+// MARK: - Quick Action Notification
+
+// Communication bridge between delegates and SwiftUI views
+extension Notification.Name {
+    static let quickActionSelected = Notification.Name("quickActionSelected")
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
+    // MARK: - App Launch
+
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
         UNUserNotificationCenter.current().delegate = self
         return true
     }
 
+    // MARK: - Scene Configuration
+
+    // Required for SwiftUI apps to handle quick actions
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = SceneDelegate.self
+        return config
+    }
+
+    // MARK: - App Termination
+
     func applicationWillTerminate(_ application: UIApplication) {
-        // Unlock so LDK can run in the background
         try? StateLocker.unlock(.lightning)
     }
 }
+
+// MARK: - Push Notifications
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(
@@ -23,23 +49,18 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         Logger.debug(userInfo, context: "push notification received while app is in the foreground")
 
-        // If we want to display the native notification to the user while the app is open we need to call this with options
-        // Unlikely we will need to as the background operation would have been aborted and we would have nothint to show
         completionHandler([])
-        //        completionHandler([[.banner, .badge, .sound]])
+        // completionHandler([[.banner, .badge, .sound]])
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        // Convert token to hex string and register immediately with server
         let tokenString = deviceToken.map { String(format: "%02hhx", $0) }.joined()
 
-        // Register with server immediately when we get a new token
         Task {
             do {
                 try await NotificationService.shared.registerDeviceForNotifications(deviceToken: tokenString)
             } catch {
                 Logger.error("Failed to register device token with server: \(error)")
-                // Notify via callback that registration failed
                 await MainActor.run {
                     NotificationService.shared.onRegistrationStatusChanged?(false)
                     NotificationService.shared.onRegistrationFailed?(error)
@@ -63,15 +84,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 }
 
+// MARK: - SwiftUI App
+
 @main
 struct BitkitApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
 
     init() {
-        // Set dark mode as default
         UIWindow.appearance().overrideUserInterfaceStyle = .dark
-
-        // Initialize toast window manager early
         _ = ToastWindowManager.shared
     }
 

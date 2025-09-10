@@ -33,5 +33,16 @@
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
+	<key>UIApplicationShortcutItems</key>
+	<array>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>Recovery</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Recovery</string>
+			<key>UIApplicationShortcutItemIconFile</key>
+        	<string>recovery</string>
+		</dict>
+	</array>
 </dict>
 </plist>
