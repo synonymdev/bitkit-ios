@@ -2,7 +2,9 @@ import SwiftUI
 
 struct ReceiveEdit: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var blocktank: BlocktankViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -12,6 +14,10 @@ struct ReceiveEdit: View {
     @State private var note = ""
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
+
+    var amountSats: UInt64 {
+        amountViewModel.amountSats
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -122,10 +128,17 @@ struct ReceiveEdit: View {
         // Wait until node is running if it's in starting state
         if await wallet.waitForNodeToRun() {
             do {
-                wallet.invoiceAmountSats = amountViewModel.amountSats
+                wallet.invoiceAmountSats = amountSats
                 wallet.invoiceNote = note
                 try await wallet.refreshBip21(forceRefreshBolt11: true)
-                dismiss()
+
+                // Check if CJIT flow should be shown
+                if needsAdditionalCjit() {
+                    let entry = try await blocktank.createCjit(amountSats: amountSats, description: note)
+                    navigationPath.append(.cjitConfirm(entry: entry, receiveAmountSats: amountSats, isAdditional: true))
+                } else {
+                    dismiss()
+                }
             } catch {
                 app.toast(error)
             }
@@ -137,6 +150,34 @@ struct ReceiveEdit: View {
                 description: "Lightning node must be running to create an invoice"
             )
         }
+    }
+
+    private func needsAdditionalCjit() -> Bool {
+        let isGeoBlocked = app.isGeoBlocked ?? false
+        let minimumAmount = blocktank.minCjitSats ?? 0
+        let inboundCapacity = wallet.totalInboundLightningSats ?? 0
+        let invoiceAmount = amountViewModel.amountSats
+
+        // Calculate maxClientBalance using TransferViewModel
+        let maxChannelSize = blocktank.info?.options.maxChannelSizeSat ?? 0
+        let maxClientBalance = transfer.getMaxClientBalance(maxChannelSize: UInt64(maxChannelSize))
+
+        if
+            // user is geo-blocked
+            isGeoBlocked ||
+            // failed to get minimum amount
+            minimumAmount == 0 ||
+            // amount is less than minimum CJIT amount
+            invoiceAmount < minimumAmount ||
+            // there is enough inbound capacity
+            invoiceAmount <= inboundCapacity ||
+            // amount is above the maximum client balance
+            invoiceAmount > maxClientBalance
+        {
+            return false
+        }
+
+        return true
     }
 
     @ViewBuilder

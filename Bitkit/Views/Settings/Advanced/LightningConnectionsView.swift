@@ -241,7 +241,7 @@ struct LightningConnectionsView: View {
     }
 
     private var receivingCapacity: UInt64 {
-        wallet.incomingLightningCapacitySats ?? 0
+        wallet.totalInboundLightningSats ?? 0
     }
 
     private var pendingChannels: [ChannelDetails] {
