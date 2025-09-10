@@ -5,6 +5,7 @@ struct ReceiveCjitConfirmation: View {
     @Binding var navigationPath: [ReceiveRoute]
     let entry: IcJitEntry
     let receiveAmountSats: UInt64
+    let isAdditional: Bool
 
     @EnvironmentObject private var currency: CurrencyViewModel
 
@@ -36,7 +37,7 @@ struct ReceiveCjitConfirmation: View {
 
                 BodyMText(
                     t(
-                        "wallet__receive_connect_initial",
+                        isAdditional ? "wallet__receive_connect_additional" : "wallet__receive_connect_initial",
                         variables: [
                             "networkFee": formattedNetworkFee(),
                             "serviceFee": formattedServiceFee(),
@@ -64,7 +65,7 @@ struct ReceiveCjitConfirmation: View {
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__learn_more"), variant: .secondary) {
-                    navigationPath.append(.cjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats))
+                    navigationPath.append(.cjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional))
                 }
 
                 CustomButton(title: t("common__continue")) {

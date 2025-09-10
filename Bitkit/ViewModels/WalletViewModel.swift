@@ -422,7 +422,7 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    var incomingLightningCapacitySats: UInt64? {
+    var totalInboundLightningSats: UInt64? {
         guard let channels else {
             return nil
         }

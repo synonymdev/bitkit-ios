@@ -6,8 +6,8 @@ enum ReceiveRoute: Hashable {
     case edit
     case tag
     case cjitAmount
-    case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64)
-    case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64)
+    case cjitConfirm(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
+    case cjitLearnMore(entry: IcJitEntry, receiveAmountSats: UInt64, isAdditional: Bool)
 }
 
 struct ReceiveConfig {
@@ -62,10 +62,10 @@ struct ReceiveSheet: View {
             ReceiveTag(navigationPath: $navigationPath)
         case .cjitAmount:
             ReceiveCjitAmount(navigationPath: $navigationPath)
-        case let .cjitLearnMore(entry, receiveAmountSats):
-            ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats)
-        case let .cjitConfirm(entry, receiveAmountSats):
-            ReceiveCjitConfirmation(navigationPath: $navigationPath, entry: entry, receiveAmountSats: receiveAmountSats)
+        case let .cjitConfirm(entry, receiveAmountSats, isAdditional):
+            ReceiveCjitConfirmation(navigationPath: $navigationPath, entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
+        case let .cjitLearnMore(entry, receiveAmountSats, isAdditional):
+            ReceiveCjitLearnMore(entry: entry, receiveAmountSats: receiveAmountSats, isAdditional: isAdditional)
         }
     }
 }
