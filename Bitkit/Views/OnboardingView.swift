@@ -9,7 +9,9 @@ struct OnboardingView: View {
     let onButtonPress: () -> Void
 
     // Optional parameters with defaults
-    let navTitle: String?
+    let navTitle: String
+    let showBackButton: Bool
+    let showMenuButton: Bool
     let titleColor: Color
     let accentColor: Color
     let imagePosition: ImagePosition
@@ -26,17 +28,21 @@ struct OnboardingView: View {
         description: String,
         imageName: String,
         buttonText: String,
+        showBackButton: Bool? = nil,
+        showMenuButton: Bool? = nil,
         onButtonPress: @escaping () -> Void,
         titleColor: Color = .textPrimary,
         accentColor: Color = .brandAccent,
         imagePosition: ImagePosition = .bottom,
         testID: String? = nil
     ) {
-        self.navTitle = navTitle
+        self.navTitle = navTitle ?? ""
         self.title = title
         self.description = description
         self.imageName = imageName
         self.buttonText = buttonText
+        self.showBackButton = showBackButton ?? true
+        self.showMenuButton = showMenuButton ?? true
         self.onButtonPress = onButtonPress
         self.titleColor = titleColor
         self.accentColor = accentColor
@@ -46,7 +52,7 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: navTitle ?? "")
+            NavigationBar(title: navTitle, showBackButton: showBackButton, showMenuButton: showMenuButton)
 
             VStack(spacing: 0) {
                 VStack {
