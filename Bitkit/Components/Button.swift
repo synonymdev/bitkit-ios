@@ -69,7 +69,6 @@ struct CustomButton: View {
         case primary
         case secondary
         case tertiary
-        case accent
     }
 
     let title: String
@@ -149,74 +148,32 @@ struct CustomButton: View {
         self.destination = AnyView(destination)
     }
 
-    private var backgroundColor: Color {
-        if isLoading {
-            return .gray6
-        }
-
-        if isDisabled && icon != nil {
-            return .white06
-        }
-
-        if isDisabled {
-            return .clear
-        }
-
+    private var buttonVariantView: some View {
         switch variant {
         case .primary:
-            if isPressed {
-                return .white32
-            } else {
-                return .white16
-            }
-        case .secondary, .tertiary:
-            return .clear
-        case .accent:
-            if isPressed {
-                return .brandAccent.opacity(0.8)
-            } else {
-                return .brandAccent
-            }
-        }
-    }
-
-    private var foregroundColor: Color {
-        if isDisabled {
-            return .white32
-        }
-
-        switch variant {
-        case .primary:
-            return .textPrimary
-        case .secondary, .tertiary:
-            if isPressed {
-                return .textPrimary
-            } else {
-                return .white80
-            }
-        case .accent:
-            return .white
-        }
-    }
-
-    private var borderColor: Color? {
-        if isDisabled {
-            return nil
-        }
-
-        switch variant {
-        case .primary:
-            return nil
+            AnyView(PrimaryButtonView(
+                title: title,
+                size: size,
+                icon: icon,
+                isDisabled: isDisabled,
+                isLoading: isLoading,
+                isPressed: isPressed,
+                shouldExpand: shouldExpand
+            ))
         case .secondary:
-            if isPressed {
-                return .white32
-            } else {
-                return .white16
-            }
+            AnyView(SecondaryButtonView(
+                title: title,
+                size: size,
+                icon: icon,
+                isDisabled: isDisabled,
+                isPressed: isPressed
+            ))
         case .tertiary:
-            return nil
-        case .accent:
-            return nil
+            AnyView(TertiaryButtonView(
+                title: title,
+                icon: icon,
+                isPressed: isPressed
+            ))
         }
     }
 
@@ -224,7 +181,7 @@ struct CustomButton: View {
         Group {
             if let destination {
                 NavigationLink(destination: destination) {
-                    buttonContent
+                    buttonVariantView
                 }
                 .buttonStyle(
                     CustomButtonStyle(
@@ -252,7 +209,7 @@ struct CustomButton: View {
                         await action()
                     }
                 } label: {
-                    buttonContent
+                    buttonVariantView
                 }
                 .buttonStyle(
                     CustomButtonStyle(
@@ -264,57 +221,10 @@ struct CustomButton: View {
                 )
                 .disabled(isDisabled || isLoading)
             } else {
-                buttonContent
+                buttonVariantView
                     .opacity(isDisabled ? 0.5 : 1)
             }
         }
-    }
-
-    private var buttonContent: some View {
-        HStack(spacing: 8) {
-            if let icon, !isLoading {
-                icon
-            }
-
-            if isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: foregroundColor))
-                    .frame(width: 20, height: 20)
-            } else {
-                if size == .small {
-                    CaptionBText(title, textColor: foregroundColor)
-                } else {
-                    BodySSBText(title, textColor: foregroundColor)
-                }
-            }
-        }
-        .frame(maxWidth: size == .large || shouldExpand ? .infinity : nil)
-        .frame(height: size.height)
-        .padding(.horizontal, size.horizontalPadding)
-        .background(backgroundColor)
-        .cornerRadius(size.cornerRadius)
-        .overlay(
-            Group {
-                if let borderColor {
-                    RoundedRectangle(cornerRadius: size.cornerRadius)
-                        .stroke(borderColor, lineWidth: 2)
-                }
-            }
-        )
-        .contentShape(Rectangle())
-    }
-}
-
-// UIViewRepresentable for UIKit blur effect
-struct BackdropBlurView: UIViewRepresentable {
-    let radius: CGFloat
-
-    func makeUIView(context: Context) -> UIVisualEffectView {
-        return UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
-    }
-
-    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {
-        uiView.effect = UIBlurEffect(style: .systemUltraThinMaterial)
     }
 }
 

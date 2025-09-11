@@ -21,28 +21,21 @@ private struct ScrollViewShadow: View {
 }
 
 private struct TermsFooter: View {
-    @State private var termsAccepted = false
-    @State private var privacyAccepted = false
-
     var body: some View {
         VStack(spacing: 25) {
             VStack(alignment: .leading, spacing: 12) {
-                // Terms checkbox
-                CheckboxRow(
-                    title: t("onboarding__tos_checkbox"),
-                    subtitle: t("onboarding__tos_checkbox_value"),
-                    subtitleUrl: URL(string: Env.termsOfServiceUrl),
-                    isChecked: $termsAccepted
+                FooterItem(
+                    title: tTodo("Terms of Use"),
+                    subtitle: tTodo("By continuing you declare that you have read and accept the terms of use."),
+                    subtitleUrl: nil
                 )
 
                 Divider()
 
-                // Privacy checkbox
-                CheckboxRow(
+                FooterItem(
                     title: t("onboarding__pp_checkbox"),
-                    subtitle: t("onboarding__pp_checkbox_value"),
+                    subtitle: tTodo("By continuing you declare that you have read and accept the <accent>privacy policy.</accent>"),
                     subtitleUrl: URL(string: Env.privacyPolicyUrl),
-                    isChecked: $privacyAccepted
                 )
 
                 Divider()
@@ -50,7 +43,6 @@ private struct TermsFooter: View {
 
             CustomButton(
                 title: t("common__continue"),
-                isDisabled: !(termsAccepted && privacyAccepted),
                 destination: IntroView()
             )
         }
@@ -59,6 +51,29 @@ private struct TermsFooter: View {
             Color(.systemBackground)
                 .edgesIgnoringSafeArea(.bottom)
         )
+    }
+}
+
+private struct FooterItem: View {
+    let title: String
+    let subtitle: String
+    let subtitleUrl: URL?
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            BodyMSBText(title, textColor: .textPrimary)
+            BodySSBText(
+                subtitle,
+                textColor: .textSecondary,
+                accentColor: .brandAccent,
+                accentAction: {
+                    if let url = subtitleUrl {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            )
+        }
+        .padding(.vertical, 3)
     }
 }
 

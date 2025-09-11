@@ -19,6 +19,7 @@ extension Color {
 
     static let gray6 = Color(hex: 0x101010)
     static let gray5 = Color(hex: 0x1C1C1D)
+    static let gray4 = Color(hex: 0x3A3A3A)
     static let gray3 = Color(hex: 0x48484A)
     static let gray2 = Color(hex: 0x636366)
 
@@ -26,6 +27,7 @@ extension Color {
 
     static let black50 = Color.black.opacity(0.5)
     static let black92 = Color.black.opacity(0.92)
+    static let white01 = Color.white.opacity(0.01)
     static let white06 = Color.white.opacity(0.06)
     static let white08 = Color.white.opacity(0.08)
     static let white10 = Color.white.opacity(0.10)
