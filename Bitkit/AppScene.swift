@@ -25,6 +25,11 @@ struct AppScene: View {
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
+    // Check if there's a critical update available
+    private var hasCriticalUpdate: Bool {
+        AppUpdateService.shared.availableUpdate?.critical == true
+    }
+
     init() {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
@@ -98,6 +103,8 @@ struct AppScene: View {
             if showRecoveryScreen {
                 RecoveryRouter()
                     .accentColor(.white)
+            } else if hasCriticalUpdate {
+                AppUpdateScreen()
             } else {
                 walletContent
             }

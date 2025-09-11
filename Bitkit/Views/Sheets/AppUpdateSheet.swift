@@ -10,8 +10,6 @@ struct AppUpdateSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
     let config: AppUpdateSheetItem
 
-    private let appUpdateService = AppUpdateService.shared
-
     var body: some View {
         Sheet(id: .appUpdate, data: config) {
             SheetIntro(
