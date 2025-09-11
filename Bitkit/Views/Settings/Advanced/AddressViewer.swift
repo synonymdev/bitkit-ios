@@ -1,6 +1,19 @@
 import BitkitCore
 import SwiftUI
 
+enum AddressType: CaseIterable, CustomStringConvertible {
+    case receiving, change
+
+    var description: String {
+        switch self {
+        case .receiving:
+            return "Receiving Addresses"
+        case .change:
+            return "Change Addresses"
+        }
+    }
+}
+
 struct AddressViewer: View {
     @EnvironmentObject var app: AppViewModel
 
@@ -9,7 +22,7 @@ struct AddressViewer: View {
     @State private var loadedCount: UInt32 = 20
     @State private var isLoading = false
     @State private var isLoadingBalances = false
-    @State private var isReceiving = true // true for receiving, false for change
+    @State private var selectedAddressType: AddressType = .receiving
     @State private var searchText = ""
     @State private var selectedAddress: String = ""
     @State private var showScrollToTop = false
@@ -17,6 +30,13 @@ struct AddressViewer: View {
     private let initialLoadCount: UInt32 = 20
     private let loadMoreCount: UInt32 = 20
     private let walletIndex = 0
+
+    private var addressTypeTabItems: [TabItem<AddressType>] {
+        [
+            TabItem(.receiving),
+            TabItem(.change),
+        ]
+    }
 
     private var defaultDerivationPath: String {
         // BIP44 derivation path: m/purpose'/coin_type'/account'/change/address_index
@@ -114,30 +134,8 @@ struct AddressViewer: View {
             .padding(.bottom, 16)
 
             // Address Type Toggle
-            HStack(spacing: 8) {
-                CustomButton(
-                    title: "Change Addresses",
-                    variant: !isReceiving ? .accent : .secondary,
-                    size: .small,
-                    shouldExpand: true
-                ) {
-                    isReceiving = false
-                    selectedAddress = ""
-                    await loadAddresses()
-                }
-
-                CustomButton(
-                    title: "Receiving Addresses",
-                    variant: isReceiving ? .accent : .secondary,
-                    size: .small,
-                    shouldExpand: true
-                ) {
-                    isReceiving = true
-                    selectedAddress = ""
-                    await loadAddresses()
-                }
-            }
-            .padding(.bottom, 16)
+            SegmentedControl(selectedTab: $selectedAddressType, tabItems: addressTypeTabItems)
+                .padding(.bottom, 16)
 
             // Address List with Sticky Bottom Buttons
             ZStack(alignment: .bottom) {
@@ -179,11 +177,15 @@ struct AddressViewer: View {
                                 .frame(height: 80)
                         }
                     }
-                    .onChange(of: isReceiving) { _ in
+                    .onChange(of: selectedAddressType) { _ in
                         // Reset scroll position when switching address types
+                        selectedAddress = ""
                         withAnimation(.easeInOut(duration: 0.5)) {
                             proxy.scrollTo("top", anchor: .top)
                             showScrollToTop = false
+                        }
+                        Task {
+                            await loadAddresses()
                         }
                     }
                     .onChange(of: searchText) { _ in
@@ -261,7 +263,7 @@ struct AddressViewer: View {
         do {
             let accountAddresses = try await CoreService.shared.utility.getAccountAddresses(
                 walletIndex: walletIndex,
-                isChange: !isReceiving,
+                isChange: selectedAddressType == .change,
                 startIndex: 0,
                 count: initialLoadCount
             )
@@ -295,7 +297,7 @@ struct AddressViewer: View {
         do {
             let accountAddresses = try await CoreService.shared.utility.getAccountAddresses(
                 walletIndex: walletIndex,
-                isChange: !isReceiving,
+                isChange: selectedAddressType == .change,
                 startIndex: nextStartIndex,
                 count: loadMoreCount
             )

@@ -143,11 +143,7 @@ struct BoostSheet: View {
                                 .disabled(currentFeeRate >= maxFeeRate)
                             }
 
-                            CustomButton(
-                                title: "Use Suggested Fee",
-                                variant: .primary,
-                                size: .small
-                            ) {
+                            CustomButton(title: "Use Suggested Fee", size: .small) {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }

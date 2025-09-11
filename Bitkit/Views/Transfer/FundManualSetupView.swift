@@ -83,7 +83,6 @@ struct FundManualSetupView: View {
                         // Paste Node URI button
                         CustomButton(
                             title: t("lightning__external_manual__paste"),
-                            variant: .primary,
                             size: .small,
                             icon: Image("clipboard")
                                 .resizable()

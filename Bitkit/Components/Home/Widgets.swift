@@ -56,7 +56,7 @@ struct Widgets: View {
             }
 
             CustomButton(
-                title: t("widgets__add"), variant: .tertiary, size: .large, icon: Image("plus")
+                title: t("widgets__add"), variant: .tertiary, icon: Image("plus")
             ) {
                 if app.hasSeenWidgetsIntro {
                     navigation.navigate(.widgetsList)
