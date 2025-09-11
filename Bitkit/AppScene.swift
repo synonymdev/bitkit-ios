@@ -23,6 +23,7 @@ struct AppScene: View {
     @State private var walletIsInitializing: Bool? = nil
     @State private var walletInitShouldFinish = false
     @State private var isPinVerified: Bool = false
+    @State private var showRecoveryScreen = false
 
     init() {
         let sheetViewModel = SheetViewModel()
@@ -79,13 +80,27 @@ struct AppScene: View {
                         description: "Bitkit was unable to register for push notifications."
                     )
                 }
+
+                // Listen for quick action notifications
+                NotificationCenter.default.addObserver(
+                    forName: .quickActionSelected,
+                    object: nil,
+                    queue: .main
+                ) { notification in
+                    handleQuickAction(notification)
+                }
             }
     }
 
     @ViewBuilder
     private var mainContent: some View {
         ZStack {
-            walletContent
+            if showRecoveryScreen {
+                RecoveryRouter()
+                    .accentColor(.white)
+            } else {
+                walletContent
+            }
 
             if !removeSplash && !session.skipSplashOnce {
                 SplashView()
@@ -99,7 +114,7 @@ struct AppScene: View {
         if wallet.walletExists == true {
             existingWalletContent
         } else if wallet.walletExists == false {
-            newWalletContent
+            onboardingContent
         }
     }
 
@@ -138,7 +153,7 @@ struct AppScene: View {
     }
 
     @ViewBuilder
-    private var newWalletContent: some View {
+    private var onboardingContent: some View {
         NavigationStack {
             TermsView()
         }
@@ -173,6 +188,9 @@ struct AppScene: View {
         }
 
         guard wallet.walletExists == true else { return }
+
+        // Don't start wallet if we're in recovery mode
+        guard !showRecoveryScreen else { return }
 
         wallet.addOnEvent(id: "toasts-and-sheets") { [weak app] lightningEvent in
             app?.handleLdkNodeEvent(lightningEvent)
@@ -233,6 +251,21 @@ struct AppScene: View {
         // If 'pinOnIdle' is enabled, lock the app when the app goes to the background
         if scenePhase == .background && settings.pinEnabled && settings.requirePinWhenIdle {
             isPinVerified = false
+        }
+    }
+
+    private func handleQuickAction(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let shortcutType = userInfo["shortcutType"] as? String
+        else {
+            return
+        }
+
+        switch shortcutType {
+        case "Recovery":
+            showRecoveryScreen = true
+        default:
+            break
         }
     }
 }

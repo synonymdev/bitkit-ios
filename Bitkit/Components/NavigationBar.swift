@@ -9,23 +9,37 @@ struct NavigationBar: View {
     let showMenuButton: Bool
     let action: AnyView?
     let icon: String?
+    let onBack: (() -> Void)?
 
-    init(title: String, showBackButton: Bool = true, showMenuButton: Bool = true, action: AnyView? = nil, icon: String? = nil) {
+    init(
+        title: String,
+        showBackButton: Bool = true,
+        showMenuButton: Bool = true,
+        action: AnyView? = nil,
+        icon: String? = nil,
+        onBack: (() -> Void)? = nil
+    ) {
         self.title = title
         self.showBackButton = showBackButton
         self.showMenuButton = showMenuButton
         self.action = action
         self.icon = icon
+        self.onBack = onBack
     }
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
             if showBackButton {
                 Button(action: {
-                    if navigation.canGoBack {
-                        navigation.navigateBack()
+                    if let onBack {
+                        onBack()
                     } else {
-                        navigation.reset()
+                        // Default behavior for main navigation stack
+                        if navigation.canGoBack {
+                            navigation.navigateBack()
+                        } else {
+                            navigation.reset()
+                        }
                     }
                 }) {
                     Image("arrow-left")
