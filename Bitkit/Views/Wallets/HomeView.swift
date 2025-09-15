@@ -55,6 +55,7 @@ struct HomeView: View {
                     }
 
                     ActivityLatest()
+                        .padding(.top, 32)
                         .padding(.horizontal)
                 }
                 /// Leave some space for TabBar

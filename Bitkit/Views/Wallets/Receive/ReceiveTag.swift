@@ -27,10 +27,10 @@ struct ReceiveTag: View {
                         )
                     }
                 }
+                .padding(.bottom, 28)
             }
 
             CaptionMText(t("wallet__tags_new"))
-                .padding(.top, 28)
                 .padding(.bottom, 8)
 
             TextField(t("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white06)
@@ -51,11 +51,14 @@ struct ReceiveTag: View {
                     await appendTagAndClose(newTag.trimmingCharacters(in: .whitespacesAndNewlines))
                 }
             }
-            .padding(.bottom, isTextFieldFocused ? 16 : 0)
+            .buttonBottomPadding(isFocused: isTextFieldFocused)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .onAppear {
+            isTextFieldFocused = true
+        }
     }
 
     private func appendTagAndClose(_ tag: String) async {

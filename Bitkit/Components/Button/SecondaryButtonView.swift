@@ -14,37 +14,45 @@ struct SecondaryButtonView: View {
             }
 
             if size == .small {
-                CaptionBText(title, textColor: foregroundColor)
+                CaptionBText(title, textColor: textColor)
             } else {
-                BodySSBText(title, textColor: foregroundColor)
+                BodySSBText(title, textColor: textColor)
             }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: size.height)
-        .padding(.horizontal, size.horizontalPadding)
+        .frame(maxWidth: size == .large ? .infinity : nil)
+        .frame(height: buttonHeight)
+        .padding(.horizontal, 16)
         // TODO: Add background blur
         .background(
-            RoundedRectangle(cornerRadius: size.cornerRadius)
+            RoundedRectangle(cornerRadius: 64)
                 .fill(isPressed ? Color.white10 : Color.white01)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: size.cornerRadius)
-                .stroke(borderColor, lineWidth: 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 64)
+                        .strokeBorder(borderColor, lineWidth: strokeWidth)
+                )
         )
         .contentShape(Rectangle())
     }
 
-    private var foregroundColor: Color {
-        if isDisabled {
-            return .white32
-        }
-        return .white80
+    private var textColor: Color {
+        return isDisabled ? .white32 : .white80
     }
 
     private var borderColor: Color {
-        if isDisabled {
-            return .clear
+        return isDisabled ? .clear : Color(hex: 0x3A3A3A)
+    }
+
+    private var buttonHeight: CGFloat {
+        switch size {
+        case .small: return 37
+        case .large: return 56
         }
-        return Color(hex: 0x3A3A3A)
+    }
+
+    private var strokeWidth: CGFloat {
+        switch size {
+        case .small: return 1
+        case .large: return 2
+        }
     }
 }

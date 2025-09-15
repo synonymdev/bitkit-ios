@@ -114,7 +114,7 @@ struct ActivityRow: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            icon
+            ActivityIcon(activity: item, size: 40)
 
             VStack(alignment: .leading, spacing: 4) {
                 switch item {
@@ -172,11 +172,8 @@ struct ActivityRow: View {
 
             MoneyCell(sats: amount, prefix: amountPrefix)
         }
-        .padding(.vertical, 8)
-    }
-
-    @ViewBuilder
-    var icon: some View {
-        ActivityIcon(activity: item, size: 32)
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(16)
     }
 }
