@@ -1,103 +1,78 @@
+import PhotosUI
 import SwiftUI
-
-struct SendOptionCard: View {
-    var title: String
-    var action: () -> Void
-    var iconName: String
-    var testID: String
-
-    var body: some View {
-        Button {
-            action()
-        } label: {
-            HStack {
-                Image(iconName)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .foregroundColor(Color.brandAccent)
-                    .frame(width: 32, height: 32)
-                    .padding(.trailing, 8)
-                BodyMSBText(title)
-                Spacer()
-            }
-            .frame(height: 80)
-            .padding(.horizontal, 24)
-            .background(Color.white06)
-            .cornerRadius(8)
-            .accessibilityIdentifier(testID)
-        }
-    }
-}
 
 struct SendOptionsView: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var scanner: ScannerManager
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
     @Binding var navigationPath: [SendRoute]
+    @State private var selectedItem: PhotosPickerItem?
 
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__send_bitcoin"))
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(t("wallet__send_to"))
-                    .padding(.bottom, 8)
-
                 VStack(spacing: 8) {
-                    SendOptionCard(
+                    Scanner(
+                        onScan: { uri in
+                            await scanner.handleSendScan(uri) { route in
+                                if let route {
+                                    navigationPath.append(route)
+                                }
+                            }
+                        },
+                        onImageSelection: { item in
+                            await scanner.handleImageSelection(item, context: .send) { route in
+                                if let route {
+                                    navigationPath.append(route)
+                                }
+                            }
+                        }
+                    )
+
+                    RectangleButton(
+                        icon: "users",
+                        iconColor: .brandAccent,
                         title: t("wallet__recipient_contact"),
-                        action: handleContact,
-                        iconName: "users",
                         testID: "RecipientContact"
-                    )
+                    ) {
+                        handleContact()
+                    }
 
-                    SendOptionCard(
+                    RectangleButton(
+                        icon: "clipboard",
+                        iconColor: .brandAccent,
                         title: t("wallet__recipient_invoice"),
-                        action: handlePaste,
-                        iconName: "clipboard",
                         testID: "RecipientInvoice"
-                    )
+                    ) {
+                        handlePaste()
+                    }
 
-                    SendOptionCard(
+                    RectangleButton(
+                        icon: "pencil",
+                        iconColor: .brandAccent,
                         title: t("wallet__recipient_manual"),
-                        action: { navigationPath.append(.manual) },
-                        iconName: "pencil",
                         testID: "RecipientManual"
-                    )
-
-                    SendOptionCard(
-                        title: t("wallet__recipient_scan"),
-                        action: { navigationPath.append(.scan) },
-                        iconName: "scan-brand",
-                        testID: "RecipientScan"
-                    )
+                    ) {
+                        navigationPath.append(.manual)
+                    }
                 }
-
-                if !UIScreen.main.isSmall {
-                    Spacer(minLength: 0)
-
-                    Image("coin-stack-logo")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 256, height: 256)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-
-                Spacer(minLength: 0)
             }
         }
         .sheetBackground()
         .padding(.horizontal, 16)
-        .ignoresSafeArea(edges: .bottom)
         .onAppear {
             wallet.syncState()
+            scanner.configure(
+                app: app,
+                currency: currency,
+                settings: settings,
+            )
         }
-    }
-
-    func handleContact() {
-        // TODO: implement contacts
-        // navigationPath.append(.contact)
     }
 
     func handlePaste() {
@@ -110,23 +85,18 @@ struct SendOptionsView: View {
             return
         }
 
-        Haptics.play(.pastedFromClipboard)
-
-        Task { @MainActor in
-            do {
-                try await app.handleScannedData(uri)
-
-                let route = PaymentNavigationHelper.appropriateSendRoute(
-                    app: app,
-                    currency: currency,
-                    settings: settings
-                )
-                navigationPath.append(route)
-            } catch {
-                Logger.error(error, context: "Failed to read data from clipboard")
-                app.toast(error)
+        Task {
+            await scanner.handleSendScan(uri) { route in
+                if let route {
+                    navigationPath.append(route)
+                }
             }
         }
+    }
+
+    func handleContact() {
+        // TODO: implement contacts
+        // navigationPath.append(.contact)
     }
 }
 

@@ -88,8 +88,8 @@ struct StyleGuideView: View {
                 colorGroup(
                     title: "Gray Scale",
                     colors: [
+                        ("Gray 7", Color.gray7),
                         ("Gray 6", Color.gray6),
-                        ("Gray 5", Color.gray5),
                         ("Gray 3", Color.gray3),
                         ("Gray 2", Color.gray2),
                     ]

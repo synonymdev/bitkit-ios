@@ -4,29 +4,21 @@ struct OnboardingToolbar: View {
     let currentTab: Int
     let onSkip: () -> Void
 
-    // TODO: use Button .tertiary
-
     var body: some View {
         ZStack(alignment: .trailing) {
-            NavigationLink(destination: {
-                CreateWalletWithPassphraseView()
-            }) {
-                HStack {
-                    Spacer()
-                    BodyMSBText(t("onboarding__advanced_setup"), textColor: .secondary)
-                }
+            HStack {
+                Spacer()
+                CustomButton(title: t("onboarding__advanced_setup"), variant: .secondary, size: .small, destination: CreateWalletWithPassphraseView())
             }
-            .opacity(currentTab == 4 ? 1 : 0)
+            .opacity(currentTab == 3 ? 1 : 0)
 
-            Button {
-                onSkip()
-            } label: {
-                HStack {
-                    Spacer()
-                    BodyMSBText(t("onboarding__skip"), textColor: .secondary)
+            HStack {
+                Spacer()
+                CustomButton(title: t("onboarding__skip"), variant: .secondary, size: .small) {
+                    onSkip()
                 }
             }
-            .opacity(currentTab == 4 ? 0 : 1)
+            .opacity(currentTab == 3 ? 0 : 1)
         }
         .animation(.easeInOut(duration: 0.3), value: currentTab)
     }
@@ -39,7 +31,7 @@ struct Dots: View {
         VStack {
             Spacer()
             HStack(spacing: 8) {
-                ForEach(0 ..< 5) { index in
+                ForEach(0 ..< 4) { index in
                     Circle()
                         .fill(currentTab == index ? Color.textPrimary : Color.gray2)
                         .frame(width: 7, height: 7)
@@ -59,51 +51,40 @@ struct OnboardingSlider: View {
         ZStack {
             VStack {
                 TabView(selection: $currentTab) {
-                    // Slide 0
                     OnboardingTab(
                         imageName: "keyring",
                         title: t("onboarding__slide0_header"),
-                        text: t("onboarding__slide0_text"),
+                        text: tTodo("Bitkit hands you the keys to control your money, profile, and contacts. Take charge and become borderless."),
                         accentColor: .blueAccent
                     )
                     .tag(0)
 
-                    // Slide 1
                     OnboardingTab(
                         imageName: "lightning",
                         title: t("onboarding__slide1_header"),
-                        text: t("onboarding__slide1_text"),
+                        text: tTodo("Enjoy instant and cheap payments with friends, family, and merchants on the Lightning Network."),
                         disclaimerText: app.isGeoBlocked == true ? t("onboarding__slide1_note") : nil,
                         accentColor: .purpleAccent
                     )
                     .tag(1)
 
-                    // Slide 2
-                    OnboardingTab(
-                        imageName: "spark",
-                        title: t("onboarding__slide2_header"),
-                        text: t("onboarding__slide2_text"),
-                        accentColor: .yellowAccent
-                    )
-                    .tag(2)
-
-                    // Slide 3
                     OnboardingTab(
                         imageName: "shield-figure",
                         title: t("onboarding__slide3_header"),
-                        text: t("onboarding__slide3_text"),
+                        text: tTodo(
+                            "Your money, your privacy. Swipe to hide your balance and spend more privately, with no data tracking and zero KYC."
+                        ),
                         accentColor: .greenAccent
                     )
-                    .tag(3)
+                    .tag(2)
 
-                    // Slide 4
                     CreateWalletView()
-                        .tag(4)
+                        .tag(3)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
             }
 
-            if currentTab != 4 {
+            if currentTab != 3 {
                 Dots(currentTab: $currentTab)
             }
         }
@@ -114,7 +95,7 @@ struct OnboardingSlider: View {
             ToolbarItem(placement: .navigationBarTrailing) {
                 OnboardingToolbar(currentTab: currentTab) {
                     withAnimation {
-                        currentTab = 4
+                        currentTab = 3
                     }
                 }
             }

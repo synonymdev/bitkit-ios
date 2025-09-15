@@ -104,8 +104,8 @@ struct WeatherWidget: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text(data.condition.icon)
-                                    .font(.system(size: 100))
-                                    .frame(width: 110, height: 100)
+                                    .font(.system(size: 52))
+                                    .frame(width: 52, height: 52)
                             }
                         }
 
@@ -127,7 +127,7 @@ struct WeatherWidget: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
 
                                         HStack {
-                                            BodyMSBText(data.currentFee)
+                                            BodySSBText(data.currentFee)
                                                 .lineLimit(1)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -144,7 +144,7 @@ struct WeatherWidget: View {
                                         .frame(maxWidth: .infinity, alignment: .leading)
 
                                         HStack {
-                                            BodyMSBText("\(data.nextBlockFee) ₿/vByte")
+                                            BodySSBText("\(data.nextBlockFee) ₿/vByte")
                                                 .lineLimit(1)
                                         }
                                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -175,7 +175,7 @@ struct WeatherTitleText: View {
 
     var body: some View {
         Text(text)
-            .font(Fonts.bold(size: 34))
+            .font(Fonts.bold(size: 22))
             .foregroundColor(.textPrimary)
             .kerning(0)
             .environment(\._lineHeightMultiple, 0.85)

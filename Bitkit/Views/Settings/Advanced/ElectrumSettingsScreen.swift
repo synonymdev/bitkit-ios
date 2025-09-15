@@ -91,7 +91,7 @@ struct ElectrumSettingsScreen: View {
                                 onConnect()
                             }
                         }
-                        .padding(.bottom, isTextFieldFocused ? 16 : 0)
+                        .buttonBottomPadding(isFocused: isTextFieldFocused)
                     }
                     .frame(minHeight: geometry.size.height)
                     .bottomSafeAreaPadding()

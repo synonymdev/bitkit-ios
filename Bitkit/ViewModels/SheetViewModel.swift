@@ -32,7 +32,7 @@ class SheetViewModel: ObservableObject {
             // to prevent the new sheet from closing immediately (bug)
             hideSheet()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self else { return }
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)

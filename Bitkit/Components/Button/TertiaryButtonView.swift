@@ -11,17 +11,16 @@ struct TertiaryButtonView: View {
                 icon
             }
 
-            BodySSBText(title, textColor: foregroundColor)
+            BodySSBText(title, textColor: textColor)
         }
         .frame(maxWidth: .infinity)
         .frame(height: CustomButton.Size.large.height)
         .padding(.horizontal, CustomButton.Size.large.horizontalPadding)
         .background(.clear)
-        .cornerRadius(CustomButton.Size.large.cornerRadius)
         .contentShape(Rectangle())
     }
 
-    private var foregroundColor: Color {
+    private var textColor: Color {
         return isPressed ? .textPrimary : .white80
     }
 }

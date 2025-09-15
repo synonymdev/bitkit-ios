@@ -29,16 +29,8 @@ struct ActivityList: View {
                         NavigationLink(value: Route.activityDetail(item)) {
                             ActivityRow(item: item)
                         }
-                        .padding(.vertical)
+                        .padding(.top)
                         .disabled(isHorizontalSwipe)
-
-                        // Add divider if not the last item in the group
-                        if let nextIndex = activity.groupedActivities.firstIndex(of: groupItem),
-                           nextIndex + 1 < activity.groupedActivities.count,
-                           case .activity = activity.groupedActivities[nextIndex + 1]
-                        {
-                            Divider()
-                        }
                     }
                 }
             }

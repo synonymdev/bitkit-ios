@@ -13,13 +13,15 @@ private struct IconButtonStyle: ButtonStyle {
 
 struct IconButton<Icon: View>: View {
     let icon: Icon
+    let backgroundColor: Color
     let size: CGFloat
     let action: () -> Void
 
     @State private var isPressed = false
 
-    init(icon: Icon, size: CGFloat = 48, action: @escaping () -> Void) {
+    init(icon: Icon, backgroundColor: Color = .white16, size: CGFloat = 48, action: @escaping () -> Void) {
         self.icon = icon
+        self.backgroundColor = backgroundColor
         self.size = size
         self.action = action
     }
@@ -29,7 +31,7 @@ struct IconButton<Icon: View>: View {
             icon
         }
         .frame(width: size, height: size)
-        .background(isPressed ? Color.white32 : Color.white16)
+        .background(isPressed ? Color.white32 : backgroundColor)
         .cornerRadius(size / 2)
         .contentShape(Rectangle())
         .buttonStyle(

@@ -26,7 +26,7 @@ struct IntroView: View {
                 CustomButton(
                     title: t("onboarding__skip_intro"),
                     variant: .secondary,
-                    destination: OnboardingSlider(currentTab: 4)
+                    destination: OnboardingSlider(currentTab: 3)
                 )
             }
         }

@@ -13,6 +13,7 @@ struct CopyAddressPair {
 
 struct CopyAddressCard: View {
     let addresses: [CopyAddressPair]
+    @Binding var navigationPath: [ReceiveRoute]
     @State private var showTooltipForIndex: Int? = nil
 
     var body: some View {
@@ -25,11 +26,20 @@ struct CopyAddressCard: View {
                         CaptionMText(pair.title)
                             .padding(.bottom, 12)
 
-                        BodySSBText(pair.address)
+                        BodySText(pair.address, textColor: .textPrimary)
                             .lineLimit(2)
                             .padding(.bottom, 12)
 
                         HStack(spacing: 8) {
+                            CustomButton(
+                                title: t("common__edit"),
+                                size: .small,
+                                icon: Image("pencil").foregroundColor(pair.type == .lightning ? .purpleAccent : .brandAccent),
+                                shouldExpand: true
+                            ) {
+                                navigationPath.append(.edit)
+                            }
+
                             CustomButton(
                                 title: t("common__copy"),
                                 size: .small,
@@ -68,7 +78,7 @@ struct CopyAddressCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(32)
-        .background(Color.white06)
+        .background(Color.black)
         .cornerRadius(8)
         .aspectRatio(1, contentMode: .fit)
     }
@@ -89,15 +99,4 @@ struct CopyAddressCard: View {
             }
         }
     }
-}
-
-#Preview {
-    CopyAddressCard(addresses: [
-        CopyAddressPair(title: "On-chain Address", address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq", type: .onchain),
-        CopyAddressPair(
-            title: "Lightning Invoice", address: "lnbc1500n1p3hk3sppp5k54t9c4p4u4tdgj0y8tqjp3kzjak8jtr0fwvnl2dpl5pvrm9gxsdqqcqzpgxqyz5vqsp5",
-            type: .lightning
-        ),
-    ])
-    .preferredColorScheme(.dark)
 }
