@@ -17,11 +17,13 @@ extension Color {
 
     // MARK: - Gray Base
 
-    static let gray6 = Color(hex: 0x101010)
-    static let gray5 = Color(hex: 0x1C1C1D)
+    static let gray7 = Color(hex: 0x101010)
+    static let gray6 = Color(hex: 0x1C1C1C)
+    static let gray5 = Color(hex: 0x2A2A2A)
     static let gray4 = Color(hex: 0x3A3A3A)
     static let gray3 = Color(hex: 0x48484A)
     static let gray2 = Color(hex: 0x636366)
+    static let gray1 = Color(hex: 0x8E8E8E)
 
     // MARK: - Alpha Colors
 

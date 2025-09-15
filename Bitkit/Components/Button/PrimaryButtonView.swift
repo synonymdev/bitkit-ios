@@ -31,7 +31,7 @@ struct PrimaryButtonView: View {
         .frame(height: size.height)
         .padding(.horizontal, size.horizontalPadding)
         .background(backgroundGradient)
-        .cornerRadius(size.cornerRadius)
+        .cornerRadius(64)
         .shadow(color: shadowColor, radius: 0, x: 0, y: -1)
         .opacity(isDisabled ? 0.3 : 1.0)
         .contentShape(Rectangle())
@@ -45,15 +45,7 @@ struct PrimaryButtonView: View {
             return AnyView(Color.gray4)
         }
 
-        let colors: [Color] = if isPressed {
-            [Color(hex: 0x3A3A3A), Color(hex: 0x2A2A2A)]
-        } else {
-            [Color(hex: 0x2A2A2A), Color(hex: 0x1C1C1C)]
-        }
-
-        return AnyView(
-            LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
-        )
+        return AnyView(ButtonGradient(isPressed: isPressed))
     }
 
     private var shadowColor: Color {

@@ -35,11 +35,8 @@ struct EmptyStateView: View {
             Spacer()
 
             HStack(alignment: .bottom, spacing: 0) {
-                DisplayText(
-                    t(type.localizationKey),
-                    accentColor: type.accentColor
-                )
-                .frame(width: 224)
+                DisplayText(t(type.localizationKey), accentColor: type.accentColor)
+                    .frame(width: 224)
 
                 Image("empty-state-arrow")
                     .resizable()
@@ -49,7 +46,7 @@ struct EmptyStateView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 115)
+            .padding(.bottom, 100)
             .overlay {
                 if let onClose {
                     VStack {

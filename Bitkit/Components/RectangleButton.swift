@@ -1,127 +1,78 @@
 import SwiftUI
 
 struct RectangleButton: View {
-    let icon: AnyView
+    let icon: String
+    let iconColor: Color
     let title: String
-    let action: (() async -> Void)?
+    let action: () async -> Void
     let trailingContent: AnyView?
     let isDisabled: Bool
+    let testID: String
 
     @State private var isPressed = false
-    @State private var isLoading = false
 
     init(
-        icon: any View,
+        icon: String,
+        iconColor: Color = .purpleAccent,
         title: String,
         trailingContent: (any View)? = nil,
         isDisabled: Bool = false,
-        action: (() async -> Void)? = nil
+        testID: String,
+        action: @escaping () async -> Void
     ) {
-        self.icon = AnyView(icon)
+        self.icon = icon
+        self.iconColor = iconColor
         self.title = title
         self.trailingContent = trailingContent.map { AnyView($0) }
         self.isDisabled = isDisabled
+        self.testID = testID
         self.action = action
     }
 
-    private var backgroundColor: Color {
-        if isPressed {
-            return .white.opacity(0.16) // white16
-        }
-        return .white.opacity(0.1) // white10
-    }
-
     var body: some View {
-        if let action {
-            Button {
-                guard !isLoading, !isDisabled else { return }
+        Button {
+            guard !isDisabled else { return }
 
-                // Play haptic feedback
-                Haptics.play(.medium)
+            Haptics.play(.medium)
 
-                Task { @MainActor in
-                    isLoading = true
-                    await action()
-                    isLoading = false
-                }
-            } label: {
-                buttonContent
+            Task { @MainActor in
+                await action()
             }
-            .disabled(isDisabled || isLoading)
-            .opacity(isDisabled ? 0.5 : 1)
-        } else {
-            buttonContent
-                .opacity(isDisabled ? 0.5 : 1)
-        }
-    }
+        } label: {
+            HStack(spacing: 16) {
+                CircularIcon(icon: icon, iconColor: iconColor, backgroundColor: .black, size: 40)
 
-    private var buttonContent: some View {
-        HStack(spacing: 16) {
-            if !isLoading {
-                icon
-                    .foregroundColor(.purpleAccent)
-                    .frame(width: 24, height: 24)
-            }
-
-            if isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .frame(width: 24, height: 24)
-            } else {
-                Text(title)
-                    .font(Fonts.bold(size: 17))
-                    .foregroundColor(.white)
+                BodyMSBText(title)
                     .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                if let trailingContent {
+                    trailingContent
+                }
             }
-
-            Spacer(minLength: 0)
-
-            if let trailingContent {
-                trailingContent
+            .frame(maxWidth: .infinity)
+            .frame(height: 72)
+            .padding(.horizontal, 16)
+            .background(backgroundColor)
+            .cornerRadius(16)
+            .contentShape(Rectangle())
+        }
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.5 : 1)
+        .accessibilityIdentifier(testID)
+        .buttonStyle(NoAnimationButtonStyle())
+        .pressEvents(
+            onPress: {
+                isPressed = true
+            },
+            onRelease: {
+                isPressed = false
             }
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: 80)
-        .padding(.horizontal, 24)
-        .background(backgroundColor)
-        .cornerRadius(8)
-        .contentShape(Rectangle())
+        )
     }
-}
 
-#Preview {
-    VStack(spacing: 8) {
-        RectangleButton(
-            icon: Image(systemName: "bolt.fill")
-                .foregroundColor(.yellow),
-            title: "Lightning Network",
-            trailingContent: Image(systemName: "chevron.right")
-                .foregroundColor(.white.opacity(0.64))
-        ) {
-            print("Button tapped")
-        }
-
-        RectangleButton(
-            icon: Image(systemName: "network")
-                .foregroundColor(.blue),
-            title: "On-chain Bitcoin",
-            trailingContent: Image(systemName: "chevron.right")
-                .foregroundColor(.white.opacity(0.64))
-        ) {
-            print("Button tapped")
-        }
-
-        RectangleButton(
-            icon: Image(systemName: "creditcard")
-                .foregroundColor(.green),
-            title: "Buy Bitcoin",
-            trailingContent: Image(systemName: "chevron.right")
-                .foregroundColor(.white.opacity(0.64))
-        ) {
-            print("Button tapped")
-        }
+    private var backgroundColor: Color {
+        return isPressed ? .gray5 : .gray6
     }
-    .padding()
-    .background(Color.black)
-    .preferredColorScheme(.dark)
 }

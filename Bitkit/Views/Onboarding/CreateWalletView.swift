@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct CreateWalletView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
         VStack {
@@ -26,7 +26,8 @@ struct CreateWalletView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Action buttons
+            Spacer(minLength: 32)
+
             HStack(spacing: 16) {
                 CustomButton(title: t("onboarding__new_wallet")) {
                     do {
@@ -45,12 +46,8 @@ struct CreateWalletView: View {
                     destination: MultipleWalletsView()
                 )
             }
-            .padding(.top, 32)
-            // TODO: check why secondary button is cut off
-            .padding(.bottom, 1)
         }
         .padding(.horizontal, 32)
-        .bottomSafeAreaPadding()
     }
 }
 

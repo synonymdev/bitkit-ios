@@ -56,13 +56,6 @@ struct CustomButton: View {
             case .large: return 16
             }
         }
-
-        var cornerRadius: CGFloat {
-            switch self {
-            case .small: return 30
-            case .large: return 64
-            }
-        }
     }
 
     enum Variant {

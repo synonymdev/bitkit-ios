@@ -30,7 +30,7 @@ struct CurrencyInputRow: View {
                 .textCase(.uppercase)
         }
         .padding(16)
-        .background(Color.white06)
+        .background(Color.black)
         .cornerRadius(8)
     }
 }
@@ -79,7 +79,7 @@ struct CalculatorWidget: View {
                     icon: CircularIcon(
                         icon: "b-unit",
                         iconColor: .brandAccent,
-                        backgroundColor: .white10,
+                        backgroundColor: .gray6,
                         size: 32
                     ),
                     text: $bitcoinAmount,
@@ -103,7 +103,7 @@ struct CalculatorWidget: View {
                 CurrencyInputRow(
                     icon: CircularIcon(
                         icon: BodyMSBText(currency.symbol, textColor: .brandAccent),
-                        backgroundColor: .white10,
+                        backgroundColor: .gray6,
                         size: 32
                     ),
                     text: $fiatAmount,

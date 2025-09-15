@@ -190,7 +190,7 @@ struct BaseWidget<Content: View>: View {
         .buttonStyle(WidgetButtonStyle())
         .frame(maxWidth: .infinity)
         .padding(16)
-        .background(Color.white10)
+        .background(Color.gray6)
         .cornerRadius(16)
         .alert(
             t("widgets__delete__title"),

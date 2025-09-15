@@ -13,6 +13,8 @@ struct NumberPadActionButton: View {
     var disabled: Bool = false
     var action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
         Button {
             Haptics.play(.buttonTap)
@@ -31,7 +33,7 @@ struct NumberPadActionButton: View {
             }
             .frame(height: 28)
             .padding(.horizontal, 8)
-            .background(variant == .primary ? Color.white10 : Color.clear)
+            .background(background)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(variant == .secondary ? color : Color.clear, lineWidth: 2)
@@ -39,6 +41,23 @@ struct NumberPadActionButton: View {
             .cornerRadius(8)
         }
         .disabled(disabled)
+        .buttonStyle(NoAnimationButtonStyle())
+        .pressEvents(
+            onPress: {
+                isPressed = true
+            },
+            onRelease: {
+                isPressed = false
+            }
+        )
+    }
+
+    private var background: some View {
+        if variant == .secondary {
+            return AnyView(Color.clear)
+        }
+
+        return AnyView(ButtonGradient(isPressed: isPressed))
     }
 }
 

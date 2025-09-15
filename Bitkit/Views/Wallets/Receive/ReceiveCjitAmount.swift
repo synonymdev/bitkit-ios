@@ -23,7 +23,7 @@ struct ReceiveCjitAmount: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__receive_bitcoin"), showBackButton: true)
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(viewModel: amountViewModel)
                     .onTapGesture {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
@@ -52,7 +52,9 @@ struct ReceiveCjitAmount: View {
                         }
                     }
                 }
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
+
+                Divider()
 
                 NumberPad(
                     type: amountViewModel.getNumberPadType(currency: currency),
@@ -61,10 +63,6 @@ struct ReceiveCjitAmount: View {
                     amountViewModel.handleNumberPadInput(key, currency: currency)
                 }
             }
-
-            Divider()
-
-            Spacer()
 
             CustomButton(title: t("common__continue"), isDisabled: amountSats < minimumAmount) {
                 Task {

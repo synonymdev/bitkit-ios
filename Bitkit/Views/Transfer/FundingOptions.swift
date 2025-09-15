@@ -31,25 +31,28 @@ struct FundingOptions: View {
 
             VStack(spacing: 8) {
                 RectangleButton(
-                    icon: Image("transfer").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
+                    icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: wallet.totalOnchainSats == 0 || app.isGeoBlocked == true
+                    isDisabled: wallet.totalOnchainSats == 0 || app.isGeoBlocked == true,
+                    testID: "FundTransfer"
                 ) {
                     navigation.navigate(.spendingIntro)
                 }
 
                 RectangleButton(
-                    icon: Image("qr").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
+                    icon: "qr",
                     title: t("lightning__funding__button2"),
-                    isDisabled: app.isGeoBlocked == true
+                    isDisabled: app.isGeoBlocked == true,
+                    testID: "FundReceive"
                 ) {
                     navigation.reset()
                     sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
                 }
 
                 RectangleButton(
-                    icon: Image("external").foregroundColor(.purpleAccent).frame(width: 32, height: 32),
-                    title: t("lightning__funding__button3")
+                    icon: "external",
+                    title: t("lightning__funding__button3"),
+                    testID: "FundCustom"
                 ) {
                     navigation.navigate(.fundingAdvanced)
                 }

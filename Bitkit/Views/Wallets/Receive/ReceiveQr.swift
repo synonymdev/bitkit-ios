@@ -63,54 +63,50 @@ struct ReceiveQr: View {
     }
 
     var body: some View {
-        ZStack {
-            backgroundImage
-
-            VStack(spacing: 0) {
-                SheetHeader(
-                    title: t("wallet__receive_bitcoin"),
-                    action:
-                    AnyView(
-                        Button(action: {
-                            showDetails.toggle()
-                        }) {
-                            Image(showDetails ? "qr" : "note")
-                                .resizable()
-                                .scaledToFit()
-                                .foregroundColor(.white50)
-                                .frame(width: 24, height: 24)
-                        }
-                    )
-                )
+        VStack(spacing: 0) {
+            SheetHeader(title: t("wallet__receive_bitcoin"))
                 .padding(.horizontal, 16)
 
-                SegmentedControl(selectedTab: $selectedTab, tabItems: availableTabItems)
-                    .padding(.bottom, 16)
-                    .padding(.horizontal, 16)
+            SegmentedControl(selectedTab: $selectedTab, tabItems: availableTabItems)
+                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
+
+            VStack(spacing: 0) {
+                TabView(selection: $selectedTab) {
+                    tabContent(for: .savings)
+
+                    if wallet.channelCount != 0 {
+                        tabContent(for: .unified)
+                    }
+
+                    tabContent(for: .spending)
+                }
+                .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+                .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
+
+                Spacer()
 
                 VStack(spacing: 0) {
-                    TabView(selection: $selectedTab) {
-                        tabContent(for: .savings)
-
-                        if wallet.channelCount != 0 {
-                            tabContent(for: .unified)
+                    if showingCjitOnboarding {
+                        CustomButton(
+                            title: t("wallet__receive_spending"),
+                            icon: Image("bolt").foregroundColor(.purpleAccent),
+                            isDisabled: wallet.nodeLifecycleState != .running
+                        ) {
+                            navigationPath.append(.cjitAmount)
                         }
-
-                        tabContent(for: .spending)
+                    } else {
+                        CustomButton(title: showDetails ? tTodo("QR Code") : tTodo("Show Details")) {
+                            showDetails.toggle()
+                        }
                     }
-                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-                    .indexViewStyle(PageIndexViewStyle(backgroundDisplayMode: .always))
-
-                    Spacer()
-
-                    footer
-                        .padding(.horizontal, 16)
                 }
-                .onAppear {
-                    // Set default tab to unified if available and no tab was provided
-                    if tab == nil && wallet.channelCount != 0 {
-                        selectedTab = .unified
-                    }
+                .padding(.horizontal, 16)
+            }
+            .onAppear {
+                // Set default tab to unified if available and no tab was provided
+                if tab == nil && wallet.channelCount != 0 {
+                    selectedTab = .unified
                 }
             }
         }
@@ -190,17 +186,33 @@ struct ReceiveQr: View {
 
     var cjitOnboarding: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText("Receive on <accent>spending balance</accent>", accentColor: .purpleAccent)
+            DisplayText(tTodo("Receive on <accent>spending balance</accent>"), accentColor: .purpleAccent)
                 .padding(.bottom, 12)
 
-            BodyMText("Enjoy instant and cheap\ntransactions with friends, family,\nand merchants.")
+            BodyMText(tTodo("Enjoy instant and cheap\ntransactions with friends, family,\nand merchants."))
 
             Spacer()
+
+            HStack {
+                Spacer()
+                Image("bolt")
+                    .resizable()
+                    .frame(width: 64, height: 64)
+                    .foregroundColor(.purpleAccent)
+                Spacer()
+            }
         }
         .padding(32)
-        .background(Color.white06)
+        .background(Color.black)
         .cornerRadius(8)
         .aspectRatio(1, contentMode: .fit)
+        .overlay(alignment: .bottomLeading) {
+            Image("arrow-cjit")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 210)
+                .offset(x: 70, y: 110)
+        }
     }
 
     @ViewBuilder
@@ -270,83 +282,16 @@ struct ReceiveQr: View {
             }()
 
             if !addressPairs.isEmpty {
-                CopyAddressCard(addresses: addressPairs)
+                CopyAddressCard(addresses: addressPairs, navigationPath: $navigationPath)
             }
 
             Spacer()
         }
     }
 
-    @ViewBuilder
-    var footer: some View {
-        // Consistent height container to prevent layout jumps
-        VStack(spacing: 0) {
-            if showingCjitOnboarding {
-                CustomButton(
-                    title: t("wallet__receive_spending"),
-                    icon: Image("bolt").foregroundColor(.purpleAccent),
-                    isDisabled: wallet.nodeLifecycleState != .running
-                ) {
-                    navigationPath.append(.cjitAmount)
-                }
-                .transition(.opacity)
-            } else {
-                Image("logo")
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 48)
-                    .transition(.opacity)
-            }
-        }
-        .frame(minHeight: 56)
-        .animation(.easeInOut(duration: 0.3), value: showingCjitOnboarding)
-    }
-
     private struct ImageConfig {
         let name: String
         let offset: (x: CGFloat, y: CGFloat)
-    }
-
-    @ViewBuilder
-    var backgroundImage: some View {
-        let imageConfig: ImageConfig = {
-            switch selectedTab {
-            case .savings:
-                return ImageConfig(name: "piggybank", offset: (x: 115, y: 60))
-            case .unified:
-                return ImageConfig(name: "bitcoin-emboss", offset: (x: 90, y: 70))
-            case .spending:
-                return ImageConfig(name: "coin-stack-x-2", offset: (x: 120, y: 75))
-            }
-        }()
-
-        ZStack {
-            if showingCjitOnboarding {
-                VStack {
-                    Spacer()
-
-                    Image("arrow-cjit")
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxHeight: 110)
-                        .offset(x: -55)
-                        .padding(.bottom, 72) // 56 (footer height) + 16 (spacing above button)
-                }
-            }
-
-            VStack {
-                Spacer()
-
-                HStack {
-                    Spacer()
-                    Image(imageConfig.name)
-                        .resizable()
-                        .frame(width: 256, height: 256)
-                        .offset(x: imageConfig.offset.x, y: imageConfig.offset.y)
-                }
-            }
-            .edgesIgnoringSafeArea(.bottom)
-        }
     }
 
     func refreshBip21() async {

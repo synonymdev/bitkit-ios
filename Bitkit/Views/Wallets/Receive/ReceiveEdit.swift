@@ -21,11 +21,11 @@ struct ReceiveEdit: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__receive_specify"))
+            SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(viewModel: amountViewModel, isFocused: isAmountInputFocused)
-                    .padding(.bottom, 40)
+                    .padding(.bottom, isAmountInputFocused ? 0 : 32)
                     .onTapGesture {
                         if isAmountInputFocused {
                             amountViewModel.togglePrimaryDisplay(currency: currency)
@@ -51,7 +51,7 @@ struct ReceiveEdit: View {
                             .submitLabel(.done)
                             .scrollContentBackground(.hidden)
                             .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
-                            .frame(minHeight: 50, maxHeight: 50)
+                            .frame(minHeight: 30, maxHeight: 50)
                             .onSubmit {
                                 isNoteEditorFocused = false
                             }
@@ -72,14 +72,6 @@ struct ReceiveEdit: View {
                         ) {
                             navigationPath.append(.tag)
                         }
-
-                        Spacer()
-
-                        Image("coin-stack")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(alignment: .bottom)
-                            .frame(maxWidth: .infinity, alignment: .center)
                     }
 
                     Spacer()
@@ -89,7 +81,7 @@ struct ReceiveEdit: View {
                             await onShowQR()
                         }
                     }
-                    .padding(.bottom, isNoteEditorFocused ? 16 : 0)
+                    .buttonBottomPadding(isFocused: isNoteEditorFocused)
                 }
             }
 
@@ -196,7 +188,7 @@ struct ReceiveEdit: View {
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.bottom, 8)
 
         Divider()
     }

@@ -14,7 +14,6 @@ struct SendEnterManuallyView: View {
 
             CaptionText(t("wallet__send_to").uppercased())
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal)
 
             ZStack(alignment: .topLeading) {
                 if text.isEmpty {
@@ -26,21 +25,21 @@ struct SendEnterManuallyView: View {
                     .focused($isTextEditorFocused)
                     .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
                     .padding(20)
-                    .frame(minHeight: 200, maxHeight: .infinity)
+                    .frame(maxHeight: .infinity)
                     .scrollContentBackground(.hidden)
                     .font(.custom(Fonts.bold, size: 22))
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
             }
-            .background(Color.gray.opacity(0.2))
+            .background(Color.white06)
             .cornerRadius(8)
 
-            Spacer()
+            Spacer(minLength: 16)
 
             CustomButton(title: "Continue", isDisabled: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
                 await handleContinue()
             }
-            .padding(.top)
+            .buttonBottomPadding(isFocused: isTextEditorFocused)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

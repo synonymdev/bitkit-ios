@@ -432,7 +432,7 @@ enum WidgetEditItemFactory {
                     key: "showStatus",
                     type: .toggleItem,
                     titleView: AnyView(TitleText(data.condition.title)),
-                    valueView: AnyView(Text(data.condition.icon).font(.system(size: 30))),
+                    valueView: AnyView(Text(data.condition.icon).font(.system(size: 52))),
                     isChecked: weatherOptions.showStatus
                 )
             )

@@ -14,7 +14,7 @@ struct SendTagScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__tags_add"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -31,10 +31,10 @@ struct SendTagScreen: View {
                             })
                         }
                     }
+                    .padding(.bottom, 32)
                 }
 
                 CaptionMText(t("wallet__tags_new"))
-                    .padding(.top, 28)
                     .padding(.bottom, 8)
 
                 TextField(t("wallet__tags_new_enter"), text: $newTagText, backgroundColor: .white08)
@@ -50,7 +50,7 @@ struct SendTagScreen: View {
                 ) {
                     addTag(trimmedTagText)
                 }
-                .padding(.bottom, isTextFieldFocused ? 16 : 0)
+                .buttonBottomPadding(isFocused: isTextFieldFocused)
             }
         }
         .navigationBarHidden(true)

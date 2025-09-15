@@ -17,7 +17,7 @@ struct SwipeButton: View {
             ZStack(alignment: .leading) {
                 // Track
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
-                    .fill(Color.white16)
+                    .fill(backgroundGradient)
 
                 // Colored trail
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
@@ -44,18 +44,18 @@ struct SwipeButton: View {
                         ZStack {
                             if isLoading {
                                 ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray6))
+                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray7))
                             } else {
                                 Image("arrow-right")
                                     .resizable()
                                     .frame(width: 24, height: 24)
-                                    .foregroundColor(.gray6)
+                                    .foregroundColor(.gray7)
                                     .opacity(Double(1.0 - (offset / (geometry.size.width / 2))))
 
                                 Image("checkmark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
-                                    .foregroundColor(.gray6)
+                                    .foregroundColor(.gray7)
                                     .opacity(Double(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2))))
                             }
                         }
@@ -105,6 +105,11 @@ struct SwipeButton: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: buttonHeight)
+    }
+
+    private var backgroundGradient: LinearGradient {
+        let colors: [Color] = [Color(hex: 0x2A2A2A), Color(hex: 0x1C1C1C)]
+        return LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
     }
 }
 

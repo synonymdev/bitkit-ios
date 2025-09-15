@@ -30,7 +30,7 @@ struct LightningChannel: View {
     private var spendingColor: Color {
         switch status {
         case .closed:
-            return Color.gray5
+            return Color.gray6
         default:
             return Color.purple50
         }
@@ -48,7 +48,7 @@ struct LightningChannel: View {
     private var receivingColor: Color {
         switch status {
         case .closed:
-            return Color.gray5
+            return Color.gray6
         default:
             return Color.white64
         }
