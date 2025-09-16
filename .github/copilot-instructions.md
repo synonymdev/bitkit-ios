@@ -113,4 +113,4 @@ When performing a code review, ensure that modern SwiftUI patterns are used corr
 
 When performing a code review, verify that Bitcoin/Lightning operations are properly handled in the service layer.
 
-When performing a code review, verify that propper Bitcoin and Lightning technical terms are used when naming code components
+When performing a code review, verify that proper Bitcoin and Lightning technical terms are used when naming code components
