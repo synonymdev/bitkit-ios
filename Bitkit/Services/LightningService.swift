@@ -279,21 +279,37 @@ class LightningService {
         return .fromSatPerKwu(satKwu: max(satPerKwu, 253)) // FEERATE_FLOOR_SATS_PER_KW is 253 in LDK
     }
 
-    func send(address: String, sats: UInt64, satsPerVbyte: UInt32, utxosToSpend: [SpendableUtxo]? = nil) async throws -> Txid {
+    func send(
+        address: String,
+        sats: UInt64,
+        satsPerVbyte: UInt32,
+        utxosToSpend: [SpendableUtxo]? = nil,
+        isMaxAmount: Bool = false
+    ) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte")
+        Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
 
         do {
             return try await ServiceQueue.background(.ldk) {
-                try node.onchainPayment().sendToAddress(
-                    address: address,
-                    amountSats: sats,
-                    feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
-                    utxosToSpend: utxosToSpend
-                )
+                if isMaxAmount {
+                    // For max amount sends, use sendAllToAddress to send all available funds
+                    try node.onchainPayment().sendAllToAddress(
+                        address: address,
+                        retainReserve: true,
+                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte)
+                    )
+                } else {
+                    // For normal sends, use sendToAddress with specific amount
+                    try node.onchainPayment().sendToAddress(
+                        address: address,
+                        amountSats: sats,
+                        feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVbyte),
+                        utxosToSpend: utxosToSpend
+                    )
+                }
             }
         } catch {
             dumpLdkLogs()
