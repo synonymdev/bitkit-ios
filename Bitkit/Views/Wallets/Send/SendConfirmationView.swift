@@ -272,7 +272,7 @@ struct SendConfirmationView: View {
                 navigationPath.append(.success(paymentHash))
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
-                let txid = try await wallet.send(address: invoice.address, sats: amount)
+                let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: wallet.isMaxAmountSend)
 
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount

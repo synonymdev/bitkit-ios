@@ -7,8 +7,9 @@ class WalletViewModel: ObservableObject {
     @Published var walletExists: Bool? = nil
     @Published var isSyncingWallet = false // Syncing both LN and on chain
     @AppStorage("totalBalanceSats") var totalBalanceSats: Int = 0 // Combined onchain and LN
-    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // Combined onchain
+    @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // The total balance of our on-chain wallet
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
+    @AppStorage("spendableOnchainBalanceSats") var spendableOnchainBalanceSats: Int = 0 // The spendable balance of our on-chain wallet
 
     // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -22,6 +23,7 @@ class WalletViewModel: ObservableObject {
     @Published var selectedSpeed: TransactionSpeed = .normal
     @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
+    @Published var isMaxAmountSend: Bool = false
 
     // LNURL withdraw flow
     @Published var lnurlWithdrawAmount: UInt64?
@@ -200,9 +202,10 @@ class WalletViewModel: ObservableObject {
     /// - Parameters:
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
+    ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
     /// - Returns: The transaction ID (txid) of the sent transaction
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
-    func send(address: String, sats: UInt64) async throws -> Txid {
+    func send(address: String, sats: UInt64, isMaxAmount: Bool = false) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -217,7 +220,8 @@ class WalletViewModel: ObservableObject {
             address: address,
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
-            utxosToSpend: selectedUtxos
+            utxosToSpend: selectedUtxos,
+            isMaxAmount: isMaxAmount
         )
 
         Task {
@@ -330,6 +334,34 @@ class WalletViewModel: ObservableObject {
         )
     }
 
+    /// Calculates the maximum sendable amount for onchain transactions
+    /// - Parameters:
+    ///   - address: The destination address
+    ///   - satsPerVByte: The fee rate in satoshis per virtual byte
+    /// - Returns: The maximum amount that can be sent (balance minus fees)
+    /// - Throws: Error if calculation fails
+    func calculateMaxSendableAmount(
+        address: String,
+        satsPerVByte: UInt32
+    ) async throws -> UInt64 {
+        let spendableBalance = UInt64(spendableOnchainBalanceSats)
+
+        availableUtxos = try await lightningService.listSpendableOutputs()
+
+        // Use LDK-Node's special handling - when we pass the spendable balance as amount,
+        // it will automatically calculate the fee for sending all available funds
+        // if the exact amount would result in insufficient funds due to fees
+        let fee = try await lightningService.calculateTotalFee(
+            address: address,
+            amountSats: spendableBalance,
+            satsPerVByte: satsPerVByte,
+            utxosToSpend: availableUtxos
+        )
+
+        // The max sendable amount is the spendable balance minus the fee
+        return spendableBalance >= fee ? spendableBalance - fee : 0
+    }
+
     // NOTE: Let's keep this here for now until we are sure new version below is working
     // func send(
     //     bolt11: String,
@@ -419,6 +451,7 @@ class WalletViewModel: ObservableObject {
             totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
             totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
+            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
         }
     }
 
@@ -527,6 +560,7 @@ class WalletViewModel: ObservableObject {
         selectedUtxos = nil
         availableUtxos = []
         selectedSpeed = speed
+        isMaxAmountSend = false
     }
 
     func wipe() async throws {
