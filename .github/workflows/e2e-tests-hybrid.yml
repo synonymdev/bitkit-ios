@@ -264,10 +264,14 @@ jobs:
           }
           trap cleanup EXIT INT TERM
           
-          # Try using WebDriverIO's built-in Appium service instead
-          # This might be more reliable than our custom Appium setup
-          echo "Using WebDriverIO's built-in Appium service..."
-          # Don't remove the appium service - let WebDriverIO handle it
+          # Configure WebDriverIO to use our Appium server
+          echo "Configuring WebDriverIO to use our Appium server..."
+          # Update the hostname to use our Appium server
+          sed -i '' 's/hostname: .*/hostname: "localhost"/' wdio.conf.ts
+          sed -i '' 's/port: [0-9]*/port: 4723/' wdio.conf.ts
+          
+          # Remove the appium service to prevent WebDriverIO from starting its own
+          sed -i '' 's/services: \[.appium.\]/services: []/' wdio.conf.ts
           
           # Increase timeout settings for better reliability
           sed -i '' 's/connectionRetryTimeout: [0-9]*/connectionRetryTimeout: 300000/' wdio.conf.ts
@@ -303,7 +307,11 @@ jobs:
           
           # Test XCUITest driver directly
           echo "Testing XCUITest driver..."
-          xcrun simctl spawn "$SIMULATOR_UDID" xcrun simctl list devices | grep "$SIMULATOR_UDID"
+          xcrun simctl list devices | grep "$SIMULATOR_UDID"
+          
+          # Kill the manually launched app to let Appium handle it
+          echo "Killing manually launched app..."
+          xcrun simctl terminate "$SIMULATOR_UDID" to.bitkit-regtest || echo "App not running"
           
           # Pass everything through to WDIO/Mocha
           npm run e2e:ios -- "$@"
