@@ -12,7 +12,7 @@ struct TransferIntroView: View {
             imageName: "lightning",
             buttonText: t("lightning__transfer_intro__button"),
             onButtonPress: {
-                app.hasSeenTransferToSpendingIntro = true
+                app.hasSeenTransferIntro = true
                 navigation.navigate(.fundingOptions)
             },
             accentColor: .purpleAccent,

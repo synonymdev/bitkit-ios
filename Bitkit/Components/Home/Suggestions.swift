@@ -210,7 +210,7 @@ struct Suggestions: View {
         case .support:
             route = .support
         case .transferToSpending:
-            route = app.hasSeenTransferToSpendingIntro ? .fundingOptions : .transferIntro
+            route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
         }
 
         if let route {

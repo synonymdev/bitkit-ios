@@ -221,7 +221,7 @@ struct MainNavView: View {
             case .fundingOptions: FundingOptions()
             case .spendingIntro: SpendingIntroView()
             case .spendingAmount: SpendingAmount()
-            case .spendingConfirm: SpendingConfirm()
+            case let .spendingConfirm(order): SpendingConfirm(order: order)
             case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
             case let .transferLearnMore(order): TransferLearnMoreView(order: order)
             case .settingUp: SettingUpView()

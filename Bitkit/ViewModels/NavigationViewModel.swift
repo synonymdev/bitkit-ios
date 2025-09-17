@@ -16,7 +16,7 @@ enum Route: Hashable {
     case fundingOptions
     case spendingIntro
     case spendingAmount
-    case spendingConfirm
+    case spendingConfirm(order: IBtOrder)
     case spendingAdvanced(order: IBtOrder)
     case transferLearnMore(order: IBtOrder)
     case settingUp

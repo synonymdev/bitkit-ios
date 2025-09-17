@@ -76,9 +76,9 @@ struct SavingsWalletView: View {
                 .foregroundColor(.white80),
         ) {
             if app.hasSeenTransferToSpendingIntro {
-                navigation.navigate(.fundingOptions)
+                navigation.navigate(.spendingAmount)
             } else {
-                navigation.navigate(.transferIntro)
+                navigation.navigate(.spendingIntro)
             }
         }
     }
