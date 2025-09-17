@@ -309,13 +309,35 @@ jobs:
           echo "Ensuring simulator is ready..."
           xcrun simctl list devices | grep "$SIMULATOR_UDID"
           
-          # Verify app is installed
+          # Verify app is installed and get the correct bundle ID
           echo "Verifying app installation..."
-          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
+          APP_BUNDLE_ID=$(xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          echo "App bundle ID: $APP_BUNDLE_ID"
+          
+          # Update the app bundle ID in wdio.conf.ts if needed
+          if [ -n "$APP_BUNDLE_ID" ] && [ "$APP_BUNDLE_ID" != "to.bitkit-regtest" ]; then
+            echo "Updating app bundle ID in capabilities..."
+            sed -i '' "s/'appium:app': path.join(__dirname, 'aut', 'bitkit.app')/'appium:app': path.join(__dirname, 'aut', 'bitkit.app'),\n          'appium:bundleId': '$APP_BUNDLE_ID'/" wdio.conf.ts
+          fi
           
           # Make sure simulator is fully booted and ready
           echo "Waiting for simulator to be fully ready..."
-          sleep 10
+          sleep 15
+          
+          # Pre-build WebDriverAgent to avoid timeout during session creation
+          echo "Pre-building WebDriverAgent..."
+          xcrun simctl spawn "$SIMULATOR_UDID" xcrun simctl list devices || echo "Simulator check failed"
+          
+          # Ensure simulator is fully responsive
+          echo "Testing simulator responsiveness..."
+          for i in {1..10}; do
+            if xcrun simctl list devices | grep "$SIMULATOR_UDID" | grep -q "Booted"; then
+              echo "Simulator is responsive (attempt $i/10)"
+              break
+            fi
+            echo "Waiting for simulator responsiveness... ($i/10)"
+            sleep 5
+          done
           
           # Check simulator status one more time
           echo "Final simulator status:"
@@ -328,6 +350,35 @@ jobs:
             echo "UDID changed from $SIMULATOR_UDID to $CURRENT_UDID, updating..."
             sed -i '' "s/'appium:udid': '[^']*'/'appium:udid': '$CURRENT_UDID'/" wdio.conf.ts
             SIMULATOR_UDID="$CURRENT_UDID"
+          fi
+          
+          # Test regtest connectivity
+          echo "Testing regtest connectivity..."
+          echo "E2E_ELECTRUM_SERVER: $E2E_ELECTRUM_SERVER"
+          echo "E2E_LND_URL: $E2E_LND_URL"
+          
+          # Test electrum server connectivity
+          if [ -n "$E2E_ELECTRUM_SERVER" ]; then
+            ELECTRUM_HOST=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f1)
+            ELECTRUM_PORT=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f2)
+            echo "Testing electrum server at $ELECTRUM_HOST:$ELECTRUM_PORT..."
+            if nc -z "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null; then
+              echo "✅ Electrum server is reachable"
+            else
+              echo "❌ Electrum server is not reachable"
+            fi
+          fi
+          
+          # Test LND connectivity
+          if [ -n "$E2E_LND_URL" ]; then
+            LND_HOST=$(echo "$E2E_LND_URL" | cut -d: -f1)
+            LND_PORT=$(echo "$E2E_LND_URL" | cut -d: -f2)
+            echo "Testing LND at $LND_HOST:$LND_PORT..."
+            if nc -z "$LND_HOST" "$LND_PORT" 2>/dev/null; then
+              echo "✅ LND is reachable"
+            else
+              echo "❌ LND is not reachable"
+            fi
           fi
           
           # Add more debugging before running tests
