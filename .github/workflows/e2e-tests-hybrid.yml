@@ -243,6 +243,7 @@ jobs:
           xcrun simctl spawn "iPhone 16" log show --last 1m --predicate 'process == "SpringBoard"' | head -10
 
       - name: Run E2E Tests (${{ matrix.shard.name }})
+        timeout-minutes: 30
         run: |
           cd bitkit-e2e-tests
           
@@ -257,10 +258,12 @@ jobs:
           
           # Cleanup function
           cleanup() {
+            echo "Cleaning up processes..."
             kill "$LOG_PID" 2>/dev/null || true
             wait "$LOG_PID" 2>/dev/null || true
             kill "$APPIUM_PID" 2>/dev/null || true
             wait "$APPIUM_PID" 2>/dev/null || true
+            echo "Cleanup complete"
           }
           trap cleanup EXIT INT TERM
           
@@ -293,6 +296,10 @@ jobs:
           echo "Updated wdio.conf.ts device name and UDID:"
           grep -n -A1 -B1 "deviceName\|udid" wdio.conf.ts
           
+          # Check the full capabilities section
+          echo "Full capabilities section:"
+          grep -A 20 -B 5 "capabilities:" wdio.conf.ts
+          
           # Add Appium capabilities to help with simulator boot issues
           sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
           
@@ -313,8 +320,39 @@ jobs:
           echo "Killing manually launched app..."
           xcrun simctl terminate "$SIMULATOR_UDID" to.bitkit-regtest || echo "App not running"
           
-          # Pass everything through to WDIO/Mocha
-          npm run e2e:ios -- "$@"
+          # Add more debugging before running tests
+          echo "=== Pre-test Debugging ==="
+          echo "Current directory: $(pwd)"
+          echo "Simulator status:"
+          xcrun simctl list devices | grep "$SIMULATOR_NAME"
+          echo "Appium status:"
+          curl -s http://localhost:4723/status | head -5
+          echo "App status on simulator:"
+          xcrun simctl listapps "$SIMULATOR_NAME" | grep -i bitkit || echo "App not found"
+          echo "WebDriverIO config:"
+          head -20 wdio.conf.ts
+          echo "Test files:"
+          find test/specs -name "*.e2e.ts" | head -5
+          echo "Package.json scripts:"
+          grep -A 5 -B 5 "e2e:ios" package.json
+          echo "========================="
+          
+          # Pass everything through to WDIO/Mocha with more verbose output
+          echo "Starting WebDriverIO tests..."
+          echo "Running tests with grep pattern: ${{ matrix.shard.grep }}"
+          # Try different parameter formats for WebDriverIO/Mocha
+          if ! npm run e2e:ios -- --grep "${{ matrix.shard.grep }}" 2>&1 | tee "$LOGDIR/webdriverio.log"; then
+            echo "Grep parameter failed, trying without filter..."
+            if ! npm run e2e:ios 2>&1 | tee "$LOGDIR/webdriverio.log"; then
+              echo "WebDriverIO failed with exit code $?"
+              echo "Checking for error logs..."
+              if [ -f "$LOGDIR/webdriverio.log" ]; then
+                echo "WebDriverIO log contents:"
+                cat "$LOGDIR/webdriverio.log"
+              fi
+              exit 1
+            fi
+          fi
         env:
           RECORD_VIDEO: true
           # Use the regtest infrastructure from Ubuntu runner
