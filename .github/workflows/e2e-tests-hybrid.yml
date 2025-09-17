@@ -264,9 +264,10 @@ jobs:
           }
           trap cleanup EXIT INT TERM
           
-          # Override the wdio config to use our Appium server
-          # Remove the appium service to prevent WebDriverIO from starting its own server
-          sed -i '' 's/services: \[.appium.\]/services: []/' wdio.conf.ts
+          # Try using WebDriverIO's built-in Appium service instead
+          # This might be more reliable than our custom Appium setup
+          echo "Using WebDriverIO's built-in Appium service..."
+          # Don't remove the appium service - let WebDriverIO handle it
           
           # Increase timeout settings for better reliability
           sed -i '' 's/connectionRetryTimeout: [0-9]*/connectionRetryTimeout: 300000/' wdio.conf.ts
@@ -289,7 +290,20 @@ jobs:
           grep -n -A1 -B1 "deviceName\|udid" wdio.conf.ts
           
           # Add Appium capabilities to help with simulator boot issues
-          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:autoLaunch": false/' wdio.conf.ts
+          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
+          
+          # Try to launch the app manually to test simulator connectivity
+          echo "Testing manual app launch..."
+          xcrun simctl launch "$SIMULATOR_UDID" to.bitkit-regtest || echo "Manual launch failed"
+          sleep 5
+          
+          # Check if app is running
+          echo "Checking if app is running..."
+          xcrun simctl spawn "$SIMULATOR_UDID" launchctl list | grep bitkit || echo "App not running"
+          
+          # Test XCUITest driver directly
+          echo "Testing XCUITest driver..."
+          xcrun simctl spawn "$SIMULATOR_UDID" xcrun simctl list devices | grep "$SIMULATOR_UDID"
           
           # Pass everything through to WDIO/Mocha
           npm run e2e:ios -- "$@"
