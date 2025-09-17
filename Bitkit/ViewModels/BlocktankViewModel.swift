@@ -16,7 +16,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     private let defaultChannelExpiryWeeks: UInt32 = 6
-    private let defaultSource = "bitkit-ios"
+    private let defaultSource = "bitkit"
 
     @Published private(set) var isRefreshing = false
 
@@ -126,29 +126,26 @@ class BlocktankViewModel: ObservableObject {
         )
     }
 
-    func createOrder(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64? = nil, channelExpiryWeeks: UInt32? = nil) async throws -> IBtOrder {
-        let finalReceivingBalanceSats = receivingBalanceSats ?? (spendingBalanceSats * 2)
-        let finalChannelExpiryWeeks = channelExpiryWeeks ?? defaultChannelExpiryWeeks
+    func createOrder(clientBalance: UInt64, lspBalance: UInt64? = nil) async throws -> IBtOrder {
+        let finalReceivingBalanceSats = lspBalance ?? (clientBalance * 2)
 
         if let btBOptions = info?.options {
             // Validate they're within the limits
-            if (spendingBalanceSats + finalReceivingBalanceSats) > btBOptions.maxChannelSizeSat {
-                Logger.error("Channel size exceeds maximum: \(spendingBalanceSats + finalReceivingBalanceSats) > \(btBOptions.maxChannelSizeSat)")
+            if (clientBalance + finalReceivingBalanceSats) > btBOptions.maxChannelSizeSat {
+                Logger.error("Channel size exceeds maximum: \(clientBalance + finalReceivingBalanceSats) > \(btBOptions.maxChannelSizeSat)")
                 throw CustomServiceError.channelSizeExceedsMaximum
             }
         } else {
             Logger.warn("Has not refreshed Blocktank info yet, skipping validation of limits")
         }
 
-        let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
+        let options = try await defaultCreateOrderOptions(clientBalanceSat: clientBalance)
 
-        Logger.debug(
-            "Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and channelExpiryWeeks: \(finalChannelExpiryWeeks) and options: \(options)"
-        )
+        Logger.debug("Buying channel with lspBalanceSat: \(finalReceivingBalanceSats) and options: \(options)")
 
         return try await coreService.blocktank.newOrder(
             lspBalanceSat: finalReceivingBalanceSats,
-            channelExpiryWeeks: finalChannelExpiryWeeks,
+            channelExpiryWeeks: defaultChannelExpiryWeeks,
             options: options
         )
     }
@@ -164,13 +161,13 @@ class BlocktankViewModel: ObservableObject {
         return order
     }
 
-    func estimateOrderFee(spendingBalanceSats: UInt64, receivingBalanceSats: UInt64) async throws -> (
+    func estimateOrderFee(clientBalance: UInt64, lspBalance: UInt64) async throws -> (
         feeSat: UInt64, networkFeeSat: UInt64, serviceFeeSat: UInt64
     ) {
-        let options = try await defaultCreateOrderOptions(clientBalanceSat: spendingBalanceSats)
+        let options = try await defaultCreateOrderOptions(clientBalanceSat: clientBalance)
 
         let estimate = try await coreService.blocktank.estimateFee(
-            lspBalanceSat: receivingBalanceSats,
+            lspBalanceSat: lspBalance,
             channelExpiryWeeks: defaultChannelExpiryWeeks,
             options: options
         )
@@ -253,7 +250,7 @@ class BlocktankViewModel: ObservableObject {
             let lspBalance = try await getDefaultLspBalance(clientBalance: 0)
 
             // Get fees and calculate minimum
-            let fees = try await estimateOrderFee(spendingBalanceSats: 0, receivingBalanceSats: lspBalance)
+            let fees = try await estimateOrderFee(clientBalance: 0, lspBalance: lspBalance)
             let minimum = UInt64(ceil(Double(fees.feeSat) * 1.1 / 1000) * 1000)
             minCjitSats = minimum
             Logger.debug("Updated minCjitSats to \(minimum)")

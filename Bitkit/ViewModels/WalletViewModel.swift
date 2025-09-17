@@ -362,39 +362,6 @@ class WalletViewModel: ObservableObject {
         return spendableBalance >= fee ? spendableBalance - fee : 0
     }
 
-    // NOTE: Let's keep this here for now until we are sure new version below is working
-    // func send(
-    //     bolt11: String,
-    //     sats: UInt64? = nil,
-    //     onSuccess: @escaping (PaymentHash) -> Void,
-    //     onFail: @escaping (String) -> Void,
-    // ) async throws -> PaymentHash {
-    //     let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
-    //     let eventId = String(hash)
-
-    //     // Add event listener for this specific payment
-    //     addOnEvent(id: eventId) { event in
-    //         switch event {
-    //         case let .paymentSuccessful(paymentId, paymentHash, _, _):
-    //             if paymentHash == hash {
-    //                 self.removeOnEvent(id: eventId)
-    //                 onSuccess(paymentHash)
-    //             }
-    //         case .paymentFailed(paymentId: _, let paymentHash, let reason):
-    //             // TODO: this is not working for routeNotFound
-    //             if paymentHash == hash {
-    //                 self.removeOnEvent(id: eventId)
-    //                 onFail(reason.debugDescription)
-    //             }
-    //         default:
-    //             onFail("Unknown error")
-    //         }
-    //     }
-
-    //     syncState()
-    //     return hash
-    // }
-
     /// Sends a lightning payment and waits for the result using async/await
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.

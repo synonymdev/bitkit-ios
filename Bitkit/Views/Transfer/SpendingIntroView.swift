@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SpendingIntroView: View {
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
     var body: some View {
@@ -11,6 +12,7 @@ struct SpendingIntroView: View {
             imageName: "coin-stack-x",
             buttonText: t("lightning__spending_intro__button"),
             onButtonPress: {
+                app.hasSeenTransferToSpendingIntro = true
                 navigation.navigate(.spendingAmount)
             },
             accentColor: .purpleAccent,
@@ -24,6 +26,7 @@ struct SpendingIntroView: View {
 #Preview {
     NavigationStack {
         SpendingIntroView()
+            .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .preferredColorScheme(.dark)
     }

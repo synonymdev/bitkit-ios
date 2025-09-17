@@ -14,23 +14,14 @@ struct SpendingAdvancedView: View {
     @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var feeEstimate: UInt64?
 
-    var receivingAmountSats: UInt64 {
+    var lspBalance: UInt64 {
         amountViewModel.amountSats
     }
 
     private var isValid: Bool {
-        let isAboveMin = receivingAmountSats >= transfer.transferValues.minLspBalance
-        let isBelowMax = receivingAmountSats <= transfer.transferValues.maxLspBalance
-
-        let result = isAboveMin && isBelowMax
-        // Logger.debug("isValid computed - receivingAmountSats: \(receivingAmountSats)")
-        // Logger.debug("Min LSP balance: \(transfer.transferValues.minLspBalance)")
-        // Logger.debug("Max LSP balance: \(transfer.transferValues.maxLspBalance)")
-        // Logger.debug("Is above min? \(isAboveMin), Is below max? \(isBelowMax)")
-        // Logger.debug("defaultLspBalance: \(transfer.transferValues.defaultLspBalance)")
-        // Logger.debug("isValid result: \(result)")
-
-        return result
+        let isAboveMin = lspBalance >= transfer.transferValues.minLspBalance
+        let isBelowMax = lspBalance <= transfer.transferValues.maxLspBalance
+        return isAboveMin && isBelowMax
     }
 
     var body: some View {
@@ -86,8 +77,8 @@ struct SpendingAdvancedView: View {
                     do {
                         // Create a new order with the specified receiving capacity
                         let newOrder = try await blocktank.createOrder(
-                            spendingBalanceSats: order.clientBalanceSat,
-                            receivingBalanceSats: receivingAmountSats
+                            clientBalance: order.clientBalanceSat,
+                            lspBalance: lspBalance
                         )
 
                         transfer.onAdvancedOrderCreated(order: newOrder)
@@ -107,11 +98,9 @@ struct SpendingAdvancedView: View {
                 blocktankInfo: blocktank.info
             )
 
-            // Set initial receiving capacity to the default LSP balance
-            amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             updateFeeEstimate()
         }
-        .onChange(of: receivingAmountSats) { _ in
+        .onChange(of: lspBalance) { _ in
             updateFeeEstimate()
         }
     }
@@ -119,37 +108,34 @@ struct SpendingAdvancedView: View {
     private var actionButtons: some View {
         HStack(spacing: 16) {
             NumberPadActionButton(text: t("common__min")) {
-                Logger.debug("Min button pressed, setting to: \(transfer.transferValues.minLspBalance)")
                 amountViewModel.updateFromSats(transfer.transferValues.minLspBalance, currency: currency)
             }
 
             Spacer()
 
             NumberPadActionButton(text: t("common__default")) {
-                Logger.debug("Default button pressed, setting to: \(transfer.transferValues.defaultLspBalance)")
                 amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             }
 
             Spacer()
 
             NumberPadActionButton(text: t("common__max")) {
-                Logger.debug("Max button pressed, setting to: \(transfer.transferValues.maxLspBalance)")
                 amountViewModel.updateFromSats(transfer.transferValues.maxLspBalance, currency: currency)
             }
         }
     }
 
     private func updateFeeEstimate() {
-        Logger.debug("Starting fee estimate update for receivingAmountSats: \(receivingAmountSats)")
+        guard lspBalance > 0 else { return }
+
         Task {
             do {
                 feeEstimate = nil
                 let estimate = try await blocktank.estimateOrderFee(
-                    spendingBalanceSats: order.clientBalanceSat,
-                    receivingBalanceSats: receivingAmountSats
+                    clientBalance: order.clientBalanceSat,
+                    lspBalance: lspBalance
                 )
                 feeEstimate = estimate.feeSat
-                Logger.debug("Fee estimate updated successfully: \(estimate.feeSat)")
             } catch {
                 feeEstimate = nil
                 Logger.error("Failed to estimate fee: \(error.localizedDescription)")
