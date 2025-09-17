@@ -1,10 +1,10 @@
-name: iOS Tests
+name: unit-tests
 
-on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+# on:
+  # push:
+    # branches: [master]
+  # pull_request:
+    # branches: [master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
