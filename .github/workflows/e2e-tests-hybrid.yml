@@ -301,7 +301,7 @@ jobs:
           grep -A 20 -B 5 "capabilities:" wdio.conf.ts
           
           # Add Appium capabilities to help with simulator boot issues
-          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
+          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:wdaLaunchTimeout": 300000,\n          "appium:wdaConnectionTimeout": 300000,\n          "appium:useNewWDA": true,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
           
           # Try to launch the app manually to test simulator connectivity
           echo "Testing manual app launch..."
@@ -319,6 +319,14 @@ jobs:
           # Kill the manually launched app to let Appium handle it
           echo "Killing manually launched app..."
           xcrun simctl terminate "$SIMULATOR_UDID" to.bitkit-regtest || echo "App not running"
+          
+          # Reset simulator to ensure clean state for WebDriverAgent
+          echo "Resetting simulator for WebDriverAgent..."
+          xcrun simctl shutdown "$SIMULATOR_UDID" || true
+          sleep 5
+          xcrun simctl boot "$SIMULATOR_UDID" || true
+          sleep 10
+          echo "Simulator reset complete"
           
           # Add more debugging before running tests
           echo "=== Pre-test Debugging ==="
