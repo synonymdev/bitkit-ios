@@ -270,27 +270,21 @@ jobs:
           # Configure WebDriverIO to use our Appium server
           echo "Configuring WebDriverIO to use our Appium server..."
           # Update the hostname to use our Appium server
-          sed -i '' 's/hostname: .*/hostname: "localhost"/' wdio.conf.ts
-          sed -i '' 's/port: [0-9]*/port: 4723/' wdio.conf.ts
+          sed -i '' 's/port: 4723/port: 4723,\n  hostname: "localhost"/' wdio.conf.ts
           
           # Remove the appium service to prevent WebDriverIO from starting its own
           sed -i '' 's/services: \[.appium.\]/services: []/' wdio.conf.ts
           
           # Increase timeout settings for better reliability
-          sed -i '' 's/connectionRetryTimeout: [0-9]*/connectionRetryTimeout: 300000/' wdio.conf.ts
-          sed -i '' 's/waitforTimeout: [0-9]*/waitforTimeout: 60000/' wdio.conf.ts
+          sed -i '' 's/waitforTimeout: 30000/waitforTimeout: 60000/' wdio.conf.ts
           
           # Get the UDID of the booted simulator
           SIMULATOR_UDID=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep "Booted" | grep -o '[A-F0-9-]\{36\}')
           echo "Booted simulator UDID: $SIMULATOR_UDID"
           
-          # Update device name and add UDID to match the booted simulator
+          # Update device name to match the booted simulator
           echo "Updating wdio.conf.ts to use simulator: $SIMULATOR_NAME (UDID: $SIMULATOR_UDID)"
-          sed -i '' "s/'appium:deviceName': '[^']*'/'appium:deviceName': '$SIMULATOR_NAME'/" wdio.conf.ts
-          sed -i '' "s/\"appium:deviceName\": \"[^\"]*\"/\"appium:deviceName\": \"$SIMULATOR_NAME\"/" wdio.conf.ts
-          
-          # Add UDID to the capabilities
-          sed -i '' "s/'appium:autoAcceptAlerts': true/'appium:autoAcceptAlerts': true,\n          'appium:udid': '$SIMULATOR_UDID'/" wdio.conf.ts
+          sed -i '' "s/'appium:deviceName': 'iPhone 16'/'appium:deviceName': '$SIMULATOR_NAME'/" wdio.conf.ts
           
           # Verify the changes were made
           echo "Updated wdio.conf.ts device name and UDID:"
@@ -301,7 +295,17 @@ jobs:
           grep -A 20 -B 5 "capabilities:" wdio.conf.ts
           
           # Add Appium capabilities to help with simulator boot issues
-          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:wdaLaunchTimeout": 300000,\n          "appium:wdaConnectionTimeout": 300000,\n          "appium:useNewWDA": true,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
+          echo "Adding timeout capabilities to wdio.conf.ts..."
+          
+          # Add UDID and timeout capabilities to the iOS configuration
+          sed -i '' 's/"appium:autoAcceptAlerts": true/"appium:autoAcceptAlerts": true,\n          "appium:udid": "'$SIMULATOR_UDID'",\n          "appium:newCommandTimeout": 300,\n          "appium:commandTimeouts": {"implicit": 30000},\n          "appium:launchTimeout": 300000,\n          "appium:deviceReadyTimeout": 300000,\n          "appium:wdaLaunchTimeout": 300000,\n          "appium:wdaConnectionTimeout": 300000,\n          "appium:useNewWDA": true,\n          "appium:autoLaunch": false,\n          "appium:noReset": true,\n          "appium:fullReset": false/' wdio.conf.ts
+          
+          # Also update the connection timeout
+          sed -i '' 's/connectionRetryTimeout: 120000/connectionRetryTimeout: 300000/' wdio.conf.ts
+          
+          # Verify the capabilities were added
+          echo "Updated capabilities with timeouts:"
+          grep -A 15 "appium:autoAcceptAlerts" wdio.conf.ts
           
           # Try to launch the app manually to test simulator connectivity
           echo "Testing manual app launch..."
