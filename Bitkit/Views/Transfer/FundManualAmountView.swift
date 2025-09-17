@@ -53,7 +53,7 @@ struct FundManualAmountView: View {
                 CustomButton(
                     title: t("common__continue"),
                     isDisabled: amountSats == 0,
-                    destination: FundManualConfirmView(lnPeer: lnPeer, satsAmount: amountSats)
+                    destination: FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
                 )
             }
         }

@@ -53,7 +53,16 @@ struct BlocktankRegtestView: View {
         .navigationBarHidden(true)
         .bottomSafeAreaPadding()
         .onAppear {
-            depositAddress = wallet.onchainAddress
+            // Generate a fresh address when the view appears
+            Task {
+                do {
+                    let newAddress = try await LightningService.shared.newAddress()
+                    depositAddress = newAddress
+                } catch {
+                    // Fallback to wallet's current address if generation fails
+                    depositAddress = wallet.onchainAddress
+                }
+            }
         }
     }
 
@@ -79,31 +88,51 @@ struct BlocktankRegtestView: View {
                 } label: {
                     Image(systemName: "doc.on.clipboard")
                 }
+
+                Button {
+                    Task {
+                        do {
+                            let newAddress = try await LightningService.shared.newAddress()
+                            depositAddress = newAddress
+                        } catch {
+                            app.toast(type: .error, title: "Failed to generate address", description: error.localizedDescription)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
             }
 
             TextField("Amount (sats)", text: $depositAmount)
                 .keyboardType(.numberPad)
 
             RegtestButton(title: "Make Deposit") {
-                Logger.debug("Initiating regtest deposit with address: \(depositAddress), amount: \(depositAmount)", context: "BlocktankRegtestView")
+                Logger.debug("Initiating regtest deposit with amount: \(depositAmount)", context: "BlocktankRegtestView")
                 guard let amount = UInt64(depositAmount) else {
                     Logger.error("Invalid deposit amount: \(depositAmount)", context: "BlocktankRegtestView")
                     throw ValidationError("Invalid amount")
                 }
 
+                // Generate a new address for each deposit
+                let newAddress = try await LightningService.shared.newAddress()
+                Logger.debug("Generated new address for deposit: \(newAddress)", context: "BlocktankRegtestView")
+
                 let txId = try await CoreService.shared.blocktank.regtestDepositFunds(
-                    address: depositAddress,
+                    address: newAddress,
                     amountSat: amount
                 )
                 Logger.debug("Deposit successful with txId: \(txId)", context: "BlocktankRegtestView")
                 app.toast(type: .success, title: "Success", description: "Deposit successful. TxID: \(txId)")
+
+                // Update the displayed address to the new one
+                depositAddress = newAddress
 
                 // Sync wallet after deposit without waiting
                 Task {
                     try? await wallet.sync()
                 }
             }
-            .disabled(depositAddress.isEmpty && wallet.onchainAddress.isEmpty)
+            .disabled(depositAmount.isEmpty)
             .tint(.orange)
         } header: {
             Text("Deposit")

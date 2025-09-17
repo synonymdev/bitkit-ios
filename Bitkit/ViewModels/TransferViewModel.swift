@@ -99,7 +99,7 @@ class TransferViewModel: ObservableObject {
 
         let satsPerVbyte = speed.getFeeRate(from: fees)
 
-        let paymentHash = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        let txid = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
         lightningSetupStep = 0
         watchOrder(orderId: order.id)
     }
@@ -218,29 +218,28 @@ class TransferViewModel: ObservableObject {
             Logger.error("Failed to get rates for getDefaultLspBalance", context: "TransferViewModel")
             return 0
         }
+
         // Calculate thresholds in sats
         let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
         let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
         let defaultLspBalanceSats = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
 
-        Logger.debug("getDefaultLspBalance - clientBalanceSat: \(clientBalanceSat)")
-        Logger.debug("getDefaultLspBalance - maxLspBalance: \(maxLspBalance)")
-        Logger.debug("getDefaultLspBalance - defaultLspBalanceSats: \(defaultLspBalanceSats)")
+        var lspBalance = Int64(defaultLspBalanceSats) - Int64(clientBalanceSat)
 
-        // Safely calculate lspBalance to avoid arithmetic overflow
-        var lspBalance: UInt64 = 0
-        if defaultLspBalanceSats > clientBalanceSat {
-            lspBalance = defaultLspBalanceSats - clientBalanceSat
+        // Ensure non-negative result
+        if lspBalance < 0 {
+            lspBalance = 0
         }
 
-        if lspBalance > threshold1 {
-            lspBalance = clientBalanceSat
-        }
-        if lspBalance > threshold2 {
-            lspBalance = maxLspBalance
+        if clientBalanceSat > threshold1 {
+            lspBalance = Int64(clientBalanceSat)
         }
 
-        return min(lspBalance, maxLspBalance)
+        if clientBalanceSat > threshold2 {
+            lspBalance = Int64(maxLspBalance)
+        }
+
+        return min(UInt64(lspBalance), maxLspBalance)
     }
 
     func getMinLspBalance(clientBalance: UInt64, minChannelSize: UInt64) -> UInt64 {
@@ -255,14 +254,14 @@ class TransferViewModel: ObservableObject {
     func getMaxClientBalance(maxChannelSize: UInt64) -> UInt64 {
         // Remote balance must be at least 2.5% of the channel size for LDK to accept (reserve balance)
         let minRemoteBalance = UInt64(Double(maxChannelSize) * 0.025)
-        return maxChannelSize > minRemoteBalance ? maxChannelSize - minRemoteBalance : 0
+        return maxChannelSize - minRemoteBalance
     }
 
     func updateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) {
         transferValues = calculateTransferValues(clientBalanceSat: clientBalanceSat, blocktankInfo: blocktankInfo)
     }
 
-    private func calculateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) -> TransferValues {
+    func calculateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) -> TransferValues {
         guard let blocktankInfo else {
             return TransferValues()
         }

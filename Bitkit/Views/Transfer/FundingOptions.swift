@@ -36,7 +36,11 @@ struct FundingOptions: View {
                     isDisabled: wallet.totalOnchainSats == 0 || app.isGeoBlocked == true,
                     testID: "FundTransfer"
                 ) {
-                    navigation.navigate(.spendingIntro)
+                    if app.hasSeenTransferToSpendingIntro {
+                        navigation.navigate(.spendingAmount)
+                    } else {
+                        navigation.navigate(.spendingIntro)
+                    }
                 }
 
                 RectangleButton(

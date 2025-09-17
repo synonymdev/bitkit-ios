@@ -10,7 +10,7 @@ struct FundManualConfirmView: View {
     @EnvironmentObject var transfer: TransferViewModel
 
     let lnPeer: LnPeer
-    let satsAmount: UInt64
+    let amountSats: UInt64
 
     // Placeholder values - in a real implementation these would be calculated
     @State private var networkFeeSat: UInt64 = 0
@@ -54,13 +54,13 @@ struct FundManualConfirmView: View {
                     HStack {
                         FeeDisplayRow(
                             label: t("lightning__spending_confirm__amount"),
-                            amount: satsAmount
+                            amount: amountSats
                         )
                         .frame(maxWidth: .infinity)
 
                         FeeDisplayRow(
                             label: t("lightning__spending_confirm__total"),
-                            amount: satsAmount + networkFeeSat
+                            amount: amountSats + networkFeeSat
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -80,7 +80,7 @@ struct FundManualConfirmView: View {
                             // Open a channel with the given peer and amount
                             try await lightningService.openChannel(
                                 peer: lnPeer,
-                                channelAmountSats: satsAmount
+                                channelAmountSats: amountSats
                             )
 
                             Logger.info("Channel opened successfully")
@@ -117,7 +117,7 @@ struct FundManualConfirmView: View {
     NavigationStack {
         FundManualConfirmView(
             lnPeer: LnPeer(nodeId: "test", host: "test.com", port: 9735),
-            satsAmount: 50000
+            amountSats: 50000
         )
         .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())

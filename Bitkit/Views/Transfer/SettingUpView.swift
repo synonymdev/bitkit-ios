@@ -17,13 +17,8 @@ struct ProgressSteps: View {
                         path.move(to: CGPoint(x: padding, y: y))
                         path.addLine(to: CGPoint(x: geometry.size.width - padding, y: y))
                     }
-                    .stroke(
-                        style: StrokeStyle(
-                            lineWidth: 1,
-                            dash: [4, 4]
-                        )
-                    )
-                    .foregroundColor(Color.gray)
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .foregroundColor(Color.white32)
 
                     // Circles with numbers
                     HStack(spacing: 0) {
@@ -59,11 +54,11 @@ struct ProgressSteps: View {
                             .padding(.horizontal, 16)
                         }
                     }
-                    .padding(.bottom, 16)
                 }
             }
 
             BodySSBText(steps[currentStep], textColor: .white32)
+                .padding(.top, 16)
         }
     }
 }
