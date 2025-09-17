@@ -304,30 +304,31 @@ jobs:
           echo "Updated UDID in capabilities:"
           grep -A 5 -B 5 "appium:udid" wdio.conf.ts
           
-          # Try to launch the app manually to test simulator connectivity
-          echo "Testing manual app launch..."
-          xcrun simctl launch "$SIMULATOR_UDID" to.bitkit-regtest || echo "Manual launch failed"
-          sleep 5
-          
-          # Check if app is running
-          echo "Checking if app is running..."
-          xcrun simctl spawn "$SIMULATOR_UDID" launchctl list | grep bitkit || echo "App not running"
-          
-          # Test XCUITest driver directly
-          echo "Testing XCUITest driver..."
+          # Don't manually launch the app - let Appium handle it
+          # Just ensure simulator is ready and app is installed
+          echo "Ensuring simulator is ready..."
           xcrun simctl list devices | grep "$SIMULATOR_UDID"
           
-          # Kill the manually launched app to let Appium handle it
-          echo "Killing manually launched app..."
-          xcrun simctl terminate "$SIMULATOR_UDID" to.bitkit-regtest || echo "App not running"
+          # Verify app is installed
+          echo "Verifying app installation..."
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
           
-          # Reset simulator to ensure clean state for WebDriverAgent
-          echo "Resetting simulator for WebDriverAgent..."
-          xcrun simctl shutdown "$SIMULATOR_UDID" || true
-          sleep 5
-          xcrun simctl boot "$SIMULATOR_UDID" || true
+          # Make sure simulator is fully booted and ready
+          echo "Waiting for simulator to be fully ready..."
           sleep 10
-          echo "Simulator reset complete"
+          
+          # Check simulator status one more time
+          echo "Final simulator status:"
+          xcrun simctl list devices | grep "$SIMULATOR_UDID"
+          
+          # Re-check UDID in case simulator was reset
+          echo "Re-checking simulator UDID..."
+          CURRENT_UDID=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep "Booted" | grep -o '[A-F0-9-]\{36\}')
+          if [ "$CURRENT_UDID" != "$SIMULATOR_UDID" ]; then
+            echo "UDID changed from $SIMULATOR_UDID to $CURRENT_UDID, updating..."
+            sed -i '' "s/'appium:udid': '[^']*'/'appium:udid': '$CURRENT_UDID'/" wdio.conf.ts
+            SIMULATOR_UDID="$CURRENT_UDID"
+          fi
           
           # Add more debugging before running tests
           echo "=== Pre-test Debugging ==="
@@ -337,7 +338,7 @@ jobs:
           echo "Appium status:"
           curl -s http://localhost:4723/status | head -5
           echo "App status on simulator:"
-          xcrun simctl listapps "$SIMULATOR_NAME" | grep -i bitkit || echo "App not found"
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
           echo "WebDriverIO config:"
           head -20 wdio.conf.ts
           echo "Test files:"
