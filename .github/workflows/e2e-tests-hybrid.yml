@@ -17,8 +17,8 @@ jobs:
   regtest-infrastructure:
     runs-on: ubuntu-latest
     outputs:
-      electrum-url: ${{ steps.tunnel-electrum.outputs.url }}
-      lnd-url: ${{ steps.tunnel-lnd.outputs.url }}
+      electrum-url: ${{ env.ELECTRUM_URL }}
+      lnd-url: ${{ env.LND_URL }}
     
     steps:
       - name: Clone E2E tests
@@ -78,16 +78,50 @@ jobs:
 
       - name: Expose Electrum with Cloudflare Tunnel
         id: tunnel-electrum
-        uses: AnimMouse/setup-cloudflared/tunnel@v2
-        with:
-          url: http://localhost:60001
+        run: |
+          echo "=== Creating Electrum tunnel ==="
+          # Create tunnel manually using cloudflared
+          nohup cloudflared tunnel --url http://localhost:60001 > electrum-tunnel.log 2>&1 &
+          ELECTRUM_TUNNEL_PID=$!
+          echo "ELECTRUM_TUNNEL_PID=$ELECTRUM_TUNNEL_PID" >> $GITHUB_ENV
+          echo "Electrum tunnel PID: $ELECTRUM_TUNNEL_PID"
+          
+          # Wait for tunnel to be ready and extract URL
+          sleep 10
+          if [ -f electrum-tunnel.log ]; then
+            ELECTRUM_URL=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' electrum-tunnel.log | head -1)
+            if [ -n "$ELECTRUM_URL" ]; then
+              echo "Electrum tunnel URL: $ELECTRUM_URL"
+              echo "ELECTRUM_URL=$ELECTRUM_URL" >> $GITHUB_ENV
+            else
+              echo "Failed to extract Electrum tunnel URL"
+              cat electrum-tunnel.log
+            fi
+          fi
         continue-on-error: true
 
       - name: Expose LND with Cloudflare Tunnel
         id: tunnel-lnd
-        uses: AnimMouse/setup-cloudflared/tunnel@v2
-        with:
-          url: http://localhost:9735
+        run: |
+          echo "=== Creating LND tunnel ==="
+          # Create tunnel manually using cloudflared
+          nohup cloudflared tunnel --url http://localhost:9735 > lnd-tunnel.log 2>&1 &
+          LND_TUNNEL_PID=$!
+          echo "LND_TUNNEL_PID=$LND_TUNNEL_PID" >> $GITHUB_ENV
+          echo "LND tunnel PID: $LND_TUNNEL_PID"
+          
+          # Wait for tunnel to be ready and extract URL
+          sleep 10
+          if [ -f lnd-tunnel.log ]; then
+            LND_URL=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' lnd-tunnel.log | head -1)
+            if [ -n "$LND_URL" ]; then
+              echo "LND tunnel URL: $LND_URL"
+              echo "LND_URL=$LND_URL" >> $GITHUB_ENV
+            else
+              echo "Failed to extract LND tunnel URL"
+              cat lnd-tunnel.log
+            fi
+          fi
         continue-on-error: true
 
       - name: Keep regtest running
@@ -146,14 +180,12 @@ jobs:
           
           # Show tunnel URLs and verify they exist
           echo "Tunnel URLs:"
-          echo "Electrum: ${{ steps.tunnel-electrum.outputs.url }}"
-          echo "LND: ${{ steps.tunnel-lnd.outputs.url }}"
+          echo "Electrum: $ELECTRUM_URL"
+          echo "LND: $LND_URL"
           
           # Verify tunnel URLs are not empty
-          if [ -z "${{ steps.tunnel-electrum.outputs.url }}" ] || [ -z "${{ steps.tunnel-lnd.outputs.url }}" ]; then
+          if [ -z "$ELECTRUM_URL" ] || [ -z "$LND_URL" ]; then
             echo "❌ ERROR: Tunnel URLs are empty!"
-            echo "Electrum tunnel result: ${{ steps.tunnel-electrum.outcome }}"
-            echo "LND tunnel result: ${{ steps.tunnel-lnd.outcome }}"
             echo "This means the Cloudflare tunnel setup failed."
             echo "Continuing anyway - E2E tests will handle the error..."
           else

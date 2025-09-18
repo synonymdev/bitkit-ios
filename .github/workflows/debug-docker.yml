@@ -85,6 +85,14 @@ jobs:
           echo "=== Testing Docker Compose V2 ==="
           docker compose version || echo "docker compose not found"
 
+      - name: Install Docker Compose V2
+        run: |
+          echo "=== Installing Docker Compose V2 ==="
+          # Install Docker Compose V2 plugin via Homebrew
+          brew install docker-compose
+          echo "Docker Compose V2 installed"
+          docker compose version
+
       - name: Test simple Docker command
         run: |
           echo "=== Testing simple Docker command ==="
