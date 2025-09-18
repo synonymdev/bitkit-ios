@@ -38,16 +38,13 @@ jobs:
 
       - name: Test Docker
         run: |
-          echo "=== Docker Status ==="
-          docker version
-          
           echo "=== Colima Status ==="
           colima status
           
-          echo "=== Testing Docker ==="
-          docker run --rm arm64v8/alpine uname -m
+          echo "=== Colima Configuration ==="
+          colima list
           
-          echo "=== Colima Logs ==="
+          echo "=== Colima Logs (startup) ==="
           if [ -f "/Users/runner/.colima/_lima/colima/ha.stderr.log" ]; then
             echo "Host agent stderr:"
             tail -20 "/Users/runner/.colima/_lima/colima/ha.stderr.log"
@@ -57,3 +54,20 @@ jobs:
             echo "Host agent stdout:"
             tail -20 "/Users/runner/.colima/_lima/colima/ha.stdout.log"
           fi
+          
+          echo "=== Waiting for Docker to be ready ==="
+          # Wait for Docker daemon to be ready
+          for i in {1..30}; do
+            if docker version >/dev/null 2>&1; then
+              echo "✅ Docker is ready!"
+              break
+            fi
+            echo "Waiting for Docker... ($i/30)"
+            sleep 5
+          done
+          
+          echo "=== Docker Status ==="
+          docker version
+          
+          echo "=== Testing Docker ==="
+          docker run --rm arm64v8/alpine uname -m
