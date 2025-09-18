@@ -81,8 +81,42 @@ jobs:
         run: |
           # Keep the job running so regtest stays up
           # This will run in the background while other jobs execute
+          echo "Starting regtest keep-alive process..."
           nohup bash -c 'while true; do echo "Regtest infrastructure running... $(date)"; sleep 60; done' &
+          KEEPALIVE_PID=$!
+          echo "Keep-alive PID: $KEEPALIVE_PID"
           echo "Regtest infrastructure is running in background"
+          
+          # Verify the process is running
+          sleep 5
+          if ps -p $KEEPALIVE_PID > /dev/null; then
+            echo "✅ Keep-alive process is running"
+          else
+            echo "❌ Keep-alive process failed to start"
+            exit 1
+          fi
+          
+          # Show what's running
+          echo "Current processes:"
+          ps aux | grep -E "(docker|electrum|lnd|keep)" | head -10
+          
+          # Test if services are actually accessible
+          echo "Testing local connectivity..."
+          if nc -z localhost 60001; then
+            echo "✅ Electrum server is accessible locally"
+          else
+            echo "❌ Electrum server is NOT accessible locally"
+          fi
+          
+          if nc -z localhost 9735; then
+            echo "✅ LND is accessible locally"
+          else
+            echo "❌ LND is NOT accessible locally"
+          fi
+          
+          # Show Docker containers
+          echo "Docker containers:"
+          docker ps
 
   # Job 2: Build iOS app and run E2E tests on macOS
   e2e-tests:
@@ -309,16 +343,9 @@ jobs:
           echo "Ensuring simulator is ready..."
           xcrun simctl list devices | grep "$SIMULATOR_UDID"
           
-          # Verify app is installed and get the correct bundle ID
+          # Verify app is installed
           echo "Verifying app installation..."
-          APP_BUNDLE_ID=$(xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit | grep -o '"[^"]*"' | head -1 | tr -d '"')
-          echo "App bundle ID: $APP_BUNDLE_ID"
-          
-          # Update the app bundle ID in wdio.conf.ts if needed
-          if [ -n "$APP_BUNDLE_ID" ] && [ "$APP_BUNDLE_ID" != "to.bitkit-regtest" ]; then
-            echo "Updating app bundle ID in capabilities..."
-            sed -i '' "s/'appium:app': path.join(__dirname, 'aut', 'bitkit.app')/'appium:app': path.join(__dirname, 'aut', 'bitkit.app'),\n          'appium:bundleId': '$APP_BUNDLE_ID'/" wdio.conf.ts
-          fi
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
           
           # Make sure simulator is fully booted and ready
           echo "Waiting for simulator to be fully ready..."
@@ -357,15 +384,40 @@ jobs:
           echo "E2E_ELECTRUM_SERVER: $E2E_ELECTRUM_SERVER"
           echo "E2E_LND_URL: $E2E_LND_URL"
           
+          # Check if we have valid regtest URLs
+          if [ -z "$E2E_ELECTRUM_SERVER" ] || [ -z "$E2E_LND_URL" ]; then
+            echo "❌ ERROR: Regtest URLs are empty!"
+            echo "This means the regtest-infrastructure job failed or didn't provide outputs."
+            echo "Check the regtest-infrastructure job logs for errors."
+            exit 1
+          fi
+          
           # Test electrum server connectivity
           if [ -n "$E2E_ELECTRUM_SERVER" ]; then
             ELECTRUM_HOST=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f1)
             ELECTRUM_PORT=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f2)
             echo "Testing electrum server at $ELECTRUM_HOST:$ELECTRUM_PORT..."
+            
+            # Try multiple connection methods
+            echo "Testing with nc (netcat)..."
             if nc -z "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null; then
-              echo "✅ Electrum server is reachable"
+              echo "✅ Electrum server is reachable via nc"
             else
-              echo "❌ Electrum server is not reachable"
+              echo "❌ Electrum server is not reachable via nc"
+            fi
+            
+            echo "Testing with telnet..."
+            if timeout 5 telnet "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null | grep -q "Connected"; then
+              echo "✅ Electrum server is reachable via telnet"
+            else
+              echo "❌ Electrum server is not reachable via telnet"
+            fi
+            
+            echo "Testing with curl..."
+            if curl -s --connect-timeout 5 "http://$ELECTRUM_HOST:$ELECTRUM_PORT" >/dev/null 2>&1; then
+              echo "✅ Electrum server is reachable via curl"
+            else
+              echo "❌ Electrum server is not reachable via curl"
             fi
           fi
           
@@ -378,6 +430,31 @@ jobs:
               echo "✅ LND is reachable"
             else
               echo "❌ LND is not reachable"
+              echo "This will cause tests to fail. Check if the regtest infrastructure job is still running."
+            fi
+          fi
+          
+          # Check if we should continue with tests despite connectivity issues
+          if [ -n "$E2E_ELECTRUM_SERVER" ] && [ -n "$E2E_LND_URL" ]; then
+            ELECTRUM_HOST=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f1)
+            ELECTRUM_PORT=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f2)
+            LND_HOST=$(echo "$E2E_LND_URL" | cut -d: -f1)
+            LND_PORT=$(echo "$E2E_LND_URL" | cut -d: -f2)
+            
+            if ! nc -z "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null || ! nc -z "$LND_HOST" "$LND_PORT" 2>/dev/null; then
+              echo "⚠️  WARNING: Regtest services are not reachable. Tests will likely fail."
+              echo "This could be due to:"
+              echo "1. The regtest infrastructure job has stopped"
+              echo "2. Network connectivity issues between runners"
+              echo "3. Firewall blocking the connections"
+              echo ""
+              echo "🔧 SOLUTIONS TO TRY:"
+              echo "1. Check if the regtest-infrastructure job is still running"
+              echo "2. Use a different regtest service (e.g., Blockstream's regtest API)"
+              echo "3. Run regtest on the same macOS runner (if Docker works)"
+              echo "4. Use a cloud-hosted regtest service"
+              echo ""
+              echo "Continuing with tests anyway..."
             fi
           fi
           

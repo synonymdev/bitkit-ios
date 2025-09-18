@@ -1,0 +1,32 @@
+name: e2e-tests-arm
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  docker:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check system info
+        run: |
+          echo "=== System Information ==="
+          uname -a
+          sw_vers
+          echo "=== Available commands ==="
+          which brew
+          which docker || echo "Docker not found"
+
+      - name: Install Docker (via Colima)
+        run: |
+          brew install colima docker
+          colima start --arch aarch64 --vm-type=vz --memory 4
+
+      - name: Test Docker
+        run: |
+          docker version
+          docker run --rm arm64v8/alpine uname -m
