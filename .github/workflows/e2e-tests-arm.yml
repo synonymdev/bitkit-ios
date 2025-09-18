@@ -6,7 +6,7 @@ on:
 
 jobs:
   docker:
-    runs-on: macos-latest
+    runs-on: macos-26
     
     steps:
       - name: Checkout
@@ -24,9 +24,36 @@ jobs:
       - name: Install Docker (via Colima)
         run: |
           brew install colima docker
-          colima start --arch aarch64 --vm-type=vz --memory 4
+          
+          # Check available VM types
+          echo "Available VM types:"
+          colima start --help | grep -A 10 "vm-type" || echo "Help not available"
+          
+          # Try different VM types that work on macOS runners
+          echo "Trying QEMU VM type (more compatible with runners)..."
+          if ! colima start --arch aarch64 --vm-type=qemu --memory 4 --cpu 2; then
+            echo "QEMU failed, trying with different parameters..."
+            colima start --arch aarch64 --vm-type=qemu --memory 2 --cpu 1
+          fi
 
       - name: Test Docker
         run: |
+          echo "=== Docker Status ==="
           docker version
+          
+          echo "=== Colima Status ==="
+          colima status
+          
+          echo "=== Testing Docker ==="
           docker run --rm arm64v8/alpine uname -m
+          
+          echo "=== Colima Logs ==="
+          if [ -f "/Users/runner/.colima/_lima/colima/ha.stderr.log" ]; then
+            echo "Host agent stderr:"
+            tail -20 "/Users/runner/.colima/_lima/colima/ha.stderr.log"
+          fi
+          
+          if [ -f "/Users/runner/.colima/_lima/colima/ha.stdout.log" ]; then
+            echo "Host agent stdout:"
+            tail -20 "/Users/runner/.colima/_lima/colima/ha.stdout.log"
+          fi
