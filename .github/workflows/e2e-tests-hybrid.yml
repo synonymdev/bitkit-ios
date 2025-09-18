@@ -73,17 +73,20 @@ jobs:
           
           echo "Regtest infrastructure ready locally"
 
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@v2
+
       - name: Expose Electrum with Cloudflare Tunnel
         id: tunnel-electrum
-        uses: cloudflare/cloudflared-action@v2
+        uses: AnimMouse/setup-cloudflared/tunnel@v2
         with:
-          port: 60001
+          url: http://localhost:60001
 
       - name: Expose LND with Cloudflare Tunnel
         id: tunnel-lnd
-        uses: cloudflare/cloudflared-action@v2
+        uses: AnimMouse/setup-cloudflared/tunnel@v2
         with:
-          port: 9735
+          url: http://localhost:9735
 
       - name: Keep regtest running
         run: |
@@ -130,6 +133,10 @@ jobs:
           echo "Tunnel URLs:"
           echo "Electrum: ${{ steps.tunnel-electrum.outputs.url }}"
           echo "LND: ${{ steps.tunnel-lnd.outputs.url }}"
+          
+          # Keep the job running to maintain tunnels
+          echo "Keeping job alive to maintain tunnels..."
+          sleep 3600  # Keep alive for 1 hour
 
   # Job 2: Build iOS app and run E2E tests on macOS
   e2e-tests:
@@ -500,3 +507,7 @@ jobs:
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
+
+      - name: Shutdown Cloudflare Tunnels
+        if: always()
+        uses: AnimMouse/setup-cloudflared/shutdown@v2

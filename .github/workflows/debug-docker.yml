@@ -46,22 +46,35 @@ jobs:
               }
             }
 
-      - name: Setup Docker Colima (Fallback)
-        uses: douglascamata/setup-docker-macos-action@v1-alpha
-        id: docker1
-        continue-on-error: true
+      # - name: Setup Docker Colima (Fallback)
+      #   uses: douglascamata/setup-docker-macos-action@v1-alpha
+      #   id: docker-colima
+      #   continue-on-error: true
 
       - name: Check Docker setup results
         run: |
           echo "=== Docker Setup Results ==="
           echo "Official Docker action result: ${{ steps.docker-official.outcome }}"
-          echo "Colima action result: ${{ steps.docker1.outcome }}"
+          # echo "Colima action result: ${{ steps.docker-colima.outcome }}"
           
       - name: Wait for Docker to start
         run: |
           echo "=== Waiting for Docker to start ==="
-          timeout 180 bash -c 'until docker info >/dev/null 2>&1; do echo "Waiting for Docker... ($(date))"; sleep 10; done'
-          echo "Docker is ready!"
+          # Use a for loop instead of timeout (macOS doesn't have timeout command)
+          for i in {1..18}; do
+            if docker info >/dev/null 2>&1; then
+              echo "Docker is ready!"
+              break
+            fi
+            echo "Waiting for Docker... ($(date)) (attempt $i/18)"
+            sleep 10
+          done
+          
+          # Final check
+          if ! docker info >/dev/null 2>&1; then
+            echo "Docker failed to start after 3 minutes"
+            exit 1
+          fi
 
       - name: Test Docker functionality
         run: |
