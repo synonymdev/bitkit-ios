@@ -29,11 +29,11 @@ jobs:
           echo "Available VM types:"
           colima start --help | grep -A 10 "vm-type" || echo "Help not available"
           
-          # Try different VM types that work on macOS runners
-          echo "Trying QEMU VM type (more compatible with runners)..."
-          if ! colima start --arch aarch64 --vm-type=qemu --memory 4 --cpu 2; then
-            echo "QEMU failed, trying with different parameters..."
-            colima start --arch aarch64 --vm-type=qemu --memory 2 --cpu 1
+          echo "Trying VZ VM type..."
+          if ! colima start --arch aarch64 --vm-type=vz --memory 4 --cpu 2; then
+            echo "Direct start failed, trying brew services approach..."
+            brew services start colima
+            sleep 10
           fi
 
       - name: Test Docker
