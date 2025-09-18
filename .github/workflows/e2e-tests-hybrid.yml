@@ -1,0 +1,577 @@
+name: e2e-tests-hybrid
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Run regtest infrastructure on Ubuntu with tunneling
+  regtest-infrastructure:
+    runs-on: ubuntu-latest
+    outputs:
+      electrum-url: ${{ env.ELECTRUM_URL }}
+      lnd-url: ${{ env.LND_URL }}
+    
+    steps:
+      - name: Clone E2E tests
+        uses: actions/checkout@v4
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ github.event.inputs.e2e_branch || 'ios' }}
+
+      - name: Run regtest setup
+        working-directory: bitkit-e2e-tests
+        id: setup-regtest
+        run: |
+          cd docker
+          mkdir lnd && chmod 777 lnd
+          docker compose pull --quiet
+          docker compose up -d
+          
+          echo "Waiting for electrum server..."
+          while ! nc -z '127.0.0.1' 60001; do sleep 1; done
+          echo "Electrum server is ready!"
+          
+          echo "Waiting for LND to initialize..."
+          # Wait for LND container to be running
+          timeout 60 bash -c 'until docker ps | grep lnd | grep -q "Up"; do echo "Waiting for LND container..."; sleep 2; done'
+          
+          # Fix permissions for LND data directory
+          echo "Fixing LND data directory permissions..."
+          sudo chown -R runner:runner lnd/
+          chmod -R 755 lnd/
+          
+          # Check if LND directory exists and wait for admin.macaroon
+          echo "Checking LND data directory..."
+          ls -la lnd/ || echo "LND directory not found"
+          ls -la lnd/data/ || echo "LND data directory not found"
+          ls -la lnd/data/chain/ || echo "LND chain directory not found"
+          ls -la lnd/data/chain/bitcoin/ || echo "LND bitcoin directory not found"
+          ls -la lnd/data/chain/bitcoin/regtest/ || echo "LND regtest directory not found"
+          
+          # Wait for admin.macaroon with timeout and better error handling
+          echo "Waiting for admin.macaroon..."
+          timeout 120 bash -c 'until [ -f lnd/data/chain/bitcoin/regtest/admin.macaroon ]; do echo "Waiting for admin.macaroon... ($(date))"; sleep 5; done' || {
+            echo "Timeout waiting for admin.macaroon. Checking LND logs:"
+            docker logs lnd
+            echo "LND directory contents:"
+            find lnd -name "*.macaroon" -type f 2>/dev/null || echo "No macaroon files found"
+            exit 1
+          }
+          
+          echo "Admin macaroon found! Setting permissions..."
+          chmod -R 777 lnd
+          
+          echo "Regtest infrastructure ready locally"
+
+      - name: Setup cloudflared
+        uses: AnimMouse/setup-cloudflared@v2
+
+      - name: Expose Electrum with Cloudflare Tunnel
+        id: tunnel-electrum
+        run: |
+          echo "=== Creating Electrum tunnel ==="
+          # Create tunnel manually using cloudflared
+          nohup cloudflared tunnel --url http://localhost:60001 > electrum-tunnel.log 2>&1 &
+          ELECTRUM_TUNNEL_PID=$!
+          echo "ELECTRUM_TUNNEL_PID=$ELECTRUM_TUNNEL_PID" >> $GITHUB_ENV
+          echo "Electrum tunnel PID: $ELECTRUM_TUNNEL_PID"
+          
+          # Wait for tunnel to be ready and extract URL
+          sleep 10
+          if [ -f electrum-tunnel.log ]; then
+            ELECTRUM_URL=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' electrum-tunnel.log | head -1)
+            if [ -n "$ELECTRUM_URL" ]; then
+              echo "Electrum tunnel URL: $ELECTRUM_URL"
+              echo "ELECTRUM_URL=$ELECTRUM_URL" >> $GITHUB_ENV
+            else
+              echo "Failed to extract Electrum tunnel URL"
+              cat electrum-tunnel.log
+            fi
+          fi
+        continue-on-error: true
+
+      - name: Expose LND with Cloudflare Tunnel
+        id: tunnel-lnd
+        run: |
+          echo "=== Creating LND tunnel ==="
+          # Create tunnel manually using cloudflared
+          nohup cloudflared tunnel --url http://localhost:9735 > lnd-tunnel.log 2>&1 &
+          LND_TUNNEL_PID=$!
+          echo "LND_TUNNEL_PID=$LND_TUNNEL_PID" >> $GITHUB_ENV
+          echo "LND tunnel PID: $LND_TUNNEL_PID"
+          
+          # Wait for tunnel to be ready and extract URL
+          sleep 10
+          if [ -f lnd-tunnel.log ]; then
+            LND_URL=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' lnd-tunnel.log | head -1)
+            if [ -n "$LND_URL" ]; then
+              echo "LND tunnel URL: $LND_URL"
+              echo "LND_URL=$LND_URL" >> $GITHUB_ENV
+            else
+              echo "Failed to extract LND tunnel URL"
+              cat lnd-tunnel.log
+            fi
+          fi
+        continue-on-error: true
+
+      - name: Keep regtest running
+        run: |
+          # Start background processes to keep regtest and tunnels alive
+          echo "Starting regtest keep-alive process..."
+          nohup bash -c 'while true; do echo "Regtest infrastructure running... $(date)"; sleep 60; done' &
+          KEEPALIVE_PID=$!
+          echo "Keep-alive PID: $KEEPALIVE_PID"
+          
+          # Start tunnel keep-alive process
+          echo "Starting tunnel keep-alive process..."
+          nohup bash -c 'while true; do echo "Tunnels running... $(date)"; sleep 60; done' &
+          TUNNEL_PID=$!
+          echo "Tunnel keep-alive PID: $TUNNEL_PID"
+          
+          echo "Regtest infrastructure and tunnels are running in background"
+          
+          # Verify the processes are running
+          sleep 5
+          if ps -p $KEEPALIVE_PID > /dev/null; then
+            echo "✅ Keep-alive process is running"
+          else
+            echo "❌ Keep-alive process failed to start"
+            exit 1
+          fi
+          
+          if ps -p $TUNNEL_PID > /dev/null; then
+            echo "✅ Tunnel keep-alive process is running"
+          else
+            echo "❌ Tunnel keep-alive process failed to start"
+            exit 1
+          fi
+          
+          # Show what's running
+          echo "Current processes:"
+          ps aux | grep -E "(docker|electrum|lnd|keep|tunnel)" | head -10
+          
+          # Test if services are actually accessible
+          echo "Testing local connectivity..."
+          if nc -z localhost 60001; then
+            echo "✅ Electrum server is accessible locally"
+          else
+            echo "❌ Electrum server is NOT accessible locally"
+          fi
+          
+          if nc -z localhost 9735; then
+            echo "✅ LND is accessible locally"
+          else
+            echo "❌ LND is NOT accessible locally"
+          fi
+          
+          # Show Docker containers
+          echo "Docker containers:"
+          docker ps
+          
+          # Show tunnel URLs and verify they exist
+          echo "Tunnel URLs:"
+          echo "Electrum: $ELECTRUM_URL"
+          echo "LND: $LND_URL"
+          
+          # Verify tunnel URLs are not empty
+          if [ -z "$ELECTRUM_URL" ] || [ -z "$LND_URL" ]; then
+            echo "❌ ERROR: Tunnel URLs are empty!"
+            echo "This means the Cloudflare tunnel setup failed."
+            echo "Continuing anyway - E2E tests will handle the error..."
+          else
+            echo "✅ Tunnel URLs are available"
+          fi
+          
+          # Job is complete - background processes will keep everything running
+          echo "✅ Regtest infrastructure and tunnels are running in background"
+          echo "Job 1 completed - E2E tests can now start"
+
+  # Job 2: Build iOS app and run E2E tests on macOS
+  e2e-tests:
+    runs-on: macos-latest
+    needs: regtest-infrastructure
+
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - { name: onboarding, grep: "@onboarding" }
+
+    name: e2e-tests - ${{ matrix.shard.name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '16.4'
+
+      - name: Build iOS app
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
+          E2E: true
+          # Override regtest URLs to point to the Ubuntu runner
+          E2E_ELECTRUM_SERVER: ${{ needs.regtest-infrastructure.outputs.electrum-url }}
+          E2E_LND_URL: ${{ needs.regtest-infrastructure.outputs.lnd-url }}
+        run: |
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath DerivedData \
+            build
+
+      - name: Prepare app for E2E tests
+        run: |
+          mkdir -p e2e-app
+          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+
+      - name: Clone E2E tests
+        uses: actions/checkout@v4
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ github.event.inputs.e2e_branch || 'ios' }}
+
+      - name: Copy app to E2E tests directory
+        run: |
+          # Create the aut directory in the E2E tests
+          mkdir -p bitkit-e2e-tests/aut
+          # Copy the app to the expected location
+          cp -r e2e-app/bitkit.app bitkit-e2e-tests/aut/bitkit.app
+          # Verify the app was copied
+          ls -la bitkit-e2e-tests/aut/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Install Appium
+        run: |
+          # Install Appium globally
+          npm install -g appium@latest
+          # Install XCUITest driver for iOS
+          appium driver install xcuitest
+          # Verify installation
+          appium driver list
+
+      - name: Setup iOS Simulator
+        run: |
+          # Set simulator name (easy to change if needed)
+          SIMULATOR_NAME="iPhone 16"
+          echo "SIMULATOR_NAME=$SIMULATOR_NAME" >> $GITHUB_ENV
+          
+          # List available simulators
+          xcrun simctl list devices available
+          
+          # Kill any existing simulators to start fresh
+          xcrun simctl shutdown all || true
+          sleep 5
+          
+          # Boot the specified simulator
+          echo "Booting $SIMULATOR_NAME..."
+          xcrun simctl boot "$SIMULATOR_NAME" || true
+          
+          # Wait for simulator to boot
+          echo "Waiting for simulator to boot..."
+          for i in {1..30}; do
+            if xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep -q "Booted"; then
+              echo "$SIMULATOR_NAME is booted!"
+              break
+            fi
+            echo "Waiting for $SIMULATOR_NAME boot... ($i/30)"
+            sleep 5
+          done
+          
+          # Additional wait for simulator to be fully ready
+          sleep 15
+          
+          # Install the app
+          xcrun simctl install "$SIMULATOR_NAME" e2e-app/bitkit.app
+          
+          # Verify app installation
+          xcrun simctl listapps "$SIMULATOR_NAME" | grep -i bitkit || echo "App not found in simulator"
+          
+          # Check simulator status
+          xcrun simctl list devices | grep "$SIMULATOR_NAME"
+          
+          # Launch simulator app to ensure it's visible
+          open -a Simulator
+          sleep 5
+
+      - name: Start Appium Server
+        run: |
+          # Start Appium server in background with more verbose logging
+          appium --port 4723 --log-level debug --relaxed-security --session-override &
+          APPIUM_PID=$!
+          echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
+          
+          # Wait for Appium to be ready (macOS doesn't have timeout command)
+          echo "Waiting for Appium to start..."
+          for i in {1..30}; do
+            if curl -s http://localhost:4723/status >/dev/null 2>&1; then
+              echo "Appium server is ready!"
+              break
+            fi
+            echo "Waiting for Appium... ($i/30)"
+            sleep 2
+          done
+          
+          # Final check
+          if ! curl -s http://localhost:4723/status >/dev/null 2>&1; then
+            echo "Appium failed to start after 60 seconds"
+            exit 1
+          fi
+          
+          # Test Appium with a simple request
+          echo "Testing Appium connection..."
+          curl -s http://localhost:4723/status | head -20
+          
+          # Check if simulator is accessible to Appium
+          echo "Checking simulator accessibility..."
+          xcrun simctl list devices | grep "iPhone 16"
+          
+          # Try to get simulator logs to debug
+          echo "Recent simulator logs:"
+          xcrun simctl spawn "iPhone 16" log show --last 1m --predicate 'process == "SpringBoard"' | head -10
+
+      - name: Run E2E Tests (${{ matrix.shard.name }})
+        timeout-minutes: 30
+        run: |
+          cd bitkit-e2e-tests
+          
+          # Setup logging
+          LOGDIR="./artifacts"
+          mkdir -p "$LOGDIR"
+          LOGFILE="$LOGDIR/simulator.log"
+          
+          # Start simulator logging
+          xcrun simctl spawn "$SIMULATOR_NAME" log stream --predicate 'process == "Bitkit"' --style compact > "$LOGFILE" &
+          LOG_PID=$!
+          
+          # Cleanup function
+          cleanup() {
+            echo "Cleaning up processes..."
+            kill "$LOG_PID" 2>/dev/null || true
+            wait "$LOG_PID" 2>/dev/null || true
+            kill "$APPIUM_PID" 2>/dev/null || true
+            wait "$APPIUM_PID" 2>/dev/null || true
+            echo "Cleanup complete"
+          }
+          trap cleanup EXIT INT TERM
+          
+          # Configure WebDriverIO to use our Appium server
+          echo "Configuring WebDriverIO to use our Appium server..."
+          
+          # Add hostname if missing
+          if ! grep -q "hostname:" wdio.conf.ts; then
+            echo "Adding hostname configuration..."
+            sed -i '' 's/port: 4723,/port: 4723,\n  hostname: '\''localhost'\'',/' wdio.conf.ts
+          fi
+          
+          # Remove appium service to use our manually started server
+          echo "Removing appium service from services array..."
+          sed -i '' "s/services: \['appium'\]/services: []/" wdio.conf.ts
+          
+          # Update timeouts for better reliability
+          echo "Updating timeout configurations..."
+          sed -i '' 's/waitforTimeout: 30000/waitforTimeout: 60000/' wdio.conf.ts
+          sed -i '' 's/connectionRetryTimeout: 120000/connectionRetryTimeout: 300000/' wdio.conf.ts
+          
+          # Get the UDID of the booted simulator
+          SIMULATOR_UDID=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep "Booted" | grep -o '[A-F0-9-]\{36\}')
+          echo "Booted simulator UDID: $SIMULATOR_UDID"
+          
+          # Device name is already set to "iPhone 16" in wdio.conf.ts
+          echo "Using simulator: $SIMULATOR_NAME (UDID: $SIMULATOR_UDID)"
+          
+          # Check the full capabilities section
+          echo "Full capabilities section:"
+          grep -A 20 -B 5 "capabilities:" wdio.conf.ts
+          
+          # Update UDID to match the booted simulator
+          echo "Updating UDID to match booted simulator: $SIMULATOR_UDID"
+          sed -i '' "s/'appium:udid': '[^']*'/'appium:udid': '$SIMULATOR_UDID'/" wdio.conf.ts
+          
+          # Verify the UDID was updated
+          echo "Updated UDID in capabilities:"
+          grep -A 5 -B 5 "appium:udid" wdio.conf.ts
+          
+          # Verify the bundle ID was updated
+          echo "Updated bundle ID in capabilities:"
+          grep -A 5 -B 5 "appium:bundleId" wdio.conf.ts
+          
+          # Don't manually launch the app - let Appium handle it
+          # Just ensure simulator is ready and app is installed
+          echo "Ensuring simulator is ready..."
+          xcrun simctl list devices | grep "$SIMULATOR_UDID"
+          
+          # Verify app is installed
+          echo "Verifying app installation..."
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
+          
+          # Make sure simulator is fully booted and ready
+          echo "Waiting for simulator to be fully ready..."
+          sleep 15
+          
+          # Pre-build WebDriverAgent to avoid timeout during session creation
+          echo "Pre-building WebDriverAgent..."
+          xcrun simctl spawn "$SIMULATOR_UDID" xcrun simctl list devices || echo "Simulator check failed"
+          
+          # Ensure simulator is fully responsive
+          echo "Testing simulator responsiveness..."
+          for i in {1..10}; do
+            if xcrun simctl list devices | grep "$SIMULATOR_UDID" | grep -q "Booted"; then
+              echo "Simulator is responsive (attempt $i/10)"
+              break
+            fi
+            echo "Waiting for simulator responsiveness... ($i/10)"
+            sleep 5
+          done
+          
+          # Check simulator status one more time
+          echo "Final simulator status:"
+          xcrun simctl list devices | grep "$SIMULATOR_UDID"
+          
+          # Re-check UDID in case simulator was reset
+          echo "Re-checking simulator UDID..."
+          CURRENT_UDID=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep "Booted" | grep -o '[A-F0-9-]\{36\}')
+          if [ "$CURRENT_UDID" != "$SIMULATOR_UDID" ]; then
+            echo "UDID changed from $SIMULATOR_UDID to $CURRENT_UDID, updating..."
+            sed -i '' "s/'appium:udid': '[^']*'/'appium:udid': '$CURRENT_UDID'/" wdio.conf.ts
+            SIMULATOR_UDID="$CURRENT_UDID"
+          fi
+          
+          # Test regtest connectivity
+          echo "Testing regtest connectivity..."
+          echo "E2E_ELECTRUM_SERVER: $E2E_ELECTRUM_SERVER"
+          echo "E2E_LND_URL: $E2E_LND_URL"
+          
+          # Check if we have valid regtest URLs
+          if [ -z "$E2E_ELECTRUM_SERVER" ] || [ -z "$E2E_LND_URL" ]; then
+            echo "❌ ERROR: Regtest URLs are empty!"
+            echo "This means the regtest-infrastructure job failed or didn't provide outputs."
+            echo "Check the regtest-infrastructure job logs for errors."
+            exit 1
+          fi
+          
+          echo "✅ Using Cloudflare Tunnel URLs for regtest connectivity"
+          
+          # Test electrum server connectivity via tunnel
+          if [ -n "$E2E_ELECTRUM_SERVER" ]; then
+            echo "Testing electrum server at $E2E_ELECTRUM_SERVER..."
+            
+            # Test with curl (tunnel URLs are HTTPS)
+            echo "Testing with curl..."
+            if curl -s --connect-timeout 10 "$E2E_ELECTRUM_SERVER" >/dev/null 2>&1; then
+              echo "✅ Electrum server is reachable via tunnel"
+            else
+              echo "❌ Electrum server is not reachable via tunnel"
+            fi
+          fi
+          
+          # Test LND connectivity via tunnel
+          if [ -n "$E2E_LND_URL" ]; then
+            echo "Testing LND at $E2E_LND_URL..."
+            if curl -s --connect-timeout 10 "$E2E_LND_URL" >/dev/null 2>&1; then
+              echo "✅ LND is reachable via tunnel"
+            else
+              echo "❌ LND is not reachable via tunnel"
+              echo "This will cause tests to fail. Check if the regtest infrastructure job is still running."
+            fi
+          fi
+          
+          # Check if we should continue with tests despite connectivity issues
+          if [ -n "$E2E_ELECTRUM_SERVER" ] && [ -n "$E2E_LND_URL" ]; then
+            if ! curl -s --connect-timeout 5 "$E2E_ELECTRUM_SERVER" >/dev/null 2>&1 || ! curl -s --connect-timeout 5 "$E2E_LND_URL" >/dev/null 2>&1; then
+              echo "⚠️  WARNING: Regtest services are not reachable via tunnel. Tests will likely fail."
+              echo "This could be due to:"
+              echo "1. The regtest infrastructure job has stopped"
+              echo "2. Cloudflare tunnel issues"
+              echo "3. Network connectivity issues"
+              echo ""
+              echo "🔧 SOLUTIONS TO TRY:"
+              echo "1. Check if the regtest-infrastructure job is still running"
+              echo "2. Check Cloudflare tunnel logs"
+              echo "3. Use a different regtest service (e.g., Blockstream's regtest API)"
+              echo ""
+              echo "Continuing with tests anyway..."
+            else
+              echo "✅ Regtest services are reachable via Cloudflare tunnels"
+            fi
+          fi
+          
+          # Add more debugging before running tests
+          echo "=== Pre-test Debugging ==="
+          echo "Current directory: $(pwd)"
+          echo "Simulator status:"
+          xcrun simctl list devices | grep "$SIMULATOR_NAME"
+          echo "Appium status:"
+          curl -s http://localhost:4723/status | head -5
+          echo "App status on simulator:"
+          xcrun simctl listapps "$SIMULATOR_UDID" | grep -i bitkit || echo "App not found"
+          echo "WebDriverIO config:"
+          head -20 wdio.conf.ts
+          echo "Test files:"
+          find test/specs -name "*.e2e.ts" | head -5
+          echo "Package.json scripts:"
+          grep -A 5 -B 5 "e2e:ios" package.json
+          echo "========================="
+          
+          # Pass everything through to WDIO/Mocha with more verbose output
+          echo "Starting WebDriverIO tests..."
+          echo "Running tests with grep pattern: ${{ matrix.shard.grep }}"
+          # Try different parameter formats for WebDriverIO/Mocha
+          if ! npm run e2e:ios -- --grep "${{ matrix.shard.grep }}" 2>&1 | tee "$LOGDIR/webdriverio.log"; then
+            echo "Grep parameter failed, trying without filter..."
+            if ! npm run e2e:ios 2>&1 | tee "$LOGDIR/webdriverio.log"; then
+              echo "WebDriverIO failed with exit code $?"
+              echo "Checking for error logs..."
+              if [ -f "$LOGDIR/webdriverio.log" ]; then
+                echo "WebDriverIO log contents:"
+                cat "$LOGDIR/webdriverio.log"
+              fi
+              exit 1
+            fi
+          fi
+        env:
+          RECORD_VIDEO: true
+          # Use the regtest infrastructure from Ubuntu runner
+          E2E_ELECTRUM_SERVER: ${{ needs.regtest-infrastructure.outputs.electrum-url }}
+          E2E_LND_URL: ${{ needs.regtest-infrastructure.outputs.lnd-url }}
+
+      - name: Upload E2E Artifacts (${{ matrix.shard.name }})
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
+          path: bitkit-e2e-tests/artifacts/
+
+      - name: Shutdown Cloudflare Tunnels
+        if: always()
+        run: |
+          echo "Attempting to shutdown Cloudflare tunnels..."
+          # Try to kill any cloudflared processes
+          pkill -f cloudflared || echo "No cloudflared processes found"
+          # Try to remove PID file if it exists
+          rm -f cloudflared.pid || echo "No PID file found"
+          echo "Cloudflare tunnel cleanup completed"
