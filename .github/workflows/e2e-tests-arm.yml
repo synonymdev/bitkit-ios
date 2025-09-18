@@ -39,21 +39,38 @@ jobs:
       - name: Test Docker
         run: |
           echo "=== Colima Status ==="
-          colima status
+          colima status || echo "Colima not running"
           
           echo "=== Colima Configuration ==="
-          colima list
+          colima list || echo "No Colima instances"
           
           echo "=== Colima Logs (startup) ==="
           if [ -f "/Users/runner/.colima/_lima/colima/ha.stderr.log" ]; then
             echo "Host agent stderr:"
             tail -20 "/Users/runner/.colima/_lima/colima/ha.stderr.log"
+          else
+            echo "No stderr log found"
           fi
           
           if [ -f "/Users/runner/.colima/_lima/colima/ha.stdout.log" ]; then
             echo "Host agent stdout:"
             tail -20 "/Users/runner/.colima/_lima/colima/ha.stdout.log"
+          else
+            echo "No stdout log found"
           fi
+          
+          echo "=== System Virtualization Support ==="
+          sysctl kern.hv_support || echo "No HV support"
+          sysctl kern.vm_guest || echo "No VM guest info"
+          
+          echo "=== Brew Services Status ==="
+          brew services list | grep colima || echo "No colima service found"
+          
+          echo "=== Trying to start Colima manually with VZ ==="
+          colima start --vm-type=vz --memory 2 --cpu 1 || echo "VZ manual start failed"
+          
+          echo "=== Final Colima Status ==="
+          colima status || echo "Colima still not running"
           
           echo "=== Waiting for Docker to be ready ==="
           # Wait for Docker daemon to be ready
