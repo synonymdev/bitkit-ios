@@ -1,4 +1,4 @@
-name: e2e-tests-arm
+name: e2e-tests-intel
 
 # on:
 #   workflow_dispatch:
@@ -6,7 +6,7 @@ name: e2e-tests-arm
 
 jobs:
   docker:
-    runs-on: macos-26
+    runs-on: macos-13
     
     steps:
       - name: Checkout

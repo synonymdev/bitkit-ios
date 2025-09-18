@@ -1,8 +1,8 @@
 name: e2e-tests-hybrid
 
-# on:
-#   workflow_dispatch:
-#   pull_request:
+on:
+  workflow_dispatch:
+  pull_request:
 
 env:
   TERM: xterm-256color
@@ -13,12 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Job 1: Run regtest infrastructure on Ubuntu
+  # Job 1: Run regtest infrastructure on Ubuntu with tunneling
   regtest-infrastructure:
     runs-on: ubuntu-latest
     outputs:
-      electrum-url: ${{ steps.setup-regtest.outputs.electrum-url }}
-      lnd-url: ${{ steps.setup-regtest.outputs.lnd-url }}
+      electrum-url: ${{ steps.tunnel-electrum.outputs.url }}
+      lnd-url: ${{ steps.tunnel-lnd.outputs.url }}
     
     steps:
       - name: Clone E2E tests
@@ -71,11 +71,19 @@ jobs:
           echo "Admin macaroon found! Setting permissions..."
           chmod -R 777 lnd
           
-          # Get the runner's public IP (this will be accessible from other runners)
-          PUBLIC_IP=$(curl -s https://api.ipify.org)
-          echo "electrum-url=$PUBLIC_IP:60001" >> $GITHUB_OUTPUT
-          echo "lnd-url=$PUBLIC_IP:9735" >> $GITHUB_OUTPUT
-          echo "Regtest infrastructure ready at $PUBLIC_IP"
+          echo "Regtest infrastructure ready locally"
+
+      - name: Expose Electrum with Cloudflare Tunnel
+        id: tunnel-electrum
+        uses: cloudflare/cloudflared-action@v2
+        with:
+          port: 60001
+
+      - name: Expose LND with Cloudflare Tunnel
+        id: tunnel-lnd
+        uses: cloudflare/cloudflared-action@v2
+        with:
+          port: 9735
 
       - name: Keep regtest running
         run: |
@@ -117,6 +125,11 @@ jobs:
           # Show Docker containers
           echo "Docker containers:"
           docker ps
+          
+          # Show tunnel URLs
+          echo "Tunnel URLs:"
+          echo "Electrum: ${{ steps.tunnel-electrum.outputs.url }}"
+          echo "LND: ${{ steps.tunnel-lnd.outputs.url }}"
 
   # Job 2: Build iOS app and run E2E tests on macOS
   e2e-tests:
@@ -338,6 +351,10 @@ jobs:
           echo "Updated UDID in capabilities:"
           grep -A 5 -B 5 "appium:udid" wdio.conf.ts
           
+          # Verify the bundle ID was updated
+          echo "Updated bundle ID in capabilities:"
+          grep -A 5 -B 5 "appium:bundleId" wdio.conf.ts
+          
           # Don't manually launch the app - let Appium handle it
           # Just ensure simulator is ready and app is installed
           echo "Ensuring simulator is ready..."
@@ -392,69 +409,49 @@ jobs:
             exit 1
           fi
           
-          # Test electrum server connectivity
+          echo "✅ Using Cloudflare Tunnel URLs for regtest connectivity"
+          
+          # Test electrum server connectivity via tunnel
           if [ -n "$E2E_ELECTRUM_SERVER" ]; then
-            ELECTRUM_HOST=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f1)
-            ELECTRUM_PORT=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f2)
-            echo "Testing electrum server at $ELECTRUM_HOST:$ELECTRUM_PORT..."
+            echo "Testing electrum server at $E2E_ELECTRUM_SERVER..."
             
-            # Try multiple connection methods
-            echo "Testing with nc (netcat)..."
-            if nc -z "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null; then
-              echo "✅ Electrum server is reachable via nc"
-            else
-              echo "❌ Electrum server is not reachable via nc"
-            fi
-            
-            echo "Testing with telnet..."
-            if timeout 5 telnet "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null | grep -q "Connected"; then
-              echo "✅ Electrum server is reachable via telnet"
-            else
-              echo "❌ Electrum server is not reachable via telnet"
-            fi
-            
+            # Test with curl (tunnel URLs are HTTPS)
             echo "Testing with curl..."
-            if curl -s --connect-timeout 5 "http://$ELECTRUM_HOST:$ELECTRUM_PORT" >/dev/null 2>&1; then
-              echo "✅ Electrum server is reachable via curl"
+            if curl -s --connect-timeout 10 "$E2E_ELECTRUM_SERVER" >/dev/null 2>&1; then
+              echo "✅ Electrum server is reachable via tunnel"
             else
-              echo "❌ Electrum server is not reachable via curl"
+              echo "❌ Electrum server is not reachable via tunnel"
             fi
           fi
           
-          # Test LND connectivity
+          # Test LND connectivity via tunnel
           if [ -n "$E2E_LND_URL" ]; then
-            LND_HOST=$(echo "$E2E_LND_URL" | cut -d: -f1)
-            LND_PORT=$(echo "$E2E_LND_URL" | cut -d: -f2)
-            echo "Testing LND at $LND_HOST:$LND_PORT..."
-            if nc -z "$LND_HOST" "$LND_PORT" 2>/dev/null; then
-              echo "✅ LND is reachable"
+            echo "Testing LND at $E2E_LND_URL..."
+            if curl -s --connect-timeout 10 "$E2E_LND_URL" >/dev/null 2>&1; then
+              echo "✅ LND is reachable via tunnel"
             else
-              echo "❌ LND is not reachable"
+              echo "❌ LND is not reachable via tunnel"
               echo "This will cause tests to fail. Check if the regtest infrastructure job is still running."
             fi
           fi
           
           # Check if we should continue with tests despite connectivity issues
           if [ -n "$E2E_ELECTRUM_SERVER" ] && [ -n "$E2E_LND_URL" ]; then
-            ELECTRUM_HOST=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f1)
-            ELECTRUM_PORT=$(echo "$E2E_ELECTRUM_SERVER" | cut -d: -f2)
-            LND_HOST=$(echo "$E2E_LND_URL" | cut -d: -f1)
-            LND_PORT=$(echo "$E2E_LND_URL" | cut -d: -f2)
-            
-            if ! nc -z "$ELECTRUM_HOST" "$ELECTRUM_PORT" 2>/dev/null || ! nc -z "$LND_HOST" "$LND_PORT" 2>/dev/null; then
-              echo "⚠️  WARNING: Regtest services are not reachable. Tests will likely fail."
+            if ! curl -s --connect-timeout 5 "$E2E_ELECTRUM_SERVER" >/dev/null 2>&1 || ! curl -s --connect-timeout 5 "$E2E_LND_URL" >/dev/null 2>&1; then
+              echo "⚠️  WARNING: Regtest services are not reachable via tunnel. Tests will likely fail."
               echo "This could be due to:"
               echo "1. The regtest infrastructure job has stopped"
-              echo "2. Network connectivity issues between runners"
-              echo "3. Firewall blocking the connections"
+              echo "2. Cloudflare tunnel issues"
+              echo "3. Network connectivity issues"
               echo ""
               echo "🔧 SOLUTIONS TO TRY:"
               echo "1. Check if the regtest-infrastructure job is still running"
-              echo "2. Use a different regtest service (e.g., Blockstream's regtest API)"
-              echo "3. Run regtest on the same macOS runner (if Docker works)"
-              echo "4. Use a cloud-hosted regtest service"
+              echo "2. Check Cloudflare tunnel logs"
+              echo "3. Use a different regtest service (e.g., Blockstream's regtest API)"
               echo ""
               echo "Continuing with tests anyway..."
+            else
+              echo "✅ Regtest services are reachable via Cloudflare tunnels"
             fi
           fi
           
