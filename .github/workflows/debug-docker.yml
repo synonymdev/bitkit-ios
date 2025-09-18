@@ -82,14 +82,8 @@ jobs:
           docker --version
           docker info
           docker ps
-          echo "=== Testing Docker Compose ==="
-          docker-compose --version || echo "docker-compose not found"
-
-      - name: Install Docker Compose
-        run: |
-          echo "=== Installing Docker Compose ==="
-          python3 -m pip install docker-compose
-          docker-compose --version
+          echo "=== Testing Docker Compose V2 ==="
+          docker compose version || echo "docker compose not found"
 
       - name: Test simple Docker command
         run: |
@@ -97,17 +91,17 @@ jobs:
           docker run --rm hello-world
           echo "Docker test successful!"
 
-      - name: Test Docker Compose
+      - name: Test Docker Compose V2
         run: |
-          echo "=== Testing Docker Compose ==="
+          echo "=== Testing Docker Compose V2 ==="
           mkdir -p test-compose
           cat > test-compose/docker-compose.yml << 'EOF'
           version: '3.8'
           services:
             test:
               image: hello-world
-              command: echo "Docker Compose test successful!"
+              command: echo "Docker Compose V2 test successful!"
           EOF
           cd test-compose
-          docker-compose up
-          echo "Docker Compose test successful!"
+          docker compose up
+          echo "Docker Compose V2 test successful!"

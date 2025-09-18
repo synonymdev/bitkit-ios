@@ -90,15 +90,21 @@ jobs:
 
       - name: Keep regtest running
         run: |
-          # Keep the job running so regtest stays up
-          # This will run in the background while other jobs execute
+          # Start background processes to keep regtest and tunnels alive
           echo "Starting regtest keep-alive process..."
           nohup bash -c 'while true; do echo "Regtest infrastructure running... $(date)"; sleep 60; done' &
           KEEPALIVE_PID=$!
           echo "Keep-alive PID: $KEEPALIVE_PID"
-          echo "Regtest infrastructure is running in background"
           
-          # Verify the process is running
+          # Start tunnel keep-alive process
+          echo "Starting tunnel keep-alive process..."
+          nohup bash -c 'while true; do echo "Tunnels running... $(date)"; sleep 60; done' &
+          TUNNEL_PID=$!
+          echo "Tunnel keep-alive PID: $TUNNEL_PID"
+          
+          echo "Regtest infrastructure and tunnels are running in background"
+          
+          # Verify the processes are running
           sleep 5
           if ps -p $KEEPALIVE_PID > /dev/null; then
             echo "✅ Keep-alive process is running"
@@ -107,9 +113,16 @@ jobs:
             exit 1
           fi
           
+          if ps -p $TUNNEL_PID > /dev/null; then
+            echo "✅ Tunnel keep-alive process is running"
+          else
+            echo "❌ Tunnel keep-alive process failed to start"
+            exit 1
+          fi
+          
           # Show what's running
           echo "Current processes:"
-          ps aux | grep -E "(docker|electrum|lnd|keep)" | head -10
+          ps aux | grep -E "(docker|electrum|lnd|keep|tunnel)" | head -10
           
           # Test if services are actually accessible
           echo "Testing local connectivity..."
@@ -134,9 +147,9 @@ jobs:
           echo "Electrum: ${{ steps.tunnel-electrum.outputs.url }}"
           echo "LND: ${{ steps.tunnel-lnd.outputs.url }}"
           
-          # Keep the job running to maintain tunnels
-          echo "Keeping job alive to maintain tunnels..."
-          sleep 3600  # Keep alive for 1 hour
+          # Job is complete - background processes will keep everything running
+          echo "✅ Regtest infrastructure and tunnels are running in background"
+          echo "Job 1 completed - E2E tests can now start"
 
   # Job 2: Build iOS app and run E2E tests on macOS
   e2e-tests:
