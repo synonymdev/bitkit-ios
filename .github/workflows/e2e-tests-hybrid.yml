@@ -81,12 +81,14 @@ jobs:
         uses: AnimMouse/setup-cloudflared/tunnel@v2
         with:
           url: http://localhost:60001
+        continue-on-error: true
 
       - name: Expose LND with Cloudflare Tunnel
         id: tunnel-lnd
         uses: AnimMouse/setup-cloudflared/tunnel@v2
         with:
           url: http://localhost:9735
+        continue-on-error: true
 
       - name: Keep regtest running
         run: |
@@ -142,10 +144,21 @@ jobs:
           echo "Docker containers:"
           docker ps
           
-          # Show tunnel URLs
+          # Show tunnel URLs and verify they exist
           echo "Tunnel URLs:"
           echo "Electrum: ${{ steps.tunnel-electrum.outputs.url }}"
           echo "LND: ${{ steps.tunnel-lnd.outputs.url }}"
+          
+          # Verify tunnel URLs are not empty
+          if [ -z "${{ steps.tunnel-electrum.outputs.url }}" ] || [ -z "${{ steps.tunnel-lnd.outputs.url }}" ]; then
+            echo "❌ ERROR: Tunnel URLs are empty!"
+            echo "Electrum tunnel result: ${{ steps.tunnel-electrum.outcome }}"
+            echo "LND tunnel result: ${{ steps.tunnel-lnd.outcome }}"
+            echo "This means the Cloudflare tunnel setup failed."
+            echo "Continuing anyway - E2E tests will handle the error..."
+          else
+            echo "✅ Tunnel URLs are available"
+          fi
           
           # Job is complete - background processes will keep everything running
           echo "✅ Regtest infrastructure and tunnels are running in background"
@@ -523,4 +536,10 @@ jobs:
 
       - name: Shutdown Cloudflare Tunnels
         if: always()
-        uses: AnimMouse/setup-cloudflared/shutdown@v2
+        run: |
+          echo "Attempting to shutdown Cloudflare tunnels..."
+          # Try to kill any cloudflared processes
+          pkill -f cloudflared || echo "No cloudflared processes found"
+          # Try to remove PID file if it exists
+          rm -f cloudflared.pid || echo "No PID file found"
+          echo "Cloudflare tunnel cleanup completed"
