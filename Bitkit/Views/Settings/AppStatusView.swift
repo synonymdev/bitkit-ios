@@ -2,21 +2,22 @@ import SwiftUI
 
 struct AppStatusView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var wallet: WalletViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__status__title"))
+                .padding(.bottom, 16)
 
-            List {
-                internetStatusView
-                NavigationLink(value: Route.node) {
-                    lightningNodeStatusView
-                }
-                lightningConnectionStatusView // TODO: navigate to channel list view
+            VStack(spacing: 16) {
+                internetStatusRow
+                nodeStatusRow
+                channelsStatusRow
             }
-            .scrollContentBackground(.hidden)
-            .listStyle(PlainListStyle())
+
+            Spacer()
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -26,120 +27,52 @@ struct AppStatusView: View {
         }
     }
 
-    private var internetStatusView: some View {
-        let isConnected = app.networkStatus == .wifi || app.networkStatus == .cellular
-        let iconBackgroundColor: Color = isConnected ? .green16 : .red16
-        let iconColor: Color = isConnected ? .greenAccent : .redAccent
-        let status =
-            isConnected
-                ? t("settings__status__internet__ready", comment: "Connected")
-                : t("settings__status__internet__error", comment: "Disconnected")
-        let statusColor: Color = isConnected ? .greenAccent : .redAccent
+    // MARK: - Status Rows
 
-        return StatusItemView(
+    private var internetStatusRow: some View {
+        let status = AppStatusHelper.internetStatus(network: network)
+        let description = status == .ready ? t("settings__status__internet__ready") : t("settings__status__internet__error")
+
+        return StatusRow(
             imageName: "status-internet",
-            iconBackgroundColor: iconBackgroundColor,
-            iconColor: iconColor,
             title: t("settings__status__internet__title"),
+            description: description,
             status: status,
-            statusColor: statusColor
+            onTap: {
+                if let settingsUrl = URL(string: "App-Prefs:Settings") {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
         )
     }
 
-    private var lightningNodeStatusView: some View {
-        return StatusItemView(
+    private var nodeStatusRow: some View {
+        let status = AppStatusHelper.nodeStatus(from: wallet, network: network)
+        let description: String = t("settings__status__lightning_node__\(status.rawValue)")
+
+        return StatusRow(
             imageName: "status-node",
-            iconBackgroundColor: .green16,
-            iconColor: wallet.nodeLifecycleState.statusColor,
             title: t("settings__status__lightning_node__title"),
-            status: wallet.nodeLifecycleState.displayState,
-            statusColor: wallet.nodeLifecycleState.statusColor
+            description: description,
+            status: status,
+            onTap: {
+                navigation.navigate(.node)
+            }
         )
     }
 
-    private var lightningConnectionStatusView: some View {
-        let hasChannels = (wallet.channelCount > 0)
-        let hasUsableChannels = wallet.channels?.contains(where: \.isUsable) ?? false
-        let hasReadyChannels = wallet.channels?.contains(where: \.isChannelReady) ?? false
+    private var channelsStatusRow: some View {
+        let status = AppStatusHelper.channelsStatus(from: wallet)
+        let description: String = t("settings__status__lightning_connection__\(status.rawValue)")
 
-        let connectionColor: Color = {
-            if !hasChannels {
-                return .redAccent
-            } else if hasUsableChannels {
-                return .greenAccent
-            } else {
-                return .yellowAccent
-            }
-        }()
-
-        let iconBackgroundColor: Color = {
-            if !hasChannels {
-                return .red16
-            } else if hasUsableChannels {
-                return .green16
-            } else {
-                return .yellow16
-            }
-        }()
-
-        let connectionStatus: String = {
-            if !hasChannels {
-                return t("settings__status__lightning_connection__error")
-            } else if hasUsableChannels && hasReadyChannels {
-                return t("settings__status__lightning_connection__ready")
-            } else if !hasUsableChannels && hasReadyChannels {
-                return t("settings__status__lightning_connection__pending")
-            } else {
-                return t("settings__status__lightning_connection__ready")
-            }
-        }()
-
-        return StatusItemView(
+        return StatusRow(
             imageName: "status-lightning",
-            iconBackgroundColor: iconBackgroundColor,
-            iconColor: connectionColor,
             title: t("settings__status__lightning_connection__title"),
-            status: connectionStatus,
-            statusColor: connectionColor,
-        )
-    }
-}
-
-private struct StatusItemView: View {
-    let imageName: String
-    let iconBackgroundColor: Color
-    let iconColor: Color
-    let title: String
-    let status: String
-    let statusColor: Color
-
-    var body: some View {
-        HStack(spacing: 16) {
-            CircularIcon(
-                icon: imageName,
-                iconColor: iconColor,
-                backgroundColor: iconBackgroundColor,
-                size: 40
-            )
-
-            VStack(alignment: .leading, spacing: 4) {
-                BodyMSBText(title)
-                CaptionBText(status)
+            description: description,
+            status: status,
+            onTap: {
+                navigation.navigate(.connections)
             }
-
-            Spacer()
-        }
-        .padding(.vertical, 12)
-        .listRowBackground(Color.black)
-        .listRowSeparator(.visible, edges: .bottom)
-        .listRowSeparatorTint(Color.white.opacity(0.1))
-    }
-}
-
-#Preview {
-    NavigationStack {
-        AppStatusView()
-            .environmentObject(WalletViewModel())
-            .environmentObject(AppViewModel())
+        )
     }
 }

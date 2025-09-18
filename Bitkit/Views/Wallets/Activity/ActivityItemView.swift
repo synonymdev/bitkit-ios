@@ -324,7 +324,6 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var buttons: some View {
-        // TODO: add button actions
         VStack(spacing: 16) {
             HStack(spacing: 16) {
                 CustomButton(
@@ -332,7 +331,10 @@ struct ActivityItemView: View {
                     icon: Image("user-plus")
                         .foregroundColor(accentColor),
                     shouldExpand: true
-                )
+                ) {
+                    // TODO: add assign contact action
+                    Logger.info("Assign contact action not implemented")
+                }
 
                 CustomButton(
                     title: t("wallet__activity_tag"), size: .small,

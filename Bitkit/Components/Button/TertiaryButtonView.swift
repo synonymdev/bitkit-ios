@@ -15,7 +15,7 @@ struct TertiaryButtonView: View {
         }
         .frame(maxWidth: .infinity)
         .frame(height: CustomButton.Size.large.height)
-        .padding(.horizontal, CustomButton.Size.large.horizontalPadding)
+        .padding(.horizontal, 16)
         .background(.clear)
         .contentShape(Rectangle())
     }

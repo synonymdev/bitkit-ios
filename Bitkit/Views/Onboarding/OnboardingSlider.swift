@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct OnboardingToolbar: View {
+private struct OnboardingToolbar: View {
     let currentTab: Int
     let onSkip: () -> Void
 
@@ -8,7 +8,12 @@ struct OnboardingToolbar: View {
         ZStack(alignment: .trailing) {
             HStack {
                 Spacer()
-                CustomButton(title: t("onboarding__advanced_setup"), variant: .secondary, size: .small, destination: CreateWalletWithPassphraseView())
+                CustomButton(
+                    title: t("onboarding__advanced_setup"),
+                    variant: .secondary,
+                    size: .small,
+                    destination: CreateWalletWithPassphraseView()
+                )
             }
             .opacity(currentTab == 3 ? 1 : 0)
 
@@ -24,8 +29,8 @@ struct OnboardingToolbar: View {
     }
 }
 
-struct Dots: View {
-    @Binding var currentTab: Int
+private struct Dots: View {
+    var currentTab: Int
 
     var body: some View {
         VStack {
@@ -33,12 +38,11 @@ struct Dots: View {
             HStack(spacing: 8) {
                 ForEach(0 ..< 4) { index in
                     Circle()
-                        .fill(currentTab == index ? Color.textPrimary : Color.gray2)
-                        .frame(width: 7, height: 7)
+                        .fill(currentTab == index ? Color.textPrimary : Color.white32)
+                        .frame(width: 8, height: 8)
                 }
             }
             .animation(.easeInOut(duration: 0.3), value: currentTab)
-            .padding(.bottom, 26)
         }
     }
 }
@@ -49,7 +53,14 @@ struct OnboardingSlider: View {
 
     var body: some View {
         ZStack {
-            VStack {
+            VStack(spacing: 0) {
+                OnboardingToolbar(currentTab: currentTab) {
+                    withAnimation {
+                        currentTab = 3
+                    }
+                }
+                .padding(.horizontal, 16)
+
                 TabView(selection: $currentTab) {
                     OnboardingTab(
                         imageName: "keyring",
@@ -85,21 +96,11 @@ struct OnboardingSlider: View {
             }
 
             if currentTab != 3 {
-                Dots(currentTab: $currentTab)
+                Dots(currentTab: currentTab)
             }
         }
-        .navigationBarBackButtonHidden(true)
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .bottomSafeAreaPadding()
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                OnboardingToolbar(currentTab: currentTab) {
-                    withAnimation {
-                        currentTab = 3
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -1,65 +1,67 @@
 import SwiftUI
 
 struct HomeView: View {
-    @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            MoneyStack(
-                sats: wallet.totalBalanceSats,
-                showSymbol: true,
-                showEyeIcon: true,
-                enableSwipeGesture: settings.swipeBalanceToHide
-            )
-            .padding(.horizontal)
-            .padding(.top, 32)
+        ZStack(alignment: .top) {
+            Header()
 
-            if !app.showHomeViewEmptyState {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        NavigationLink(value: Route.savingsWallet) {
-                            WalletBalanceView(
-                                type: .onchain,
-                                sats: UInt64(wallet.totalOnchainSats)
-                            )
+            ScrollView(showsIndicators: false) {
+                MoneyStack(
+                    sats: wallet.totalBalanceSats,
+                    showSymbol: true,
+                    showEyeIcon: true,
+                    enableSwipeGesture: settings.swipeBalanceToHide
+                )
+                .padding(.top, 16 + 48)
+                .padding(.horizontal, 16)
+
+                if !app.showHomeViewEmptyState {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 0) {
+                            NavigationLink(value: Route.savingsWallet) {
+                                WalletBalanceView(
+                                    type: .onchain,
+                                    sats: UInt64(wallet.totalOnchainSats)
+                                )
+                            }
+
+                            Divider()
+                                .frame(width: 1, height: 50)
+                                .background(Color.white16)
+                                .padding(.trailing, 16)
+                                .padding(.leading, 16)
+
+                            NavigationLink(value: Route.spendingWallet) {
+                                WalletBalanceView(
+                                    type: .lightning,
+                                    sats: UInt64(wallet.totalLightningSats)
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 28)
+                        .padding(.horizontal)
+
+                        Suggestions()
+
+                        if settings.showWidgets {
+                            Widgets()
+                                .padding(.top, 32)
+                                .padding(.horizontal)
                         }
 
-                        Divider()
-                            .frame(width: 1, height: 50)
-                            .background(Color.white16)
-                            .padding(.trailing, 16)
-                            .padding(.leading, 16)
-
-                        NavigationLink(value: Route.spendingWallet) {
-                            WalletBalanceView(
-                                type: .lightning,
-                                sats: UInt64(wallet.totalLightningSats)
-                            )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 28)
-                    .padding(.horizontal)
-
-                    Suggestions()
-
-                    if settings.showWidgets {
-                        Widgets()
+                        ActivityLatest()
                             .padding(.top, 32)
                             .padding(.horizontal)
                     }
-
-                    ActivityLatest()
-                        .padding(.top, 32)
-                        .padding(.horizontal)
+                    /// Leave some space for TabBar
+                    .padding(.bottom, 130)
                 }
-                /// Leave some space for TabBar
-                .padding(.bottom, 130)
             }
         }
         /// Dismiss (calculator widget) keyboard when scrolling
@@ -97,11 +99,7 @@ struct HomeView: View {
                 app.toast(error)
             }
         }
-        .navigationBarItems(
-            leading: leftNavigationItem,
-            trailing: rightNavigationItem
-        )
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
         .accentColor(.white)
         .onAppear {
             if Env.isPreview {
@@ -126,48 +124,13 @@ struct HomeView: View {
                 }
         )
     }
-
-    var leftNavigationItem: some View {
-        Button {
-            if app.hasSeenProfileIntro {
-                navigation.navigate(.profile)
-            } else {
-                navigation.navigate(.profileIntro)
-            }
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "person.circle.fill")
-                    .font(.title2)
-                    .foregroundColor(.secondary)
-                    .frame(width: 32, height: 32)
-
-                TitleText(t("slashtags__your_name_capital"))
-            }
-            .frame(height: 46)
-        }
-    }
-
-    var rightNavigationItem: some View {
-        HStack {
-            Button {
-                withAnimation {
-                    app.showDrawer = true
-                }
-            } label: {
-                Image("burger")
-            }
-        }
-        .frame(height: 46)
-    }
 }
 
 #Preview {
     HomeView()
-        .environmentObject(WalletViewModel())
-        .environmentObject(AppViewModel())
-        .environmentObject(NavigationViewModel())
-        .environmentObject(CurrencyViewModel())
         .environmentObject(ActivityListViewModel())
+        .environmentObject(AppViewModel())
         .environmentObject(SettingsViewModel())
+        .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)
 }

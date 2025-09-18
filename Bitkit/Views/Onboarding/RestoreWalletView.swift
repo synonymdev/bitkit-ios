@@ -1,24 +1,20 @@
 import SwiftUI
 
 struct RestoreWalletView: View {
-    // TODO: add a way to switch between 12 and 24 words
-    @State private var is24Words = false
-    @State private var words: [String] = Array(repeating: "", count: 24)
+    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+
+    @State private var words: [String] = Array(repeating: "", count: 12)
     @State private var bip39Passphrase = ""
     @State private var showingPassphrase = false
     @State private var firstFieldText: String = ""
     @FocusState private var focusedField: Int?
     @FocusState private var isPassphraseFocused: Bool
 
-    @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var app: AppViewModel
-
-    private var wordsPerColumn: Int {
-        is24Words ? 12 : 6
-    }
+    private let wordCount = 12
+    private let wordsPerColumn = 6
 
     private var isValidMnemonic: Bool {
-        let wordCount = is24Words ? 24 : 12
         let currentWords = words[..<wordCount]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -32,7 +28,6 @@ struct RestoreWalletView: View {
     }
 
     private var bip39Mnemonic: String {
-        let wordCount = is24Words ? 24 : 12
         return words[..<wordCount]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .joined(separator: " ")
@@ -40,7 +35,6 @@ struct RestoreWalletView: View {
     }
 
     private var validationError: BIP39.Error? {
-        let wordCount = is24Words ? 24 : 12
         let currentWords = words[..<wordCount]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -71,7 +65,6 @@ struct RestoreWalletView: View {
         switch error {
         case .invalidMnemonic:
             // Check if it's invalid words or checksum
-            let wordCount = is24Words ? 24 : 12
             let currentWords = words[..<wordCount]
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
@@ -164,8 +157,6 @@ struct RestoreWalletView: View {
                 }
             }
         }
-        .id(is24Words)
-        .animation(.easeInOut, value: is24Words)
         .padding(.top, 44)
     }
 
@@ -230,7 +221,7 @@ struct RestoreWalletView: View {
                         }
 
                         // Move to next field
-                        if focusedField < (is24Words ? 23 : 11) {
+                        if focusedField < words.count - 1 {
                             self.focusedField = focusedField + 1
                         } else {
                             self.focusedField = nil
@@ -260,24 +251,12 @@ struct RestoreWalletView: View {
                 .components(separatedBy: .whitespaces)
                 .filter { !$0.isEmpty }
 
-        // Check if it's a valid 12 or 24 word phrase
-        guard pastedWords.count == 12 || pastedWords.count == 24 else { return }
-
-        // Update state first
-        withAnimation {
-            is24Words = pastedWords.count == 24
-        }
+        // Check if word count is valid
+        guard pastedWords.count == wordCount else { return }
 
         // Update all fields
         for (index, word) in pastedWords.enumerated() {
             words[index] = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-
-        // Clear unused fields if switching from 24 to 12 words
-        if !is24Words {
-            for index in 12 ..< 24 {
-                words[index] = ""
-            }
         }
 
         // Clear the first field's temporary text

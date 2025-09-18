@@ -1,6 +1,5 @@
 import BitkitCore
 import LDKNode
-import Network
 import SwiftUI
 
 @MainActor
@@ -44,19 +43,18 @@ class AppViewModel: ObservableObject {
     // Drawer menu
     @Published var showDrawer = false
 
-    // Network status
-    enum NetworkStatus: String {
-        case wifi
-        case cellular
-        case offline
-        case unknown
-    }
-
-    @Published var networkStatus: NetworkStatus = .unknown
-    private let networkMonitor = NWPathMonitor()
+    // App status initialization
+    @Published var appStatusInitialized: Bool = false
 
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
+    }
+
+    private func startAppStatusInitializationTimer() {
+        // Give the app some time to initialize before showing the real status
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+            self.appStatusInitialized = true
+        }
     }
 
     private let lightningService: LightningService
@@ -65,7 +63,9 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
 
     init(
-        lightningService: LightningService = .shared, coreService: CoreService = .shared, sheetViewModel: SheetViewModel,
+        lightningService: LightningService = .shared,
+        coreService: CoreService = .shared,
+        sheetViewModel: SheetViewModel,
         navigationViewModel: NavigationViewModel
     ) {
         self.lightningService = lightningService
@@ -73,26 +73,8 @@ class AppViewModel: ObservableObject {
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
 
-        // Start network monitoring
-        networkMonitor.pathUpdateHandler = { [weak self] path in
-            guard let self else { return }
-            Logger.debug("Network path updated - Status: \(path.status), Interface Types: \(path.availableInterfaces.map(\.type))")
-            DispatchQueue.main.async {
-                if path.status == .satisfied {
-                    if path.usesInterfaceType(.wifi) {
-                        self.networkStatus = .wifi
-                    } else if path.usesInterfaceType(.cellular) {
-                        self.networkStatus = .cellular
-                    } else {
-                        self.networkStatus = .unknown
-                    }
-                } else {
-                    self.networkStatus = .offline
-                }
-                Logger.debug("Current network status set to: \(self.networkStatus.rawValue)")
-            }
-        }
-        networkMonitor.start(queue: DispatchQueue.main)
+        // Start app status initialization timer
+        startAppStatusInitializationTimer()
 
         Task {
             await checkGeoStatus()
@@ -106,9 +88,7 @@ class AppViewModel: ObservableObject {
         self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
     }
 
-    deinit {
-        networkMonitor.cancel()
-    }
+    deinit {}
 
     func checkGeoStatus() async {
         do {

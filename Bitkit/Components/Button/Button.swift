@@ -49,13 +49,6 @@ struct CustomButton: View {
             case .large: return 56
             }
         }
-
-        var horizontalPadding: CGFloat {
-            switch self {
-            case .small: return 12
-            case .large: return 16
-            }
-        }
     }
 
     enum Variant {
