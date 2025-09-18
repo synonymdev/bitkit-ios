@@ -27,16 +27,6 @@ struct FxRate: Codable, Equatable {
 enum BitcoinDisplayUnit: String, CaseIterable {
     case modern
     case classic
-
-    // TODO: get translations here
-    var display: String {
-        switch self {
-        case .modern:
-            return "Modern"
-        case .classic:
-            return "Classic"
-        }
-    }
 }
 
 struct ConvertedAmount {

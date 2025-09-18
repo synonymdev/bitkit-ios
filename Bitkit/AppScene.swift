@@ -7,6 +7,7 @@ struct AppScene: View {
 
     @StateObject private var app: AppViewModel
     @StateObject private var navigation = NavigationViewModel()
+    @StateObject private var network = NetworkMonitor()
     @StateObject private var sheets = SheetViewModel()
     @StateObject private var wallet = WalletViewModel()
     @StateObject private var currency = CurrencyViewModel()
@@ -64,6 +65,7 @@ struct AppScene: View {
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .environmentObject(app)
             .environmentObject(navigation)
+            .environmentObject(network)
             .environmentObject(sheets)
             .environmentObject(wallet)
             .environmentObject(currency)

@@ -1,6 +1,5 @@
 import SwiftUI
 
-// TODO: maybe move to a separate file
 enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case wallet
     case activity
@@ -100,9 +99,18 @@ struct DrawerView: View {
 
                         Spacer()
 
-                        appStatus()
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 16)
+                        AppStatus(
+                            showText: true,
+                            showReady: true,
+                            showColor: false,
+                            testID: "DrawerAppStatus",
+                            onPress: {
+                                navigation.activeDrawerMenuItem = .appStatus
+                                closeMenu()
+                            }
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
                     }
                     .frame(width: geometry.size.width * 0.5, height: geometry.size.height)
                     .background(Color.brandAccent)
@@ -168,22 +176,6 @@ struct DrawerView: View {
                 .background(Color.white.opacity(0.1))
         }
         .padding(.horizontal, 16)
-    }
-
-    @ViewBuilder
-    private func appStatus() -> some View {
-        Button {
-            navigation.activeDrawerMenuItem = .appStatus
-            closeMenu()
-        } label: {
-            HStack(spacing: 8) {
-                Image(wallet.nodeLifecycleState.statusIcon)
-                    .resizable()
-                    .foregroundColor(.black)
-                    .frame(width: 24, height: 24)
-                BodyMSBText(DrawerMenuItem.appStatus.label, textColor: .black)
-            }
-        }
     }
 }
 
