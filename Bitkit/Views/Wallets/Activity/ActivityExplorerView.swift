@@ -8,6 +8,9 @@ struct ActivityExplorerView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
+    @State private var txDetails: TxDetails?
+    @State private var isLoadingTransaction = false
+
     private var onchain: OnchainActivity? {
         guard case let .onchain(activity) = item else { return nil }
         return activity
@@ -55,6 +58,24 @@ struct ActivityExplorerView: View {
             return Int(activity.value + (activity.fee ?? 0))
         } else {
             return Int(activity.value)
+        }
+    }
+
+    private func loadTransactionDetails() async {
+        guard let onchain else { return }
+
+        isLoadingTransaction = true
+
+        do {
+            let details = try await AddressChecker.getTransaction(txid: onchain.txId)
+            await MainActor.run {
+                txDetails = details
+                isLoadingTransaction = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingTransaction = false
+            }
         }
     }
 
@@ -116,28 +137,25 @@ struct ActivityExplorerView: View {
                             .truncationMode(.middle)
                     }
                 }
-                .padding(.bottom, 16)
 
-                Divider()
-                    .padding(.bottom, 16)
             } else if let lightning {
                 if let preimage = lightning.preimage {
                     InfoSection(
                         title: t("wallet__activity_preimage"),
-                        content: preimage,
+                        content: preimage
                     )
                 }
 
                 if let paymentHash {
                     InfoSection(
                         title: t("wallet__activity_payment_hash"),
-                        content: paymentHash,
+                        content: paymentHash
                     )
                 }
 
                 InfoSection(
                     title: t("wallet__activity_invoice"),
-                    content: lightning.invoice,
+                    content: lightning.invoice
                 )
             }
 
@@ -156,6 +174,11 @@ struct ActivityExplorerView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            if onchain != nil {
+                await loadTransactionDetails()
+            }
+        }
     }
 }
 
