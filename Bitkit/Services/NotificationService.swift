@@ -75,7 +75,7 @@ class NotificationService: ObservableObject {
     func pushNotificationTest(deviceToken: String) async throws {
         Logger.debug("Sending test notification to self")
 
-        let _ = try await CoreService.shared.blocktank.pushNotificationTest(
+        _ = try await CoreService.shared.blocktank.pushNotificationTest(
             deviceToken: deviceToken,
             secretMessage: "hello",
             notificationType: BlocktankNotificationType.orderPaymentConfirmed.rawValue

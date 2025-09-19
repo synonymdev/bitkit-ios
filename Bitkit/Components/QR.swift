@@ -3,7 +3,7 @@ import SwiftUI
 
 struct QR: View {
     let content: String
-    var imageAsset: String? = nil
+    var imageAsset: String?
 
     @State private var cachedImage: UIImage?
     @State private var cachedContent: String = ""

@@ -10,8 +10,8 @@ struct DisplayText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 44
 
@@ -50,8 +50,8 @@ struct HeadlineText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 30
 
@@ -89,8 +89,8 @@ struct TitleText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 22
 
@@ -125,8 +125,8 @@ struct SubtitleText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 17
 
@@ -161,8 +161,8 @@ struct BodyMText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .white
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 17
 
@@ -197,8 +197,8 @@ struct BodyMSBText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 17
 
@@ -233,8 +233,8 @@ struct BodyMBoldText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 17
 
@@ -269,8 +269,8 @@ struct BodySText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 15
 
@@ -305,8 +305,8 @@ struct BodySSBText: View {
     let text: String
     var textColor: Color = .textPrimary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 15
 
@@ -342,8 +342,8 @@ struct CaptionText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 13
 
@@ -377,8 +377,8 @@ struct CaptionBText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 13
 
@@ -413,8 +413,8 @@ struct CaptionMText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 13
 
@@ -449,8 +449,8 @@ struct FootnoteText: View {
     let text: String
     var textColor: Color = .textSecondary
     var accentColor: Color = .brandAccent
-    var accentFont: ((CGFloat) -> Font)? = nil
-    var accentAction: (() -> Void)? = nil
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
 
     private let fontSize: CGFloat = 12
 

@@ -44,7 +44,7 @@ final class TxBumpingTests: XCTestCase {
 
         // Create a new wallet using StartupHandler
         Logger.test("Creating new wallet", context: "TxBumpingTests")
-        let _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
+        _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
         try await lightning.setup(walletIndex: walletIndex)
 
         Logger.test("Starting lightning node", context: "TxBumpingTests")
@@ -159,7 +159,7 @@ final class TxBumpingTests: XCTestCase {
 
         // Create a new wallet using StartupHandler
         Logger.test("Creating new wallet", context: "TxBumpingTests")
-        let _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
+        _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
         try await lightning.setup(walletIndex: walletIndex)
 
         Logger.test("Starting lightning node", context: "TxBumpingTests")

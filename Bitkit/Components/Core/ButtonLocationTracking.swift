@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Preference key for tracking button locations in a coordinate space
 struct ButtonLocationPreferenceKey: PreferenceKey {
-    public static var defaultValue: [CGRect] = []
+    static var defaultValue: [CGRect] = []
 
-    public static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
         value.append(contentsOf: nextValue())
     }
 }
