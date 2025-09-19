@@ -37,8 +37,6 @@ struct ActivityExplorerView: View {
     private func loadTransactionDetails() async {
         guard let onchain else { return }
 
-        isLoadingTransaction = true
-
         do {
             let details = try await AddressChecker.getTransaction(txid: onchain.txId)
             await MainActor.run {
@@ -118,12 +116,23 @@ struct ActivityExplorerView: View {
                     content: onchain.txId,
                 )
 
-                InfoSection(
-                    title: "INPUT",
-                    content: "\(onchain.txId):0",
-                )
-
                 if let txDetails {
+                    CaptionText("Inputs (\(txDetails.vin.count))")
+                        .textCase(.uppercase)
+                        .padding(.bottom, 8)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(txDetails.vin.enumerated()), id: \.offset) { _, input in
+                            let txId = input.txid ?? ""
+                            let vout = input.vout ?? 0
+                            BodySSBText("\(txId):\(vout)")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+
+                    Divider()
+                        .padding(.vertical, 16)
+
                     CaptionText("OUTPUTS (\(txDetails.vout.count))")
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
