@@ -8,6 +8,9 @@ struct ActivityExplorerView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
+    @State private var txDetails: TxDetails?
+    @State private var isLoadingTransaction = false
+
     private var onchain: OnchainActivity? {
         guard case let .onchain(activity) = item else { return nil }
         return activity
@@ -30,6 +33,24 @@ struct ActivityExplorerView: View {
             case .bitcoin, .regtest, .signet: "https://mempool.space"
             }
         return URL(string: "\(baseUrl)/tx/\(txId)")
+    }
+
+    private func loadTransactionDetails() async {
+        guard let onchain else { return }
+
+        isLoadingTransaction = true
+
+        do {
+            let details = try await AddressChecker.getTransaction(txid: onchain.txId)
+            await MainActor.run {
+                txDetails = details
+                isLoadingTransaction = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingTransaction = false
+            }
+        }
     }
 
     private var amountPrefix: String {
@@ -156,6 +177,11 @@ struct ActivityExplorerView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            if onchain != nil {
+                await loadTransactionDetails()
+            }
+        }
     }
 }
 
