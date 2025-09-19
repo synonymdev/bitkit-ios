@@ -8,6 +8,8 @@ struct ActivityExplorerView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
+    @State private var txDetails: TxDetails?
+
     private var onchain: OnchainActivity? {
         guard case let .onchain(activity) = item else { return nil }
         return activity
@@ -30,6 +32,21 @@ struct ActivityExplorerView: View {
             case .bitcoin, .regtest, .signet: "https://mempool.space"
             }
         return URL(string: "\(baseUrl)/tx/\(txId)")
+    }
+
+    private func loadTransactionDetails() async {
+        guard let onchain else { return }
+
+        isLoadingTransaction = true
+
+        do {
+            let details = try await AddressChecker.getTransaction(txid: onchain.txId)
+            await MainActor.run {
+                txDetails = details
+            }
+        } catch {
+            await MainActor.run {}
+        }
     }
 
     private var amountPrefix: String {
@@ -106,17 +123,19 @@ struct ActivityExplorerView: View {
                     content: "\(onchain.txId):0",
                 )
 
-                CaptionText("OUTPUTS (2)")
-                    .textCase(.uppercase)
-                    .padding(.bottom, 8)
-                VStack(alignment: .leading, spacing: 4) {
-                    ForEach(0 ..< 2, id: \.self) { i in
-                        BodySSBText("bcrt1q...output\(i)")
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                if let txDetails {
+                    CaptionText("OUTPUTS (\(txDetails.vout.count))")
+                        .textCase(.uppercase)
+                        .padding(.bottom, 8)
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(Array(txDetails.vout.enumerated()), id: \.offset) { _, output in
+                            BodySSBText(output.scriptpubkey_address ?? "")
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
+                    .padding(.bottom, 16)
                 }
-                .padding(.bottom, 16)
 
                 Divider()
                     .padding(.bottom, 16)
@@ -156,6 +175,11 @@ struct ActivityExplorerView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            if onchain != nil {
+                await loadTransactionDetails()
+            }
+        }
     }
 }
 
