@@ -117,7 +117,7 @@ struct ActivityExplorerView: View {
                 )
 
                 if let txDetails {
-                    CaptionText("Inputs (\(txDetails.vin.count))")
+                    CaptionText(tPlural("wallet__activity_input", arguments: ["count": txDetails.vin.count]))
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
@@ -133,7 +133,7 @@ struct ActivityExplorerView: View {
                     Divider()
                         .padding(.vertical, 16)
 
-                    CaptionText("OUTPUTS (\(txDetails.vout.count))")
+                    CaptionText(tPlural("wallet__activity_output", arguments: ["count": txDetails.vout.count]))
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
