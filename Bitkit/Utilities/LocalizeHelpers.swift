@@ -55,6 +55,76 @@ enum LocalizationHelper {
             return key
         }
     }
+
+    /// Formats a string using ICU MessageFormat with pluralization support
+    static func formatPlural(_ pattern: String, arguments: [String: Any], locale: Locale = Locale.current) -> String {
+        // Convert arguments dictionary to format expected by MessageFormatter
+        var formattedArgs: [String: Any] = [:]
+        var argumentArray: [Any] = []
+        var argumentNames: [String] = []
+
+        // Extract argument names and values, maintaining order
+        for (key, value) in arguments {
+            formattedArgs[key] = value
+            argumentNames.append(key)
+            argumentArray.append(value)
+        }
+
+        return formatterPlural(pattern, arguments: arguments)
+    }
+
+    // TODO: implement a ICU message format library
+    /// Fallback pluralization formatter for when ICU MessageFormat isn't available
+    private static func formatterPlural(_ pattern: String, arguments: [String: Any]) -> String {
+        var result = pattern
+
+        // Handle basic plural syntax: {count, plural, one {...} other {...}}
+        let pluralRegex = try! NSRegularExpression(pattern: "\\{(\\w+),\\s*plural,\\s*one\\s*\\{([^}]+)\\}\\s*other\\s*\\{([^}]+)\\}\\}", options: [])
+
+        let matches = pluralRegex.matches(in: pattern, options: [], range: NSRange(location: 0, length: pattern.count))
+
+        for match in matches.reversed() { // Process in reverse to maintain string indices
+            let fullMatchRange = match.range
+            let countVarRange = match.range(at: 1)
+            let oneFormRange = match.range(at: 2)
+            let otherFormRange = match.range(at: 3)
+
+            let countVarName = String(pattern[Range(countVarRange, in: pattern)!])
+            let oneForm = String(pattern[Range(oneFormRange, in: pattern)!])
+            let otherForm = String(pattern[Range(otherFormRange, in: pattern)!])
+
+            if let countValue = arguments[countVarName] {
+                let count: Int = if let intValue = countValue as? Int {
+                    intValue
+                } else if let doubleValue = countValue as? Double {
+                    Int(doubleValue)
+                } else if let stringValue = countValue as? String, let intValue = Int(stringValue) {
+                    intValue
+                } else {
+                    0
+                }
+
+                let selectedForm = (count == 1) ? oneForm : otherForm
+                var processedForm = selectedForm.replacingOccurrences(of: "#", with: "\(count)")
+
+                // Replace other variables in the selected form
+                for (key, value) in arguments {
+                    if key != countVarName {
+                        processedForm = processedForm.replacingOccurrences(of: "{\(key)}", with: "\(value)")
+                    }
+                }
+
+                result = result.replacingCharacters(in: Range(fullMatchRange, in: result)!, with: processedForm)
+            }
+        }
+
+        // Replace any remaining simple variables
+        for (key, value) in arguments {
+            result = result.replacingOccurrences(of: "{\(key)}", with: "\(value)")
+        }
+
+        return result
+    }
 }
 
 // MARK: - Public API
@@ -69,6 +139,11 @@ func t(_ key: String, comment: String = "", variables: [String: String] = [:]) -
     }
 
     return localizedString
+}
+
+func tPlural(_ key: String, comment: String = "", arguments: [String: Any] = [:]) -> String {
+    let localizedString = LocalizationHelper.getString(for: key, comment: comment)
+    return LocalizationHelper.formatPlural(localizedString, arguments: arguments)
 }
 
 // These are for keys that are not yet translated
