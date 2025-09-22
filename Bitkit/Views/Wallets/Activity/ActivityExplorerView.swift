@@ -137,8 +137,8 @@ struct ActivityExplorerView: View {
                         .textCase(.uppercase)
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(txDetails.vout.enumerated()), id: \.offset) { _, output in
-                            BodySSBText(output.scriptpubkey_address ?? "")
+                        ForEach(txDetails.vout.indices, id: \.self) { i in
+                            BodySSBText(txDetails.vout[i].scriptpubkey_address ?? "")
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
