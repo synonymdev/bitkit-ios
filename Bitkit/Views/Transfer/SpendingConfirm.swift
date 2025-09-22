@@ -135,7 +135,7 @@ struct SpendingConfirm: View {
                 let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
 
                 let fee = try await wallet.calculateTotalFee(
-                    address: order.payment.onchain.address,
+                    address: order.payment?.onchain?.address ?? "",
                     amountSats: order.feeSat,
                     satsPerVByte: fastFeeRate,
                 )

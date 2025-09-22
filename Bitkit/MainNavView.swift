@@ -48,6 +48,14 @@ struct MainNavView: View {
             config in BackupSheet(config: config)
         }
         .sheet(
+            item: $sheets.giftSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in GiftSheet(config: config)
+        }
+        .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
                 sheets.hideSheet()

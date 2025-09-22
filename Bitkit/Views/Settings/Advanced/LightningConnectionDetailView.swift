@@ -70,7 +70,7 @@ struct LightningConnectionDetailView: View {
                                 Divider().padding(.horizontal, 16)
                                 DetailRow(
                                     label: t("lightning__transaction"),
-                                    value: truncateString(order.payment.onchain.address, length: 16)
+                                    value: truncateString(order.payment?.onchain?.address ?? "", length: 16)
                                 )
                                 Divider().padding(.horizontal, 16)
                                 DetailRow(
