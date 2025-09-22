@@ -75,13 +75,17 @@ struct NavigationBar: View {
                     }
                 } label: {
                     Image("burger")
+                        .resizable()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 24, height: 24)
                 }
+                .frame(width: 32, height: 32)
+                .offset(x: 6)
             } else {
                 Spacer()
                     .frame(width: 24, height: 24)
             }
         }
         .frame(height: 48)
-        .offset(y: -5)
     }
 }
