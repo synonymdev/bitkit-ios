@@ -82,6 +82,8 @@ class AddressChecker {
         }
     }
 
+    /// Fetches full transaction details from the Esplora endpoint for the given txid.
+    /// - Parameter txid: Hex transaction identifier.
     static func getTransaction(txid: String) async throws -> TxDetails {
         guard let url = URL(string: "\(Env.esploraServerUrl)/tx/\(txid)") else {
             throw AddressCheckerError.invalidUrl
@@ -99,6 +101,7 @@ class AddressChecker {
             let decoder = JSONDecoder()
             return try decoder.decode(TxDetails.self, from: data)
         } catch let error as DecodingError {
+            Logger.error("decoding error \(error)")
             throw AddressCheckerError.invalidResponse
         } catch {
             throw AddressCheckerError.networkError(error)
