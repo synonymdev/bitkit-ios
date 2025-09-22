@@ -43,7 +43,7 @@ struct ActivityExplorerView: View {
                 txDetails = details
             }
         } catch {
-            await MainActor.run {}
+            Logger.warn("Failed to load transaction details: \(error)")
         }
     }
 

@@ -58,18 +58,6 @@ enum LocalizationHelper {
 
     /// Formats a string using ICU MessageFormat with pluralization support
     static func formatPlural(_ pattern: String, arguments: [String: Any], locale: Locale = Locale.current) -> String {
-        // Convert arguments dictionary to format expected by MessageFormatter
-        var formattedArgs: [String: Any] = [:]
-        var argumentArray: [Any] = []
-        var argumentNames: [String] = []
-
-        // Extract argument names and values, maintaining order
-        for (key, value) in arguments {
-            formattedArgs[key] = value
-            argumentNames.append(key)
-            argumentArray.append(value)
-        }
-
         return formatterPlural(pattern, arguments: arguments)
     }
 
