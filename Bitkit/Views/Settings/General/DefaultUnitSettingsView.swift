@@ -9,7 +9,7 @@ struct DefaultUnitSettingsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(t("settings__general__unit_display").uppercased())
+                    CaptionMText(t("settings__general__unit_display"))
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -42,7 +42,7 @@ struct DefaultUnitSettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(t("settings__general__denomination_label").uppercased())
+                    CaptionMText(t("settings__general__denomination_label"))
                         .padding(.vertical, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -51,7 +51,7 @@ struct DefaultUnitSettingsView: View {
                             currency.displayUnit = unit
                         }) {
                             SettingsListLabel(
-                                title: "\(unit.display) (\(unit == .modern ? "₿ 10 000" : "₿ 0.00010000"))",
+                                title: t("settings__general__denomination_\(unit.rawValue)"),
                                 rightIcon: currency.displayUnit == unit ? .checkmark : nil
                             )
                         }
@@ -63,16 +63,5 @@ struct DefaultUnitSettingsView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-    }
-}
-
-// Helper for conditional modifiers
-extension View {
-    @ViewBuilder func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
     }
 }

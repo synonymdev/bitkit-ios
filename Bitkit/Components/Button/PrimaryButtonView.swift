@@ -29,7 +29,7 @@ struct PrimaryButtonView: View {
         }
         .frame(maxWidth: (size == .large || shouldExpand) ? .infinity : nil)
         .frame(height: size.height)
-        .padding(.horizontal, size.horizontalPadding)
+        .padding(.horizontal, 16)
         .background(backgroundGradient)
         .cornerRadius(64)
         .shadow(color: shadowColor, radius: 0, x: 0, y: -1)
