@@ -1,0 +1,243 @@
+name: e2e-tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      e2e_branch:
+        description: "Branch of synonymdev/bitkit-e2e-tests to use"
+        required: false
+        default: "main"
+  pull_request:
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # - name: Setup Xcode
+      #   uses: maxim-lobanov/setup-xcode@v1
+      #   with:
+      #     xcode-version: '16.4'
+
+      - name: Setup iOS Simulator
+        run: |
+          # Set simulator name (easy to change if needed)
+          SIMULATOR_NAME="iPhone 16"
+          echo "SIMULATOR_NAME=$SIMULATOR_NAME" >> $GITHUB_ENV
+          
+          # List available simulators
+          xcrun simctl list devices available
+          
+          # Kill any existing simulators to start fresh
+          xcrun simctl shutdown all || true
+          sleep 5
+          
+          # Boot the specified simulator
+          echo "Booting $SIMULATOR_NAME..."
+          xcrun simctl boot "$SIMULATOR_NAME" || true
+          
+          # Wait for simulator to boot
+          echo "Waiting for simulator to boot..."
+          for i in {1..30}; do
+            if xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep -q "Booted"; then
+              echo "$SIMULATOR_NAME is booted!"
+              break
+            fi
+            echo "Waiting for $SIMULATOR_NAME boot... ($i/30)"
+            sleep 5
+          done
+          
+          # Additional wait for simulator to be fully ready
+          sleep 15
+          
+          # Install the app
+          xcrun simctl install "$SIMULATOR_NAME" e2e-app/bitkit.app
+          
+          # Verify app installation
+          xcrun simctl listapps "$SIMULATOR_NAME" | grep -i bitkit || echo "App not found in simulator"
+          
+          # Check simulator status
+          xcrun simctl list devices | grep "$SIMULATOR_NAME"
+          
+          # Launch simulator app to ensure it's visible
+          open -a Simulator
+          sleep 5
+
+      - name: Build iOS app
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
+          E2E: true
+        run: |
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath DerivedData \
+            build
+
+      - name: Prepare app for E2E tests
+        run: |
+          # Copy the .app bundle to the expected location and name
+          mkdir -p e2e-app
+          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: e2e-app/
+
+  # e2e-tests:
+  #   runs-on: self-hosted
+  #   needs: build
+
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       shard:
+  #         # - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
+  #         # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
+  #         # - { name: settings, grep: "@settings" }
+  #         # - { name: security, grep: "@security" }
+  #         - { name: onboarding, grep: "@onboarding" }
+
+  #   name: e2e-tests - ${{ matrix.shard.name }}
+
+  #   steps:
+  #     - name: Show selected E2E branch
+  #       env:
+  #         E2E_BRANCH: ${{ github.event.inputs.e2e_branch || 'main' }}
+  #       run: echo $E2E_BRANCH
+
+  #     - name: Clone E2E tests
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: synonymdev/bitkit-e2e-tests
+  #         path: bitkit-e2e-tests
+  #         ref: ${{ github.event.inputs.e2e_branch || 'main' }}
+
+  #     - name: Download iOS app
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         name: bitkit-e2e-ios_${{ github.run_number }}
+  #         path: bitkit-e2e-tests/aut
+
+  #     - name: List iOS app directory contents
+  #       run: ls -l bitkit-e2e-tests/aut
+
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 22
+
+  #     - name: Cache npm cache
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: ~/.npm
+  #         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+  #         restore-keys: |
+  #           ${{ runner.os }}-node-
+
+  #     - name: Install dependencies
+  #       working-directory: bitkit-e2e-tests
+  #       run: npm ci
+
+  #     - name: Install Docker
+  #       run: |
+  #         # Install Docker Desktop for Mac
+  #         brew install --cask docker
+  #         # Start Docker Desktop
+  #         open -a Docker
+  #         # Wait for Docker to be ready (with longer timeout)
+  #         echo "Waiting for Docker to start..."
+  #         timeout 120 bash -c 'until docker info >/dev/null 2>&1; do echo "Waiting for Docker..."; sleep 5; done'
+  #         echo "Docker is ready!"
+
+  #     - name: Install Docker Compose
+  #       run: |
+  #         # Install docker-compose via pip (more reliable than brew on macOS runners)
+  #         python3 -m pip install docker-compose
+
+  #     - name: Docker info
+  #       run: |
+  #         docker --version
+  #         docker info
+  #         docker ps
+
+  #     - name: Run regtest setup
+  #       working-directory: bitkit-e2e-tests
+  #       run: |
+  #         cd docker
+  #         mkdir lnd && chmod 777 lnd
+  #         docker compose pull --quiet
+  #         docker compose up -d
+
+  #     - name: Wait for electrum server and LND
+  #       working-directory: bitkit-e2e-tests
+  #       timeout-minutes: 10
+  #       run: |
+  #         while ! nc -z '127.0.0.1' 60001; do sleep 1; done
+  #         sudo bash -c "while [ ! -f docker/lnd/data/chain/bitcoin/regtest/admin.macaroon ]; do sleep 1; done"
+  #         sudo chmod -R 777 docker/lnd
+
+  #     - name: Setup iOS Simulator
+  #       run: |
+  #         # Boot iOS Simulator
+  #         xcrun simctl boot "iPhone 16" || true
+  #         xcrun simctl bootstatus "iPhone 16" -b
+          
+  #         # Install the app
+  #         xcrun simctl install "iPhone 16" bitkit-e2e-tests/aut/bitkit.app
+
+  #     - name: Run E2E Tests (${{ matrix.shard.name }})
+  #       run: |
+  #         cd bitkit-e2e-tests
+          
+  #         # Setup logging
+  #         LOGDIR="./artifacts"
+  #         mkdir -p "$LOGDIR"
+  #         LOGFILE="$LOGDIR/simulator.log"
+          
+  #         # Start simulator logging
+  #         xcrun simctl spawn "iPhone 16" log stream --predicate 'process == "Bitkit"' --style compact > "$LOGFILE" &
+  #         LOG_PID=$!
+          
+  #         # Setup port forwarding for regtest and LND
+  #         xcrun simctl spawn "iPhone 16" launchctl load -w /System/Library/LaunchDaemons/com.apple.usbmuxd.plist || true
+          
+  #         # Cleanup function
+  #         cleanup() {
+  #           kill "$LOG_PID" 2>/dev/null || true
+  #           wait "$LOG_PID" 2>/dev/null || true
+  #         }
+  #         trap cleanup EXIT INT TERM
+          
+  #         # Pass everything through to WDIO/Mocha
+  #         npm run e2e:ios -- "$@"
+  #       env:
+  #         RECORD_VIDEO: true
+
+  #     - name: Upload E2E Artifacts (${{ matrix.shard.name }})
+  #       if: failure()
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
+  #         path: bitkit-e2e-tests/artifacts/
+
+  #     - name: Dump docker logs on failure (${{ matrix.shard.name }})
+  #       if: failure()
+  #       uses: jwalton/gh-docker-logs@v2
+        
