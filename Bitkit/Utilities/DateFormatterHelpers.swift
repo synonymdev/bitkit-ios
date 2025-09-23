@@ -101,6 +101,57 @@ enum DateFormatterHelpers {
         return dateFormatter.string(from: date)
     }
 
+    /// Formats a date for activity item display with relative formatting
+    /// Matches the behavior of the React Native app's getActivityItemDate function
+    /// - Parameter timestamp: Unix timestamp
+    /// - Returns: Localized date string with relative formatting
+    static func getActivityItemDate(_ timestamp: UInt64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        let calendar = Calendar.current
+        let now = Date()
+
+        let beginningOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
+
+        if calendar.isDateInToday(date) {
+            // Today, format as time only (e.g., "22:40")
+            let formatter = DateFormatter()
+            formatter.locale = Locale.current
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }
+
+        if calendar.isDateInYesterday(date) {
+            // Yesterday, format as "Yesterday, 13:37"
+            let formatter = DateFormatter()
+            formatter.locale = Locale.current
+            formatter.doesRelativeDateFormatting = true
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            let dateString = formatter.string(from: date) // This will be localized "Yesterday"
+
+            let timeFormatter = DateFormatter()
+            timeFormatter.locale = Locale.current
+            timeFormatter.dateFormat = "HH:mm"
+            let timeString = timeFormatter.string(from: date)
+
+            return "\(dateString), \(timeString)"
+        }
+
+        if timestamp >= UInt64(beginningOfYear.timeIntervalSince1970) {
+            // Current year, format as "April 4, 08:29"
+            let formatter = DateFormatter()
+            formatter.locale = Locale.current
+            formatter.dateFormat = "MMMM d, HH:mm"
+            return formatter.string(from: date)
+        }
+
+        // Before current year, format as "February 2, 2021"
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "MMMM d, yyyy"
+        return formatter.string(from: date)
+    }
+
     /// Gets a localized relative date group header for activity grouping
     /// - Parameter date: The date to get the group header for
     /// - Returns: Localized group header string (e.g., "Today", "Yesterday", "This Month", etc.)
@@ -136,16 +187,13 @@ enum DateFormatterHelpers {
 
         if date >= beginningOfWeek {
             // This week - return localized "This week"
-            return t("wallet__activity_group_week", comment: "Activity group header for current week")
+            return t("wallet__activity_group_week")
         } else if date >= beginningOfMonth {
             // This month - return localized "This month"
-            return t("wallet__activity_group_month", comment: "Activity group header for current month")
+            return t("wallet__activity_group_month")
         } else if date >= beginningOfYear {
-            // This year - use month and year
-            let monthYearFormatter = DateFormatter()
-            monthYearFormatter.locale = Locale.current
-            monthYearFormatter.dateFormat = "MMMM yyyy"
-            return monthYearFormatter.string(from: date)
+            // This year - return localized "This year"
+            return t("wallet__activity_group_year")
         } else {
             // Earlier - use year only
             let yearFormatter = DateFormatter()

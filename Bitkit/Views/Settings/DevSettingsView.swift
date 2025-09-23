@@ -22,6 +22,20 @@ struct DevSettingsView: View {
                     Button {
                         Task {
                             do {
+                                try await CoreService.shared.activity.generateRandomTestData()
+                                await activity.syncState()
+                                app.toast(type: .success, title: "Success", description: "Generated test activities")
+                            } catch {
+                                app.toast(type: .error, title: "Error", description: "Failed to generate activities: \(error.localizedDescription)")
+                            }
+                        }
+                    } label: {
+                        SettingsListLabel(title: "Generate Test Activities", rightIcon: nil)
+                    }
+
+                    Button {
+                        Task {
+                            do {
                                 try await CoreService.shared.activity.removeAll()
                                 await activity.syncState()
                                 app.toast(type: .success, title: "Success", description: "All activities removed")
@@ -30,27 +44,7 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(
-                            title: "Reset All Activities",
-                            rightIcon: nil
-                        )
-                    }
-
-                    Button {
-                        Task {
-                            do {
-                                try await CoreService.shared.activity.generateRandomTestData(count: 100)
-                                await activity.syncState()
-                                app.toast(type: .success, title: "Success", description: "Generated 100 random activities")
-                            } catch {
-                                app.toast(type: .error, title: "Error", description: "Failed to generate activities: \(error.localizedDescription)")
-                            }
-                        }
-                    } label: {
-                        SettingsListLabel(
-                            title: "Generate Test Activities",
-                            rightIcon: nil
-                        )
+                        SettingsListLabel(title: "Reset All Activities", rightIcon: nil)
                     }
 
                     NavigationLink(value: Route.logs) {

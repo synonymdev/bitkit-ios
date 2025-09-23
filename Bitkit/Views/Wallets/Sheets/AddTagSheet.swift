@@ -19,19 +19,16 @@ struct AddTagSheetItem: SheetItem, Equatable {
 }
 
 struct AddTagSheet: View {
+    @EnvironmentObject private var activityListViewModel: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
-    @EnvironmentObject private var activityListViewModel: ActivityListViewModel
     @EnvironmentObject private var tagManager: TagManager
 
     let config: AddTagSheetItem
 
-    private var activityId: String {
-        config.activityId
-    }
-
     @State private var newTag: String = ""
     @State private var isLoading: Bool = false
+    @FocusState private var isTextFieldFocused: Bool
 
     var body: some View {
         Sheet(id: .addTag) {
@@ -52,13 +49,14 @@ struct AddTagSheet: View {
                             )
                         }
                     }
+                    .padding(.bottom, 28)
                 }
 
                 CaptionMText(t("wallet__tags_new"))
-                    .padding(.top, 28)
                     .padding(.bottom, 8)
 
                 TextField(t("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white08)
+                    .focused($isTextFieldFocused)
                     .disabled(isLoading)
                     .padding(.top, 8)
 
@@ -73,7 +71,7 @@ struct AddTagSheet: View {
                         await appendTagAndClose(newTag.trimmingCharacters(in: .whitespacesAndNewlines))
                     }
                 }
-                .padding(.top, 16)
+                .buttonBottomPadding(isFocused: isTextFieldFocused)
             }
             .padding(.horizontal)
         }
@@ -84,7 +82,7 @@ struct AddTagSheet: View {
         isLoading = true
         do {
             tagManager.addToLastUsedTags(tag)
-            try await activityListViewModel.appendTags(toActivity: activityId, tags: [tag])
+            try await activityListViewModel.appendTags(toActivity: config.activityId, tags: [tag])
             sheets.hideSheet()
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)

@@ -134,6 +134,39 @@ public extension TransactionSpeed {
         guard case let .custom(rate) = self else { return true }
         return rate >= minRate && rate <= maxRate
     }
+
+    /// Determines the appropriate fee description for a given fee rate
+    /// - Parameters:
+    ///   - feeRate: The fee rate in satoshis per virtual byte
+    ///   - feeEstimates: Current network fee estimates
+    /// - Returns: Localized fee description string
+    static func getFeeDescription(feeRate: UInt64, feeEstimates: FeeRates) -> String {
+        // Check against fee estimates in order of priority (highest to lowest)
+        if feeRate >= UInt64(feeEstimates.fast) {
+            return t("fee__fast__shortDescription")
+        } else if feeRate >= UInt64(feeEstimates.mid) {
+            return t("fee__normal__shortDescription")
+        } else if feeRate >= UInt64(feeEstimates.slow) {
+            return t("fee__slow__shortDescription")
+        } else {
+            // For rates below slow, use minimum
+            return t("fee__minimum__shortDescription")
+        }
+    }
+
+    /// Determines the appropriate fee description for a given fee rate with fallback
+    /// - Parameters:
+    ///   - feeRate: The fee rate in satoshis per virtual byte
+    ///   - feeEstimates: Current network fee estimates (optional)
+    /// - Returns: Localized fee description string with fallback
+    static func getFeeDescription(feeRate: UInt64, feeEstimates: FeeRates?) -> String {
+        guard let estimates = feeEstimates else {
+            // Fallback when no fee estimates are available
+            return t("fee__normal__shortDescription")
+        }
+
+        return getFeeDescription(feeRate: feeRate, feeEstimates: estimates)
+    }
 }
 
 // MARK: - Equatable Implementation

@@ -15,7 +15,7 @@ struct ActivityLatest: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(items, id: \.self) { item in
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item)
+                            ActivityRow(item: item, feeEstimates: activity.feeEstimates)
                         }
                     }
                 }
