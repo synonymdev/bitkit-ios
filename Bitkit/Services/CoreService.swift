@@ -331,107 +331,220 @@ class ActivityService {
         }
     }
 
-    func generateRandomTestData(count: Int = 100) async throws {
+    func generateRandomTestData() async throws {
+        let testDataSets = generateTestDataSets()
+
         try await ServiceQueue.background(.core) {
-            let timestamp = UInt64(Date().timeIntervalSince1970)
-            let possibleTags = ["coffee", "food", "shopping", "transport", "entertainment", "work", "friends", "family"]
-            let possibleMessages = [
-                "Coffee at Starbucks",
-                "Lunch with friends",
-                "Uber ride",
-                "Movie tickets",
-                "Groceries",
-                "Work payment",
-                "Gift for mom",
-                "Split dinner bill",
-                "Monthly rent",
-                "Gym membership",
-            ]
+            var activityId = 0
 
-            for i in 0 ..< count {
-                let isLightning = Bool.random()
-                let value = UInt64.random(in: 1000 ... 1_000_000) // Random sats between 1k and 1M
+            for (periodName, baseTimestamp, activities) in testDataSets {
+                Logger.info("Generating \(periodName) test data with \(activities.count) activities", context: "CoreService")
 
-                // Ensure that the activities are spread out over the last 30 days
-                let offset: UInt64 = switch i % 4 {
-                case 0: // Today
-                    0
-                case 1: // Yesterday
-                    86400 // 24 hours * 60 minutes * 60 seconds
-                case 2: // Last week
-                    604_800 // 7 days * 24 hours * 60 minutes * 60 seconds
-                case 3: // Last month
-                    2_629_800 // Approx. 30 days * 24 hours * 60 minutes * 60 seconds
-                default:
-                    0
-                }
+                for template in activities {
+                    let timestamp = baseTimestamp + UInt64.random(in: 0 ... 3600) // Add some randomness within the day
+                    let id = "test-\(periodName.lowercased())-\(template.type.rawValue)-\(activityId)"
 
-                let timestamp = timestamp - offset
-                let txType: PaymentType = Bool.random() ? .sent : .received
-                let status: BitkitCore.PaymentState = {
-                    let random = Int.random(in: 0 ... 10)
-                    if random < 8 { return .succeeded } // 80% chance
-                    if random < 9 { return .pending } // 10% chance
-                    return .failed // 10% chance
-                }()
-
-                let activity: Activity
-                let id: String
-
-                if isLightning {
-                    id = "test-lightning-\(i)"
-                    activity = .lightning(
-                        LightningActivity(
-                            id: id,
-                            txType: txType,
-                            status: status,
-                            value: value,
-                            fee: UInt64.random(in: 1 ... 1000),
-                            invoice: "lnbc\(value)",
-                            message: possibleMessages.randomElement() ?? "",
-                            timestamp: timestamp,
-                            preimage: Bool.random() ? "preimage\(i)" : nil,
-                            createdAt: timestamp,
-                            updatedAt: timestamp
+                    let activity: Activity = switch template.type {
+                    case .lightning:
+                        .lightning(
+                            LightningActivity(
+                                id: id,
+                                txType: template.txType,
+                                status: template.status,
+                                value: template.value,
+                                fee: UInt64.random(in: 1 ... 1000),
+                                invoice: "lnbc\(template.value)",
+                                message: template.message,
+                                timestamp: timestamp,
+                                preimage: template.status == .succeeded ? "preimage\(activityId)" : nil,
+                                createdAt: timestamp,
+                                updatedAt: timestamp
+                            )
                         )
-                    )
-                } else {
-                    id = "test-onchain-\(i)"
-                    activity = .onchain(
-                        OnchainActivity(
-                            id: id,
-                            txType: txType,
-                            txId: String(repeating: "a", count: 64), // Mock txid
-                            value: value,
-                            fee: UInt64.random(in: 100 ... 10000),
-                            feeRate: UInt64.random(in: 1 ... 100),
-                            address: "bc1...\(i)",
-                            confirmed: Bool.random(),
-                            timestamp: timestamp,
-                            isBoosted: Bool.random(),
-                            isTransfer: Bool.random(),
-                            doesExist: true,
-                            confirmTimestamp: Bool.random() ? timestamp + 3600 : nil, // 1 hour later if confirmed
-                            channelId: Bool.random() ? "channel\(i)" : nil,
-                            transferTxId: nil,
-                            createdAt: timestamp,
-                            updatedAt: timestamp
+                    case .onchain:
+                        .onchain(
+                            OnchainActivity(
+                                id: id,
+                                txType: template.txType,
+                                txId: String(repeating: "a", count: 64),
+                                value: template.value,
+                                fee: UInt64.random(in: 100 ... 200),
+                                feeRate: UInt64.random(in: 1 ... 5),
+                                address: "bc1...\(activityId)",
+                                confirmed: template.confirmed ?? false,
+                                timestamp: timestamp,
+                                isBoosted: template.isBoosted ?? false,
+                                isTransfer: template.isTransfer ?? false,
+                                doesExist: true,
+                                confirmTimestamp: template.confirmed == true ? timestamp + 3600 : nil,
+                                channelId: nil,
+                                transferTxId: nil,
+                                createdAt: timestamp,
+                                updatedAt: timestamp
+                            )
                         )
-                    )
-                }
+                    }
 
-                // Insert activity
-                try insertActivity(activity: activity)
+                    // Insert activity
+                    try insertActivity(activity: activity)
 
-                // Add random tags (0-3 tags)
-                let numTags = Int.random(in: 0 ... 3)
-                if numTags > 0 {
-                    let tags = Array(Set((0 ..< numTags).map { _ in possibleTags.randomElement()! }))
-                    try await self.appendTags(toActivity: id, tags)
+                    // Add tags
+                    if !template.tags.isEmpty {
+                        try await self.appendTags(toActivity: id, template.tags)
+                    }
+
+                    activityId += 1
                 }
             }
+
+            Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
         }
     }
+}
+
+// MARK: - Test Data Generation (Development Only)
+
+private struct ActivityTemplate {
+    enum ActivityType: String {
+        case lightning
+        case onchain
+    }
+
+    let type: ActivityType
+    let txType: PaymentType
+    let status: BitkitCore.PaymentState
+    let value: UInt64
+    let message: String
+    let tags: [String]
+    let confirmed: Bool?
+    let isBoosted: Bool?
+    let isTransfer: Bool?
+
+    init(
+        type: ActivityType,
+        txType: PaymentType,
+        status: BitkitCore.PaymentState,
+        value: UInt64,
+        message: String,
+        tags: [String] = [],
+        confirmed: Bool? = nil,
+        isBoosted: Bool? = nil,
+        isTransfer: Bool? = nil
+    ) {
+        self.type = type
+        self.txType = txType
+        self.status = status
+        self.value = value
+        self.message = message
+        self.tags = tags
+        self.confirmed = confirmed
+        self.isBoosted = isBoosted
+        self.isTransfer = isTransfer
+    }
+}
+
+private func generateTestDataSets() -> [(String, UInt64, [ActivityTemplate])] {
+    let now = UInt64(Date().timeIntervalSince1970)
+    let today = now
+    let yesterday = now - 86400 // 24 hours ago
+    let thisWeek = now - 3 * 86400 // 3 days ago
+    let thisMonth = now - 15 * 86400 // 15 days ago
+    let thisYear = now - 90 * 86400 // 90 days ago
+    let earlier = now - 300 * 86400 // 300 days ago
+
+    // swiftformat:disable all
+    return [
+        ("Today", today, [
+            // Lightning activities for today
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 50000, message: "Coffee at Starbucks", tags: ["coffee"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 25000, message: "", tags: ["work"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .pending, value: 15000, message: "", tags: ["transport"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .failed, value: 10000, message: "", tags: []),
+            
+            // Onchain activities for today
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 800000, message: "Monthly rent", tags: ["work"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 20000, message: "", tags: [], confirmed: false, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 30000, message: "", tags: [], confirmed: false, isBoosted: true, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 100000, message: "", tags: [], confirmed: false, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 200000, message: "", tags: [], confirmed: false, isBoosted: true, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 75000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 20000, message: "", tags: [], confirmed: false, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 30000, message: "", tags: [], confirmed: false, isBoosted: true, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 100000, message: "", tags: [], confirmed: false, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 200000, message: "", tags: [], confirmed: false, isBoosted: true, isTransfer: true),
+        ]),
+        
+        ("Yesterday", yesterday, [
+            // Lightning activities for yesterday
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 35000, message: "Lunch with friends", tags: ["food", "friends"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 8000, message: "", tags: ["entertainment"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .failed, value: 12000, message: "", tags: ["food", "shopping"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .pending, value: 5000, message: "", tags: []),
+            
+            // Onchain activities for yesterday
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 200000, message: "Large purchase", tags: ["shopping"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 50000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 15000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 25000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+        ]),
+        
+        ("This Week", thisWeek, [
+            // Lightning activities for this week
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 45000, message: "Gas station", tags: ["transport"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 18000, message: "Freelance work", tags: ["work"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 22000, message: "Online shopping", tags: ["shopping"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .failed, value: 12000, message: "", tags: []),
+            
+            // Onchain activities for this week
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 150000, message: "Car payment", tags: ["transport"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 80000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 25000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 30000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+        ]),
+        
+        ("This Month", thisMonth, [
+            // Lightning activities for this month
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 60000, message: "Restaurant dinner", tags: ["food"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 35000, message: "", tags: ["work"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 28000, message: "", tags: ["entertainment"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .failed, value: 15000, message: "", tags: ["shopping"]),
+            
+            // Onchain activities for this month
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 300000, message: "Investment", tags: ["work"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 120000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 50000, message: "", tags: [], confirmed: true, isBoosted: true, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 40000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+        ]),
+        
+        ("This Year", thisYear, [
+            // Lightning activities for this year
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 80000, message: "Vacation booking", tags: ["travel"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 120000, message: "", tags: ["work"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 45000, message: "", tags: ["shopping"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .failed, value: 25000, message: "", tags: ["family"]),
+            
+            // Onchain activities for this year
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 500000, message: "Home improvement", tags: ["work"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 200000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 75000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 60000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+        ]),
+        
+        ("Earlier", earlier, [
+            // Lightning activities for earlier
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 100000, message: "Major purchase", tags: ["shopping"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .succeeded, value: 150000, message: "", tags: ["work"]),
+            ActivityTemplate(type: .lightning, txType: .sent, status: .succeeded, value: 60000, message: "", tags: ["travel"]),
+            ActivityTemplate(type: .lightning, txType: .received, status: .failed, value: 40000, message: "", tags: ["work"]),
+            
+            // Onchain activities for earlier
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 1000000, message: "Real estate", tags: ["work"], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 500000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: false),
+            ActivityTemplate(type: .onchain, txType: .sent, status: .succeeded, value: 100000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+            ActivityTemplate(type: .onchain, txType: .received, status: .succeeded, value: 80000, message: "", tags: [], confirmed: true, isBoosted: false, isTransfer: true),
+        ]),
+    ]
+    // swiftformat:enable all
 }
 
 // MARK: - Blocktank Service

@@ -84,8 +84,7 @@ struct ActivityExplorerView: View {
                 app.toast(type: .success, title: t("common__copied"), description: content)
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(title)
-                        .textCase(.uppercase)
+                    CaptionMText(title)
                         .padding(.bottom, 8)
                     BodySSBText(content)
                         .padding(.bottom, 16)
@@ -108,7 +107,7 @@ struct ActivityExplorerView: View {
                 Spacer()
                 ActivityIcon(activity: item, size: 48)
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 32)
 
             if let onchain {
                 InfoSection(
@@ -117,8 +116,7 @@ struct ActivityExplorerView: View {
                 )
 
                 if let txDetails {
-                    CaptionText(tPlural("wallet__activity_input", arguments: ["count": txDetails.vin.count]))
-                        .textCase(.uppercase)
+                    CaptionMText(tPlural("wallet__activity_input", arguments: ["count": txDetails.vin.count]))
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(Array(txDetails.vin.enumerated()), id: \.offset) { _, input in
@@ -133,8 +131,7 @@ struct ActivityExplorerView: View {
                     Divider()
                         .padding(.vertical, 16)
 
-                    CaptionText(tPlural("wallet__activity_output", arguments: ["count": txDetails.vout.count]))
-                        .textCase(.uppercase)
+                    CaptionMText(tPlural("wallet__activity_output", arguments: ["count": txDetails.vout.count]))
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(txDetails.vout.indices, id: \.self) { i in

@@ -33,7 +33,6 @@ enum Env {
     // MARK: wallet services
 
     static let network: LDKNode.Network = .regtest
-    static let defaultWalletWordCount = 12
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this
 
     /// Converts the LDKNode.Network to BitkitCore.Network for use with bitkitcore functions
@@ -204,7 +203,7 @@ enum Env {
     static var vssServerUrl: String {
         switch network {
         case .regtest:
-            return "https://bitkit.stag0.blocktank.to/vss"
+            return "https://bitkit.stag0.blocktank.to/vss_rs"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
         case .testnet:
