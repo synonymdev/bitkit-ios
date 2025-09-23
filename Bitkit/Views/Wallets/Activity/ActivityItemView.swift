@@ -4,10 +4,11 @@ import SwiftUI
 
 struct ActivityItemView: View {
     let item: Activity
+    @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
     init(item: Activity) {
@@ -44,6 +45,11 @@ struct ActivityItemView: View {
 
     private var amountPrefix: String {
         isSent ? "-" : "+"
+    }
+
+    private var feeDescription: String {
+        guard case let .onchain(activity) = item else { return "" }
+        return TransactionSpeed.getFeeDescription(feeRate: activity.feeRate, feeEstimates: activityList.feeEstimates)
     }
 
     private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64, txType: PaymentType) {
@@ -138,8 +144,7 @@ struct ActivityItemView: View {
     @ViewBuilder
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CaptionText(t("wallet__activity_status"))
-                .textCase(.uppercase)
+            CaptionMText(t("wallet__activity_status"))
                 .padding(.bottom, 8)
 
             HStack(spacing: 4) {
@@ -173,8 +178,7 @@ struct ActivityItemView: View {
                             .foregroundColor(.yellowAccent)
                             .frame(width: 16, height: 16)
                         BodySSBText(
-                            t("wallet__activity_confirms_in_boosted",
-                              variables: ["feeRateDescription": t("fee__fast__shortDescription")]),
+                            t("wallet__activity_confirms_in_boosted", variables: ["feeRateDescription": feeDescription]),
                             textColor: .yellowAccent
                         )
                     } else {
@@ -195,8 +199,7 @@ struct ActivityItemView: View {
     private var timestampSection: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(t("wallet__activity_date"))
-                    .textCase(.uppercase)
+                CaptionMText(t("wallet__activity_date"))
                     .padding(.bottom, 8)
 
                 HStack(spacing: 4) {
@@ -212,8 +215,7 @@ struct ActivityItemView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(t("wallet__activity_time"))
-                    .textCase(.uppercase)
+                CaptionMText(t("wallet__activity_time"))
                     .padding(.bottom, 8)
 
                 HStack(spacing: 4) {
@@ -235,8 +237,7 @@ struct ActivityItemView: View {
         if isSent {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(t("wallet__activity_payment"))
-                        .textCase(.uppercase)
+                    CaptionMText(t("wallet__activity_payment"))
                         .padding(.bottom, 8)
 
                     HStack(spacing: 4) {
@@ -253,8 +254,7 @@ struct ActivityItemView: View {
 
                 if let fee = activity.fee {
                     VStack(alignment: .leading, spacing: 0) {
-                        CaptionText(t("wallet__activity_fee"))
-                            .textCase(.uppercase)
+                        CaptionMText(t("wallet__activity_fee"))
                             .padding(.bottom, 8)
 
                         HStack(spacing: 4) {
@@ -277,8 +277,7 @@ struct ActivityItemView: View {
     private var tagsSection: some View {
         if !viewModel.tags.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(t("wallet__tags"))
-                    .textCase(.uppercase)
+                CaptionMText(t("wallet__tags"))
                     .padding(.bottom, 8)
 
                 WrappingHStack(spacing: 8) {
@@ -305,8 +304,7 @@ struct ActivityItemView: View {
         if case let .lightning(activity) = viewModel.activity {
             if !activity.message.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(t("wallet__activity_invoice_note"))
-                        .textCase(.uppercase)
+                    CaptionMText(t("wallet__activity_invoice_note"))
                         .padding(.bottom, 8)
 
                     VStack(alignment: .leading, spacing: 0) {

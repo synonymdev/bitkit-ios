@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AppStatusView: View {
-    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var wallet: WalletViewModel
