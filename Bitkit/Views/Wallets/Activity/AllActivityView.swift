@@ -5,26 +5,8 @@ struct AllActivityView: View {
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
-    @State private var selectedTab = ActivityTab.all
     @State private var isHorizontalSwipe = false
     @State private var dragOffset: CGFloat = 0
-
-    enum ActivityTab: CaseIterable, CustomStringConvertible {
-        case all, sent, received, other
-
-        var description: String {
-            switch self {
-            case .all:
-                return t("wallet__activity_tabs__all")
-            case .sent:
-                return t("wallet__activity_tabs__sent")
-            case .received:
-                return t("wallet__activity_tabs__received")
-            case .other:
-                return t("wallet__activity_tabs__other")
-            }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -35,7 +17,7 @@ struct AllActivityView: View {
                 ActivityListFilter(viewModel: activity)
                     .padding(.bottom, 16)
 
-                SegmentedControl<ActivityTab>(selectedTab: $selectedTab, tabs: ActivityTab.allCases)
+                SegmentedControl<ActivityTab>(selectedTab: $activity.selectedTab, tabs: ActivityTab.allCases)
                     .padding(.bottom, 8)
             }
 
@@ -62,20 +44,20 @@ struct AllActivityView: View {
                                 if abs(horizontalAmount) > abs(verticalAmount) {
                                     if horizontalAmount < -50 {
                                         // Swipe left - move to next tab
-                                        if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
+                                        if let currentIndex = ActivityTab.allCases.firstIndex(of: activity.selectedTab),
                                            currentIndex < ActivityTab.allCases.count - 1
                                         {
                                             withAnimation(.easeInOut(duration: 0.2)) {
-                                                selectedTab = ActivityTab.allCases[currentIndex + 1]
+                                                activity.selectedTab = ActivityTab.allCases[currentIndex + 1]
                                             }
                                         }
                                     } else if horizontalAmount > 50 {
                                         // Swipe right - move to previous tab
-                                        if let currentIndex = ActivityTab.allCases.firstIndex(of: selectedTab),
+                                        if let currentIndex = ActivityTab.allCases.firstIndex(of: activity.selectedTab),
                                            currentIndex > 0
                                         {
                                             withAnimation(.easeInOut(duration: 0.2)) {
-                                                selectedTab = ActivityTab.allCases[currentIndex - 1]
+                                                activity.selectedTab = ActivityTab.allCases[currentIndex - 1]
                                             }
                                         }
                                     }

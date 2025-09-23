@@ -13,7 +13,7 @@ struct MoneyCell: View {
                 size: .bodyMSB,
                 prefix: prefix,
                 color: .textPrimary,
-                symbolColor: .textPrimary
+                symbolColor: .textSecondary
             )
 
             MoneyText(

@@ -2,6 +2,23 @@ import BitkitCore
 import Combine
 import SwiftUI
 
+enum ActivityTab: CaseIterable, CustomStringConvertible {
+    case all, sent, received, other
+
+    var description: String {
+        switch self {
+        case .all:
+            return t("wallet__activity_tabs__all")
+        case .sent:
+            return t("wallet__activity_tabs__sent")
+        case .received:
+            return t("wallet__activity_tabs__received")
+        case .other:
+            return t("wallet__activity_tabs__other")
+        }
+    }
+}
+
 @MainActor
 class ActivityListViewModel: ObservableObject {
     @Published var filteredActivities: [Activity]? = nil
@@ -11,6 +28,7 @@ class ActivityListViewModel: ObservableObject {
     @Published var startDate: Date?
     @Published var endDate: Date?
     @Published var selectedTags: Set<String> = []
+    @Published var selectedTab: ActivityTab = .all
 
     // Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
@@ -23,8 +41,10 @@ class ActivityListViewModel: ObservableObject {
     private var searchCancellable: AnyCancellable?
     private var dateRangeCancellable: AnyCancellable?
     private var tagsCancellable: AnyCancellable?
+    private var tabCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
+    @Published private(set) var feeEstimates: FeeRates? = nil
 
     private func updateAvailableTags() async {
         do {
@@ -35,10 +55,16 @@ class ActivityListViewModel: ObservableObject {
         }
     }
 
-    init(
-        coreService: CoreService = .shared,
-        lightningService: LightningService = .shared,
-    ) {
+    private func updateFeeEstimates() async {
+        do {
+            feeEstimates = try await coreService.blocktank.fees(refresh: false)
+        } catch {
+            Logger.error("Failed to load fee estimates: \(error)", context: "ActivityListViewModel")
+            feeEstimates = nil
+        }
+    }
+
+    init(coreService: CoreService = .shared, lightningService: LightningService = .shared) {
         self.coreService = coreService
         self.lightningService = lightningService
 
@@ -69,6 +95,15 @@ class ActivityListViewModel: ObservableObject {
                     }
                 }
 
+        // Setup tab subscription
+        tabCancellable =
+            $selectedTab
+                .sink { [weak self] _ in
+                    Task { [weak self] in
+                        await self?.updateFilteredActivities()
+                    }
+                }
+
         Task {
             await syncState()
         }
@@ -85,8 +120,9 @@ class ActivityListViewModel: ObservableObject {
             lightningActivities = try await coreService.activity.get(filter: .lightning)
             onchainActivities = try await coreService.activity.get(filter: .onchain)
 
-            // Update available tags
+            // Update available tags and fee estimates
             await updateAvailableTags()
+            await updateFeeEstimates()
         } catch {
             Logger.error(error, context: "Failed to sync activities")
         }
@@ -114,13 +150,17 @@ class ActivityListViewModel: ObservableObject {
                 return UInt64(nextDay.timeIntervalSince1970 - 1)
             }
 
-            filteredActivities = try await coreService.activity.get(
+            // Apply base filtering
+            let baseFilteredActivities = try await coreService.activity.get(
                 filter: .all,
                 tags: selectedTags.isEmpty ? nil : Array(selectedTags),
                 search: searchText.isEmpty ? nil : searchText,
                 minDate: minDate,
                 maxDate: maxDate
             )
+
+            // Apply tab filtering
+            filteredActivities = filterActivitiesByTab(baseFilteredActivities, selectedTab: selectedTab)
 
             // Update grouped activities
             updateGroupedActivities()
@@ -378,6 +418,41 @@ extension ActivityListViewModel {
             groupedActivities = groupActivities(activities)
         } else {
             groupedActivities = []
+        }
+    }
+
+    /// Filter activities based on the selected tab
+    private func filterActivitiesByTab(_ activities: [Activity], selectedTab: ActivityTab) -> [Activity] {
+        switch selectedTab {
+        case .all:
+            return activities
+        case .sent:
+            return activities.filter { activity in
+                switch activity {
+                case let .lightning(ln):
+                    return ln.txType == .sent
+                case let .onchain(on):
+                    return on.txType == .sent && !on.isTransfer
+                }
+            }
+        case .received:
+            return activities.filter { activity in
+                switch activity {
+                case let .lightning(ln):
+                    return ln.txType == .received
+                case let .onchain(on):
+                    return on.txType == .received && !on.isTransfer
+                }
+            }
+        case .other:
+            return activities.filter { activity in
+                switch activity {
+                case .lightning:
+                    return false // Lightning activities are never transfers
+                case let .onchain(on):
+                    return on.isTransfer
+                }
+            }
         }
     }
 }

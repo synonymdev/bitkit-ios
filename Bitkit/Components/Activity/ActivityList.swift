@@ -18,18 +18,17 @@ struct ActivityList: View {
         let groupedItems = activity.groupActivities(activities)
 
         if !groupedItems.isEmpty {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(groupedItems, id: \.self) { groupItem in
                     switch groupItem {
                     case let .header(title):
                         CaptionMText(title)
-                            .padding(.top)
+                            .padding(.top, 16)
 
                     case let .activity(item):
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item)
+                            ActivityRow(item: item, feeEstimates: activity.feeEstimates)
                         }
-                        .padding(.top)
                         .disabled(isHorizontalSwipe)
                     }
                 }
