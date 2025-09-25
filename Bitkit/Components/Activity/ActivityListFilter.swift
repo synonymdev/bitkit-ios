@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ActivityListFilter: View {
+    @EnvironmentObject private var sheets: SheetViewModel
     @ObservedObject var viewModel: ActivityListViewModel
     @State private var showingDateRange = false
     @State private var showingTagSelector = false
@@ -10,9 +11,26 @@ struct ActivityListFilter: View {
             Image("magnifying-glass")
                 .resizable()
                 .frame(width: 24, height: 24)
-                .foregroundColor(.white64)
+                .foregroundColor(!viewModel.searchText.isEmpty ? .brandAccent : .white64)
             TextField("Search", text: $viewModel.searchText, backgroundColor: .clear, font: .custom(Fonts.regular, size: 17))
-            HStack(spacing: 12) {
+                .frame(width: 120)
+                .offset(x: -5)
+
+            HStack(alignment: .center, spacing: 12) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .center, spacing: 4) {
+                        Spacer()
+                        ForEach(Array(viewModel.selectedTags), id: \.self) { tag in
+                            Tag(tag, icon: .close, onDelete: {
+                                viewModel.selectedTags.remove(tag)
+                            })
+                        }
+                    }
+                    // TODO: uncomment after bump to iOS 18
+                    // .containerRelativeFrame(.horizontal, alignment: .trailing)
+                }
+                .frame(maxWidth: .infinity)
+
                 Image("tag")
                     .resizable()
                     .frame(width: 24, height: 24)
@@ -28,17 +46,16 @@ struct ActivityListFilter: View {
                         showingDateRange = true
                     }
             }
-            .foregroundColor(.gray)
         }
-        .frame(height: 48)
+        .frame(width: .infinity, height: 48)
         .padding(.horizontal)
-        .background(Color.white10)
+        .background(Color.gray6)
         .cornerRadius(32)
         .sheet(isPresented: $showingDateRange) {
             DateRangeSelector(viewModel: viewModel)
         }
         .sheet(isPresented: $showingTagSelector) {
-            TagSelector(viewModel: viewModel)
+            TagFilterSheet(viewModel: viewModel, isPresented: $showingTagSelector)
         }
     }
 }
