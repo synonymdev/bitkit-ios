@@ -7,6 +7,7 @@ enum MoneySize {
     case bodyMSB
     case bodySSB
     case caption
+    case captionB
 }
 
 enum MoneyUnitType {
@@ -80,6 +81,8 @@ extension MoneyText {
             BodySSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .caption:
             CaptionMText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+        case .captionB:
+            CaptionBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         }
     }
 }

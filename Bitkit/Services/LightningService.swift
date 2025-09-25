@@ -40,21 +40,29 @@ class LightningService {
 
         let builder = Builder.fromConfig(config: config)
 
-        let electrumConfig = ElectrumSyncConfig(
-            backgroundSyncConfig: .init(
-                onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
-            )
-        )
-
         Logger.info("LDK-node log path: \(ldkStoragePath)")
 
         let logFilePath = generateLogFilePath()
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
 
-        builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
+        // let electrumConfig = ElectrumSyncConfig(
+        //     backgroundSyncConfig: .init(
+        //         onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+        //         lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+        //         feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+        //     )
+        // )
+        // builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
+        let esploraConfig = EsploraSyncConfig(
+            backgroundSyncConfig: .init(
+                onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+            )
+        )
+        builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
+
         if let rgsServerUrl = Env.ldkRgsServerUrl {
             builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
         } else {

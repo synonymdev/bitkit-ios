@@ -219,6 +219,9 @@ struct AppScene: View {
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
+
+            // Start watching pending orders after wallet is ready
+            await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
         } catch {
             Logger.error("Failed to start wallet")
             Haptics.notify(.error)
