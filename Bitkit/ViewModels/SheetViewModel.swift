@@ -16,6 +16,7 @@ enum SheetID: String, CaseIterable {
     case scanner
     case security
     case send
+    case tagFilter
 }
 
 struct SheetConfiguration {

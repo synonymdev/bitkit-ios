@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct AllActivityView: View {
-    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject private var activity: ActivityListViewModel
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var isHorizontalSwipe = false
@@ -10,16 +10,14 @@ struct AllActivityView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 0) {
-                NavigationBar(title: t("wallet__activity_all"))
-                    .padding(.bottom, 16)
+            NavigationBar(title: t("wallet__activity"))
+                .padding(.bottom, 16)
 
-                ActivityListFilter(viewModel: activity)
-                    .padding(.bottom, 16)
+            ActivityListFilter(viewModel: activity)
+                .padding(.bottom, 16)
 
-                SegmentedControl<ActivityTab>(selectedTab: $activity.selectedTab, tabs: ActivityTab.allCases)
-                    .padding(.bottom, 8)
-            }
+            SegmentedControl(selectedTab: $activity.selectedTab, tabs: ActivityTab.allCases)
+                .padding(.bottom, 8)
 
             ScrollView(showsIndicators: false) {
                 ActivityList(viewType: .all)
@@ -27,6 +25,7 @@ struct AllActivityView: View {
                     .padding(.bottom, 130)
                     .scrollDismissesKeyboard(.interactively)
                     .highPriorityGesture(
+                        // TODO: rewrite this probably
                         DragGesture(minimumDistance: 20, coordinateSpace: .local)
                             .onChanged { value in
                                 let horizontalAmount = value.translation.width
