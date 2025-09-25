@@ -286,6 +286,7 @@ struct MainNavView: View {
             // Advanced settings
             case .coinSelection: CoinSelectionSettingsView()
             case .connections: LightningConnectionsView()
+            case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
             case .node: NodeStateView()
             case .electrumSettings: ElectrumSettingsScreen()
             case .addressViewer: AddressViewer()

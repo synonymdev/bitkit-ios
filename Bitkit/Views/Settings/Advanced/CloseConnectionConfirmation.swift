@@ -4,9 +4,9 @@ import SwiftUI
 struct CloseConnectionConfirmation: View {
     let channel: ChannelDetails
 
-    @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var transfer: TransferViewModel
+    @Environment(\.dismiss) private var dismiss
 
     @State private var isClosing = false
 
@@ -28,20 +28,11 @@ struct CloseConnectionConfirmation: View {
             Spacer()
 
             HStack(spacing: 16) {
-                CustomButton(
-                    title: t("common__cancel"),
-                    variant: .secondary,
-                    isDisabled: isClosing,
-                    shouldExpand: true
-                ) {
+                CustomButton(title: t("common__cancel"), variant: .secondary, isDisabled: isClosing) {
                     dismiss()
                 }
 
-                CustomButton(
-                    title: t("lightning__close_button"),
-                    isDisabled: isClosing,
-                    shouldExpand: true
-                ) {
+                CustomButton(title: t("lightning__close_button"), isDisabled: isClosing) {
                     Task {
                         await closeChannel()
                     }

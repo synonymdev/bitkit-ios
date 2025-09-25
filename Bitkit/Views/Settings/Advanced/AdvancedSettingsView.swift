@@ -7,20 +7,14 @@ struct AdvancedSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__advanced_title"))
+                .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 16) {
                     // PAYMENTS Section
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            BodyMText(
-                                t("settings__adv__section_payments"),
-                                textColor: .textSecondary
-                            )
+                        CaptionMText(t("settings__adv__section_payments"))
                             .padding(.bottom, 8)
-
-                            Spacer()
-                        }
 
                         // Maybe never implemented
                         // NavigationLink(destination: Text("Coming soon")) {
@@ -31,96 +25,62 @@ struct AdvancedSettingsView: View {
                         // }
 
                         NavigationLink(value: Route.coinSelection) {
-                            SettingsListLabel(
-                                title: t("settings__adv__coin_selection")
-                            )
+                            SettingsListLabel(title: t("settings__adv__coin_selection"))
                         }
 
                         // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(
-                        //         title: t("settings__adv__payment_preference")
-                        //     )
+                        //     SettingsListLabel(title: t("settings__adv__payment_preference"))
                         // }
 
                         // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(
-                        //         title: t("settings__adv__gap_limit")
-                        //     )
+                        //     SettingsListLabel(title: t("settings__adv__gap_limit"))
                         // }
                     }
 
                     // NETWORKS Section
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            BodyMText(
-                                t("settings__adv__section_networks"),
-                                textColor: .textSecondary
-                            )
+                        CaptionMText(t("settings__adv__section_networks"))
                             .padding(.top, 24)
                             .padding(.bottom, 8)
 
-                            Spacer()
-                        }
-
                         NavigationLink(value: Route.connections) {
-                            SettingsListLabel(
-                                title: t("settings__adv__lightning_connections")
-                            )
+                            SettingsListLabel(title: t("settings__adv__lightning_connections"))
                         }
 
                         NavigationLink(value: Route.node) {
-                            SettingsListLabel(
-                                title: t("settings__adv__lightning_node")
-                            )
+                            SettingsListLabel(title: t("settings__adv__lightning_node"))
                         }
 
                         NavigationLink(value: Route.electrumSettings) {
-                            SettingsListLabel(
-                                title: t("settings__adv__electrum_server")
-                            )
+                            SettingsListLabel(title: t("settings__adv__electrum_server"))
                         }
 
                         NavigationLink(destination: Text("Coming soon")) {
-                            SettingsListLabel(
-                                title: t("settings__adv__rgs_server")
-                            )
+                            SettingsListLabel(title: t("settings__adv__rgs_server"))
                         }
                     }
 
                     // OTHER Section
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            BodyMText(
-                                t("settings__adv__section_other"),
-                                textColor: .textSecondary
-                            )
-                            .padding(.top, 24)
-                            .padding(.bottom, 8)
-                            Spacer()
-                        }
+                        CaptionMText(
+                            t("settings__adv__section_other"),
+                        )
+                        .padding(.top, 24)
+                        .padding(.bottom, 8)
 
                         NavigationLink(value: Route.addressViewer) {
-                            SettingsListLabel(
-                                title: t("settings__adv__address_viewer")
-                            )
+                            SettingsListLabel(title: t("settings__adv__address_viewer"))
                         }
 
-                        // SettingsListLabel(
-                        //     title: t("settings__adv__rescan"),
-                        //     rightIcon: nil
-                        // )
+                        // SettingsListLabel(title: t("settings__adv__rescan"), rightIcon: nil)
 
                         Button(action: {
                             showingResetAlert = true
                         }) {
-                            SettingsListLabel(
-                                title: t("settings__adv__suggestions_reset")
-                            )
+                            SettingsListLabel(title: t("settings__adv__suggestions_reset"))
                         }
 
-                        // Add spacing at the bottom for the last section
                         Spacer()
-                            .frame(height: 32)
                     }
                 }
             }
