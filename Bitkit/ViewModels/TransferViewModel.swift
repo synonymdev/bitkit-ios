@@ -104,7 +104,20 @@ class TransferViewModel: ObservableObject {
         watchOrder(orderId: order.id)
     }
 
-    private func watchOrder(orderId: String, frequencyMs: Double = 2500) {
+    /// Starts watching an order from app restart (when no UI state is set)
+    func startWatchingOrderFromRestart(_ order: IBtOrder) async {
+        Logger.info("Starting to watch order from restart: \(order.id)")
+
+        // Set the order in UI state so the watching logic works
+        uiState.order = order
+        uiState.isAdvanced = false
+        uiState.defaultOrder = nil
+
+        // Start watching the order
+        watchOrder(orderId: order.id)
+    }
+
+    private func watchOrder(orderId: String, frequencyMs: Double = 15000) {
         stopPolling()
 
         let frequencySecs = frequencyMs / 1000.0

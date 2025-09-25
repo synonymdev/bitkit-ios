@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 enum Route: Hashable {
@@ -75,6 +76,7 @@ enum Route: Hashable {
     // Advanced settings
     case coinSelection
     case connections
+    case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings
     case addressViewer

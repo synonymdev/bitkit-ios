@@ -101,7 +101,7 @@ struct LightningChannel: View {
                         .frame(width: 14, height: 14)
                         .foregroundColor(spendingAvailableColor)
 
-                    CaptionBText(formatNumber(localBalance), textColor: spendingAvailableColor)
+                    BodySSBText(formatNumber(localBalance), textColor: spendingAvailableColor)
                 }
 
                 Spacer()
@@ -112,7 +112,7 @@ struct LightningChannel: View {
                         .frame(width: 14, height: 14)
                         .foregroundColor(receivingAvailableColor)
 
-                    CaptionBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
+                    BodySSBText(formatNumber(remoteBalance), textColor: receivingAvailableColor)
                 }
             }
 
@@ -146,8 +146,8 @@ struct LightningChannel: View {
                 }
             }
             .frame(height: 16)
-            .opacity(status == .pending ? 0.5 : 1.0)
         }
+        .opacity(status == .pending ? 0.5 : 1.0)
     }
 }
 

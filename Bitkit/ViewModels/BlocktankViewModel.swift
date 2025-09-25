@@ -259,4 +259,24 @@ class BlocktankViewModel: ObservableObject {
             throw error
         }
     }
+
+    /// Checks for pending orders and notifies TransferViewModel to start watching them
+    /// This should be called on app startup to resume watching orders after app restart
+    func startWatchingPendingOrders(transferViewModel: TransferViewModel) async {
+        guard let orders else { return }
+
+        let pendingOrders = orders.filter { order in
+            // Watch orders that are created or paid but not yet completed
+            order.state2 == .created || order.state2 == .paid
+        }
+
+        if !pendingOrders.isEmpty {
+            Logger.info("Found \(pendingOrders.count) pending orders to watch: \(pendingOrders.map(\.id))")
+
+            // Notify TransferViewModel to start watching each pending order
+            for order in pendingOrders {
+                await transferViewModel.startWatchingOrderFromRestart(order)
+            }
+        }
+    }
 }
