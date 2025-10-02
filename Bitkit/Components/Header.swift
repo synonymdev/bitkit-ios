@@ -43,8 +43,8 @@ struct Header: View {
                         .resizable()
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
+                        .frame(width: 32, height: 32)
                 }
-                .frame(width: 32, height: 32)
             }
         }
         .frame(height: 48)

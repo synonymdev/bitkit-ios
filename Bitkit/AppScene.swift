@@ -80,7 +80,7 @@ struct AppScene: View {
             .environmentObject(suggestionsManager)
             .environmentObject(tagManager)
             .onAppear {
-                if !settings.requirePinOnLaunch {
+                if !settings.pinEnabled {
                     isPinVerified = true
                 }
 
@@ -132,7 +132,7 @@ struct AppScene: View {
             // Wallet exists and has been restored from backup. isRestoringWallet is set to false inside below component
             WalletRestoreSuccess()
         } else {
-            if !isPinVerified && settings.pinEnabled && (settings.requirePinOnLaunch || settings.requirePinWhenIdle) {
+            if !isPinVerified && settings.pinEnabled {
                 AuthCheck {
                     isPinVerified = true
                 }
@@ -256,8 +256,8 @@ struct AppScene: View {
     }
 
     private func handleScenePhaseChange(_: ScenePhase) {
-        // If 'pinOnIdle' is enabled, lock the app when the app goes to the background
-        if scenePhase == .background && settings.pinEnabled && settings.requirePinWhenIdle {
+        // If PIN is enabled, lock the app when the app goes to the background
+        if scenePhase == .background && settings.pinEnabled {
             isPinVerified = false
         }
     }

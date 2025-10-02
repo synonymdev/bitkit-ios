@@ -67,6 +67,7 @@ struct AllActivityView: View {
                             }
                     )
             }
+            .scrollDismissesKeyboard(.interactively)
             .refreshable {
                 do {
                     try await wallet.sync()
@@ -80,6 +81,9 @@ struct AllActivityView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .onAppear {
+            activity.resetFilters()
+        }
     }
 }
 
