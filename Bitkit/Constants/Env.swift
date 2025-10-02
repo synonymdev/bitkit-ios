@@ -9,6 +9,7 @@ enum Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    static let dustLimit = 547
 
     /// The current execution context of the app
     static var currentExecutionContext: ExecutionContext {

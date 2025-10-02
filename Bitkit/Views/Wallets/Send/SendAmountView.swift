@@ -31,6 +31,12 @@ struct SendAmountView: View {
         }
     }
 
+    private var isValidAmount: Bool {
+        let minAmount = app.selectedWalletToPayFrom == .lightning ? 1 : Env.dustLimit
+
+        return amountSats >= minAmount && amountSats <= availableAmount
+    }
+
     /// Determines if the current amount is a max amount send
     var isMaxAmountSend: Bool {
         guard app.selectedWalletToPayFrom == .onchain else { return false }
@@ -97,7 +103,7 @@ struct SendAmountView: View {
                     amountViewModel.handleNumberPadInput(key, currency: currency)
                 }
 
-                CustomButton(title: t("common__continue"), isDisabled: amountSats == 0) {
+                CustomButton(title: t("common__continue"), isDisabled: !isValidAmount) {
                     Task {
                         await onContinue()
                     }
