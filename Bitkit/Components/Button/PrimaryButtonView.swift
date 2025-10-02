@@ -33,7 +33,7 @@ struct PrimaryButtonView: View {
         .background(backgroundGradient)
         .cornerRadius(64)
         .shadow(color: shadowColor, radius: 0, x: 0, y: -1)
-        .opacity(isDisabled ? 0.3 : 1.0)
+        .opacity(isDisabled ? 0.32 : 1.0)
         .contentShape(Rectangle())
     }
 
@@ -42,7 +42,7 @@ struct PrimaryButtonView: View {
             return AnyView(Color.gray6)
         }
         if isDisabled {
-            return AnyView(Color.gray4)
+            return AnyView(Color.clear)
         }
 
         return AnyView(ButtonGradient(isPressed: isPressed))
