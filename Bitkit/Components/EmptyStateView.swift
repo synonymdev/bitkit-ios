@@ -59,8 +59,8 @@ struct EmptyStateView: View {
                                 .aspectRatio(contentMode: .fit)
                                 .foregroundColor(.textSecondary)
                                 .frame(width: 16, height: 16)
+                                .frame(width: 44, height: 44) // Increase hit area
                         }
-                        .frame(width: 44, height: 44)
                         .offset(x: 16, y: -16)
 
                         Spacer()
