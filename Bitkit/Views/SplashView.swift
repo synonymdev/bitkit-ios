@@ -1,13 +1,18 @@
 import SwiftUI
 
+// Custom splash screen overlay - provides smooth fade transition from launch screen
+// while wallet data loads. Fades out after 0.2s and removes after 0.4s.
+
 struct SplashView: View {
     var body: some View {
-        Image("Splash")
-            .resizable()
-            .scaledToFill()
-            .offset(x: -4, y: -6)
-            .scaleEffect(0.99)
-            .ignoresSafeArea()
+        GeometryReader { geometry in
+            Image("Splash")
+                .resizable()
+                .scaledToFill()
+                .frame(width: geometry.size.width, height: geometry.size.height)
+                .clipped()
+        }
+        .ignoresSafeArea()
     }
 }
 
