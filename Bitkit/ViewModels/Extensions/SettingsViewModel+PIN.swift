@@ -64,8 +64,6 @@ extension SettingsViewModel {
     func resetPinSettings() {
         pinEnabled = false
         pinFailedAttempts = 0
-        requirePinOnLaunch = true
-        requirePinWhenIdle = false
         requirePinForPayments = false
         useBiometrics = false
         Logger.debug("PIN settings reset after app wipe", context: "SettingsViewModel")
@@ -80,8 +78,6 @@ extension SettingsViewModel {
 
         if resetSettings {
             // Reset all PIN-related settings when PIN is disabled
-            requirePinOnLaunch = true
-            requirePinWhenIdle = false
             requirePinForPayments = false
             useBiometrics = false
         }
