@@ -1,31 +1,36 @@
 const PushNotifications = require('node-pushnotifications');
 
-const { pushSettings } = require('./settings');
+const { pushSettings, config } = require('./settings');
 const { createPushData } = require('./helpers');
 
 const push = new PushNotifications(pushSettings);
 
-const hardcodedpushtoken = "df6a15e37fe90bd0f71e919823ea19171e30fbc5632130e5e8e68f17dc76105e";
+const deviceToken = config.device.token;
 
-const data = createPushData({
-    type: 'payment'
-});
+if (!deviceToken) {
+    console.error('❌ No device token configured. Please set DEVICE_TOKEN in your .env file.');
+    process.exit(1);
+}
 
-console.log("Sending test");
-push.send(hardcodedpushtoken, data)
+const data = createPushData({ type: 'payment' });
+
+console.log("🚀 Sending test notification...");
+
+push.send(deviceToken, data)
     .then((results) => {
         if (results[0].success) {
-            console.log('SENT!');
+            console.log('✅ SENT!');
             return;
         }
 
-        console.log("No success from APS.");
+        console.log("❌ No success from APS.");
         console.error(JSON.stringify(results));
     })
     .catch((error) => {
-    console.error("Error sending push notification.");
-    console.log(JSON.stringify(error));
-}).finally(() => {
-    console.log("Done.");
-    process.exit(0);
-});
+        console.error("❌ Error sending push notification.");
+        console.log(JSON.stringify(error));
+    })
+    .finally(() => {
+        console.log("🏁 Done.");
+        process.exit(0);
+    });

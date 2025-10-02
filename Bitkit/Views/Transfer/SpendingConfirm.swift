@@ -6,6 +6,7 @@ struct SpendingConfirm: View {
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -24,11 +25,11 @@ struct SpendingConfirm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
-                .padding(.bottom, 16)
+                .padding(.bottom, 32)
 
             DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 
-            VStack(spacing: 24) {
+            VStack(spacing: 16) {
                 HStack {
                     FeeDisplayRow(
                         label: t("lightning__spending_confirm__network_fee"),
@@ -58,7 +59,6 @@ struct SpendingConfirm: View {
                 }
             }
             .padding(.top, 32)
-            .padding(.bottom, 16)
 
             if transfer.uiState.isAdvanced {
                 LightningChannel(
@@ -68,8 +68,22 @@ struct SpendingConfirm: View {
                     status: .open,
                     showLabels: true
                 )
-                .padding(.bottom, 16)
+                .padding(.vertical, 16)
             }
+
+            HStack(alignment: .center, spacing: 0) {
+                BodyMText(tTodo("Set up in background"), textColor: .textPrimary)
+
+                Spacer()
+
+                Toggle("", isOn: $settings.enableNotifications)
+                    .toggleStyle(SwitchToggleStyle(tint: .purpleAccent))
+                    .labelsHidden()
+            }
+            .frame(height: 50)
+
+            Divider()
+                .padding(.bottom, 16)
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__learn_more"), size: .small) {

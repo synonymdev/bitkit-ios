@@ -7,6 +7,7 @@ struct ReceiveCjitLearnMore: View {
     let isAdditional: Bool
 
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject private var settings: SettingsViewModel
 
     var text: String {
         isAdditional
@@ -39,6 +40,24 @@ struct ReceiveCjitLearnMore: View {
             .padding(.top, 32)
 
             Spacer()
+
+            BodyMText(tTodo("Enable background setup to safely exit Bitkit while your balance is being configured."))
+                .padding(.bottom, 16)
+
+            HStack(alignment: .center, spacing: 0) {
+                BodyMText(tTodo("Enable background setup"), textColor: .textPrimary)
+
+                Spacer()
+
+                Toggle("", isOn: $settings.enableNotifications)
+                    .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                    .labelsHidden()
+            }
+            .frame(height: 50)
+            .padding(.bottom, 8)
+
+            Divider()
+                .padding(.bottom, 22)
 
             CustomButton(title: t("common__understood")) {
                 dismiss()

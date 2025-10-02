@@ -4,9 +4,10 @@ struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
-    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var notificationManager: PushNotificationManager
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
     var body: some View {
@@ -136,10 +137,66 @@ struct MainNavView: View {
             DrawerView()
         }
         .onChange(of: scenePhase) { newPhase in
-            guard settings.readClipboard && newPhase == .active else {
-                return
+            if newPhase == .active {
+                // Update notification permission in case user changed it in OS settings
+                notificationManager.updateNotificationPermission()
+
+                guard settings.readClipboard else { return }
+
+                handleClipboard()
             }
-            handleClipboard()
+        }
+        .onChange(of: notificationManager.authorizationStatus) { newStatus in
+            // Handle notification permission changes
+            if newStatus == .authorized {
+                settings.enableNotifications = true
+                notificationManager.requestPermission()
+            } else {
+                settings.enableNotifications = false
+                notificationManager.unregister()
+            }
+        }
+        .onChange(of: notificationManager.deviceToken) { token in
+            // Register with backend if device token changed and notifications are enabled
+            if let token, settings.enableNotifications {
+                Task {
+                    do {
+                        try await notificationManager.registerWithBackend(deviceToken: token)
+                    } catch {
+                        Logger.error("Failed to sync push notifications with backend: \(error)")
+                        app.toast(
+                            type: .error,
+                            title: tTodo("Notification Registration Failed"),
+                            description: tTodo("Bitkit was unable to register for push notifications.")
+                        )
+                    }
+                }
+            }
+        }
+        .onChange(of: settings.enableNotifications) { newValue in
+            // Handle notification enable/disable
+            if newValue {
+                // Request permission in case user was not prompted yet
+                notificationManager.requestPermission()
+
+                if let token = notificationManager.deviceToken {
+                    Task {
+                        do {
+                            try await notificationManager.registerWithBackend(deviceToken: token)
+                        } catch {
+                            Logger.error("Failed to sync push notifications: \(error)")
+                            app.toast(
+                                type: .error,
+                                title: tTodo("Notification Registration Failed"),
+                                description: tTodo("Bitkit was unable to register for push notifications.")
+                            )
+                        }
+                    }
+                }
+            } else {
+                // Disable notifications (unregister)
+                notificationManager.unregister()
+            }
         }
         .onOpenURL { url in
             Task {
