@@ -137,6 +137,14 @@ class ActivityListViewModel: ObservableObject {
         selectedTags.removeAll()
     }
 
+    func resetFilters() {
+        searchText = ""
+        startDate = nil
+        endDate = nil
+        selectedTags.removeAll()
+        selectedTab = .all
+    }
+
     private func updateFilteredActivities() async {
         do {
             // Convert dates to timestamps if they exist, ensuring start date is start of day and end date is end of day
