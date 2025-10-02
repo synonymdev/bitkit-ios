@@ -4,6 +4,7 @@ import UIKit
 struct DevSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -49,6 +50,23 @@ struct DevSettingsView: View {
 
                     NavigationLink(value: Route.logs) {
                         SettingsListLabel(title: "Show Logs")
+                    }
+
+                    Button {
+                        Task {
+                            do {
+                                try await notificationManager.sendTestNotification()
+                            } catch {
+                                Logger.error(error, context: "failed to test push notification")
+                                app.toast(
+                                    type: .error,
+                                    title: "Error",
+                                    description: "Failed to send test notification: \(error)"
+                                )
+                            }
+                        }
+                    } label: {
+                        SettingsListLabel(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {

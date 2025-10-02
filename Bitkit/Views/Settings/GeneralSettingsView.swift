@@ -53,21 +53,21 @@ struct GeneralSettingsView: View {
                     NavigationLink(value: Route.widgetsSettings) {
                         SettingsListLabel(
                             title: t("settings__widgets__nav_title"),
-                            rightText: settings.showWidgets ? "On" : "Off"
+                            rightText: settings.showWidgets ? tTodo("On") : tTodo("Off")
                         )
                     }
 
                     NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                         SettingsListLabel(
                             title: t("settings__quickpay__nav_title"),
-                            rightText: settings.enableQuickpay ? "On" : "Off"
+                            rightText: settings.enableQuickpay ? tTodo("On") : tTodo("Off")
                         )
                     }
 
                     NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
                         SettingsListLabel(
                             title: t("settings__notifications__nav_title"),
-                            rightText: settings.notificationServerRegistered ? "On" : "Off"
+                            rightText: settings.enableNotifications ? tTodo("On") : tTodo("Off")
                         )
                     }
                 }

@@ -21,6 +21,20 @@
                ReferencedContainer = "container:Bitkit.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "NO"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "961058DB2C355B5500E1F1D8"
+               BuildableName = "BitkitNotification.appex"
+               BlueprintName = "BitkitNotification"
+               ReferencedContainer = "container:Bitkit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction

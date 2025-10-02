@@ -3,10 +3,11 @@ import SwiftUI
 struct NotificationsIntro: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var notificationManager: PushNotificationManager
 
     private func onEnable() {
         // Request permission and mark as seen
-        NotificationService.shared.requestPushNotificationPermission()
+        notificationManager.requestPermission()
         app.hasSeenNotificationsIntro = true
         navigation.navigate(.notifications)
     }

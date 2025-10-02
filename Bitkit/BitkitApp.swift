@@ -10,10 +10,19 @@ extension Notification.Name {
 class AppDelegate: NSObject, UIApplicationDelegate {
     // MARK: - App Launch
 
-    func application(_ application: UIApplication,
-                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool
     {
         UNUserNotificationCenter.current().delegate = self
+
+        // Check notification authorization status at launch and re-register with APN if granted
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            if settings.authorizationStatus == .authorized {
+                DispatchQueue.main.async {
+                    UIApplication.shared.registerForRemoteNotifications()
+                }
+            }
+        }
+
         return true
     }
 
@@ -40,6 +49,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 // MARK: - Push Notifications
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        PushNotificationManager.shared.updateDeviceToken(token)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Logger.error("🔔 AppDelegate: didFailToRegisterForRemoteNotificationsWithError: \(error)")
+    }
+
+    // Foreground notification presentation
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -47,38 +66,23 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = notification.request.content.userInfo
 
-        Logger.debug(userInfo, context: "push notification received while app is in the foreground")
+        Logger.debug("🔔 AppDelegate: willPresent notification called")
+        Logger.debug("🔔 AppDelegate: UserInfo: \(userInfo)")
+        Logger.debug("🔔 AppDelegate: Notification content: \(notification.request.content)")
 
-        completionHandler([])
-        // completionHandler([[.banner, .badge, .sound]])
+        completionHandler([[.banner, .badge, .sound]])
     }
 
-    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        let tokenString = deviceToken.map { String(format: "%02hhx", $0) }.joined()
-
-        Task {
-            do {
-                try await NotificationService.shared.registerDeviceForNotifications(deviceToken: tokenString)
-            } catch {
-                Logger.error("Failed to register device token with server: \(error)")
-                await MainActor.run {
-                    NotificationService.shared.onRegistrationStatusChanged?(false)
-                    NotificationService.shared.onRegistrationFailed?(error)
-                }
-            }
-        }
-    }
-
-    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-        Logger.error(error)
-    }
-
+    // Handle taps on notifications
     func userNotificationCenter(
-        _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
 
-        Logger.debug(userInfo, context: "app opened from push notification")
+        PushNotificationManager.shared.handleNotification(userInfo)
+
         // TODO: if user tapped on an incoming tx we should open it on that tx view
         completionHandler()
     }

@@ -46,6 +46,7 @@ class LightningService {
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
 
+        // TODO: switch to electrum after syncing issues are fixed
         // let electrumConfig = ElectrumSyncConfig(
         //     backgroundSyncConfig: .init(
         //         onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
@@ -54,6 +55,7 @@ class LightningService {
         //     )
         // )
         // builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
+
         let esploraConfig = EsploraSyncConfig(
             backgroundSyncConfig: .init(
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
@@ -141,8 +143,14 @@ class LightningService {
     }
 
     func stop() async throws {
+        defer {
+            // Always try to unlock, even if stopping fails
+            try? StateLocker.unlock(.lightning)
+        }
+
         guard let node else {
-            throw AppError(serviceError: .nodeNotStarted)
+            Logger.warn("Node not started, nothing to stop")
+            return
         }
 
         Logger.debug("Stopping node...")
@@ -151,8 +159,6 @@ class LightningService {
         }
         self.node = nil
         Logger.info("Node stopped")
-
-        try StateLocker.unlock(.lightning)
     }
 
     func wipeStorage(walletIndex: Int) async throws {
