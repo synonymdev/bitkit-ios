@@ -6,8 +6,6 @@ struct SecurityPrivacySettingsView: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
-    @State private var showPinCheckForLaunch = false
-    @State private var showPinCheckForIdle = false
     @State private var showPinCheckForPayments = false
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
@@ -33,6 +31,7 @@ struct SecurityPrivacySettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__security__title"))
                 .padding(.bottom, 16)
+                .padding(.horizontal, 16)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -84,32 +83,6 @@ struct SecurityPrivacySettingsView: View {
                         }
 
                         Button {
-                            showPinCheckForLaunch = true
-                        } label: {
-                            SettingsListLabel(
-                                title: t("settings__security__pin_launch"),
-                                rightIcon: nil,
-                                toggle: Binding(
-                                    get: { settings.requirePinOnLaunch },
-                                    set: { _ in showPinCheckForLaunch = true }
-                                )
-                            )
-                        }
-
-                        Button {
-                            showPinCheckForIdle = true
-                        } label: {
-                            SettingsListLabel(
-                                title: t("settings__security__pin_idle"),
-                                rightIcon: nil,
-                                toggle: Binding(
-                                    get: { settings.requirePinWhenIdle },
-                                    set: { _ in showPinCheckForIdle = true }
-                                )
-                            )
-                        }
-
-                        Button {
                             showPinCheckForPayments = true
                         } label: {
                             SettingsListLabel(
@@ -122,50 +95,29 @@ struct SecurityPrivacySettingsView: View {
                             )
                         }
 
-                        // Biometrics toggle with custom handling
-                        SettingsListLabel(
-                            title: t(
-                                "settings__security__use_bio",
-                                variables: ["biometryTypeName": biometryTypeName]
-                            ),
-                            toggle: Binding(
-                                get: { settings.useBiometrics },
-                                set: { newValue in
-                                    handleBiometricToggle(newValue)
-                                }
+                        if isBiometricAvailable {
+                            // Biometrics toggle with custom handling
+                            SettingsListLabel(
+                                title: t("settings__security__use_bio", variables: ["biometryTypeName": biometryTypeName]),
+                                toggle: Binding(
+                                    get: { settings.useBiometrics },
+                                    set: { newValue in
+                                        handleBiometricToggle(newValue)
+                                    }
+                                )
                             )
-                        )
 
-                        // Footer text for Biometrics
-                        BodySText(t("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
-                            .padding(.top, 16)
+                            // Footer text for Biometrics
+                            BodySText(t("settings__security__footer", variables: ["biometryTypeName": biometryTypeName]))
+                                .padding(.top, 16)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
                 .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .navigationDestination(isPresented: $showPinCheckForLaunch) {
-            PinCheckView(
-                title: t("security__pin_enter"),
-                explanation: "",
-                onCancel: {},
-                onPinVerified: { _ in
-                    settings.requirePinOnLaunch.toggle()
-                }
-            )
-        }
-        .navigationDestination(isPresented: $showPinCheckForIdle) {
-            PinCheckView(
-                title: t("security__pin_enter"),
-                explanation: "",
-                onCancel: {},
-                onPinVerified: { _ in
-                    settings.requirePinWhenIdle.toggle()
-                }
-            )
-        }
         .navigationDestination(isPresented: $showPinCheckForPayments) {
             PinCheckView(
                 title: t("security__pin_enter"),
@@ -189,12 +141,6 @@ struct SecurityPrivacySettingsView: View {
     }
 
     private func handleBiometricToggle(_ newValue: Bool) {
-        if !isBiometricAvailable {
-            // Biometrics not available - show setup sheet
-            sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
-            return
-        }
-
         if newValue {
             // User wants to enable biometrics - request authentication
             requestBiometricPermission { success in

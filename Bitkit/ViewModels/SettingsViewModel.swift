@@ -58,16 +58,14 @@ class SettingsViewModel: ObservableObject {
     @AppStorage("hideBalanceOnOpen") var hideBalanceOnOpen: Bool = false
     @AppStorage("readClipboard") var readClipboard: Bool = false
     @AppStorage("warnWhenSendingOver100") var warnWhenSendingOver100: Bool = false
-    @AppStorage("requirePinOnLaunch") var requirePinOnLaunch: Bool = true
-    @AppStorage("requirePinWhenIdle") var requirePinWhenIdle: Bool = false
-    @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
-    @AppStorage("useBiometrics") var useBiometrics: Bool = false
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
 
     // PIN Management
     @Published internal(set) var pinEnabled: Bool = false
     @AppStorage("pinFailedAttempts") var pinFailedAttempts: Int = 0
+    @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
+    @AppStorage("useBiometrics") var useBiometrics: Bool = false
 
     // Electrum Server Settings
     @Published var electrumHost: String = ""
