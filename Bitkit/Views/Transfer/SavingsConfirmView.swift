@@ -31,7 +31,7 @@ struct SavingsConfirmView: View {
     }
 
     private var totalSats: UInt64 {
-        channels.reduce(0) { $0 + $1.outboundCapacityMsat / 1000 + ($1.unspendablePunishmentReserve ?? 0) }
+        channels.reduce(0) { $0 + $1.spendableBalanceSats }
     }
 
     var body: some View {

@@ -332,7 +332,7 @@ extension AppViewModel {
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                let amount = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
+                let amount = channel.spendableBalanceSats
                 sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
             } else {
                 toast(type: .error, title: "Channel opened", description: "Ready to send")

@@ -2,6 +2,15 @@ import Foundation
 import LDKNode
 
 extension ChannelDetails {
+    /// Returns the spendable balance in satoshis (outbound capacity + punishment reserve)
+    var spendableBalanceSats: UInt64 {
+        return outboundCapacityMsat / 1000 + (unspendablePunishmentReserve ?? 0)
+    }
+}
+
+// MARK: - Mock Data
+
+extension ChannelDetails {
     static func mock(
         isChannelReady: Bool = true,
         isUsable: Bool = true,

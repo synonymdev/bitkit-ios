@@ -15,8 +15,7 @@ struct SavingsAdvancedView: View {
             channels
                 .filter { transfer.selectedChannelIds.contains($0.channelId) }
                 .reduce(0) { total, channel in
-                    let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
-                    return total + balance
+                    return total + channel.spendableBalanceSats
                 }
     }
 
@@ -64,7 +63,7 @@ struct SavingsAdvancedView: View {
 
     @ViewBuilder
     private func channelView(channel: ChannelDetails, index: Int, isLast: Bool) -> some View {
-        let balance = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
+        let balance = channel.spendableBalanceSats
 
         VStack(spacing: 16) {
             HStack {
