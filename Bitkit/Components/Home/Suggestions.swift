@@ -82,7 +82,7 @@ let cards: [SuggestionCardData] = [
     SuggestionCardData(
         id: "notifications",
         title: t("cards__notifications__title"),
-        description: t("cards__notifications__description"),
+        description: tTodo("When Bitkit is closed"),
         imageName: "bell-figure",
         color: .purple24,
         action: .notifications
@@ -131,7 +131,7 @@ struct Suggestions: View {
                 return false
             }
 
-            if card.action == .notifications && settings.notificationServerRegistered {
+            if card.action == .notifications && settings.enableNotifications {
                 return false
             }
 

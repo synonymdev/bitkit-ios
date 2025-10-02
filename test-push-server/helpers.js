@@ -17,4 +17,4 @@ const createPushData = (payload) => {
     };
 };
 
-module.exports = {createPushData};
+module.exports = { createPushData };

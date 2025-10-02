@@ -8,6 +8,7 @@ struct ReceiveCjitConfirmation: View {
     let isAdditional: Bool
 
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
 
     private func formattedNetworkFee() -> String {
         guard let converted = currency.convert(sats: entry.networkFeeSat) else {
@@ -54,14 +55,22 @@ struct ReceiveCjitConfirmation: View {
                 }
             }
 
-            Spacer(minLength: 0)
+            Spacer()
 
-            Image("lightning")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(maxHeight: 192)
+            HStack(alignment: .center, spacing: 0) {
+                BodyMText(tTodo("Enable background setup"), textColor: .textPrimary)
 
-            Spacer(minLength: 0)
+                Spacer()
+
+                Toggle("", isOn: $settings.enableNotifications)
+                    .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                    .labelsHidden()
+            }
+            .frame(height: 50)
+            .padding(.bottom, 8)
+
+            Divider()
+                .padding(.bottom, 22)
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__learn_more"), variant: .secondary) {

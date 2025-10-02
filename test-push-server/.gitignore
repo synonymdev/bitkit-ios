@@ -1,3 +1,6 @@
-node_modules
-certs
-.idea
+node_modules/
+.env
+*.p8
+.DS_Store
+certs/
+.idea/

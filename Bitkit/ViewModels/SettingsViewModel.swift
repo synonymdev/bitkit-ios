@@ -95,12 +95,6 @@ class SettingsViewModel: ObservableObject {
         }
 
         updatePinEnabledState()
-        checkNotificationPermission()
-
-        // Set up callback for registration status changes
-        NotificationService.shared.onRegistrationStatusChanged = { [weak self] registered in
-            self?.notificationServerRegistered = registered
-        }
     }
 
     // MARK: - Computed Properties
@@ -121,10 +115,9 @@ class SettingsViewModel: ObservableObject {
         return electrumHasEdited || !electrumIsConnected
     }
 
-    // Notifications
-    @Published var notificationAuthorizationStatus: UNAuthorizationStatus = .notDetermined
-    @Published var notificationServerRegistered: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
+    // Push Notifications
+    @AppStorage("enableNotifications") var enableNotifications: Bool = false
+    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false // TODO: does nothing yet
 
     // Widget Settings
     @AppStorage("showWidgets") var showWidgets: Bool = true

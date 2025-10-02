@@ -15,6 +15,7 @@ struct AppScene: View {
     @StateObject private var activity = ActivityListViewModel()
     @StateObject private var transfer = TransferViewModel()
     @StateObject private var widgets = WidgetsViewModel()
+    @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var scannerManager = ScannerManager()
     @StateObject private var settings = SettingsViewModel()
     @StateObject private var suggestionsManager = SuggestionsManager()
@@ -73,6 +74,7 @@ struct AppScene: View {
             .environmentObject(activity)
             .environmentObject(transfer)
             .environmentObject(widgets)
+            .environmentObject(pushManager)
             .environmentObject(scannerManager)
             .environmentObject(settings)
             .environmentObject(suggestionsManager)
@@ -80,14 +82,6 @@ struct AppScene: View {
             .onAppear {
                 if !settings.requirePinOnLaunch {
                     isPinVerified = true
-                }
-
-                NotificationService.shared.onRegistrationFailed = { _ in
-                    app.toast(
-                        type: .error,
-                        title: "Notification Registration Failed",
-                        description: "Bitkit was unable to register for push notifications."
-                    )
                 }
 
                 // Listen for quick action notifications

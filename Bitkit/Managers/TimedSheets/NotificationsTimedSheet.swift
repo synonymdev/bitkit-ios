@@ -11,7 +11,11 @@ struct NotificationsTimedSheet: TimedSheetItem {
     private let settingsViewModel: SettingsViewModel
     private let walletViewModel: WalletViewModel
 
-    init(appViewModel: AppViewModel, settingsViewModel: SettingsViewModel, walletViewModel: WalletViewModel) {
+    init(
+        appViewModel: AppViewModel,
+        settingsViewModel: SettingsViewModel,
+        walletViewModel: WalletViewModel,
+    ) {
         self.appViewModel = appViewModel
         self.settingsViewModel = settingsViewModel
         self.walletViewModel = walletViewModel
@@ -19,16 +23,16 @@ struct NotificationsTimedSheet: TimedSheetItem {
 
     @MainActor
     func shouldShow() async -> Bool {
-        // Check if user hasn't been asked for permission yet
-        let isPermissionUndetermined = settingsViewModel.notificationAuthorizationStatus == .notDetermined
-
+        // Check if user has enabled notifications
+        let notificationsEnabled = settingsViewModel.enableNotifications
         // Check if user hasn't seen this prompt
         let hasSeenNotificationsIntro = appViewModel.hasSeenNotificationsIntro
-
         // Check if user has spending balance
         let hasSpendingBalance = walletViewModel.totalLightningSats > 0
 
-        return isPermissionUndetermined && !hasSeenNotificationsIntro && hasSpendingBalance
+        let shouldShow = !notificationsEnabled && !hasSeenNotificationsIntro && hasSpendingBalance
+
+        return shouldShow
     }
 
     func onShown() {

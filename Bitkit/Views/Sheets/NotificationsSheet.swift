@@ -7,7 +7,7 @@ struct NotificationsSheetItem: SheetItem {
 
 struct NotificationsSheet: View {
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var blocktank: BlocktankViewModel
+    @EnvironmentObject private var notificationManager: PushNotificationManager
     @EnvironmentObject private var sheets: SheetViewModel
     let config: NotificationsSheetItem
 
@@ -30,7 +30,7 @@ struct NotificationsSheet: View {
 
     private func onEnable() {
         // Request permission and mark as seen
-        NotificationService.shared.requestPushNotificationPermission()
+        notificationManager.requestPermission()
         app.hasSeenNotificationsIntro = true
         sheets.hideSheet()
     }
