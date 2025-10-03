@@ -28,7 +28,7 @@ struct BackupConfirmPassphrase: View {
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
                         title: t("common__continue"),
-                        isDisabled: enteredText != passphrase,
+                        isDisabled: enteredText != passphrase
                     ) {
                         navigationPath.append(.reminder)
                     }

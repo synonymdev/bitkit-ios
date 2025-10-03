@@ -42,7 +42,7 @@ struct WidgetEditView: View {
             factsOptions: editLogic.factsOptions,
             newsOptions: editLogic.newsOptions,
             priceOptions: editLogic.priceOptions,
-            weatherOptions: editLogic.weatherOptions,
+            weatherOptions: editLogic.weatherOptions
         )
     }
 

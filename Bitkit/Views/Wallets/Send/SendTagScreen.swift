@@ -46,7 +46,7 @@ struct SendTagScreen: View {
 
                 CustomButton(
                     title: t("wallet__tags_add_button"),
-                    isDisabled: trimmedTagText.isEmpty,
+                    isDisabled: trimmedTagText.isEmpty
                 ) {
                     addTag(trimmedTagText)
                 }

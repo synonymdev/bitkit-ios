@@ -15,7 +15,7 @@ struct RadioGroup<T: Hashable>: View {
                 ForEach(Array(options.enumerated()), id: \.element.value) { _, option in
                     RadioButton(
                         title: option.title,
-                        isSelected: selectedValue == option.value,
+                        isSelected: selectedValue == option.value
                     ) {
                         selectedValue = option.value
                     }

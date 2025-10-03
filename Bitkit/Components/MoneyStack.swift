@@ -3,7 +3,7 @@ import SwiftUI
 // MoneyStack - Stacked display with toggle functionality, optional eye icon and swipe gestures
 struct MoneyStack: View {
     let sats: Int
-    var prefix: String? = nil
+    var prefix: String?
     var showSymbol: Bool = false
     var showEyeIcon: Bool = false
     var enableSwipeGesture: Bool = false

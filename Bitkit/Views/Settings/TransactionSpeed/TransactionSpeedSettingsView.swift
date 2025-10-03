@@ -4,7 +4,7 @@ struct TransactionSpeedSettingsRow: View {
     let speed: TransactionSpeed
     let isSelected: Bool
     let onSelect: () -> Void
-    var customSetSpeed: String? = nil
+    var customSetSpeed: String?
 
     var iconColor: Color {
         switch speed {

@@ -112,7 +112,7 @@ struct ActivityExplorerView: View {
             if let onchain {
                 InfoSection(
                     title: t("wallet__activity_tx_id"),
-                    content: onchain.txId,
+                    content: onchain.txId
                 )
 
                 if let txDetails {
@@ -149,20 +149,20 @@ struct ActivityExplorerView: View {
                 if let preimage = lightning.preimage {
                     InfoSection(
                         title: t("wallet__activity_preimage"),
-                        content: preimage,
+                        content: preimage
                     )
                 }
 
                 if let paymentHash {
                     InfoSection(
                         title: t("wallet__activity_payment_hash"),
-                        content: paymentHash,
+                        content: paymentHash
                     )
                 }
 
                 InfoSection(
                     title: t("wallet__activity_invoice"),
-                    content: lightning.invoice,
+                    content: lightning.invoice
                 )
             }
 
