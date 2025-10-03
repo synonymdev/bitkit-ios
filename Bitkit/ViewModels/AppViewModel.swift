@@ -325,7 +325,17 @@ extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case let .paymentReceived(paymentId, paymentHash, amountMsat, customRecords):
-            sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+            // TODO: Temporary fix while ldk-node bug is not fixed
+            Task {
+                do {
+                    let _ = try await coreService.activity.findActivity(byPaymentId: paymentHash)
+                    Logger.debug("Activity already exists for payment \(paymentHash), skipping sheet")
+                } catch {
+                    await MainActor.run {
+                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+                    }
+                }
+            }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
