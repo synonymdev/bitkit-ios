@@ -4,7 +4,7 @@ struct OnboardingTab: View {
     let imageName: String
     let title: String
     let text: String
-    var disclaimerText: String? = nil
+    var disclaimerText: String?
     let accentColor: Color
 
     var body: some View {

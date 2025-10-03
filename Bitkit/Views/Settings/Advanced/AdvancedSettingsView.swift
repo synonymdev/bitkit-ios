@@ -63,7 +63,7 @@ struct AdvancedSettingsView: View {
                     // OTHER Section
                     VStack(alignment: .leading, spacing: 0) {
                         CaptionMText(
-                            t("settings__adv__section_other"),
+                            t("settings__adv__section_other")
                         )
                         .padding(.top, 24)
                         .padding(.bottom, 8)

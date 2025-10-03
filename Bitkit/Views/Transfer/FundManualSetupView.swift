@@ -108,7 +108,7 @@ struct FundManualSetupView: View {
                 HStack {
                     CustomButton(
                         title: t("lightning__external_manual__scan"),
-                        variant: .secondary,
+                        variant: .secondary
                     ) {
                         navigation.navigate(.scanner)
                     }

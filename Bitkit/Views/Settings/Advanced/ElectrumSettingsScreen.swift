@@ -72,7 +72,7 @@ struct ElectrumSettingsScreen: View {
                                     RadioOption(title: "TCP", value: ElectrumProtocol.tcp),
                                     RadioOption(title: "TLS", value: ElectrumProtocol.ssl),
                                 ],
-                                selectedValue: $settings.electrumSelectedProtocol,
+                                selectedValue: $settings.electrumSelectedProtocol
                             )
                         }
 

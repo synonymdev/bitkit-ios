@@ -44,7 +44,7 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Create a new wallet using StartupHandler
         Logger.test("Creating new wallet", context: "UtxoSelectionTests")
-        let _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
+        _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
         try await lightning.setup(walletIndex: walletIndex)
 
         Logger.test("Starting lightning node", context: "UtxoSelectionTests")
@@ -218,7 +218,7 @@ final class UtxoSelectionTests: XCTestCase {
 
         // Create a new wallet using StartupHandler
         Logger.test("Creating new wallet", context: "UtxoSelectionTests")
-        let _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
+        _ = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
         try await lightning.setup(walletIndex: walletIndex)
 
         Logger.test("Starting lightning node", context: "UtxoSelectionTests")
