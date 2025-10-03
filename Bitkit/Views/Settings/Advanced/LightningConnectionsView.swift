@@ -183,7 +183,7 @@ struct LightningConnectionsView: View {
                                 title: showClosedConnections
                                     ? t("lightning__conn_closed_hide")
                                     : t("lightning__conn_closed_show"),
-                                variant: .tertiary,
+                                variant: .tertiary
                             ) {
                                 showClosedConnections.toggle()
                             }

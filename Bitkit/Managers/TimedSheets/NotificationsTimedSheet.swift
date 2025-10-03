@@ -14,7 +14,7 @@ struct NotificationsTimedSheet: TimedSheetItem {
     init(
         appViewModel: AppViewModel,
         settingsViewModel: SettingsViewModel,
-        walletViewModel: WalletViewModel,
+        walletViewModel: WalletViewModel
     ) {
         self.appViewModel = appViewModel
         self.settingsViewModel = settingsViewModel

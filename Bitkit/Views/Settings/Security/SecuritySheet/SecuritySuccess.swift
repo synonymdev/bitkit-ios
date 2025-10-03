@@ -29,7 +29,7 @@ struct SecuritySuccess: View {
                             variables: ["biometricsName": biometryTypeName]
                         )
                         : t("security__success_no_bio"),
-                    textColor: .textSecondary,
+                    textColor: .textSecondary
                 )
 
                 Spacer()

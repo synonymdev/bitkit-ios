@@ -35,7 +35,7 @@ private struct TermsFooter: View {
                 FooterItem(
                     title: t("onboarding__pp_checkbox"),
                     subtitle: tTodo("By continuing you declare that you have read and accept the <accent>privacy policy.</accent>"),
-                    subtitleUrl: URL(string: Env.privacyPolicyUrl),
+                    subtitleUrl: URL(string: Env.privacyPolicyUrl)
                 )
 
                 Divider()

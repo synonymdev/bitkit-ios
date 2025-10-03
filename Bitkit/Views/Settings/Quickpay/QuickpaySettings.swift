@@ -20,13 +20,13 @@ struct QuickpaySettings: View {
                         )
 
                         BodyMText(
-                            t("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))]),
+                            t("settings__quickpay__settings__text", variables: ["amount": String(Int(settings.quickpayAmount))])
                         )
                         .padding(.top, 16)
 
                         VStack(alignment: .leading, spacing: 16) {
                             CaptionText(
-                                t("settings__quickpay__settings__label").uppercased(),
+                                t("settings__quickpay__settings__label").uppercased()
                             )
 
                             CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)

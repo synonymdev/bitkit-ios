@@ -19,7 +19,9 @@ struct QrArea: View {
 
     var body: some View {
         ZStack {
-            QR(content: uri, imageAsset: imageAsset)
+            QR(content: uri, imageAsset: imageAsset) {
+                onCopy()
+            }
 
             if showCopyTooltip {
                 Tooltip(text: t("wallet__receive_copied"))

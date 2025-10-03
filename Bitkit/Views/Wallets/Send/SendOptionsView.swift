@@ -70,7 +70,7 @@ struct SendOptionsView: View {
             scanner.configure(
                 app: app,
                 currency: currency,
-                settings: settings,
+                settings: settings
             )
         }
     }

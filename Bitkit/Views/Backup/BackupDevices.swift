@@ -21,7 +21,7 @@ struct BackupDevices: View {
                 Spacer()
 
                 CustomButton(
-                    title: t("common__ok"),
+                    title: t("common__ok")
                 ) {
                     navigationPath.append(.metadata)
                 }

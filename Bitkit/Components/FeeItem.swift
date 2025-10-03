@@ -36,7 +36,7 @@ struct FeeItem: View {
                                     unitType: .primary,
                                     size: .bodyMSB,
                                     symbol: true,
-                                    color: isDisabled ? .gray3 : .textPrimary,
+                                    color: isDisabled ? .gray3 : .textPrimary
                                 )
 
                                 MoneyText(
@@ -44,7 +44,7 @@ struct FeeItem: View {
                                     unitType: .secondary,
                                     size: .bodySSB,
                                     symbol: true,
-                                    color: isDisabled ? .gray3 : .textSecondary,
+                                    color: isDisabled ? .gray3 : .textSecondary
                                 )
                             }
                         }

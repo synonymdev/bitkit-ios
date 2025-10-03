@@ -12,7 +12,7 @@ struct TextField: View {
         text: Binding<String>,
         backgroundColor: Color = .white10,
         font: Font = .custom(Fonts.semiBold, size: 15),
-        axis: Axis = .horizontal,
+        axis: Axis = .horizontal
     ) {
         self.placeholder = placeholder
         self.backgroundColor = backgroundColor
