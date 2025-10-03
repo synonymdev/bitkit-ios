@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Preference key for tracking button locations in a coordinate space
 struct ButtonLocationPreferenceKey: PreferenceKey {
-    public static var defaultValue: [CGRect] = []
+    static var defaultValue: [CGRect] = []
 
-    public static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) {
         value.append(contentsOf: nextValue())
     }
 }
@@ -17,12 +17,12 @@ private struct ButtonLocationModifier: ViewModifier {
     /// Callback when the view's location changes
     let onLocationChanged: (CGRect) -> Void
 
-    public init(coordinateSpace: String, onLocationChanged: @escaping (CGRect) -> Void) {
+    init(coordinateSpace: String, onLocationChanged: @escaping (CGRect) -> Void) {
         self.coordinateSpace = coordinateSpace
         self.onLocationChanged = onLocationChanged
     }
 
-    public func body(content: Content) -> some View {
+    func body(content: Content) -> some View {
         content
             .background(
                 GeometryReader { geometry in

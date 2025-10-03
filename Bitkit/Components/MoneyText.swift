@@ -19,11 +19,11 @@ struct MoneyText: View {
     let sats: Int
     var unitType: MoneyUnitType = .primary
     var size: MoneySize = .display
-    var symbol: Bool? = nil
+    var symbol: Bool?
     var enableHide: Bool = true
-    var prefix: String? = nil
+    var prefix: String?
     var color: Color = .textPrimary
-    var symbolColor: Color? = nil
+    var symbolColor: Color?
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel

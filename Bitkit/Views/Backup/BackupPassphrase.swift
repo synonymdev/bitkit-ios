@@ -38,7 +38,7 @@ struct BackupPassphrase: View {
 
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
-                        title: t("common__continue"),
+                        title: t("common__continue")
                     ) {
                         navigationPath.append(.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase))
                     }

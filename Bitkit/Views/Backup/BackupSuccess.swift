@@ -22,7 +22,7 @@ struct BackupSuccess: View {
                 Spacer()
 
                 CustomButton(
-                    title: t("common__ok"),
+                    title: t("common__ok")
                 ) {
                     app.backupVerified = true
                     navigationPath.append(.devices)

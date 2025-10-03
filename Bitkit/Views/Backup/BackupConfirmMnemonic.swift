@@ -63,7 +63,7 @@ struct BackupConfirmMnemonic: View {
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
                         title: t("common__continue"),
-                        isDisabled: selectedWords != mnemonic,
+                        isDisabled: selectedWords != mnemonic
                     ) {
                         if let passphrase, !passphrase.isEmpty {
                             navigationPath.append(.confirmPassphrase(passphrase: passphrase))

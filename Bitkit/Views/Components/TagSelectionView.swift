@@ -23,7 +23,7 @@ struct TagSelectionView: View {
             CustomButton(
                 title: t("wallet__tags_add"),
                 size: .small,
-                icon: Image("tag").foregroundColor(.brandAccent),
+                icon: Image("tag").foregroundColor(.brandAccent)
             ) {
                 navigationPath.append(.tag)
             }

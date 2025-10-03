@@ -74,7 +74,7 @@ struct BackupMnemonicView: View {
                 HStack(alignment: .center, spacing: 16) {
                     CustomButton(
                         title: t("common__continue"),
-                        isDisabled: !showMnemonic,
+                        isDisabled: !showMnemonic
                     ) {
                         let route =
                             passphrase.isEmpty

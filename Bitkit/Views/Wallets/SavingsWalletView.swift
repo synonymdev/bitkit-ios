@@ -73,7 +73,7 @@ struct SavingsWalletView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: 16, height: 16)
-                .foregroundColor(.white80),
+                .foregroundColor(.white80)
         ) {
             if app.hasSeenTransferToSpendingIntro {
                 navigation.navigate(.spendingAmount)
