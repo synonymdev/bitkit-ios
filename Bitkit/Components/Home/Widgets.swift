@@ -17,7 +17,7 @@ struct Widgets: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
 
-    @State private var isEditing: Bool = false
+    @Binding var isEditing: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -69,7 +69,7 @@ struct Widgets: View {
 
 #Preview {
     VStack {
-        Widgets()
+        Widgets(isEditing: .constant(false))
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(WidgetsViewModel())
