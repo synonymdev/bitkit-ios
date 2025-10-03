@@ -6,6 +6,8 @@ struct HomeView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var isEditingWidgets = false
+
     var body: some View {
         ZStack(alignment: .top) {
             Header()
@@ -50,7 +52,7 @@ struct HomeView: View {
                         Suggestions()
 
                         if settings.showWidgets {
-                            Widgets()
+                            Widgets(isEditing: $isEditingWidgets)
                                 .padding(.top, 32)
                                 .padding(.horizontal)
                         }
@@ -63,6 +65,7 @@ struct HomeView: View {
                     .padding(.bottom, 130)
                 }
             }
+            .scrollDisabled(isEditingWidgets)
         }
         /// Dismiss (calculator widget) keyboard when scrolling
         .scrollDismissesKeyboard(.immediately)
