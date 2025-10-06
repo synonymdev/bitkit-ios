@@ -216,6 +216,31 @@ class ActivityService {
         }
     }
 
+    func findActivity(byPaymentId paymentId: String) async throws -> Activity {
+        guard !paymentId.isEmpty else {
+            throw AppError(message: "Payment ID is empty", debugMessage: nil)
+        }
+
+        let activities = try await get(filter: .all, limit: 50)
+        let activity = activities.first { activity in
+            switch activity {
+            case let .lightning(ln):
+                return ln.id == paymentId
+            case let .onchain(on):
+                return on.txId == paymentId
+            }
+        }
+
+        guard let activity else {
+            throw AppError(
+                message: "Activity not found",
+                debugMessage: "Could not find activity for payment ID: \(paymentId)"
+            )
+        }
+
+        return activity
+    }
+
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
@@ -591,6 +616,13 @@ class BlocktankService {
     func cjitOrders(entryIds: [String]? = nil, filter: CJitStateEnum? = nil, refresh: Bool = true) async throws -> [IcJitEntry] {
         try await ServiceQueue.background(.core) {
             try await getCjitEntries(entryIds: entryIds, filter: filter, refresh: refresh)
+        }
+    }
+
+    func isCjit(channel: ChannelDetails) async throws -> Bool {
+        let orders = try await cjitOrders()
+        return orders.contains { order in
+            order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
         }
     }
 
