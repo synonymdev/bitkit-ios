@@ -333,17 +333,12 @@ extension AppViewModel {
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
                 Task {
                     if await (CoreService.shared.blocktank.isCjit(channel: channel)) {
-                        Logger.debug("channelReady: cjit channel \(channel.channelId)")
                         let amount = channel.spendableBalanceSats
-                        Logger.debug("channelReady: displaying sheet with amount \(amount)")
                         sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         let cjitEntry = try await CoreService.shared.blocktank.cjitOrders(refresh: false).first(where: { order in
                             order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
                         })
-                        Logger.debug("channelReady: cjit entry found")
                         let now = UInt64(Date().timeIntervalSince1970)
-                        let time = (cjitEntry?.createdAt != nil ? UInt64(cjitEntry!.createdAt) : now) ?? now
-                        Logger.debug("channelReady: time set to \(time)")
 
                         let ln = LightningActivity(
                             id: channel.fundingTxo?.txid ?? "",
@@ -353,19 +348,13 @@ extension AppViewModel {
                             fee: cjitEntry?.feeSat ?? 0,
                             invoice: cjitEntry?.invoice.request ?? "",
                             message: "",
-                            timestamp: time,
+                            timestamp: now,
                             preimage: nil,
-                            createdAt: time,
+                            createdAt: now,
                             updatedAt: nil
                         )
 
-                        Logger.debug("channelReady: creating lightning activity \(ln)")
-
-                        do {
-                            try await CoreService.shared.activity.insert(.lightning(ln))
-                        } catch {
-                            Logger.error("channelReady:Failed to insert lightning activity: \(error)")
-                        }
+                        try await CoreService.shared.activity.insert(.lightning(ln))
                     } else {
                         toast(type: .lightning, title: "Channel opened", description: "Ready to send")
                     }
