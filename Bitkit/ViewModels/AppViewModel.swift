@@ -345,7 +345,7 @@ extension AppViewModel {
                             txType: .received,
                             status: .succeeded,
                             value: amount,
-                            fee: cjitEntry?.feeSat ?? 0,
+                            fee: 0,
                             invoice: cjitEntry?.invoice.request ?? "",
                             message: "",
                             timestamp: now,
