@@ -595,7 +595,8 @@ class BlocktankService {
     }
 
     func getCjit(channel: ChannelDetails) async -> IcJitEntry? {
-        do { let orders = try await cjitOrders()
+        do {
+            let orders = try await cjitOrders()
             return orders.first { order in
                 order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
             }
