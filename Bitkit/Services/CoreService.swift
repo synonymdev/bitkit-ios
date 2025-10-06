@@ -619,10 +619,13 @@ class BlocktankService {
         }
     }
 
-    func isCjit(channel: ChannelDetails) async throws -> Bool {
-        let orders = try await cjitOrders()
-        return orders.contains { order in
-            order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
+    func isCjit(channel: ChannelDetails) async -> Bool {
+        do { let orders = try await cjitOrders()
+            return orders.contains { order in
+                order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
+            }
+        } catch {
+            return false
         }
     }
 
