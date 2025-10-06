@@ -330,12 +330,17 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
-            // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                let amount = channel.spendableBalanceSats
-                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
+                Task {
+                    if await (CoreService.shared.blocktank.isCjit(channel: channel)) {
+                        let amount = channel.spendableBalanceSats
+                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
+                    } else {
+                        toast(type: .lightning, title: "Channel opened", description: "Ready to send")
+                    }
+                }
             } else {
-                toast(type: .error, title: "Channel opened", description: "Ready to send")
+                toast(type: .lightning, title: "Channel opened", description: "Ready to send")
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
