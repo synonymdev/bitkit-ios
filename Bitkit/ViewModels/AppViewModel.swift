@@ -356,11 +356,11 @@ extension AppViewModel {
 
                         try await CoreService.shared.activity.insert(.lightning(ln))
                     } else {
-                        toast(type: .lightning, title: "Channel opened", description: "Ready to send")
+                        toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
                     }
                 }
             } else {
-                toast(type: .lightning, title: "Channel opened", description: "Ready to send")
+                toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
