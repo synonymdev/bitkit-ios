@@ -354,7 +354,7 @@ extension AppViewModel {
                             invoice: cjitEntry?.invoice.request ?? "",
                             message: "",
                             timestamp: time,
-                            preimage: "",
+                            preimage: nil,
                             createdAt: time,
                             updatedAt: nil
                         )
