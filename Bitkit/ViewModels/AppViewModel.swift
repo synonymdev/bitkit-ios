@@ -346,7 +346,7 @@ extension AppViewModel {
                         Logger.debug("channelReady: time set to \(time)")
 
                         let ln = LightningActivity(
-                            id: channel.channelId,
+                            id: channel.fundingTxo?.txid ?? "",
                             txType: .received,
                             status: .succeeded,
                             value: amount,
