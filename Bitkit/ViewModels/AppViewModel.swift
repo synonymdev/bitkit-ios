@@ -332,12 +332,10 @@ extension AppViewModel {
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
                 Task {
-                    if await (CoreService.shared.blocktank.isCjit(channel: channel)) {
+                    let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
+                    if cjitOrder != nil {
                         let amount = channel.spendableBalanceSats
                         sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
-                        let cjitEntry = try await CoreService.shared.blocktank.cjitOrders(refresh: false).first(where: { order in
-                            order.channelSizeSat == channel.channelValueSats && order.lspNode.pubkey == channel.counterpartyNodeId
-                        })
                         let now = UInt64(Date().timeIntervalSince1970)
 
                         let ln = LightningActivity(
@@ -346,7 +344,7 @@ extension AppViewModel {
                             status: .succeeded,
                             value: amount,
                             fee: 0,
-                            invoice: cjitEntry?.invoice.request ?? "",
+                            invoice: cjitOrder?.invoice.request ?? "",
                             message: "",
                             timestamp: now,
                             preimage: nil,
