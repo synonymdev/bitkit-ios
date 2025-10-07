@@ -330,12 +330,35 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
-            // TODO: handle ONLY cjit as payment received. This makes it look like any channel confirmed is a received payment.
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                let amount = channel.spendableBalanceSats
-                sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
+                Task {
+                    let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
+                    if cjitOrder != nil {
+                        let amount = channel.spendableBalanceSats
+                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
+                        let now = UInt64(Date().timeIntervalSince1970)
+
+                        let ln = LightningActivity(
+                            id: channel.fundingTxo?.txid ?? "",
+                            txType: .received,
+                            status: .succeeded,
+                            value: amount,
+                            fee: 0,
+                            invoice: cjitOrder?.invoice.request ?? "",
+                            message: "",
+                            timestamp: now,
+                            preimage: nil,
+                            createdAt: now,
+                            updatedAt: nil
+                        )
+
+                        try await CoreService.shared.activity.insert(.lightning(ln))
+                    } else {
+                        toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
+                    }
+                }
             } else {
-                toast(type: .error, title: "Channel opened", description: "Ready to send")
+                toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
