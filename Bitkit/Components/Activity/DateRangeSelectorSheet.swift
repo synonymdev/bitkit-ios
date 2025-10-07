@@ -81,41 +81,27 @@ struct DateRangeSelectorSheet: View {
 
             // Action buttons
             HStack(spacing: 16) {
-                Button(action: {
+                CustomButton(
+                    title: t("wallet__filter_clear"),
+                    variant: .secondary,
+                    isDisabled: !hasSelection
+                ) {
                     selectedStartDate = nil
                     selectedEndDate = nil
                     viewModel.clearDateRange()
                     dismiss()
-                }) {
-                    Text(t("wallet__filter_clear"))
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .foregroundColor(hasSelection ? .primary : .secondary)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(hasSelection ? Color.primary.opacity(0.3) : Color.secondary.opacity(0.2), lineWidth: 1)
-                        )
                 }
-                .disabled(!hasSelection)
                 .accessibilityIdentifier("CalendarClearButton")
 
-                Button(action: {
+                CustomButton(
+                    title: t("wallet__filter_apply"),
+                    variant: .primary,
+                    isDisabled: !hasSelection
+                ) {
                     viewModel.startDate = selectedStartDate
                     viewModel.endDate = selectedEndDate
                     dismiss()
-                }) {
-                    Text(t("wallet__filter_apply"))
-                        .font(.system(size: 16, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .foregroundColor(.white)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(hasSelection ? Color.brandAccent : Color.gray.opacity(0.3))
-                        )
                 }
-                .disabled(!hasSelection)
                 .accessibilityIdentifier("CalendarApplyButton")
             }
             .padding(.horizontal, 16)
