@@ -61,35 +61,28 @@ struct DateRangeSelectorSheet: View {
 
                 // Display selected range
                 if let start = selectedStartDate {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(t("wallet__filter_start_date"))
-                                .font(.system(size: 14))
-                                .foregroundColor(.white64)
-                            Spacer()
-                            Text(start.formatted(date: .abbreviated, time: .omitted))
+                    HStack {
+                        if let end = selectedEndDate {
+                            Text(
+                                "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
+                            )
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.textPrimary)
+                        } else {
+                            Text(start.formatted(.dateTime.month(.abbreviated).day().year()))
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.textPrimary)
-                        }
-
-                        if let end = selectedEndDate {
-                            HStack {
-                                Text(t("wallet__filter_end_date"))
-                                    .font(.system(size: 14))
-                                    .foregroundColor(.white64)
-                                Spacer()
-                                Text(end.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.textPrimary)
-                            }
-                        } else {
+                            Text(" - ")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white32)
                             Text(t("wallet__filter_select_end_date"))
                                 .font(.system(size: 14))
                                 .foregroundColor(.white32)
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 12)
+                    .padding(.horizontal, 16)
                     .background(Color.white08)
                     .cornerRadius(8)
                     .padding(.horizontal, 16)
