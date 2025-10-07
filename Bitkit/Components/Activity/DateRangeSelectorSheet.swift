@@ -1,8 +1,6 @@
 
 import SwiftUI
 
-// MARK: - DateRangeSelectorSheet
-
 struct DateRangeSelectorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ActivityListViewModel
@@ -123,22 +121,11 @@ struct DateRangeSelectorSheet: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
         }
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(red: 0.95, green: 0.95, blue: 0.97),
-                    Color.white,
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .sheetBackground()
         .presentationDetents([.height(600)])
         .presentationDragIndicator(.visible)
     }
 }
-
-// MARK: - DateSelectionButton
 
 struct DateSelectionButton: View {
     let title: String
