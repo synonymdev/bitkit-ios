@@ -1,13 +1,14 @@
 
 import SwiftUI
 
+// MARK: - DateRangeSelectorSheet
+
 struct DateRangeSelectorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: ActivityListViewModel
 
     @State private var selectedStartDate: Date?
     @State private var selectedEndDate: Date?
-    @State private var isSelectingStart = true
 
     init(viewModel: ActivityListViewModel) {
         self.viewModel = viewModel
@@ -23,50 +24,31 @@ struct DateRangeSelectorSheet: View {
         VStack(spacing: 0) {
             // Date Range Picker
             VStack(alignment: .leading, spacing: 16) {
-                // Selection indicators
-                HStack(spacing: 12) {
-                    DateSelectionButton(
-                        title: t("wallet__filter_start_date"),
-                        date: selectedStartDate,
-                        isSelected: isSelectingStart,
-                        action: { isSelectingStart = true }
-                    )
-
-                    DateSelectionButton(
-                        title: t("wallet__filter_end_date"),
-                        date: selectedEndDate,
-                        isSelected: !isSelectingStart,
-                        action: { isSelectingStart = false }
-                    )
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 20)
-
                 // Calendar
                 DatePicker(
                     "",
                     selection: Binding(
                         get: {
-                            if isSelectingStart {
-                                return selectedStartDate ?? Date()
-                            } else {
-                                return selectedEndDate ?? Date()
-                            }
+                            // Default to current start date, or today if none selected
+                            return selectedStartDate ?? Date()
                         },
                         set: { newDate in
-                            if isSelectingStart {
+                            if selectedStartDate == nil {
+                                // First selection - set as start date
                                 selectedStartDate = newDate
-                                if selectedEndDate == nil || newDate > selectedEndDate! {
-                                    selectedEndDate = newDate
-                                }
-                                isSelectingStart = false
-                            } else {
-                                if let start = selectedStartDate, newDate < start {
-                                    selectedEndDate = start
+                            } else if selectedEndDate == nil {
+                                // Second selection - set as end date
+                                if newDate < selectedStartDate! {
+                                    // If new date is before start, swap them
+                                    selectedEndDate = selectedStartDate
                                     selectedStartDate = newDate
                                 } else {
                                     selectedEndDate = newDate
                                 }
+                            } else {
+                                // Both dates selected - reset and start over
+                                selectedStartDate = newDate
+                                selectedEndDate = nil
                             }
                         }
                     ),
@@ -75,6 +57,43 @@ struct DateRangeSelectorSheet: View {
                 .datePickerStyle(.graphical)
                 .tint(.brandAccent)
                 .padding(.horizontal, 16)
+                .padding(.top, 20)
+
+                // Display selected range
+                if let start = selectedStartDate {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(t("wallet__filter_start_date"))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white64)
+                            Spacer()
+                            Text(start.formatted(date: .abbreviated, time: .omitted))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.textPrimary)
+                        }
+
+                        if let end = selectedEndDate {
+                            HStack {
+                                Text(t("wallet__filter_end_date"))
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white64)
+                                Spacer()
+                                Text(end.formatted(date: .abbreviated, time: .omitted))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.textPrimary)
+                            }
+                        } else {
+                            Text(t("wallet__filter_select_end_date"))
+                                .font(.system(size: 14))
+                                .foregroundColor(.white32)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.white08)
+                    .cornerRadius(8)
+                    .padding(.horizontal, 16)
+                }
             }
 
             Spacer()
@@ -110,37 +129,6 @@ struct DateRangeSelectorSheet: View {
         .sheetBackground()
         .presentationDetents([.height(600)])
         .presentationDragIndicator(.visible)
-    }
-}
-
-struct DateSelectionButton: View {
-    let title: String
-    let date: Date?
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
-                Text(date?.formatted(date: .abbreviated, time: .omitted) ?? t("wallet__filter_select_date"))
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(date == nil ? .secondary : .primary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.brandAccent.opacity(0.1) : Color.clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isSelected ? Color.brandAccent : Color.clear, lineWidth: 2)
-            )
-        }
     }
 }
 
