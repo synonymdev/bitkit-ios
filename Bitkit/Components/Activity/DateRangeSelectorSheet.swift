@@ -88,6 +88,9 @@ struct DateRangeSelectorSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            BodyMBoldText(t("wallet__filter_title"), textColor: .white)
+                .padding(.top, 32)
+
             // Date Range Picker
             VStack(alignment: .leading, spacing: 16) {
                 // Calendar
@@ -95,7 +98,7 @@ struct DateRangeSelectorSheet: View {
                     .datePickerStyle(.graphical)
                     .tint(.brandAccent)
                     .padding(.horizontal, 16)
-                    .padding(.top, 20)
+                    .padding(.top, 26)
 
                 // Display selected range
                 if let start = startDate {
