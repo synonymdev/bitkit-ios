@@ -101,20 +101,15 @@ struct DateRangeSelectorSheet: View {
                 if let start = startDate {
                     HStack {
                         if let end = endDate {
-                            Text(
+                            BodyMSBText(
                                 "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
                             )
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.textPrimary)
                         } else {
-                            Text(start.formatted(.dateTime.month(.abbreviated).day().year()))
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.textPrimary)
+                            BodyMSBText(start.formatted(.dateTime.month(.abbreviated).day().year()))
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 36)
-                    .padding(.horizontal, 16)
                     .padding(.horizontal, 16)
                 }
             }
