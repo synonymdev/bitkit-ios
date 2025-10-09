@@ -107,15 +107,23 @@ struct DateRangeSelectorSheet: View {
                         HStack {
                             if let end = endDate {
                                 BodyMSBText(
-                                    "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
+                                    "\(formatDate(start)) - \(formatDate(end))"
                                 )
+                                .id("\(formatDate(start))-\(formatDate(end))")
                             } else {
-                                BodyMSBText(start.formatted(.dateTime.month(.abbreviated).day().year()))
+                                BodyMSBText(formatDate(start))
+                                    .id(formatDate(start))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.bottom, 36)
                         .padding(.horizontal, 16)
+                        .transition(.asymmetric(
+                            insertion: .scale.combined(with: .opacity),
+                            removal: .scale.combined(with: .opacity)
+                        ))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: startDate)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: endDate)
                     }
                 }
 
@@ -153,6 +161,12 @@ struct DateRangeSelectorSheet: View {
     }
 
     // MARK: - Helper Methods
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, yyyy"
+        return formatter.string(from: date)
+    }
 
     private func filledRange(selectedDates: Set<DateComponents>) -> Set<DateComponents> {
         let allDates = selectedDates.compactMap { calendar.date(from: $0) }
