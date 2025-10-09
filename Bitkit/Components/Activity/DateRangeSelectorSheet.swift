@@ -104,25 +104,17 @@ struct DateRangeSelectorSheet: View {
                             Text(
                                 "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
                             )
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.textPrimary)
                         } else {
                             Text(start.formatted(.dateTime.month(.abbreviated).day().year()))
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.textPrimary)
-                            Text(" - ")
-                                .font(.system(size: 14))
-                                .foregroundColor(.white32)
-                            Text(t("wallet__filter_select_end_date"))
-                                .font(.system(size: 14))
-                                .foregroundColor(.white32)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 12)
+                    .padding(.bottom, 36)
                     .padding(.horizontal, 16)
-                    .background(Color.white08)
-                    .cornerRadius(8)
                     .padding(.horizontal, 16)
                 }
             }
