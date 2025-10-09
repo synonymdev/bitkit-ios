@@ -51,7 +51,7 @@ struct ActivityListFilter: View {
         .background(Color.gray6)
         .cornerRadius(32)
         .sheet(isPresented: $showingDateRange) {
-            DateRangeSelectorSheet(viewModel: viewModel)
+            DateRangeSelectorSheet(viewModel: viewModel, isPresented: $showingDateRange)
         }
         .sheet(isPresented: $showingTagSelector) {
             TagFilterSheet(viewModel: viewModel, isPresented: $showingTagSelector)
