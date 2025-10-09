@@ -3,9 +3,9 @@ import SwiftUI
 // MARK: - DateRangeSelectorSheet
 
 struct DateRangeSelectorSheet: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.calendar) var calendar
     @ObservedObject var viewModel: ActivityListViewModel
+    @Binding var isPresented: Bool
 
     @State private var selectedDates: Set<DateComponents> = []
     @State private var startDate: Date?
@@ -13,8 +13,9 @@ struct DateRangeSelectorSheet: View {
 
     let datePickerComponents: Set<Calendar.Component> = [.calendar, .era, .year, .month, .day]
 
-    init(viewModel: ActivityListViewModel) {
+    init(viewModel: ActivityListViewModel, isPresented: Binding<Bool>) {
         self.viewModel = viewModel
+        _isPresented = isPresented
 
         // Initialize with current date range if exists
         var initialDates: Set<DateComponents> = []
@@ -87,70 +88,68 @@ struct DateRangeSelectorSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            BodyMBoldText(t("wallet__filter_title"), textColor: .white)
-                .padding(.top, 32)
+        Sheet(id: .dateRangeSelector, data: nil) {
+            VStack(spacing: 0) {
+                BodyMBoldText(t("wallet__filter_title"), textColor: .white)
+                    .padding(.top, 32)
 
-            // Date Range Picker
-            VStack(alignment: .leading, spacing: 16) {
-                // Calendar
-                MultiDatePicker("", selection: datesBinding)
-                    .datePickerStyle(.graphical)
-                    .tint(.brandAccent)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 26)
+                // Date Range Picker
+                VStack(alignment: .leading, spacing: 16) {
+                    // Calendar
+                    MultiDatePicker("", selection: datesBinding)
+                        .datePickerStyle(.graphical)
+                        .tint(.brandAccent)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 26)
 
-                // Display selected range
-                if let start = startDate {
-                    HStack {
-                        if let end = endDate {
-                            BodyMSBText(
-                                "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
-                            )
-                        } else {
-                            BodyMSBText(start.formatted(.dateTime.month(.abbreviated).day().year()))
+                    // Display selected range
+                    if let start = startDate {
+                        HStack {
+                            if let end = endDate {
+                                BodyMSBText(
+                                    "\(start.formatted(.dateTime.month(.abbreviated).day().year())) - \(end.formatted(.dateTime.month(.abbreviated).day().year()))"
+                                )
+                            } else {
+                                BodyMSBText(start.formatted(.dateTime.month(.abbreviated).day().year()))
+                            }
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.bottom, 36)
+                        .padding(.horizontal, 16)
                     }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 36)
-                    .padding(.horizontal, 16)
                 }
+
+                Spacer()
+
+                // Action buttons
+                HStack(spacing: 16) {
+                    CustomButton(
+                        title: t("wallet__filter_clear"),
+                        variant: .secondary,
+                        isDisabled: !hasSelection
+                    ) {
+                        selectedDates = []
+                        startDate = nil
+                        endDate = nil
+                        viewModel.clearDateRange()
+                    }
+                    .accessibilityIdentifier("CalendarClearButton")
+
+                    CustomButton(
+                        title: t("wallet__filter_apply"),
+                        variant: .primary,
+                        isDisabled: !hasSelection
+                    ) {
+                        viewModel.startDate = startDate
+                        viewModel.endDate = endDate
+                        isPresented = false
+                    }
+                    .accessibilityIdentifier("CalendarApplyButton")
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 16)
             }
-
-            Spacer()
-
-            // Action buttons
-            HStack(spacing: 16) {
-                CustomButton(
-                    title: t("wallet__filter_clear"),
-                    variant: .secondary,
-                    isDisabled: !hasSelection
-                ) {
-                    selectedDates = []
-                    startDate = nil
-                    endDate = nil
-                    viewModel.clearDateRange()
-                    dismiss()
-                }
-                .accessibilityIdentifier("CalendarClearButton")
-
-                CustomButton(
-                    title: t("wallet__filter_apply"),
-                    variant: .primary,
-                    isDisabled: !hasSelection
-                ) {
-                    viewModel.startDate = startDate
-                    viewModel.endDate = endDate
-                    dismiss()
-                }
-                .accessibilityIdentifier("CalendarApplyButton")
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 16)
         }
-        .sheetBackground()
-        .presentationDetents([.height(600)])
-        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Helper Methods
@@ -188,12 +187,12 @@ struct DateRangeSelectorSheet: View {
 }
 
 #Preview("Empty State") {
-    DateRangeSelectorSheet(viewModel: ActivityListViewModel())
+    DateRangeSelectorSheet(viewModel: ActivityListViewModel(), isPresented: .constant(true))
 }
 
 #Preview("With Selection") {
     let viewModel = ActivityListViewModel()
     viewModel.startDate = Calendar.current.date(byAdding: .day, value: -7, to: Date())
     viewModel.endDate = Date()
-    return DateRangeSelectorSheet(viewModel: viewModel)
+    return DateRangeSelectorSheet(viewModel: viewModel, isPresented: .constant(true))
 }
