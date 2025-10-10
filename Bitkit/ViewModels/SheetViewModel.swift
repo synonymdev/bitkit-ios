@@ -17,6 +17,7 @@ enum SheetID: String, CaseIterable {
     case security
     case send
     case tagFilter
+    case dateRangeSelector
 }
 
 struct SheetConfiguration {
