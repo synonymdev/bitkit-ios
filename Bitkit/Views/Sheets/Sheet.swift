@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum SheetSize {
-    case small, medium, large
+    case small, medium, large, calendar
 
     var height: CGFloat {
         let screenHeight = UIScreen.screenHeight
@@ -27,6 +27,16 @@ enum SheetSize {
             let preferredHeight = screenHeight - balanceSpacing
             if preferredHeight < minHeight {
                 // Use large sheet size when medium is too small
+                let largePreferredHeight = screenHeight - headerSpacing
+                return max(minHeight, largePreferredHeight)
+            }
+            return preferredHeight
+        case .calendar:
+            let minHeight: CGFloat = 600
+            // same as medium + 40px, to be just under search input
+            let preferredHeight = screenHeight - balanceSpacing + 40
+            if preferredHeight < minHeight {
+                // Use large sheet size when it's too small
                 let largePreferredHeight = screenHeight - headerSpacing
                 return max(minHeight, largePreferredHeight)
             }

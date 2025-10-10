@@ -4,13 +4,12 @@ import SwiftUI
 
 struct DateRangeSelectorSheetItem: SheetItem {
     let id: SheetID = .dateRangeSelector
-    let size: SheetSize = .medium
+    let size: SheetSize = .calendar
 }
 
 // MARK: - DateRangeSelectorSheet
 
 struct DateRangeSelectorSheet: View {
-    @EnvironmentObject private var sheets: SheetViewModel
     @Environment(\.calendar) var calendar
     @ObservedObject var viewModel: ActivityListViewModel
     @Binding var isPresented: Bool
@@ -41,14 +40,25 @@ struct DateRangeSelectorSheet: View {
     }
 
     private var daysInMonth: [Date?] {
-        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
-              let monthFirstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start)
-        else {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth) else {
+            return []
+        }
+
+        // Get the first day of the month
+        let firstDayOfMonth = monthInterval.start
+
+        // Find the first day of the week that contains the first day of the month
+        // This ensures alignment with the weekday headers
+        let firstWeekday = calendar.component(.weekday, from: firstDayOfMonth)
+        let firstDayOfWeek = calendar.firstWeekday
+        let daysToSubtract = (firstWeekday - firstDayOfWeek + 7) % 7
+
+        guard let calendarStartDate = calendar.date(byAdding: .day, value: -daysToSubtract, to: firstDayOfMonth) else {
             return []
         }
 
         var days: [Date?] = []
-        var currentDate = monthFirstWeek.start
+        var currentDate = calendarStartDate
 
         while days.count < 42 { // 6 weeks max
             if calendar.isDate(currentDate, equalTo: displayedMonth, toGranularity: .month) {
@@ -74,23 +84,26 @@ struct DateRangeSelectorSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Month navigation
                     HStack {
-                        Text(monthYearString)
-                            .font(.custom(Fonts.semiBold, size: 17))
-                            .foregroundColor(.white)
+                        BodyMSBText(monthYearString)
                         Spacer()
 
                         Button(action: previousMonth) {
-                            Image(systemName: "chevron.left")
+                            Image("chevron")
+                                .resizable()
                                 .foregroundColor(.brandAccent)
-                                .frame(width: 44, height: 44)
+                                .frame(width: 24, height: 24)
+                                .rotationEffect(.degrees(180))
+                                .frame(width: 44, height: 44) // Increase hit area
                         }
                         .padding(.leading, 8)
                         .accessibilityIdentifier("PrevMonth")
 
                         Button(action: nextMonth) {
-                            Image(systemName: "chevron.right")
+                            Image("chevron")
+                                .resizable()
                                 .foregroundColor(.brandAccent)
-                                .frame(width: 44, height: 44)
+                                .frame(width: 24, height: 24)
+                                .frame(width: 44, height: 44) // Increase hit area
                         }
                         .accessibilityIdentifier("NextMonth")
                     }
@@ -98,13 +111,12 @@ struct DateRangeSelectorSheet: View {
 
                     // Weekday headers
                     HStack(spacing: 0) {
-                        ForEach(calendar.shortWeekdaySymbols, id: \.self) { symbol in
-                            CaptionText(symbol.uppercased())
-                                .foregroundColor(.white64)
+                        ForEach(0 ..< 7, id: \.self) { index in
+                            let weekdayIndex = (index + calendar.firstWeekday - 1) % 7
+                            CaptionMText(calendar.shortWeekdaySymbols[weekdayIndex])
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .padding(.horizontal, 16)
 
                     // Calendar grid
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
@@ -122,11 +134,10 @@ struct DateRangeSelectorSheet: View {
                                 .accessibilityIdentifier(calendar.isDateInToday(date) ? "Today" : "Day-\(calendar.component(.day, from: date))")
                             } else {
                                 Color.clear
-                                    .frame(height: 40)
+                                    .frame(height: 48)
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
 
                     // Display selected range (fixed height to prevent layout jump)
                     VStack {
@@ -172,7 +183,6 @@ struct DateRangeSelectorSheet: View {
                         startDate = nil
                         endDate = nil
                         viewModel.clearDateRange()
-                        isPresented = false
                     }
                     .accessibilityIdentifier("CalendarClearButton")
 
@@ -278,9 +288,23 @@ struct CalendarDayView: View {
                     } else if isStartDate {
                         Circle()
                             .fill(Color.brand16)
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 44,
+                            bottomLeadingRadius: 44,
+                            bottomTrailingRadius: 0,
+                            topTrailingRadius: 0
+                        )
+                        .fill(Color.brand16)
                     } else if isEndDate {
                         Circle()
                             .fill(Color.brand16)
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 0,
+                            bottomLeadingRadius: 0,
+                            bottomTrailingRadius: 44,
+                            topTrailingRadius: 44
+                        )
+                        .fill(Color.brand16)
                     } else {
                         // Middle of range
                         Rectangle()
@@ -289,18 +313,16 @@ struct CalendarDayView: View {
                 }
 
                 // Day number
-                Text(dayNumber)
-                    .font(.custom(Fonts.regular, size: 16))
-                    .foregroundColor(isStartDate || isEndDate ? Color.brandAccent : Color.white)
+                BodyMSBText(dayNumber, textColor: isStartDate || isEndDate ? Color.brandAccent : Color.white)
 
                 // Today indicator
                 if isToday && !isSelected {
                     Circle()
-                        .stroke(Color.brandAccent, lineWidth: 1)
+                        .fill(Color.white10)
                 }
             }
         }
-        .frame(height: 40)
+        .frame(height: 48)
     }
 }
 
