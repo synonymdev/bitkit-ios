@@ -277,13 +277,13 @@ struct CalendarDayView: View {
                     if isStartDate && isEndDate {
                         // Single day or start=end
                         Circle()
-                            .fill(Color.brandAccent)
+                            .fill(Color.brand16)
                     } else if isStartDate {
                         Circle()
-                            .fill(Color.brandAccent)
+                            .fill(Color.brand16)
                     } else if isEndDate {
                         Circle()
-                            .fill(Color.brandAccent)
+                            .fill(Color.brand16)
                     } else {
                         // Middle of range
                         Rectangle()
@@ -294,7 +294,7 @@ struct CalendarDayView: View {
                 // Day number
                 Text(dayNumber)
                     .font(.custom(Fonts.regular, size: 16))
-                    .foregroundColor(isSelected ? .black : .white)
+                    .foregroundColor(.white)
 
                 // Today indicator
                 if isToday && !isSelected {
