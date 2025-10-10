@@ -47,6 +47,7 @@ struct ActivityRowLightning: View {
             VStack(alignment: .leading, spacing: 2) {
                 ActivityStatus(txType: item.txType, status: item.status)
                 CaptionBText(item.message.isEmpty ? formattedTime : item.message)
+                    .lineLimit(1)
             }
 
             Spacer()

@@ -32,6 +32,7 @@ struct SpendingAmount: View {
                 .padding(.bottom, 16)
 
             DisplayText(t("lightning__spending_amount__title"), accentColor: .purpleAccent)
+                .fixedSize(horizontal: false, vertical: true)
 
             NumberPadTextField(viewModel: amountViewModel, showConversion: false)
                 .onTapGesture {

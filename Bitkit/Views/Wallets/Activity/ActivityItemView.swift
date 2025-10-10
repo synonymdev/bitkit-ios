@@ -101,28 +101,33 @@ struct ActivityItemView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: navigationTitle)
+                .padding(.bottom, 16)
 
-            HStack(alignment: .bottom) {
-                MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
-                Spacer()
-                ActivityIcon(activity: viewModel.activity, size: 48)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 16) {
+                    HStack(alignment: .bottom) {
+                        MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
+                        Spacer()
+                        ActivityIcon(activity: viewModel.activity, size: 48)
+                    }
+                    .padding(.bottom, 16)
+
+                    statusSection
+                    timestampSection
+                    feeSection
+                    tagsSection
+                    note
+                    buttons
+
+                    Spacer()
+                }
+                .bottomSafeAreaPadding()
             }
-            .padding(.bottom, 16)
-
-            statusSection
-            timestampSection
-            feeSection
-            tagsSection
-            note
-            buttons
-
-            Spacer()
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
         .onChange(of: sheets.addTagSheetItem) { item in
             if item == nil {
                 // Add tag sheet was closed, reload tags in case they were modified
@@ -158,6 +163,7 @@ struct ActivityItemView: View {
                         BodySSBText(t("wallet__activity_pending"), textColor: .purpleAccent)
                     case .succeeded:
                         Image("bolt")
+                            .resizable()
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
                         BodySSBText(t("wallet__activity_successful"), textColor: .purpleAccent)

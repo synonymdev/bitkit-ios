@@ -25,21 +25,23 @@ struct BackupPassphrase: View {
                 }
                 .padding(32)
                 .frame(maxHeight: .infinity)
-                .background(Color.white10)
+                .background(Color.gray6)
                 .cornerRadius(16)
                 .padding(.top, 16)
                 .padding(.bottom, 32)
                 .privacySensitive()
                 .frame(maxWidth: .infinity)
 
-                BodySText(t("security__pass_never_share"), accentColor: .brandAccent)
+                BodySText(
+                    tTodo("<accent>Never share your passphrase</accent> with anyone, as it may result in loss of funds. Keep it secret!"),
+                    accentColor: .brandAccent,
+                    accentFont: Fonts.bold
+                )
 
                 Spacer()
 
                 HStack(alignment: .center, spacing: 16) {
-                    CustomButton(
-                        title: t("common__continue")
-                    ) {
+                    CustomButton(title: t("common__continue")) {
                         navigationPath.append(.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase))
                     }
                 }

@@ -12,7 +12,7 @@ struct SendEnterManuallyView: View {
         VStack {
             SheetHeader(title: t("wallet__send_bitcoin"), showBackButton: true)
 
-            CaptionText(t("wallet__send_to").uppercased())
+            CaptionMText(t("wallet__send_to"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             ZStack(alignment: .topLeading) {
