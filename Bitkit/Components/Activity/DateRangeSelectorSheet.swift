@@ -1,8 +1,12 @@
 import SwiftUI
 
-// MARK: - DateRangeSelectorSheet
+struct DateRangeSelectorSheetItem: SheetItem {
+    let id: SheetID = .dateRangeSelector
+    let size: SheetSize = .medium
+}
 
 struct DateRangeSelectorSheet: View {
+    @EnvironmentObject private var sheets: SheetViewModel
     @Environment(\.calendar) var calendar
     @ObservedObject var viewModel: ActivityListViewModel
     @Binding var isPresented: Bool
@@ -10,6 +14,7 @@ struct DateRangeSelectorSheet: View {
     @State private var selectedDates: Set<DateComponents> = []
     @State private var startDate: Date?
     @State private var endDate: Date?
+    @State private var pickerKey: UUID = .init()
 
     let datePickerComponents: Set<Calendar.Component> = [.calendar, .era, .year, .month, .day]
 
@@ -17,10 +22,14 @@ struct DateRangeSelectorSheet: View {
         self.viewModel = viewModel
         _isPresented = isPresented
 
+        let calendar = Calendar.current
+
         // Initialize with current date range if exists
         var initialDates: Set<DateComponents> = []
+        var initialStart: Date?
+        var initialEnd: Date?
+
         if let start = viewModel.startDate, let end = viewModel.endDate {
-            let calendar = Calendar.current
             var currentDate = calendar.startOfDay(for: start)
             let endOfDay = calendar.startOfDay(for: end)
 
@@ -30,15 +39,18 @@ struct DateRangeSelectorSheet: View {
                 }
                 currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
             }
+
+            initialStart = start
+            initialEnd = end
         }
 
         _selectedDates = State(initialValue: initialDates)
-        _startDate = State(initialValue: viewModel.startDate)
-        _endDate = State(initialValue: viewModel.endDate)
+        _startDate = State(initialValue: initialStart)
+        _endDate = State(initialValue: initialEnd)
     }
 
     private var hasSelection: Bool {
-        startDate != nil && endDate != nil
+        startDate != nil
     }
 
     private var datesBinding: Binding<Set<DateComponents>> {
@@ -52,15 +64,15 @@ struct DateRangeSelectorSheet: View {
             } else if newValue.count > selectedDates.count {
                 // Date was added
                 if newValue.count == 1 {
-                    // First date selected - set as start
+                    // First date selected - set as start (single day selection)
                     selectedDates = newValue
                     if let components = newValue.first,
                        let date = calendar.date(from: components)
                     {
                         startDate = date
-                        endDate = nil
+                        endDate = date
                     }
-                } else if newValue.count == 2 {
+                } else if selectedDates.count == 1 {
                     // Second date selected - fill the range
                     selectedDates = filledRange(selectedDates: newValue)
                     updateStartEndDates()
@@ -69,7 +81,7 @@ struct DateRangeSelectorSheet: View {
                     selectedDates = [firstMissingDate]
                     if let date = calendar.date(from: firstMissingDate) {
                         startDate = date
-                        endDate = nil
+                        endDate = date
                     }
                 }
             } else if let firstMissingDate = selectedDates.subtracting(newValue).first {
@@ -77,7 +89,7 @@ struct DateRangeSelectorSheet: View {
                 selectedDates = [firstMissingDate]
                 if let date = calendar.date(from: firstMissingDate) {
                     startDate = date
-                    endDate = nil
+                    endDate = date
                 }
             } else {
                 selectedDates = []
@@ -88,43 +100,55 @@ struct DateRangeSelectorSheet: View {
     }
 
     var body: some View {
-        Sheet(id: .dateRangeSelector, data: nil) {
+        Sheet(id: .dateRangeSelector, data: DateRangeSelectorSheetItem()) {
             VStack(spacing: 0) {
-                BodyMBoldText(t("wallet__filter_title"), textColor: .white)
-                    .padding(.top, 32)
+                SheetHeader(title: t("wallet__filter_title"))
 
                 // Date Range Picker
                 VStack(alignment: .leading, spacing: 16) {
-                    // Calendar
+                    // Calendar - recreate with new UUID to show selected month
                     MultiDatePicker("", selection: datesBinding)
                         .datePickerStyle(.graphical)
                         .tint(.brandAccent)
                         .padding(.horizontal, 16)
-                        .padding(.top, 26)
-
-                    // Display selected range
-                    if let start = startDate {
-                        HStack {
-                            if let end = endDate {
-                                BodyMSBText(
-                                    "\(formatDate(start)) - \(formatDate(end))"
-                                )
-                                .id("\(formatDate(start))-\(formatDate(end))")
-                            } else {
-                                BodyMSBText(formatDate(start))
-                                    .id(formatDate(start))
+                        .id(pickerKey)
+                        .onAppear {
+                            // Force picker recreation when sheet appears to show selected month
+                            if viewModel.startDate != nil {
+                                pickerKey = UUID()
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.bottom, 36)
-                        .padding(.horizontal, 16)
-                        .transition(.asymmetric(
-                            insertion: .scale.combined(with: .opacity),
-                            removal: .scale.combined(with: .opacity)
-                        ))
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: startDate)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: endDate)
+
+                    // Display selected range (fixed height to prevent layout jump)
+                    VStack {
+                        if let start = startDate {
+                            HStack {
+                                if let end = endDate, start != end {
+                                    BodyMSBText(
+                                        "\(formatDate(start)) - \(formatDate(end))"
+                                    )
+                                    .id("\(formatDate(start))-\(formatDate(end))")
+                                } else {
+                                    BodyMSBText(formatDate(start))
+                                        .id(formatDate(start))
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .transition(.asymmetric(
+                                insertion: .scale.combined(with: .opacity),
+                                removal: .scale.combined(with: .opacity)
+                            ))
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: startDate)
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: endDate)
+                        } else {
+                            // Placeholder to maintain height
+                            BodyMSBText(" ")
+                                .opacity(0)
+                        }
                     }
+                    .frame(height: 24)
+                    .padding(.bottom, 36)
+                    .padding(.horizontal, 16)
                 }
 
                 Spacer()
@@ -155,7 +179,6 @@ struct DateRangeSelectorSheet: View {
                     .accessibilityIdentifier("CalendarApplyButton")
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 16)
             }
         }
     }
