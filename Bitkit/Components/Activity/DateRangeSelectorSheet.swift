@@ -44,7 +44,6 @@ struct DateRangeSelectorSheet: View {
             return []
         }
 
-        // Get the first day of the month
         let firstDayOfMonth = monthInterval.start
 
         // Find the first day of the week that contains the first day of the month
@@ -312,10 +311,8 @@ struct CalendarDayView: View {
                     }
                 }
 
-                // Day number
                 BodyMSBText(dayNumber, textColor: isStartDate || isEndDate ? Color.brandAccent : Color.white)
 
-                // Today indicator
                 if isToday && !isSelected {
                     Circle()
                         .fill(Color.white10)
