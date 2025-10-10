@@ -74,24 +74,22 @@ struct DateRangeSelectorSheet: View {
                 VStack(alignment: .leading, spacing: 16) {
                     // Month navigation
                     HStack {
-                        Button(action: previousMonth) {
-                            Image(systemName: "chevron.left")
-                                .foregroundColor(.white)
-                                .frame(width: 44, height: 44)
-                        }
-                        .accessibilityIdentifier("PrevMonth")
-
-                        Spacer()
-
                         Text(monthYearString)
                             .font(.custom(Fonts.semiBold, size: 17))
                             .foregroundColor(.white)
-
                         Spacer()
+
+                        Button(action: previousMonth) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.brandAccent)
+                                .frame(width: 44, height: 44)
+                        }
+                        .padding(.leading, 8)
+                        .accessibilityIdentifier("PrevMonth")
 
                         Button(action: nextMonth) {
                             Image(systemName: "chevron.right")
-                                .foregroundColor(.white)
+                                .foregroundColor(.brandAccent)
                                 .frame(width: 44, height: 44)
                         }
                         .accessibilityIdentifier("NextMonth")
@@ -293,7 +291,7 @@ struct CalendarDayView: View {
                 // Day number
                 Text(dayNumber)
                     .font(.custom(Fonts.regular, size: 16))
-                    .foregroundColor(.white)
+                    .foregroundColor(isStartDate || isEndDate ? Color.brandAccent : Color.white)
 
                 // Today indicator
                 if isToday && !isSelected {
