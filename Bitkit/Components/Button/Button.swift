@@ -64,6 +64,7 @@ struct CustomButton: View {
     let isDisabled: Bool
     let isLoading: Bool
     let shouldExpand: Bool
+    let background: AnyView?
     let action: (() async -> Void)?
     let destination: AnyView?
 
@@ -77,7 +78,8 @@ struct CustomButton: View {
         icon: (any View)? = nil,
         isDisabled: Bool = false,
         isLoading: Bool = false,
-        shouldExpand: Bool = false
+        shouldExpand: Bool = false,
+        background: (any View)? = nil
     ) {
         self.title = title
         self.variant = variant
@@ -86,6 +88,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.background = background.map { AnyView($0) }
         action = nil
         destination = nil
     }
@@ -99,6 +102,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
+        background: (any View)? = nil,
         action: @escaping () async -> Void
     ) {
         self.title = title
@@ -108,6 +112,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.background = background.map { AnyView($0) }
         self.action = action
         destination = nil
     }
@@ -121,6 +126,7 @@ struct CustomButton: View {
         isDisabled: Bool = false,
         isLoading: Bool = false,
         shouldExpand: Bool = false,
+        background: (any View)? = nil,
         destination: some View
     ) {
         self.title = title
@@ -130,6 +136,7 @@ struct CustomButton: View {
         self.isDisabled = isDisabled
         self.isLoading = isLoading
         self.shouldExpand = shouldExpand
+        self.background = background.map { AnyView($0) }
         action = nil
         self.destination = AnyView(destination)
     }
@@ -144,7 +151,8 @@ struct CustomButton: View {
                 isDisabled: isDisabled,
                 isLoading: isLoading,
                 isPressed: isPressed,
-                shouldExpand: shouldExpand
+                shouldExpand: shouldExpand,
+                background: background
             ))
         case .secondary:
             AnyView(SecondaryButtonView(

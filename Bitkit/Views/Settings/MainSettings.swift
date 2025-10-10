@@ -1,11 +1,7 @@
 import SwiftUI
 
 struct MainSettings: View {
-    @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var activity: ActivityListViewModel
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var wallet: WalletViewModel
-    @EnvironmentObject var widgets: WidgetsViewModel
+    @EnvironmentObject private var app: AppViewModel
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @State private var cogTapCount = 0
@@ -69,7 +65,6 @@ struct MainSettings: View {
                         }
 
                         Spacer()
-                            .frame(minHeight: 32)
 
                         Image("cog")
                             .resizable()
@@ -93,7 +88,6 @@ struct MainSettings: View {
                             }
 
                         Spacer()
-                            .frame(minHeight: 32)
                     }
                     .frame(minHeight: geometry.size.height)
                 }

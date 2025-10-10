@@ -86,11 +86,14 @@ struct ReceiveQr: View {
 
                 Spacer()
 
-                VStack(spacing: 0) {
+                Group {
                     if showingCjitOnboarding {
                         CustomButton(
                             title: t("wallet__receive_spending"),
-                            icon: Image("bolt").foregroundColor(.purpleAccent),
+                            icon: Image("bolt")
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
                             navigationPath.append(.cjitAmount)
@@ -207,11 +210,13 @@ struct ReceiveQr: View {
         .cornerRadius(8)
         .aspectRatio(1, contentMode: .fit)
         .overlay(alignment: .bottomLeading) {
-            Image("arrow-cjit")
-                .resizable()
-                .scaledToFit()
-                .frame(height: 210)
-                .offset(x: 70, y: 110)
+            if !UIScreen.main.isSmall {
+                Image("arrow-cjit")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 210)
+                    .offset(x: 70, y: 110)
+            }
         }
     }
 

@@ -40,6 +40,7 @@ struct SavingsConfirmView: View {
                 .padding(.bottom, 16)
 
             DisplayText(t("lightning__transfer__confirm"), accentColor: .brandAccent)
+                .fixedSize(horizontal: false, vertical: true)
 
             CaptionMText(t("lightning__savings_confirm__label"))
                 .padding(.top, 32)

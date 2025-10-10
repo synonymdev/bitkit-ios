@@ -22,13 +22,12 @@ struct BackupConfirmMnemonic: View {
 
                 WrappingHStack(spacing: 5) {
                     ForEach(0 ..< shuffledWords.count, id: \.self) { index in
-                        WordButton(
-                            word: shuffledWords[index],
-                            isPressed: pressedIndices.contains(index),
-                            onTap: {
-                                handleWordPress(word: shuffledWords[index], index: index)
-                            }
-                        )
+                        let word = shuffledWords[index]
+                        let isPressed = pressedIndices.contains(index)
+
+                        CustomButton(title: word, size: .small, background: isPressed ? Color.white32 : nil) {
+                            handleWordPress(word: word, index: index)
+                        }
                     }
                 }
 
@@ -115,26 +114,6 @@ struct BackupConfirmMnemonic: View {
             selectedWords.append(word)
             pressedIndices.insert(index)
         }
-    }
-}
-
-struct WordButton: View {
-    let word: String
-    let isPressed: Bool
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            Text(word)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.textPrimary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
-                .frame(minWidth: 50)
-                .background(isPressed ? Color.white32 : Color.white16)
-                .cornerRadius(54)
-        }
-        .buttonStyle(PlainButtonStyle())
     }
 }
 
