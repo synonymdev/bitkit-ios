@@ -1,9 +1,13 @@
 import SwiftUI
 
+// MARK: - DateRangeSelectorSheetItem
+
 struct DateRangeSelectorSheetItem: SheetItem {
     let id: SheetID = .dateRangeSelector
     let size: SheetSize = .medium
 }
+
+// MARK: - DateRangeSelectorSheet
 
 struct DateRangeSelectorSheet: View {
     @EnvironmentObject private var sheets: SheetViewModel
@@ -11,92 +15,55 @@ struct DateRangeSelectorSheet: View {
     @ObservedObject var viewModel: ActivityListViewModel
     @Binding var isPresented: Bool
 
-    @State private var selectedDates: Set<DateComponents> = []
+    @State private var displayedMonth: Date
     @State private var startDate: Date?
     @State private var endDate: Date?
-    @State private var pickerKey: UUID = .init()
-
-    let datePickerComponents: Set<Calendar.Component> = [.calendar, .era, .year, .month, .day]
 
     init(viewModel: ActivityListViewModel, isPresented: Binding<Bool>) {
         self.viewModel = viewModel
         _isPresented = isPresented
 
-        let calendar = Calendar.current
-
-        // Initialize with current date range if exists
-        var initialDates: Set<DateComponents> = []
-        var initialStart: Date?
-        var initialEnd: Date?
-
-        if let start = viewModel.startDate, let end = viewModel.endDate {
-            var currentDate = calendar.startOfDay(for: start)
-            let endOfDay = calendar.startOfDay(for: end)
-
-            while currentDate <= endOfDay {
-                if let components = calendar.dateComponents(datePickerComponents, from: currentDate) as DateComponents? {
-                    initialDates.insert(components)
-                }
-                currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? currentDate
-            }
-
-            initialStart = start
-            initialEnd = end
-        }
-
-        _selectedDates = State(initialValue: initialDates)
-        _startDate = State(initialValue: initialStart)
-        _endDate = State(initialValue: initialEnd)
+        // Initialize displayed month to the selected start date or current date
+        let initialMonth = viewModel.startDate ?? Date()
+        _displayedMonth = State(initialValue: initialMonth)
+        _startDate = State(initialValue: viewModel.startDate)
+        _endDate = State(initialValue: viewModel.endDate)
     }
 
     private var hasSelection: Bool {
         startDate != nil
     }
 
-    private var datesBinding: Binding<Set<DateComponents>> {
-        Binding {
-            selectedDates
-        } set: { newValue in
-            if newValue.isEmpty {
-                selectedDates = newValue
-                startDate = nil
-                endDate = nil
-            } else if newValue.count > selectedDates.count {
-                // Date was added
-                if newValue.count == 1 {
-                    // First date selected - set as start (single day selection)
-                    selectedDates = newValue
-                    if let components = newValue.first,
-                       let date = calendar.date(from: components)
-                    {
-                        startDate = date
-                        endDate = date
-                    }
-                } else if selectedDates.count == 1 {
-                    // Second date selected - fill the range
-                    selectedDates = filledRange(selectedDates: newValue)
-                    updateStartEndDates()
-                } else if let firstMissingDate = newValue.subtracting(selectedDates).first {
-                    // Additional date tapped - start new range
-                    selectedDates = [firstMissingDate]
-                    if let date = calendar.date(from: firstMissingDate) {
-                        startDate = date
-                        endDate = date
-                    }
-                }
-            } else if let firstMissingDate = selectedDates.subtracting(newValue).first {
-                // Date was removed - start new range from this date
-                selectedDates = [firstMissingDate]
-                if let date = calendar.date(from: firstMissingDate) {
-                    startDate = date
-                    endDate = date
-                }
-            } else {
-                selectedDates = []
-                startDate = nil
-                endDate = nil
-            }
+    private var monthYearString: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        return formatter.string(from: displayedMonth)
+    }
+
+    private var daysInMonth: [Date?] {
+        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth),
+              let monthFirstWeek = calendar.dateInterval(of: .weekOfMonth, for: monthInterval.start)
+        else {
+            return []
         }
+
+        var days: [Date?] = []
+        var currentDate = monthFirstWeek.start
+
+        while days.count < 42 { // 6 weeks max
+            if calendar.isDate(currentDate, equalTo: displayedMonth, toGranularity: .month) {
+                days.append(currentDate)
+            } else {
+                days.append(nil)
+            }
+
+            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else {
+                break
+            }
+            currentDate = nextDate
+        }
+
+        return days
     }
 
     var body: some View {
@@ -104,20 +71,65 @@ struct DateRangeSelectorSheet: View {
             VStack(spacing: 0) {
                 SheetHeader(title: t("wallet__filter_title"))
 
-                // Date Range Picker
                 VStack(alignment: .leading, spacing: 16) {
-                    // Calendar - recreate with new UUID to show selected month
-                    MultiDatePicker("", selection: datesBinding)
-                        .datePickerStyle(.graphical)
-                        .tint(.brandAccent)
-                        .padding(.horizontal, 16)
-                        .id(pickerKey)
-                        .onAppear {
-                            // Force picker recreation when sheet appears to show selected month
-                            if viewModel.startDate != nil {
-                                pickerKey = UUID()
+                    // Month navigation
+                    HStack {
+                        Button(action: previousMonth) {
+                            Image(systemName: "chevron.left")
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityIdentifier("PrevMonth")
+
+                        Spacer()
+
+                        Text(monthYearString)
+                            .font(.custom(Fonts.semiBold, size: 17))
+                            .foregroundColor(.white)
+
+                        Spacer()
+
+                        Button(action: nextMonth) {
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .accessibilityIdentifier("NextMonth")
+                    }
+                    .padding(.horizontal, 16)
+
+                    // Weekday headers
+                    HStack(spacing: 0) {
+                        ForEach(calendar.veryShortWeekdaySymbols, id: \.self) { symbol in
+                            Text(symbol)
+                                .font(.custom(Fonts.regular, size: 12))
+                                .foregroundColor(.white64)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    // Calendar grid
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 8) {
+                        ForEach(Array(daysInMonth.enumerated()), id: \.offset) { _, date in
+                            if let date {
+                                CalendarDayView(
+                                    date: date,
+                                    isSelected: isDateInRange(date),
+                                    isStartDate: calendar.isDate(date, inSameDayAs: startDate ?? Date.distantPast),
+                                    isEndDate: calendar.isDate(date, inSameDayAs: endDate ?? Date.distantPast),
+                                    isToday: calendar.isDateInToday(date)
+                                ) {
+                                    selectDate(date)
+                                }
+                                .accessibilityIdentifier(calendar.isDateInToday(date) ? "Today" : "Day-\(calendar.component(.day, from: date))")
+                            } else {
+                                Color.clear
+                                    .frame(height: 40)
                             }
                         }
+                    }
+                    .padding(.horizontal, 16)
 
                     // Display selected range (fixed height to prevent layout jump)
                     VStack {
@@ -160,10 +172,10 @@ struct DateRangeSelectorSheet: View {
                         variant: .secondary,
                         isDisabled: !hasSelection
                     ) {
-                        selectedDates = []
                         startDate = nil
                         endDate = nil
                         viewModel.clearDateRange()
+                        isPresented = false
                     }
                     .accessibilityIdentifier("CalendarClearButton")
 
@@ -191,35 +203,115 @@ struct DateRangeSelectorSheet: View {
         return formatter.string(from: date)
     }
 
-    private func filledRange(selectedDates: Set<DateComponents>) -> Set<DateComponents> {
-        let allDates = selectedDates.compactMap { calendar.date(from: $0) }
-        guard allDates.count == 2,
-              let startDate = allDates.min(),
-              let endDate = allDates.max()
-        else {
-            return selectedDates
-        }
+    private func isDateInRange(_ date: Date) -> Bool {
+        guard let start = startDate else { return false }
+        let end = endDate ?? start
 
-        var dateRange: Set<DateComponents> = []
-        var currentDate = startDate
+        let normalizedDate = calendar.startOfDay(for: date)
+        let normalizedStart = calendar.startOfDay(for: start)
+        let normalizedEnd = calendar.startOfDay(for: end)
 
-        while currentDate <= endDate {
-            if let components = calendar.dateComponents(datePickerComponents, from: currentDate) as DateComponents? {
-                dateRange.insert(components)
-            }
-            guard let nextDate = calendar.date(byAdding: .day, value: 1, to: currentDate) else {
-                break
-            }
-            currentDate = nextDate
-        }
-
-        return dateRange
+        return normalizedDate >= normalizedStart && normalizedDate <= normalizedEnd
     }
 
-    private func updateStartEndDates() {
-        let allDates = selectedDates.compactMap { calendar.date(from: $0) }
-        startDate = allDates.min()
-        endDate = allDates.max()
+    private func selectDate(_ date: Date) {
+        let normalizedDate = calendar.startOfDay(for: date)
+
+        if startDate == nil {
+            // First selection
+            startDate = normalizedDate
+            endDate = normalizedDate
+        } else if let start = startDate, let end = endDate, start == end {
+            // Second selection - create range
+            let normalizedStart = calendar.startOfDay(for: start)
+            if normalizedDate < normalizedStart {
+                startDate = normalizedDate
+                endDate = normalizedStart
+            } else if normalizedDate == normalizedStart {
+                // Same date clicked - do nothing or clear
+                return
+            } else {
+                endDate = normalizedDate
+            }
+        } else {
+            // Third selection - start new range
+            startDate = normalizedDate
+            endDate = normalizedDate
+        }
+    }
+
+    private func previousMonth() {
+        if let newMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) {
+            displayedMonth = newMonth
+        }
+    }
+
+    private func nextMonth() {
+        if let newMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) {
+            displayedMonth = newMonth
+        }
+    }
+}
+
+// MARK: - CalendarDayView
+
+struct CalendarDayView: View {
+    let date: Date
+    let isSelected: Bool
+    let isStartDate: Bool
+    let isEndDate: Bool
+    let isToday: Bool
+    let action: () -> Void
+
+    @Environment(\.calendar) var calendar
+
+    private var dayNumber: String {
+        String(calendar.component(.day, from: date))
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                // Selection background
+                if isSelected {
+                    if isStartDate && isEndDate {
+                        // Single day or start=end
+                        Circle()
+                            .fill(Color.brandAccent)
+                    } else if isStartDate {
+                        HStack(spacing: 0) {
+                            Circle()
+                                .fill(Color.brandAccent)
+                            Rectangle()
+                                .fill(Color.brandAccent.opacity(0.3))
+                        }
+                    } else if isEndDate {
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .fill(Color.brandAccent.opacity(0.3))
+                            Circle()
+                                .fill(Color.brandAccent)
+                        }
+                    } else {
+                        // Middle of range
+                        Rectangle()
+                            .fill(Color.brandAccent.opacity(0.3))
+                    }
+                }
+
+                // Day number
+                Text(dayNumber)
+                    .font(.custom(Fonts.regular, size: 16))
+                    .foregroundColor(isSelected ? .black : .white)
+
+                // Today indicator
+                if isToday && !isSelected {
+                    Circle()
+                        .stroke(Color.brandAccent, lineWidth: 1)
+                }
+            }
+        }
+        .frame(height: 40)
     }
 }
 
