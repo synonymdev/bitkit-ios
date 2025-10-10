@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct ActivityListFilter: View {
-    @EnvironmentObject private var sheets: SheetViewModel
     @ObservedObject var viewModel: ActivityListViewModel
     @State private var showingDateRange = false
     @State private var showingTagSelector = false
@@ -52,7 +51,7 @@ struct ActivityListFilter: View {
         .background(Color.gray6)
         .cornerRadius(32)
         .sheet(isPresented: $showingDateRange) {
-            DateRangeSelector(viewModel: viewModel)
+            DateRangeSelectorSheet(viewModel: viewModel, isPresented: $showingDateRange)
         }
         .sheet(isPresented: $showingTagSelector) {
             TagFilterSheet(viewModel: viewModel, isPresented: $showingTagSelector)
