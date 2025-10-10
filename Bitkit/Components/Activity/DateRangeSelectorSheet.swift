@@ -100,9 +100,8 @@ struct DateRangeSelectorSheet: View {
 
                     // Weekday headers
                     HStack(spacing: 0) {
-                        ForEach(calendar.veryShortWeekdaySymbols, id: \.self) { symbol in
-                            Text(symbol)
-                                .font(.custom(Fonts.regular, size: 12))
+                        ForEach(calendar.shortWeekdaySymbols, id: \.self) { symbol in
+                            CaptionText(symbol.uppercased())
                                 .foregroundColor(.white64)
                                 .frame(maxWidth: .infinity)
                         }
