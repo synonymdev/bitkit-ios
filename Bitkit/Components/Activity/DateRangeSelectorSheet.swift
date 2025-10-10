@@ -279,19 +279,11 @@ struct CalendarDayView: View {
                         Circle()
                             .fill(Color.brandAccent)
                     } else if isStartDate {
-                        HStack(spacing: 0) {
-                            Circle()
-                                .fill(Color.brandAccent)
-                            Rectangle()
-                                .fill(Color.brandAccent.opacity(0.3))
-                        }
+                        Circle()
+                            .fill(Color.brandAccent)
                     } else if isEndDate {
-                        HStack(spacing: 0) {
-                            Rectangle()
-                                .fill(Color.brandAccent.opacity(0.3))
-                            Circle()
-                                .fill(Color.brandAccent)
-                        }
+                        Circle()
+                            .fill(Color.brandAccent)
                     } else {
                         // Middle of range
                         Rectangle()
