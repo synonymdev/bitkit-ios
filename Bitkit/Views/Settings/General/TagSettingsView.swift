@@ -10,8 +10,7 @@ struct TagSettingsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionText(t("settings__general__tags_previously"))
-                        .textCase(.uppercase)
+                    CaptionMText(t("settings__general__tags_previously"))
                         .padding(.top, 24)
                         .padding(.bottom, 16)
                         .frame(maxWidth: .infinity, alignment: .leading)

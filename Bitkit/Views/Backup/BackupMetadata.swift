@@ -21,8 +21,13 @@ struct BackupMetadata: View {
                 Spacer()
 
                 // TODO: Add actual last backup time
-                BodySText(t("security__mnemonic_latest_backup", variables: ["time": "12/06/2025 12:00"]))
-                    .padding(.bottom, 16)
+                BodySText(
+                    tTodo("<accent>Latest full backup:</accent> {time}", variables: ["time": "12/06/2025 12:00"]),
+                    textColor: .textPrimary,
+                    accentColor: .textPrimary,
+                    accentFont: Fonts.bold
+                )
+                .padding(.bottom, 16)
 
                 CustomButton(title: t("common__ok")) {
                     sheets.hideSheet()

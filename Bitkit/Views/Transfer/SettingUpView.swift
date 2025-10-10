@@ -1,6 +1,61 @@
 import BitkitCore
 import SwiftUI
 
+struct SettingUpLoadingView: View {
+    @State private var outerRotation: Double = 0
+    @State private var innerRotation: Double = 0
+    @State private var transferRotation: Double = 0
+
+    var size: (container: CGFloat, image: CGFloat, inner: CGFloat) {
+        let container: CGFloat = UIScreen.main.isSmall ? 200 : 320
+        let image = container * 0.8
+        let inner = container * 0.7
+
+        return (container: container, image: image, inner: inner)
+    }
+
+    var body: some View {
+        ZStack(alignment: .center) {
+            // Outer ellipse
+            Image("ellipse-outer-purple")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size.container, height: size.container)
+                .rotationEffect(.degrees(outerRotation))
+
+            // Inner ellipse
+            Image("ellipse-inner-purple")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size.inner, height: size.inner)
+                .rotationEffect(.degrees(innerRotation))
+
+            // Transfer image
+            Image("transfer-figure")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size.image, height: size.image)
+                .rotationEffect(.degrees(transferRotation))
+        }
+        .frame(width: size.container, height: size.container)
+        .clipped()
+        .frame(maxWidth: .infinity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                outerRotation = -90
+            }
+
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                innerRotation = 120
+            }
+
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                transferRotation = 90
+            }
+        }
+    }
+}
+
 struct ProgressSteps: View {
     let steps: [String]
     let currentStep: Int
@@ -68,9 +123,6 @@ struct SettingUpView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
 
-    @State private var outerRotation: Double = 0
-    @State private var innerRotation: Double = 0
-    @State private var transferRotation: Double = 0
     // Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random")
 
@@ -116,44 +168,7 @@ struct SettingUpView: View {
                 Spacer()
 
                 if isTransferring {
-                    ZStack(alignment: .center) {
-                        // Outer ellipse
-                        Image("ellipse-outer-purple")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 311, height: 311)
-                            .rotationEffect(.degrees(outerRotation))
-
-                        // Inner ellipse
-                        Image("ellipse-inner-purple")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 207, height: 207)
-                            .rotationEffect(.degrees(innerRotation))
-
-                        // Transfer image
-                        Image("transfer-figure")
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: 256, height: 256)
-                            .rotationEffect(.degrees(transferRotation))
-                    }
-                    .frame(width: 320, height: 320)
-                    .clipped()
-                    .frame(maxWidth: .infinity)
-                    .onAppear {
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            outerRotation = -90
-                        }
-
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            innerRotation = 120
-                        }
-
-                        withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                            transferRotation = 90
-                        }
-                    }
+                    SettingUpLoadingView()
                 } else {
                     Image("check")
                         .resizable()
@@ -167,7 +182,7 @@ struct SettingUpView: View {
 
                 if isTransferring {
                     ProgressSteps(steps: steps, currentStep: transfer.lightningSetupStep)
-                        .padding(.bottom, 32)
+                        .padding(.bottom, 16)
                 }
 
                 CustomButton(title: buttonTitle) {

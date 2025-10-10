@@ -14,9 +14,10 @@ struct NotificationPreview: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image("app-icon")
+            Image("app-icon-black")
                 .resizable()
                 .frame(width: 38, height: 38)
+                .cornerRadius(9)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {

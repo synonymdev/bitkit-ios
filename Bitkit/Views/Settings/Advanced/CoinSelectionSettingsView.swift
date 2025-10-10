@@ -67,10 +67,12 @@ struct CoinSelectionMethodOption: View {
                 Spacer()
                 if isSelected {
                     Image("checkmark")
+                        .resizable()
+                        .frame(width: 32, height: 32)
                         .foregroundColor(.brandAccent)
                 }
             }
-            .padding(.vertical, 8)
+            .frame(height: 51)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -84,26 +86,25 @@ struct CoinSelectionAlgorithmOption: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     BodyMText(algorithm.localizedTitle, textColor: .textPrimary)
                     Spacer()
                     if isSelected {
                         Image("checkmark")
+                            .resizable()
+                            .frame(width: 32, height: 32)
                             .foregroundColor(.brandAccent)
-                            .frame(width: 23, height: 16)
                     }
                 }
+                .frame(height: 51)
+
+                BodySText(algorithm.localizedDescription)
+                    .multilineTextAlignment(.leading)
+                    .padding(.bottom, 16)
 
                 Divider()
-
-                BodySText(
-                    algorithm.localizedDescription,
-                    textColor: .textSecondary
-                )
-                .multilineTextAlignment(.leading)
             }
-            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
@@ -122,19 +123,12 @@ struct CoinSelectionSettingsView: View {
                 VStack(spacing: 0) {
                     // COIN SELECTION METHOD Section
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            BodyMText(
-                                t("settings__adv__cs_method"),
-                                textColor: .textSecondary
-                            )
+                        CaptionMText(t("settings__adv__cs_method"))
                             .padding(.bottom, 8)
-
-                            Spacer()
-                        }
 
                         VStack(spacing: 0) {
                             ForEach(CoinSelectionMethod.allCases, id: \.self) { method in
-                                VStack {
+                                VStack(spacing: 0) {
                                     CoinSelectionMethodOption(
                                         method: method,
                                         isSelected: settingsViewModel.coinSelectionMethod == method
@@ -153,16 +147,9 @@ struct CoinSelectionSettingsView: View {
                     // AUTOPILOT MODE Section (only show if Autopilot is selected)
                     if settingsViewModel.coinSelectionMethod == .autopilot {
                         VStack(alignment: .leading, spacing: 0) {
-                            HStack {
-                                BodyMText(
-                                    t("settings__adv__cs_auto_mode"),
-                                    textColor: .textSecondary
-                                )
+                            CaptionMText(t("settings__adv__cs_auto_mode"))
                                 .padding(.top, 24)
                                 .padding(.bottom, 8)
-
-                                Spacer()
-                            }
 
                             VStack(spacing: 0) {
                                 ForEach(CoinSelectionAlgorithm.supportedAlgorithms, id: \.self) { algorithm in

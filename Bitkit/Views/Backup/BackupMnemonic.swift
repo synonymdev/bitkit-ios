@@ -7,12 +7,24 @@ struct BackupMnemonicView: View {
     @State private var passphrase: String = ""
     @State private var showMnemonic: Bool = false
 
+    private var text: String {
+        showMnemonic
+            ? t("security__mnemonic_write", variables: ["length": "\(mnemonic.count)"])
+            : t("security__mnemonic_use")
+    }
+
+    private var note: String {
+        showMnemonic
+            ? "<accent>Bitkit cannot access your funds and cannot help recover them</accent> if you lose your recovery phrase. Keep it safe!"
+            : "Make sure no one can see your screen. <accent>Never share your recovery phrase</accent> with anyone, as it may result in loss of funds."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("security__mnemonic_your"))
 
             VStack(spacing: 0) {
-                BodyMText(t("security__mnemonic_write", variables: ["length": "\(mnemonic.count)"]))
+                BodyMText(text)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.bottom, 16)
 
@@ -35,25 +47,18 @@ struct BackupMnemonicView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(32)
-                    .background(Color.white10)
+                    .background(Color.gray6)
                     .blur(radius: showMnemonic ? 0 : 5)
                     .privacySensitive()
 
                     if !showMnemonic {
-                        Button(action: {
+                        CustomButton(
+                            title: t("security__mnemonic_reveal"),
+                            icon: Image("eye").resizable().frame(width: 16, height: 16)
+                        ) {
                             showMnemonic = true
-                        }) {
-                            BodySSBText(t("security__mnemonic_reveal"))
-                                .frame(width: 154, height: 56)
-                                .background(Color.black50)
-                                .cornerRadius(64)
                         }
-                        .shadow(
-                            color: Color.black.opacity(0.25),
-                            radius: 50,
-                            x: 0,
-                            y: 25
-                        )
+                        .frame(maxWidth: 180)
                     }
                 }
                 .cornerRadius(16)
@@ -67,15 +72,12 @@ struct BackupMnemonicView: View {
                     }
                 }
 
-                BodySText(t("security__mnemonic_never_share"), accentColor: .brandAccent)
+                BodySText(tTodo(note), textColor: .brandAccent, accentFont: Fonts.bold)
 
                 Spacer()
 
                 HStack(alignment: .center, spacing: 16) {
-                    CustomButton(
-                        title: t("common__continue"),
-                        isDisabled: !showMnemonic
-                    ) {
+                    CustomButton(title: t("common__continue"), isDisabled: !showMnemonic) {
                         let route =
                             passphrase.isEmpty
                                 ? BackupRoute.confirmMnemonic(mnemonic: mnemonic, passphrase: passphrase)
@@ -83,7 +85,6 @@ struct BackupMnemonicView: View {
                         navigationPath.append(route)
                     }
                 }
-                .padding(.top, 32)
             }
             .padding(.horizontal, 16)
         }

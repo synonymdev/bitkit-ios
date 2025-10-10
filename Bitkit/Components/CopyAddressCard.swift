@@ -49,7 +49,10 @@ struct CopyAddressCard: View {
                                 onCopy(address: pair.address, index: index)
                             }
 
-                            ShareLink(item: URL(string: pair.address)!) {
+                            ShareLink(
+                                item: pair.address,
+                                preview: SharePreview(pair.address, image: Image("app-icon-orange"))
+                            ) {
                                 CustomButton(
                                     title: t("common__share"),
                                     size: .small,
@@ -77,7 +80,8 @@ struct CopyAddressCard: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(32)
+        .padding(.vertical, 32)
+        .padding(.horizontal, UIScreen.main.isSmall ? 16 : 32)
         .background(Color.black)
         .cornerRadius(8)
         .aspectRatio(1, contentMode: .fit)
