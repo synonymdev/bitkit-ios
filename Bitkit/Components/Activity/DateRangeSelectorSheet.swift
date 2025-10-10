@@ -284,7 +284,7 @@ struct CalendarDayView: View {
                     } else {
                         // Middle of range
                         Rectangle()
-                            .fill(Color.brandAccent.opacity(0.3))
+                            .fill(Color.brand16)
                     }
                 }
 
