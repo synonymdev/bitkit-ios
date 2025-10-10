@@ -20,6 +20,7 @@ struct FundManualAmountView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 DisplayText(t("lightning__external_amount__title"), accentColor: .purpleAccent)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 NumberPadTextField(viewModel: amountViewModel, showConversion: false)
                     .onTapGesture {

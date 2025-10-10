@@ -42,12 +42,30 @@ struct LocalCurrencySettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__general__currency_local_title"))
+                .padding(.bottom, 16)
+
+            // Custom search bar
+            HStack(spacing: 0) {
+                Image("magnifying-glass")
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .foregroundColor(!searchText.isEmpty ? .brandAccent : .white64)
+                TextField(t("common__search"), text: $searchText, backgroundColor: .clear, font: .custom(Fonts.regular, size: 17))
+                    .frame(maxWidth: .infinity)
+                    .offset(x: -5)
+            }
+            .frame(height: 48)
+            .padding(.horizontal, 16)
+            .background(Color.gray6)
+            .cornerRadius(32)
+            .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
                 if !availableMostUsed.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        CaptionText(t("settings__general__currency_most_used").uppercased())
-                            .padding(.vertical, 16)
+                    VStack(alignment: .leading, spacing: 0) {
+                        CaptionMText(t("settings__general__currency_most_used"))
+                            .padding(.top, 16)
+                            .padding(.bottom, 8)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         ForEach(availableMostUsed, id: \.quote) { rate in
@@ -56,22 +74,25 @@ struct LocalCurrencySettingsView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionText(t("settings__general__currency_other").uppercased())
-                        .padding(.vertical, 16)
+                VStack(alignment: .leading, spacing: 0) {
+                    CaptionMText(t("settings__general__currency_other"))
+                        .padding(.top, 24)
+                        .padding(.bottom, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     ForEach(otherCurrencies, id: \.quote) { rate in
                         currencyRow(rate)
                     }
                 }
+
+                CaptionText(t("settings__general__currency_footer"))
+                    .padding(.top, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        // TODO: Fix search
-        .searchable(text: $searchText, prompt: t("common__search"))
     }
 }
 

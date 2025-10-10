@@ -25,7 +25,7 @@ struct SpendingConfirm: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("lightning__transfer__nav_title"))
-                .padding(.bottom, 32)
+                .padding(.bottom, 16)
 
             DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
 

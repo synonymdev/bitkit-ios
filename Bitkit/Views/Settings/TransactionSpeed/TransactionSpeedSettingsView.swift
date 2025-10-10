@@ -17,7 +17,7 @@ struct TransactionSpeedSettingsRow: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack {
+            HStack(spacing: 0) {
                 Image(speed.iconName)
                     .resizable()
                     .scaledToFit()

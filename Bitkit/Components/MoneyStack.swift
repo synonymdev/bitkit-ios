@@ -25,6 +25,7 @@ struct MoneyStack: View {
                     symbol: true,
                     color: .textSecondary
                 )
+                .contentTransition(.numericText())
                 .transition(
                     .move(edge: .bottom)
                         .combined(with: .opacity)
@@ -40,6 +41,7 @@ struct MoneyStack: View {
                         prefix: prefix,
                         color: .textPrimary
                     )
+                    .contentTransition(.numericText())
 
                     Spacer()
 
@@ -60,6 +62,7 @@ struct MoneyStack: View {
                     symbol: true,
                     color: .textSecondary
                 )
+                .contentTransition(.numericText())
                 .transition(
                     .move(edge: .bottom)
                         .combined(with: .opacity)
@@ -75,6 +78,7 @@ struct MoneyStack: View {
                         prefix: prefix,
                         color: .textPrimary
                     )
+                    .contentTransition(.numericText())
 
                     Spacer()
 
@@ -179,15 +183,20 @@ private extension MoneyStack {
 #Preview {
     ScrollView {
         VStack(alignment: .leading, spacing: 32) {
-            // With toggle enabled
-            MoneyStack(sats: 123_456, prefix: "+", showSymbol: false)
+            // Large amounts to show dramatic transitions
+            MoneyStack(sats: 1_234_567_890, prefix: "+", showSymbol: false)
                 .environmentObject(MoneyStack.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD"))
                 .environmentObject(MoneyStack.previewSettingsVM())
 
-            // With symbol
-            MoneyStack(sats: 123_456, prefix: "-", showSymbol: true)
+            // With symbol and different amount
+            MoneyStack(sats: 987_654_321, prefix: "-", showSymbol: true)
                 .environmentObject(MoneyStack.previewCurrencyVM(primaryDisplay: .fiat, currency: "EUR"))
                 .environmentObject(MoneyStack.previewSettingsVM())
+
+            // Medium amount with eye icon
+            MoneyStack(sats: 456_789_123, showEyeIcon: true)
+                .environmentObject(MoneyStack.previewCurrencyVM(primaryDisplay: .bitcoin, currency: "USD", displayUnit: .classic))
+                .environmentObject(MoneyStack.previewSettingsVM(hideBalance: true))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
