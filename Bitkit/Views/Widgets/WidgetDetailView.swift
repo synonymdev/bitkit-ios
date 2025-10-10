@@ -122,8 +122,7 @@ struct WidgetDetailView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 0) {
-                CaptionText(t("common__preview"))
-                    .textCase(.uppercase)
+                CaptionMText(t("common__preview"))
                     .padding(.top, 16)
                     .padding(.bottom, 16)
 

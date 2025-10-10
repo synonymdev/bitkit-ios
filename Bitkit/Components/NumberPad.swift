@@ -17,7 +17,7 @@ struct NumberPad: View {
         self.onPress = onPress
     }
 
-    private let buttonHeight: CGFloat = 44 + 34
+    private let buttonHeight: CGFloat = UIScreen.main.isSmall ? 65 : 44 + 34
     private let gridItems = Array(repeating: GridItem(.flexible(), spacing: 0), count: 3)
     private let numbers = ["1", "2", "3", "4", "5", "6", "7", "8", "9"]
 

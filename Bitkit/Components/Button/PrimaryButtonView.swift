@@ -8,6 +8,7 @@ struct PrimaryButtonView: View {
     let isLoading: Bool
     let isPressed: Bool
     let shouldExpand: Bool
+    let background: AnyView?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -38,9 +39,14 @@ struct PrimaryButtonView: View {
     }
 
     private var backgroundGradient: some View {
+        if let background {
+            return background
+        }
+
         if isLoading {
             return AnyView(Color.gray6)
         }
+
         if isDisabled {
             return AnyView(Color.clear)
         }

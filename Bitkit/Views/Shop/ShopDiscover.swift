@@ -111,8 +111,7 @@ struct ShopDiscover: View {
                         .padding(.bottom, 16)
 
                         VStack {
-                            CaptionText(t("other__shop__discover__label"))
-                                .textCase(.uppercase)
+                            CaptionMText(t("other__shop__discover__label"))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .frame(height: 50)

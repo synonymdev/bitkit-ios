@@ -521,7 +521,7 @@ struct SendConfirmationView: View {
                     BodySSBText(description)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 16)
+                .padding(.vertical, 16)
 
                 Divider()
             }

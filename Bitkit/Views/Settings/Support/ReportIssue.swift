@@ -105,7 +105,7 @@ struct ReportIssue: View {
 
                         VStack(alignment: .leading, spacing: 26) {
                             VStack(alignment: .leading, spacing: 8) {
-                                CaptionText(t("settings__support__label_address").uppercased())
+                                CaptionMText(t("settings__support__label_address"))
 
                                 TextField(
                                     t("settings__support__placeholder_address"),
@@ -117,10 +117,7 @@ struct ReportIssue: View {
                             }
 
                             VStack(alignment: .leading, spacing: 8) {
-                                CaptionText(
-                                    t("settings__support__label_message").uppercased(),
-                                    textColor: .textSecondary
-                                )
+                                CaptionMText(t("settings__support__label_message"))
 
                                 ZStack(alignment: .topLeading) {
                                     if message.isEmpty {

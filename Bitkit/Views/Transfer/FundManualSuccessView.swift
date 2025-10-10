@@ -17,6 +17,7 @@ struct FundManualSuccessView: View {
                     t("lightning__external_success__title"),
                     accentColor: .purpleAccent
                 )
+                .fixedSize(horizontal: false, vertical: true)
 
                 BodyMText(
                     t("lightning__external_success__text"),
