@@ -13,34 +13,25 @@ concurrency:
 jobs:
   test:
     name: Run Tests
-    runs-on: macos-15
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 60
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: '16.4'
+      - name: Reset testing enviroment
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          pkill -f react-native || echo 0
+          pkill -f Simulator || echo 0
+          rm -rf /tmp/lock/*
+      # cd docker && docker compose down -v -t 300
 
       - name: Install xcbeautify
         run: |
           brew install xcbeautify
-
-      - name: List available simulators
-        run: |
-          echo "=== Full Simulator List ==="
-          xcrun simctl list
-          echo "\n=== Available Runtimes ==="
-          xcrun simctl list runtimes
-          echo "\n=== Device Pairs ==="
-          xcrun simctl list devicetypes
-
-      - name: Install dependencies
-        run: |
-          xcodebuild -resolvePackageDependencies | xcbeautify
 
       - name: Pre-start simulator
         run: |
