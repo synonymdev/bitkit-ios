@@ -1,4 +1,4 @@
-name: iOS Tests
+name: unit-tests
 
 on:
   push:
