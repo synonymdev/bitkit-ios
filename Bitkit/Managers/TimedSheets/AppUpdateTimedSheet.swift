@@ -19,6 +19,11 @@ struct AppUpdateTimedSheet: TimedSheetItem {
 
     @MainActor
     func shouldShow() async -> Bool {
+        // Don't show in e2e test environment
+        guard !Env.isE2E else {
+            return false
+        }
+
         // Check if enough time has passed since last ignore
         let currentTime = Date().timeIntervalSince1970
         let isTimeoutOver = currentTime - appViewModel.appUpdateIgnoreTimestamp > Self.ASK_INTERVAL
