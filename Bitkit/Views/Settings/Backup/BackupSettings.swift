@@ -105,10 +105,12 @@ struct BackupSettings: View {
                         }) {
                             SettingsListLabel(title: t("settings__backup__wallet"))
                         }
+                        .accessibilityIdentifier("BackupWallet")
 
                         NavigationLink(value: Route.resetAndRestore) {
                             SettingsListLabel(title: t("settings__backup__reset"))
                         }
+                        .accessibilityIdentifier("ResetAndRestore")
 
                         SettingsLabel(t("settings__backup__latest"))
                             .padding(.top, 16)
@@ -159,6 +161,7 @@ struct BackupSettings: View {
                     .frame(minHeight: geometry.size.height)
                     .bottomSafeAreaPadding()
                 }
+                .accessibilityIdentifier("BackupScrollView")
             }
         }
         .navigationBarHidden(true)

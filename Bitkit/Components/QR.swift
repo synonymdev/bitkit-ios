@@ -53,6 +53,10 @@ struct QR: View {
             cachedContent = newContent
             cachedImage = generateQRCode(from: newContent)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("QRCode")
+        .accessibilityLabel(content)
+        .accessibilityValue(content)
     }
 
     func generateQRCode(from string: String) -> UIImage {

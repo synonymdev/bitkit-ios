@@ -45,6 +45,7 @@ struct Header: View {
                         .frame(width: 24, height: 24)
                         .frame(width: 32, height: 32)
                 }
+                .accessibilityIdentifier("HeaderMenu")
             }
         }
         .frame(height: 48)

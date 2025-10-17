@@ -19,6 +19,10 @@ struct BackupMnemonicView: View {
             : "Make sure no one can see your screen. <accent>Never share your recovery phrase</accent> with anyone, as it may result in loss of funds."
     }
 
+    private var mnemonicAccessibilityLabel: String {
+        mnemonic.joined(separator: " ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("security__mnemonic_your"))
@@ -50,6 +54,10 @@ struct BackupMnemonicView: View {
                     .background(Color.gray6)
                     .blur(radius: showMnemonic ? 0 : 5)
                     .privacySensitive()
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("SeedContainer")
+                    .accessibilityLabel(mnemonicAccessibilityLabel)
+                    .accessibilityHidden(!showMnemonic)
 
                     if !showMnemonic {
                         CustomButton(
@@ -59,6 +67,7 @@ struct BackupMnemonicView: View {
                             showMnemonic = true
                         }
                         .frame(maxWidth: 180)
+                        .accessibilityIdentifier("TapToReveal")
                     }
                 }
                 .cornerRadius(16)

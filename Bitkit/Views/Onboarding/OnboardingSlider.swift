@@ -14,6 +14,7 @@ private struct OnboardingToolbar: View {
                     size: .small,
                     destination: CreateWalletWithPassphraseView()
                 )
+                .accessibilityIdentifier("Passphrase")
             }
             .opacity(currentTab == 3 ? 1 : 0)
 
@@ -22,6 +23,7 @@ private struct OnboardingToolbar: View {
                 CustomButton(title: t("onboarding__skip"), variant: .secondary, size: .small) {
                     onSkip()
                 }
+                .accessibilityIdentifier("SkipButton")
             }
             .opacity(currentTab == 3 ? 0 : 1)
         }
@@ -69,6 +71,7 @@ struct OnboardingSlider: View {
                         accentColor: .blueAccent
                     )
                     .tag(0)
+                    .accessibilityIdentifier("Slide0")
 
                     OnboardingTab(
                         imageName: "lightning",
@@ -78,6 +81,7 @@ struct OnboardingSlider: View {
                         accentColor: .purpleAccent
                     )
                     .tag(1)
+                    .accessibilityIdentifier("Slide1")
 
                     OnboardingTab(
                         imageName: "shield-figure",
@@ -88,6 +92,7 @@ struct OnboardingSlider: View {
                         accentColor: .greenAccent
                     )
                     .tag(2)
+                    .accessibilityIdentifier("Slide3")
 
                     CreateWalletView()
                         .tag(3)

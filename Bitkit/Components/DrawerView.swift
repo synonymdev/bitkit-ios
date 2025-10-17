@@ -46,6 +46,19 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
             return true
         }
     }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .wallet: return "DrawerWallet"
+        case .activity: return "DrawerActivity"
+        case .contacts: return "DrawerContacts"
+        case .profile: return "DrawerProfile"
+        case .widgets: return "DrawerWidgets"
+        case .shop: return "DrawerShop"
+        case .settings: return "DrawerSettings"
+        case .appStatus: return "DrawerAppStatus"
+        }
+    }
 }
 
 struct DrawerView: View {
@@ -95,6 +108,7 @@ struct DrawerView: View {
                             }) {
                                 menuItemContent(item: item)
                             }
+                            .accessibilityIdentifier(item.accessibilityIdentifier)
                         }
 
                         Spacer()

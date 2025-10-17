@@ -23,11 +23,13 @@ struct IntroView: View {
 
             HStack(spacing: 16) {
                 CustomButton(title: t("onboarding__get_started"), destination: OnboardingSlider())
+                    .accessibilityIdentifier("GetStarted")
                 CustomButton(
                     title: t("onboarding__skip_intro"),
                     variant: .secondary,
                     destination: OnboardingSlider(currentTab: 3)
                 )
+                .accessibilityIdentifier("SkipIntro")
             }
         }
         .padding(.horizontal, 32)

@@ -41,6 +41,7 @@ struct QrArea: View {
             ) {
                 navigationPath.append(.edit)
             }
+            .accessibilityIdentifier("SpecifyInvoiceButton")
 
             CustomButton(
                 title: t("common__copy"),
@@ -50,6 +51,7 @@ struct QrArea: View {
             ) {
                 onCopy()
             }
+            .accessibilityIdentifier("ReceiveCopyQR")
 
             CustomButton(
                 title: t("common__share"),
