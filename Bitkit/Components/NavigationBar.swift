@@ -81,6 +81,7 @@ struct NavigationBar: View {
                 }
                 .frame(width: 32, height: 32)
                 .offset(x: 6)
+                .accessibilityIdentifier("HeaderMenu")
             } else {
                 Spacer()
                     .frame(width: 24, height: 24)

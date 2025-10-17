@@ -104,6 +104,7 @@ struct RestoreWalletView: View {
                     .padding(.horizontal, 32)
                     .bottomSafeAreaPadding()
                 }
+                .accessibilityIdentifier("RestoreScrollView")
                 .scrollDismissesKeyboard(.interactively)
             }
         }
@@ -169,6 +170,7 @@ struct RestoreWalletView: View {
                         .autocorrectionDisabled()
                         .focused($isPassphraseFocused)
                         .padding(.top, 4)
+                        .accessibilityIdentifier("PassphraseInput")
 
                     BodySText(t("onboarding__restore_passphrase_meaning"))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -198,6 +200,7 @@ struct RestoreWalletView: View {
                     showingPassphrase.toggle()
                     isPassphraseFocused = true
                 }
+                .accessibilityIdentifier("AdvancedButton")
             }
 
             CustomButton(
@@ -206,6 +209,7 @@ struct RestoreWalletView: View {
             ) {
                 restoreWallet()
             }
+            .accessibilityIdentifier("RestoreButton")
         }
     }
 

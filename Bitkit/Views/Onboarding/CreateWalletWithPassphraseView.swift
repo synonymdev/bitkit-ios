@@ -40,11 +40,13 @@ struct CreateWalletWithPassphraseView: View {
                         TextField(t("onboarding__passphrase"), text: $bip39Passphrase)
                             .focused($isTextFieldFocused)
                             .padding(.bottom, 28)
+                            .accessibilityIdentifier("PassphraseInput")
 
                         CustomButton(title: t("onboarding__create_new_wallet"), isDisabled: !isValidPassphrase) {
                             createWallet()
                         }
                         .buttonBottomPadding(isFocused: isTextFieldFocused)
+                        .accessibilityIdentifier("CreateNewWallet")
                     }
                     .frame(minHeight: geometry.size.height)
                     .padding(.horizontal, 16)

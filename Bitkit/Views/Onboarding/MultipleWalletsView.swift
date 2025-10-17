@@ -11,6 +11,7 @@ struct MultipleWalletsView: View {
             )
 
             CustomButton(title: t("common__understood"), destination: RestoreWalletView())
+                .accessibilityIdentifier("MultipleDevices-button")
         }
         .padding(.horizontal, 32)
         .bottomSafeAreaPadding()
