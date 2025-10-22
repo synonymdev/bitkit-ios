@@ -44,7 +44,11 @@ extension SettingsViewModel {
             electrumConfigService.saveServerConfig(electrumCurrentServer)
 
             // Restart the Lightning node with the new Electrum server
-            try await lightningService.restartWithElectrumServer(electrumCurrentServer.url)
+            let currentRgsUrl = rgsConfigService.getCurrentServerUrl()
+            try await lightningService.restart(
+                electrumServerUrl: electrumCurrentServer.url,
+                rgsServerUrl: currentRgsUrl.isEmpty ? nil : currentRgsUrl
+            )
 
             electrumIsConnected = true
             electrumIsLoading = false

@@ -346,6 +346,7 @@ struct MainNavView: View {
             case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
             case .node: NodeStateView()
             case .electrumSettings: ElectrumSettingsScreen()
+            case .rgsSettings: RgsSettingsScreen()
             case .addressViewer: AddressViewer()
 
             // Dev settings

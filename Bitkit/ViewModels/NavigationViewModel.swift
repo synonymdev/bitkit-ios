@@ -79,6 +79,7 @@ enum Route: Hashable {
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings
+    case rgsSettings
     case addressViewer
 
     // Support settings

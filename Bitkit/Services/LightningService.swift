@@ -13,7 +13,7 @@ class LightningService {
 
     private init() {}
 
-    func setup(walletIndex: Int, electrumServerUrl: String = Env.electrumServerUrl) async throws {
+    func setup(walletIndex: Int, electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
         Logger.debug("Checking lightning process lock...")
         try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
@@ -65,11 +65,8 @@ class LightningService {
         )
         builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
 
-        if let rgsServerUrl = Env.ldkRgsServerUrl {
-            builder.setGossipSourceRgs(rgsServerUrl: rgsServerUrl)
-        } else {
-            builder.setGossipSourceP2p()
-        }
+        // Configure gossip source from current settings
+        configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
@@ -103,8 +100,8 @@ class LightningService {
         passphrase = nil
     }
 
-    func restartWithElectrumServer(_ serverUrl: String) async throws {
-        Logger.info("Restarting node with new Electrum server: \(serverUrl)")
+    func restart(electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+        Logger.info("Restarting node with current configuration")
 
         // Stop the current node if it exists, ignore errors if already stopped
         if node != nil {
@@ -118,11 +115,11 @@ class LightningService {
             }
         }
 
-        // Restart the node with the new configuration
-        try await setup(walletIndex: currentWalletIndex, electrumServerUrl: serverUrl)
+        // Restart the node with the current configuration
+        try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
         try await start()
 
-        Logger.info("Node restarted successfully with new Electrum server")
+        Logger.info("Node restarted successfully")
     }
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
@@ -456,6 +453,19 @@ class LightningService {
 
         Logger.debug("Generated LDK log file path: \(logFilePath)")
         return logFilePath
+    }
+
+    // MARK: - Configuration Helpers
+
+    private func configureGossipSource(builder: Builder, rgsServerUrl: String?) {
+        let rgsUrl = rgsServerUrl ?? Env.ldkRgsServerUrl
+        if let rgsUrl, !rgsUrl.isEmpty {
+            Logger.info("Using gossip source rgs url: \(rgsUrl)")
+            builder.setGossipSourceRgs(rgsServerUrl: rgsUrl)
+        } else {
+            Logger.info("Using gossip source p2p")
+            builder.setGossipSourceP2p()
+        }
     }
 }
 
