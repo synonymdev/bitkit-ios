@@ -10,6 +10,7 @@ struct SendAmountView: View {
 
     @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var maxSendableAmount: UInt64?
+    @State private var routingFee: UInt64 = 0
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -21,10 +22,11 @@ struct SendAmountView: View {
 
     /// The amount to display in the available balance section
     /// For onchain transactions, this shows the max sendable amount (balance minus fees)
-    /// For lightning transactions, this shows the total balance
+    /// For lightning transactions, this shows the max sendable lightning amount minus routing fees
     var availableAmount: UInt64 {
         if app.selectedWalletToPayFrom == .lightning {
-            return UInt64(wallet.totalLightningSats)
+            let maxSendLightning = UInt64(wallet.maxSendLightningSats)
+            return maxSendLightning >= routingFee ? maxSendLightning - routingFee : 0
         } else {
             // For onchain, show max sendable amount if calculated, otherwise fall back to total balance
             return maxSendableAmount ?? UInt64(wallet.spendableOnchainBalanceSats)
@@ -63,6 +65,14 @@ struct SendAmountView: View {
                     )
                     .onTapGesture {
                         amountViewModel.updateFromSats(availableAmount, currency: currency)
+
+                        if app.selectedWalletToPayFrom == .lightning {
+                            app.toast(
+                                type: .warning,
+                                title: t("wallet__send_max_spending__title"),
+                                description: t("wallet__send_max_spending__description")
+                            )
+                        }
                     }
 
                     Spacer()
@@ -124,6 +134,10 @@ struct SendAmountView: View {
                 Task {
                     await calculateMaxSendableAmount()
                 }
+            } else if app.selectedWalletToPayFrom == .lightning {
+                Task {
+                    await calculateRoutingFee()
+                }
             }
         }
         .onChange(of: app.selectedWalletToPayFrom) { newValue in
@@ -132,7 +146,11 @@ struct SendAmountView: View {
                 Task {
                     await calculateMaxSendableAmount()
                 }
-            } else {
+                routingFee = 0
+            } else if newValue == .lightning {
+                Task {
+                    await calculateRoutingFee()
+                }
                 maxSendableAmount = nil
             }
         }
@@ -143,9 +161,9 @@ struct SendAmountView: View {
             wallet.sendAmountSats = amountSats
             wallet.isMaxAmountSend = isMaxAmountSend
 
-            // Lightning tx
+            // Lightning payment
             if app.selectedWalletToPayFrom == .lightning {
-                if UInt64(wallet.totalLightningSats) < amountSats {
+                if UInt64(wallet.maxSendLightningSats) < amountSats {
                     app.toast(
                         type: .error,
                         title: "Insufficient Funds",
@@ -158,7 +176,7 @@ struct SendAmountView: View {
                 return
             }
 
-            // Onchain tx
+            // Onchain transaction
             if settings.coinSelectionMethod == .manual {
                 try await wallet.loadAvailableUtxos()
 
@@ -171,7 +189,7 @@ struct SendAmountView: View {
                     return
                 }
 
-                if wallet.availableUtxos.reduce(0) { $0 + $1.valueSats } < amountSats {
+                if wallet.availableUtxos.reduce(0, { $0 + $1.valueSats }) < amountSats {
                     app.toast(
                         type: .error,
                         title: "Insufficient Funds",
@@ -222,6 +240,24 @@ struct SendAmountView: View {
             await MainActor.run {
                 // Fall back to total balance if calculation fails
                 maxSendableAmount = UInt64(wallet.spendableOnchainBalanceSats)
+            }
+        }
+    }
+
+    private func calculateRoutingFee() async {
+        guard app.selectedWalletToPayFrom == .lightning else { return }
+        guard let bolt11 = app.scannedLightningInvoice?.bolt11 else { return }
+
+        do {
+            let buffer: UInt64 = 2 // TODO: find out why this is needed
+            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: UInt64(wallet.maxSendLightningSats) - buffer)
+            await MainActor.run {
+                routingFee = fee + buffer
+            }
+        } catch {
+            Logger.error("Failed to calculate lightning routing fee: \(error)")
+            await MainActor.run {
+                routingFee = 0
             }
         }
     }
