@@ -44,17 +44,20 @@ class WalletViewModel: ObservableObject {
     private let lightningService: LightningService
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
+    private let rgsConfigService: RgsConfigService
 
     @Published var isRestoringWallet = false
 
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
-        electrumConfigService: ElectrumConfigService = ElectrumConfigService()
+        electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
+        rgsConfigService: RgsConfigService = RgsConfigService()
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
+        self.rgsConfigService = rgsConfigService
     }
 
     deinit {
@@ -84,7 +87,12 @@ class WalletViewModel: ObservableObject {
         syncState()
         do {
             let electrumServerUrl = electrumConfigService.getCurrentServer().url
-            try await lightningService.setup(walletIndex: walletIndex, electrumServerUrl: electrumServerUrl)
+            let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
+            try await lightningService.setup(
+                walletIndex: walletIndex,
+                electrumServerUrl: electrumServerUrl,
+                rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl
+            )
             try await lightningService.start(onEvent: { event in
                 // On every lightning event just sync UI
                 Task { @MainActor in
