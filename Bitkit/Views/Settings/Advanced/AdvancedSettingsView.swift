@@ -55,7 +55,7 @@ struct AdvancedSettingsView: View {
                             SettingsListLabel(title: t("settings__adv__electrum_server"))
                         }
 
-                        NavigationLink(destination: Text("Coming soon")) {
+                        NavigationLink(value: Route.rgsSettings) {
                             SettingsListLabel(title: t("settings__adv__rgs_server"))
                         }
                     }
