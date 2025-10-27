@@ -27,6 +27,7 @@ struct WalletRestoreSuccess: View {
                 Haptics.play(.light)
                 wallet.isRestoringWallet = false
             }
+            .accessibilityIdentifier("GetStartedButton")
         }
         .padding(.horizontal, 32)
         .bottomSafeAreaPadding()
