@@ -373,18 +373,12 @@ struct AddressRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Index
             CaptionText(
-                "\(index):",
-                textColor: isSelected ? .white : .white80
-            )
-
-            // Address (truncated)
-            CaptionText(
-                truncatedAddress,
+                "\(index): \(address)",
                 textColor: isSelected ? .white : .textPrimary
             )
             .lineLimit(1)
+            .truncationMode(.middle)
 
             Spacer()
 
@@ -410,13 +404,7 @@ struct AddressRow: View {
             Haptics.play(.copiedToClipboard)
             app.toast(type: .success, title: t("common__copied"), description: address)
         }
-    }
-
-    private var truncatedAddress: String {
-        guard address.count > 20 else { return address }
-        let start = String(address.prefix(12))
-        let end = String(address.suffix(12))
-        return "\(start)...\(end)"
+        .accessibilityIdentifier("Address-\(index)")
     }
 }
 
