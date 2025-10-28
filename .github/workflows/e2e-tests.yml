@@ -60,6 +60,13 @@ jobs:
           echo "=== Building iOS app ==="
           echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
 
+          if xcodebuild -showsdks | grep -q "iOS Simulator"; then
+            echo "✅ iOS Simulator platform already installed"
+          else
+            echo "⚙️  iOS Simulator platform not found — downloading..."
+            xcodebuild -downloadPlatform iOS
+          fi
+
           xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
             -scheme Bitkit \
             -configuration Debug \
