@@ -175,6 +175,12 @@ jobs:
           done
           echo "Electrum server is ready!"
 
+      - name: Clear previous E2E artifacts
+        working-directory: bitkit-e2e-tests
+        run: | 
+          rm -rf artifacts/
+          rm -rf /tmp/lock/
+
       - name: Run E2E Tests (${{ matrix.shard.name }})
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
