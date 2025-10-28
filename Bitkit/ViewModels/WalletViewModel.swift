@@ -10,6 +10,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalOnchainSats") var totalOnchainSats: Int = 0 // The total balance of our on-chain wallet
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("spendableOnchainBalanceSats") var spendableOnchainBalanceSats: Int = 0 // The spendable balance of our on-chain wallet
+    @AppStorage("maxSendLightningSats") var maxSendLightningSats: Int = 0 // Maximum amount that can be sent via lightning (outbound capacity)
 
     // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -370,6 +371,11 @@ class WalletViewModel: ObservableObject {
         return spendableBalance >= fee ? spendableBalance - fee : 0
     }
 
+    /// Estimates the routing fees for a lightning payment
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
+        return try await lightningService.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+    }
+
     /// Sends a lightning payment and waits for the result using async/await
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.
@@ -382,7 +388,7 @@ class WalletViewModel: ObservableObject {
             // Add event listener for this specific payment
             addOnEvent(id: eventId) { event in
                 switch event {
-                case let .paymentSuccessful(paymentId, paymentHash, _, _):
+                case let .paymentSuccessful(_, paymentHash, _, _):
                     if paymentHash == hash {
                         self.removeOnEvent(id: eventId)
                         continuation.resume(returning: paymentHash)
@@ -420,6 +426,14 @@ class WalletViewModel: ObservableObject {
 
         if let channels {
             channelCount = channels.count
+
+            // Calculate maximum sendable lightning amount (outbound capacity)
+            let totalNextOutboundHtlcLimitSats = channels
+                .filter(\.isUsable)
+                .map(\.nextOutboundHtlcLimitMsat)
+                .reduce(0, +) / 1000 // Convert from msat to sat
+
+            maxSendLightningSats = Int(totalNextOutboundHtlcLimitSats)
         }
 
         if let balanceDetails {
@@ -552,6 +566,7 @@ class WalletViewModel: ObservableObject {
         totalBalanceSats = 0
         totalOnchainSats = 0
         totalLightningSats = 0
+        maxSendLightningSats = 0
         channelCount = 0
 
         onchainAddress = ""
