@@ -54,7 +54,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 17"
-          OS_VERSION: "26.0"
+          OS_VERSION: "latest"
           E2E: true
         run: |
           echo "=== Building iOS app ==="
