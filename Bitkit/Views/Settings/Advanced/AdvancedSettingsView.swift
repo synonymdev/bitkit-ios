@@ -27,6 +27,7 @@ struct AdvancedSettingsView: View {
                         NavigationLink(value: Route.coinSelection) {
                             SettingsListLabel(title: t("settings__adv__coin_selection"))
                         }
+                        .accessibilityIdentifier("CoinSelectPreference")
 
                         // NavigationLink(destination: Text("Coming soon")) {
                         //     SettingsListLabel(title: t("settings__adv__payment_preference"))
@@ -46,18 +47,22 @@ struct AdvancedSettingsView: View {
                         NavigationLink(value: Route.connections) {
                             SettingsListLabel(title: t("settings__adv__lightning_connections"))
                         }
+                        .accessibilityIdentifier("Channels")
 
                         NavigationLink(value: Route.node) {
                             SettingsListLabel(title: t("settings__adv__lightning_node"))
                         }
+                        .accessibilityIdentifier("LightningNodeInfo")
 
                         NavigationLink(value: Route.electrumSettings) {
                             SettingsListLabel(title: t("settings__adv__electrum_server"))
                         }
+                        .accessibilityIdentifier("ElectrumConfig")
 
                         NavigationLink(value: Route.rgsSettings) {
                             SettingsListLabel(title: t("settings__adv__rgs_server"))
                         }
+                        .accessibilityIdentifier("RGSServer")
                     }
 
                     // OTHER Section
@@ -71,6 +76,7 @@ struct AdvancedSettingsView: View {
                         NavigationLink(value: Route.addressViewer) {
                             SettingsListLabel(title: t("settings__adv__address_viewer"))
                         }
+                        .accessibilityIdentifier("AddressViewer")
 
                         // SettingsListLabel(title: t("settings__adv__rescan"), rightIcon: nil)
 
@@ -79,6 +85,7 @@ struct AdvancedSettingsView: View {
                         }) {
                             SettingsListLabel(title: t("settings__adv__suggestions_reset"))
                         }
+                        .accessibilityIdentifier("ResetSuggestions")
 
                         Spacer()
                     }

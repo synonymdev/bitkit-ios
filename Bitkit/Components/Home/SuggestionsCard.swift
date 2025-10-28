@@ -49,6 +49,7 @@ struct SuggestionCard: View {
                     .padding(8)
             }
             .padding(8)
+            .accessibilityIdentifier("SuggestionDismiss")
             .accessibility(label: Text("Dismiss \(data.title)"))
         }
     }
