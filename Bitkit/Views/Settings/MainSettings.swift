@@ -19,6 +19,7 @@ struct MainSettings: View {
                                 iconName: "gear-six"
                             )
                         }
+                        .accessibilityIdentifier("GeneralSettings")
 
                         NavigationLink(value: Route.securitySettings) {
                             SettingsListLabel(
@@ -26,6 +27,7 @@ struct MainSettings: View {
                                 iconName: "shield"
                             )
                         }
+                        .accessibilityIdentifier("SecuritySettings")
 
                         NavigationLink(value: Route.backupSettings) {
                             SettingsListLabel(
@@ -33,6 +35,7 @@ struct MainSettings: View {
                                 iconName: "rewind"
                             )
                         }
+                        .accessibilityIdentifier("BackupSettings")
 
                         NavigationLink(value: Route.advancedSettings) {
                             SettingsListLabel(
@@ -40,6 +43,7 @@ struct MainSettings: View {
                                 iconName: "sliders"
                             )
                         }
+                        .accessibilityIdentifier("AdvancedSettings")
 
                         NavigationLink(value: Route.support) {
                             SettingsListLabel(
@@ -47,6 +51,7 @@ struct MainSettings: View {
                                 iconName: "chat"
                             )
                         }
+                        .accessibilityIdentifier("Support")
 
                         NavigationLink(value: Route.about) {
                             SettingsListLabel(
@@ -54,6 +59,7 @@ struct MainSettings: View {
                                 iconName: "info"
                             )
                         }
+                        .accessibilityIdentifier("About")
 
                         if showDevSettings {
                             NavigationLink(value: Route.devSettings) {
@@ -62,6 +68,7 @@ struct MainSettings: View {
                                     iconName: "game-controller"
                                 )
                             }
+                            .accessibilityIdentifier("DevOptions")
                         }
 
                         Spacer()

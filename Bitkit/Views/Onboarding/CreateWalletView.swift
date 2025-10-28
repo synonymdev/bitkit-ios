@@ -39,12 +39,14 @@ struct CreateWalletView: View {
                         app.toast(error)
                     }
                 }
+                .accessibilityIdentifier("NewWallet")
 
                 CustomButton(
                     title: t("onboarding__restore"),
                     variant: .secondary,
                     destination: MultipleWalletsView()
                 )
+                .accessibilityIdentifier("RestoreWallet")
             }
         }
         .padding(.horizontal, 32)

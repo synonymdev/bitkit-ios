@@ -105,6 +105,33 @@ let cards: [SuggestionCardData] = [
     ),
 ]
 
+extension SuggestionCardData {
+    var accessibilityId: String {
+        switch action {
+        case .backup:
+            return "back_up"
+        case .buyBitcoin:
+            return "buy"
+        case .invite:
+            return "invite"
+        case .profile:
+            return "profile"
+        case .quickpay:
+            return "quick_pay"
+        case .notifications:
+            return "notifications"
+        case .secure:
+            return "secure"
+        case .shop:
+            return "shop"
+        case .support:
+            return "support"
+        case .transferToSpending:
+            return "lightning"
+        }
+    }
+}
+
 struct Suggestions: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
@@ -167,7 +194,9 @@ struct Suggestions: View {
                         data: card,
                         onDismiss: { dismissCard(card) }
                     )
+                    .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
+                .accessibilityIdentifier("Suggestions")
                 .id("suggestions-\(filteredCards.count)-\(suggestionsManager.dismissedIds.count)")
                 .frame(height: cardSize)
                 .padding(.bottom, 16)

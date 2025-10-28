@@ -62,6 +62,7 @@ struct EmptyStateView: View {
                                 .frame(width: 44, height: 44) // Increase hit area
                         }
                         .offset(x: 16, y: -16)
+                        .accessibilityIdentifier("WalletOnboardingClose")
 
                         Spacer()
                     }

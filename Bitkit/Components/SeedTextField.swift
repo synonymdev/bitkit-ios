@@ -48,6 +48,7 @@ struct SeedTextField: View {
                 .onSubmit {
                     focusedField = isLastField ? nil : index + 1
                 }
+                .accessibilityIdentifier("Word-\(index)")
         }
         .frame(minHeight: 46)
         .padding(.horizontal, 16)
