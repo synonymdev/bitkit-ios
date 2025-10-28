@@ -4,13 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       e2e_branch:
-        description: "Branch of synonymdev/bitkit-e2e-tests to use"
+        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
-        default: "ios-preparation"
-  # push:
-  #   branches: [master]
-  # pull_request:
-  #   branches: [master]
+        default: "default-feature-branch"
+  pull_request:
 
 env:
   TERM: xterm-256color
@@ -22,6 +19,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
 
     steps:
@@ -36,36 +34,6 @@ jobs:
           echo ""
           echo "Xcode Version:"
           xcodebuild -version
-
-      - name: Setup iOS Simulator
-        run: |
-          # Set simulator name
-          SIMULATOR_NAME="iPhone 17"
-          echo "SIMULATOR_NAME=$SIMULATOR_NAME" >> $GITHUB_ENV
-          
-          # Boot the iPhone 17 simulator if not already running
-          if ! xcrun simctl list devices | grep "iPhone 17" | grep -q "Booted"; then
-            echo "Booting $SIMULATOR_NAME..."
-            xcrun simctl boot "$SIMULATOR_NAME"
-            
-            # Wait for simulator to boot
-            for i in {1..30}; do
-              if xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep -q "Booted"; then
-                echo "$SIMULATOR_NAME is booted!"
-                break
-              fi
-              echo "Waiting for $SIMULATOR_NAME boot... ($i/30)"
-              sleep 5
-            done
-          else
-            echo "$SIMULATOR_NAME is already booted!"
-          fi
-          
-          # Wait for simulator to be fully ready
-          sleep 15
-          
-          # Launch simulator app
-          open -a Simulator
 
       - name: Clean build environment
         run: |
@@ -88,15 +56,16 @@ jobs:
           E2E: true
         run: |
           echo "=== Building iOS app ==="
-          
-          # Ensure iOS Simulator platform is available
-          xcodebuild -downloadPlatform iOS || echo "iOS platform already installed"
-          
-          # Build for iOS Simulator
+          xcrun simctl list devices
+
+          SIMULATOR_NAME="iPhone 17"
+          OS_VERSION=$(xcrun simctl list devices | grep "$SIMULATOR_NAME" | grep -m1 -oE '[0-9]{2}\.[0-9](\.[0-9])?')
+          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
+
           xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
             -scheme Bitkit \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME" \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
             -derivedDataPath DerivedData \
             -allowProvisioningUpdates \
             build
@@ -113,9 +82,17 @@ jobs:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
 
+  e2e-branch:
+    if: github.event.pull_request.draft == false
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ github.head_ref || github.ref_name }}
+      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
   e2e-tests:
+    if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
-    needs: build
+    needs: [build, e2e-branch]
 
     strategy:
       fail-fast: false
@@ -200,40 +177,9 @@ jobs:
           done
           echo "Electrum server is ready!"
 
-      - name: Setup iOS Simulator
-        run: |
-          # Boot iOS Simulator
-          xcrun simctl boot "iPhone 17" || true
-          xcrun simctl bootstatus "iPhone 17" -b
-          
-          # Install the app
-          xcrun simctl install "iPhone 17" bitkit-e2e-tests/aut/bitkit.app
-
       - name: Run E2E Tests (${{ matrix.shard.name }})
-        run: |
-          cd bitkit-e2e-tests
-          
-          # Setup logging
-          LOGDIR="./artifacts"
-          mkdir -p "$LOGDIR"
-          LOGFILE="$LOGDIR/simulator.log"
-          
-          # Start simulator logging
-          xcrun simctl spawn "iPhone 17" log stream --predicate 'process == "Bitkit"' --style compact > "$LOGFILE" &
-          LOG_PID=$!
-          
-          # Setup port forwarding for regtest and LND
-          xcrun simctl spawn "iPhone 17" launchctl load -w /System/Library/LaunchDaemons/com.apple.usbmuxd.plist || true
-          
-          # Cleanup function
-          cleanup() {
-            kill "$LOG_PID" 2>/dev/null || true
-            wait "$LOG_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT INT TERM
-          
-          # Pass everything through to WDIO/Mocha
-          npm run e2e:ios -- "$@"
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           RECORD_VIDEO: true
 
