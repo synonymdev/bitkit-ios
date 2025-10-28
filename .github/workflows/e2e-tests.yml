@@ -181,6 +181,10 @@ jobs:
           rm -rf artifacts/
           rm -rf /tmp/lock/
 
+      - name: Disable simulator notifications
+        run: |
+          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+
       - name: Run E2E Tests (${{ matrix.shard.name }})
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
