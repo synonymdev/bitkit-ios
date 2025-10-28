@@ -200,6 +200,9 @@ struct AppError: LocalizedError {
         case let .ProbeSendingFailed(message: ldkMessage):
             message = "Failed to send probe"
             debugMessage = ldkMessage
+        case let .RouteNotFound(message: ldkMessage):
+            message = "Failed to find a route for fee estimation"
+            debugMessage = ldkMessage
         case let .ChannelCreationFailed(message: ldkMessage):
             message = "Failed to create channel"
             debugMessage = ldkMessage

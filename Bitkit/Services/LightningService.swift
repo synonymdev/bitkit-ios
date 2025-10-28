@@ -646,4 +646,26 @@ extension LightningService {
             return fee
         }
     }
+
+    func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            let invoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            let feesMsat: UInt64
+
+            if let amountSats {
+                let amountMsat = amountSats * 1000
+                feesMsat = try node.bolt11Payment().estimateRoutingFeesUsingAmount(invoice: invoice, amountMsat: amountMsat)
+            } else {
+                feesMsat = try node.bolt11Payment().estimateRoutingFees(invoice: invoice)
+            }
+
+            let feeSat = feesMsat / 1000
+
+            return feeSat
+        }
+    }
 }

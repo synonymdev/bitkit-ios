@@ -17,6 +17,7 @@ struct SendConfirmationView: View {
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
+    @State private var routingFee: Int = 0
 
     // Warning system
     private enum WarningType: String, CaseIterable {
@@ -138,6 +139,7 @@ struct SendConfirmationView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             await calculateTransactionFee()
+            await calculateRoutingFee()
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
             Task {
@@ -480,40 +482,56 @@ struct SendConfirmationView: View {
             Divider()
 
             HStack {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
                     CaptionMText(t("wallet__send_fee_and_speed"))
+                        .padding(.bottom, 8)
+
                     HStack(spacing: 0) {
                         Image("bolt-hollow")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
 
-                        // TODO: get actual fee
-                        BodySSBText("Instant (±$0.01)")
+                        if routingFee > 0 {
+                            let feeText = "\(t("fee__instant__title")) (±"
+                            HStack(spacing: 0) {
+                                BodySSBText(feeText)
+                                MoneyText(sats: routingFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                                BodySSBText(")")
+                            }
+                        } else {
+                            BodySSBText(t("fee__instant__title"))
+                        }
                     }
+
+                    Divider()
+                        .padding(.top, 16)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer()
+                Spacer(minLength: 16)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 0) {
                     CaptionMText(t("wallet__send_invoice_expiration"))
+                        .padding(.bottom, 8)
+
                     HStack(spacing: 0) {
                         Image("timer-alt")
                             .foregroundColor(.purpleAccent)
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
 
-                        // TODO: get actual fee
-                        BodySSBText("Expires in 10 minutes")
+                        // TODO: get actual expiration time from invoice
+                        BodySSBText("10 minutes")
                     }
+
+                    Divider()
+                        .padding(.top, 16)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.vertical)
+            .padding(.top)
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
 
             if let description = app.scannedLightningInvoice?.description, !description.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -529,6 +547,10 @@ struct SendConfirmationView: View {
     }
 
     private func calculateTransactionFee() async {
+        guard app.selectedWalletToPayFrom == .onchain else {
+            return
+        }
+
         guard let address = app.scannedOnchainInvoice?.address,
               let amountSats = wallet.sendAmountSats,
               let feeRate = wallet.selectedFeeRateSatsPerVByte
@@ -551,6 +573,30 @@ struct SendConfirmationView: View {
             Logger.error("Failed to calculate actual fee: \(error)")
             await MainActor.run {
                 transactionFee = 0
+            }
+        }
+    }
+
+    private func calculateRoutingFee() async {
+        guard app.selectedWalletToPayFrom == .lightning else {
+            return
+        }
+
+        guard let bolt11 = app.scannedLightningInvoice?.bolt11 else {
+            return
+        }
+
+        do {
+            let fee = try await wallet.estimateRoutingFees(bolt11: bolt11, amountSats: wallet.sendAmountSats)
+            await MainActor.run {
+                Logger.info("Estimated routing fees: \(fee) sat")
+                routingFee = Int(fee)
+            }
+        } catch {
+            Logger.error("Failed to calculate routing fees: \(error)")
+            await MainActor.run {
+                Logger.error("Failed to calculate routing fees: \(error)")
+                routingFee = 0
             }
         }
     }
