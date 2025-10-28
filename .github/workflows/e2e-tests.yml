@@ -181,8 +181,12 @@ jobs:
           rm -rf artifacts/
           rm -rf /tmp/lock/
 
-      - name: Disable simulator notifications
+      - name: Clear iOS Simulator environment
         run: |
+          echo "🔧 Shutting down all running iOS simulators..."
+          xcrun simctl shutdown all || true
+          xcrun simctl erase all || true
+          echo "🔧 Disabling iOS Simulator notifications..."
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
       - name: Run E2E Tests (${{ matrix.shard.name }})
