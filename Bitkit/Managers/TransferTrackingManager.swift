@@ -2,7 +2,6 @@ import Combine
 import Foundation
 
 /// Observable manager for transfer tracking state that can be used in SwiftUI views
-/// Note: This is different from TransferViewModel which handles the transfer UI flow
 @MainActor
 class TransferTrackingManager: ObservableObject {
     private let service: TransferService
