@@ -20,6 +20,7 @@ struct AppScene: View {
     @StateObject private var settings = SettingsViewModel()
     @StateObject private var suggestionsManager = SuggestionsManager()
     @StateObject private var tagManager = TagManager()
+    @StateObject private var transferTracking: TransferTrackingManager
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -36,6 +37,10 @@ struct AppScene: View {
     init() {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
+        let transferService = TransferService(
+            lightningService: LightningService.shared,
+            blocktankService: CoreService.shared.blocktank
+        )
 
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
@@ -47,6 +52,8 @@ struct AppScene: View {
         _transfer = StateObject(wrappedValue: TransferViewModel())
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
         _settings = StateObject(wrappedValue: SettingsViewModel())
+
+        _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
     }
 
     var body: some View {
@@ -79,6 +86,7 @@ struct AppScene: View {
             .environmentObject(settings)
             .environmentObject(suggestionsManager)
             .environmentObject(tagManager)
+            .environmentObject(transferTracking)
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
