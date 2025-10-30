@@ -55,7 +55,6 @@ jobs:
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 17"
           OS_VERSION: "latest"
-          E2E: true
         run: |
           echo "=== Building iOS app ==="
           echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
@@ -72,6 +71,7 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
             -derivedDataPath DerivedData \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
             -allowProvisioningUpdates \
             build
 
