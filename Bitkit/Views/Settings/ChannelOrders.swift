@@ -180,7 +180,7 @@ struct OrderDetailView: View {
         List {
             Section("Order Details") {
                 DetailRow(label: "ID", value: order.id)
-                DetailRow(label: "Onchain txs", value: "\(order.payment.onchain.transactions.count)")
+                DetailRow(label: "Onchain txs", value: "\(order.payment?.onchain?.transactions.count ?? 0)")
                 DetailRow(label: "State", value: String(describing: order.state))
                 DetailRow(label: "State 2", value: String(describing: order.state2))
                 DetailRow(label: "LSP Balance", value: "\(order.lspBalanceSat) sats")
@@ -202,8 +202,8 @@ struct OrderDetailView: View {
             }
 
             Section("LSP Information") {
-                DetailRow(label: "Alias", value: order.lspNode.alias)
-                DetailRow(label: "Node ID", value: order.lspNode.pubkey)
+                DetailRow(label: "Alias", value: order.lspNode?.alias ?? "")
+                DetailRow(label: "Node ID", value: order.lspNode?.pubkey ?? "")
                 if let lnurl = order.lnurl {
                     DetailRow(label: "LNURL", value: lnurl)
                 }
