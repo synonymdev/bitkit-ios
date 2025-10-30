@@ -19,7 +19,7 @@ struct ActivityList: View {
 
         if !groupedItems.isEmpty {
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(groupedItems, id: \.self) { groupItem in
+                ForEach(Array(groupedItems.enumerated()), id: \.offset) { index, groupItem in
                     switch groupItem {
                     case let .header(title):
                         CaptionMText(title)
@@ -29,6 +29,7 @@ struct ActivityList: View {
                         NavigationLink(value: Route.activityDetail(item)) {
                             ActivityRow(item: item, feeEstimates: activity.feeEstimates)
                         }
+                        .accessibilityIdentifier("Activity-\(index)")
                         .disabled(isHorizontalSwipe)
                     }
                 }

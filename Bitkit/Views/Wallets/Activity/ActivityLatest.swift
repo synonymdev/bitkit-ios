@@ -13,10 +13,11 @@ struct ActivityLatest: View {
 
             if let items = activity.latestActivities {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(items, id: \.self) { item in
+                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
                             ActivityRow(item: item, feeEstimates: activity.feeEstimates)
                         }
+                        .accessibilityIdentifier("ActivityShort-\(index)")
                     }
                 }
 
@@ -33,6 +34,7 @@ struct ActivityLatest: View {
                     CustomButton(title: tTodo("Show All"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
+                    .accessibilityIdentifier("ActivityShowAll")
                 }
             } else {
                 EmptyView()
