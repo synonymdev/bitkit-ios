@@ -148,8 +148,12 @@ struct SpendingConfirm: View {
             if let feeRates = try await coreService.blocktank.fees(refresh: true) {
                 let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
 
+                guard let address = order.payment?.onchain?.address else {
+                    throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
+                }
+
                 let fee = try await wallet.calculateTotalFee(
-                    address: order.payment.onchain.address,
+                    address: address,
                     amountSats: order.feeSat,
                     satsPerVByte: fastFeeRate
                 )
