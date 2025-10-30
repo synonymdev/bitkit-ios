@@ -107,7 +107,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: onboarding, grep: "@onboarding" }
+          - { name: e2e, grep: "@onboarding|@onchain_1" }
 
     name: e2e-tests - ${{ matrix.shard.name }}
 
