@@ -13,7 +13,7 @@ struct AppScene: View {
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
     @StateObject private var activity = ActivityListViewModel()
-    @StateObject private var transfer = TransferViewModel()
+    @StateObject private var transfer: TransferViewModel
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var scannerManager = ScannerManager()
