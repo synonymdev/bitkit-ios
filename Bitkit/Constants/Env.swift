@@ -9,7 +9,11 @@ enum Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    static let isE2E = ProcessInfo.processInfo.environment["E2E"] == "true"
+    #if E2E_BUILD
+        static let isE2E = true
+    #else
+        static let isE2E = ProcessInfo.processInfo.environment["E2E"] == "true"
+    #endif
     static let dustLimit = 547
 
     /// The current execution context of the app
@@ -58,6 +62,9 @@ enum Env {
     // MARK: Server URLs
 
     static var electrumServerUrl: String {
+        if isE2E {
+            return "127.0.0.1:60001"
+        }
         switch network {
         case .regtest:
             return "34.65.252.32:18483"
