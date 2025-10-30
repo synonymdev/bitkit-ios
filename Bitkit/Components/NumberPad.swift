@@ -29,7 +29,8 @@ struct NumberPad: View {
                     NumberPadButton(
                         text: number,
                         height: buttonHeight,
-                        hasError: errorKey == number
+                        hasError: errorKey == number,
+                        testID: "N\(number)"
                     ) {
                         Haptics.play(.buttonTap)
                         onPress(number)
@@ -50,7 +51,8 @@ struct NumberPad: View {
                         NumberPadButton(
                             text: "000",
                             height: buttonHeight,
-                            hasError: errorKey == "000"
+                            hasError: errorKey == "000",
+                            testID: "N000"
                         ) {
                             Haptics.play(.buttonTap)
                             onPress("000")
@@ -72,7 +74,8 @@ struct NumberPad: View {
                 NumberPadButton(
                     text: "0",
                     height: buttonHeight,
-                    hasError: errorKey == "0"
+                    hasError: errorKey == "0",
+                    testID: "N0"
                 ) {
                     Haptics.play(.buttonTap)
                     onPress("0")
@@ -101,6 +104,7 @@ private struct NumberPadButton: View {
     let text: String
     let height: CGFloat
     let hasError: Bool
+    var testID: String?
     let action: () -> Void
 
     var body: some View {
@@ -112,6 +116,7 @@ private struct NumberPadButton: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
         }
+        .accessibilityIdentifier(testID ?? text)
         .buttonStyle(NumberPadButtonStyle())
     }
 }
