@@ -195,7 +195,7 @@ struct LightningConnectionDetailView: View {
         if let order = linkedOrder {
             // If the channel is with the LSP, we can show a more accurate status for pending channels
             let orderState = order.state2
-            let paymentState = order.payment.state2
+            let paymentState = order.payment?.state2
             let channelState = order.channel?.state
 
             if let channelState {
@@ -223,6 +223,12 @@ struct LightningConnectionDetailView: View {
             }
 
             switch paymentState {
+            case nil:
+                return (
+                    text: t("lightning__order_state__awaiting_payment"),
+                    color: .purpleAccent,
+                    icon: "clock"
+                )
             case .canceled:
                 return (
                     text: t("lightning__order_state__payment_canceled"),
