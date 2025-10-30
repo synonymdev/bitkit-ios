@@ -48,7 +48,7 @@ struct AppScene: View {
         _wallet = StateObject(wrappedValue: WalletViewModel())
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
-        _activity = StateObject(wrappedValue: ActivityListViewModel())
+        _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
         _transfer = StateObject(wrappedValue: TransferViewModel(transferService: transferService))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
         _settings = StateObject(wrappedValue: SettingsViewModel())

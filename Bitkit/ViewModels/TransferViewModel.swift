@@ -223,6 +223,13 @@ class TransferViewModel: ObservableObject {
         var currentStep = 0
 
         if order.channel != nil {
+            do {
+                try await transferService.syncTransferStates()
+            } catch {
+                Logger.error("Failed to sync transfer states after updateOrder", context: error.localizedDescription)
+                // Don't throw - we don't want to fail the entire sync if transfer sync fails
+            }
+
             return 3
         }
 
