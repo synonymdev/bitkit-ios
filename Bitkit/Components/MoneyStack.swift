@@ -17,82 +17,11 @@ struct MoneyStack: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if currency.primaryDisplay == .bitcoin {
-                MoneyText(
-                    sats: sats,
-                    unitType: .secondary,
-                    size: .caption,
-                    symbol: true,
-                    color: .textSecondary
-                )
-                .contentTransition(.numericText())
-                .transition(
-                    .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
-                )
-
-                HStack {
-                    MoneyText(
-                        sats: sats,
-                        unitType: .primary,
-                        size: .display,
-                        symbol: showSymbol,
-                        prefix: prefix,
-                        color: .textPrimary
-                    )
-                    .contentTransition(.numericText())
-
-                    Spacer()
-
-                    if showEyeIcon && settings.hideBalance {
-                        eyeIconButton
-                    }
-                }
-                .transition(
-                    .move(edge: .top)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 0.5, anchor: .topLeading))
-                )
-            } else {
-                MoneyText(
-                    sats: sats,
-                    unitType: .secondary,
-                    size: .caption,
-                    symbol: true,
-                    color: .textSecondary
-                )
-                .contentTransition(.numericText())
-                .transition(
-                    .move(edge: .bottom)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 1.5, anchor: .topLeading))
-                )
-
-                HStack {
-                    MoneyText(
-                        sats: sats,
-                        unitType: .primary,
-                        size: .display,
-                        symbol: true,
-                        prefix: prefix,
-                        color: .textPrimary
-                    )
-                    .contentTransition(.numericText())
-
-                    Spacer()
-
-                    if showEyeIcon && settings.hideBalance {
-                        eyeIconButton
-                    }
-                }
-                .transition(
-                    .move(edge: .top)
-                        .combined(with: .opacity)
-                        .combined(with: .scale(scale: 0.5, anchor: .topLeading))
-                )
-            }
+            secondaryBalance
+            primaryBalance
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("TotalBalance")
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(springAnimation) {
@@ -123,6 +52,74 @@ struct MoneyStack: View {
 // MARK: - Helper Views
 
 private extension MoneyStack {
+    var secondaryBalance: some View {
+        let components = displayComponents(for: .secondary, size: .caption)
+
+        return VStack(alignment: .leading, spacing: 0) {
+            MoneyText(
+                sats: sats,
+                unitType: .secondary,
+                size: .caption,
+                symbol: true,
+                color: .textSecondary
+            )
+            .accessibilityHidden(true)
+            .contentTransition(.numericText())
+            .transition(
+                .move(edge: .bottom)
+                    .combined(with: .opacity)
+                    .combined(with: .scale(scale: 1.5, anchor: .topLeading))
+            )
+            .overlay(alignment: .leading) {
+                BalanceAccessibilityProxy(
+                    valueText: components.value,
+                    symbolText: components.symbol,
+                    includeSymbol: true
+                )
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("TotalBalance-secondary")
+    }
+
+    var primaryBalance: some View {
+        let shouldShowSymbol = currency.primaryDisplay == .bitcoin ? showSymbol : true
+        let components = displayComponents(for: .primary, size: .display, includeSymbol: shouldShowSymbol)
+
+        return HStack {
+            MoneyText(
+                sats: sats,
+                unitType: .primary,
+                size: .display,
+                symbol: shouldShowSymbol,
+                prefix: prefix,
+                color: .textPrimary
+            )
+            .accessibilityHidden(true)
+            .contentTransition(.numericText())
+            .overlay(alignment: .leading) {
+                BalanceAccessibilityProxy(
+                    valueText: components.value,
+                    symbolText: components.symbol,
+                    includeSymbol: shouldShowSymbol
+                )
+            }
+
+            Spacer()
+
+            if showEyeIcon && settings.hideBalance {
+                eyeIconButton
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("TotalBalance-primary")
+        .transition(
+            .move(edge: .top)
+                .combined(with: .opacity)
+                .combined(with: .scale(scale: 0.5, anchor: .topLeading))
+        )
+    }
+
     var eyeIconButton: some View {
         Button(action: revealBalance) {
             Image("eye")
@@ -143,6 +140,59 @@ private extension MoneyStack {
         }
         Haptics.play(.medium)
     }
+
+    func displayComponents(for unitType: MoneyUnitType, size: MoneySize, includeSymbol: Bool = true) -> (symbol: String, value: String) {
+        let displayUnit: PrimaryDisplay = {
+            switch unitType {
+            case .primary:
+                return currency.primaryDisplay
+            case .secondary:
+                return currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin
+            }
+        }()
+
+        let hiddenDots: String = {
+            switch size {
+            case .display:
+                return " • • • • • • • • •"
+            default:
+                return " • • • • •"
+            }
+        }()
+
+        if settings.hideBalance {
+            return (symbol(for: displayUnit), hiddenDots)
+        }
+
+        guard let converted = currency.convert(sats: UInt64(abs(sats))) else {
+            return (symbol(for: displayUnit), "0")
+        }
+
+        let prefixString: String = {
+            guard let prefix else { return "" }
+            return prefix.isEmpty ? "" : "\(prefix) "
+        }()
+
+        switch displayUnit {
+        case .fiat:
+            let formatted = converted.formatted
+            let trimmed = formatted.removingFirstOccurrence(of: converted.symbol).trimmingCharacters(in: balanceTrimCharacterSet)
+            return (symbol(for: displayUnit), prefixString + trimmed)
+        case .bitcoin:
+            let components = converted.bitcoinDisplay(unit: currency.displayUnit)
+            let value = includeSymbol ? components.value : components.value
+            return (components.symbol, prefixString + value)
+        }
+    }
+
+    func symbol(for displayUnit: PrimaryDisplay) -> String {
+        switch displayUnit {
+        case .bitcoin:
+            return "₿"
+        case .fiat:
+            return currency.symbol
+        }
+    }
 }
 
 // MARK: - Helper View Modifier
@@ -159,6 +209,40 @@ extension View {
 }
 
 // MARK: - Preview Helpers
+
+private let balanceTrimCharacterSet = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{00a0}"))
+
+private extension String {
+    func removingFirstOccurrence(of substring: String) -> String {
+        guard let range = range(of: substring) else { return self }
+        var copy = self
+        copy.removeSubrange(range)
+        return copy
+    }
+}
+
+private struct BalanceAccessibilityProxy: View {
+    let valueText: String
+    let symbolText: String
+    let includeSymbol: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(valueText.isEmpty ? "0" : valueText)
+                .foregroundColor(.clear)
+                .allowsHitTesting(false)
+                .accessibilityIdentifier("MoneyText")
+
+            if includeSymbol {
+                Text(symbolText)
+                    .foregroundColor(.clear)
+                    .allowsHitTesting(false)
+                    .accessibilityIdentifier("MoneyFiatSymbol")
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
 
 private extension MoneyStack {
     static func previewCurrencyVM(
