@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct SeedTextField: View {
@@ -16,7 +17,7 @@ struct SeedTextField: View {
 
     private var labelColor: Color {
         let word = text.wrappedValue.trimmingCharacters(in: .whitespaces)
-        if !isFocused && !word.isEmpty && !BIP39.isValidWord(word) {
+        if !isFocused && !word.isEmpty && !isValidBip39Word(word: word) {
             return .redAccent
         }
         return .textSecondary
@@ -24,7 +25,7 @@ struct SeedTextField: View {
 
     private var textColor: Color {
         let word = text.wrappedValue.trimmingCharacters(in: .whitespaces)
-        if !isFocused && !word.isEmpty && !BIP39.isValidWord(word) {
+        if !isFocused && !word.isEmpty && !isValidBip39Word(word: word) {
             return .redAccent
         }
         return .textPrimary

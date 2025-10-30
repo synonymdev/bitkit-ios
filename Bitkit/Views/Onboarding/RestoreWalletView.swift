@@ -1,4 +1,10 @@
+import BitkitCore
 import SwiftUI
+
+enum Bip39Error: Swift.Error {
+    case invalidMnemonic
+    case invalidEntropy
+}
 
 struct RestoreWalletView: View {
     @EnvironmentObject var app: AppViewModel
@@ -24,7 +30,12 @@ struct RestoreWalletView: View {
             return false
         }
 
-        return BIP39.isValid(phrase: currentWords)
+        do {
+            try validateMnemonic(mnemonicPhrase: currentWords.joined(separator: " "))
+            return true
+        } catch {
+            return false
+        }
     }
 
     private var bip39Mnemonic: String {
@@ -34,7 +45,7 @@ struct RestoreWalletView: View {
             .trimmingCharacters(in: .whitespaces)
     }
 
-    private var validationError: BIP39.Error? {
+    private var validationError: Bip39Error? {
         let currentWords = words[..<wordCount]
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
@@ -45,17 +56,17 @@ struct RestoreWalletView: View {
         }
 
         // Check if all words are valid first
-        let invalidWords = currentWords.filter { !BIP39.isValidWord($0) }
+        let invalidWords = currentWords.filter { !isValidBip39Word(word: $0) }
         if !invalidWords.isEmpty {
             return .invalidMnemonic
         }
 
         // Now validate the full phrase
-        switch BIP39.validate(phrase: currentWords) {
-        case .success:
+        do {
+            try validateMnemonic(mnemonicPhrase: currentWords.joined(separator: " "))
             return nil
-        case let .failure(error):
-            return error
+        } catch {
+            return .invalidEntropy
         }
     }
 
@@ -69,7 +80,7 @@ struct RestoreWalletView: View {
                 .map { $0.trimmingCharacters(in: .whitespaces) }
                 .filter { !$0.isEmpty }
 
-            let invalidWords = currentWords.filter { !BIP39.isValidWord($0) }
+            let invalidWords = currentWords.filter { !isValidBip39Word(word: $0) }
             if !invalidWords.isEmpty {
                 return (t("onboarding__restore_red_explain"), .textSecondary)
             } else {
