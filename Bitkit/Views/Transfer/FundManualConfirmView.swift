@@ -8,6 +8,7 @@ struct FundManualConfirmView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var transferTracking: TransferTrackingManager
 
     let lnPeer: LnPeer
     let amountSats: UInt64
@@ -78,13 +79,60 @@ struct FundManualConfirmView: View {
                             let lightningService = LightningService.shared
 
                             // Open a channel with the given peer and amount
-                            try await lightningService.openChannel(
+                            let channelId = try await lightningService.openChannel(
                                 peer: lnPeer,
                                 channelAmountSats: amountSats
                             )
 
-                            Logger.info("Channel opened successfully")
-                            try await Task.sleep(nanoseconds: 1_000_000_000)
+                            Logger.info("Channel opened successfully with ID: \(channelId)")
+
+                            // Set up event listener to capture funding transaction ID for this specific channel
+                            var fundingTxId: String?
+                            let eventId = "manual-channel-funding-\(channelId)"
+
+                            wallet.addOnEvent(id: eventId) { event in
+                                if case let .channelPending(
+                                    eventChannelId,
+                                    userChannelId,
+                                    formerTemporaryChannelId,
+                                    counterpartyNodeId,
+                                    fundingTxo
+                                ) = event {
+                                    // Validate this is the channel we just opened
+                                    if eventChannelId.description == channelId {
+                                        fundingTxId = fundingTxo.txid.description
+                                        Logger.debug(
+                                            "Captured funding tx ID: \(fundingTxId ?? "nil") for channel: \(channelId)",
+                                            context: "FundManualConfirmView"
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Wait a moment for the event to fire
+                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+
+                            // Remove the event listener
+                            wallet.removeOnEvent(id: eventId)
+
+                            // Create transfer tracking record for manual channel opening
+                            do {
+                                let transferId = try await transferTracking.createTransfer(
+                                    type: .toSpending,
+                                    amountSats: amountSats,
+                                    channelId: channelId,
+                                    fundingTxId: fundingTxId
+                                )
+                                Logger.info(
+                                    "Created transfer tracking record: \(transferId) with fundingTxId: \(fundingTxId ?? "nil")",
+                                    context: "FundManualConfirmView"
+                                )
+                            } catch {
+                                Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
+                                // Don't throw - we still want to show success even if tracking fails
+                            }
+
+                            try await Task.sleep(nanoseconds: 500_000_000)
                             showSuccess = true
 
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -123,6 +171,10 @@ struct FundManualConfirmView: View {
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(TransferViewModel())
+        .environmentObject(TransferTrackingManager(service: TransferService(
+            lightningService: LightningService.shared,
+            blocktankService: CoreService.shared.blocktank
+        )))
     }
     .preferredColorScheme(.dark)
 }
