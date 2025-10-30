@@ -47,6 +47,24 @@ class TransferViewModel: ObservableObject {
         self.transferService = transferService
     }
 
+    /// Convenience initializer for testing and previews
+    convenience init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        currencyService: CurrencyService = .shared
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            currencyService: currencyService,
+            transferService: transferService
+        )
+    }
+
     deinit {
         RunLoop.main.perform { [weak self] in
             Logger.debug("Stopping poll for order")
