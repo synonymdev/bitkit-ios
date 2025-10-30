@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct SeedInputAccessory: View {
@@ -5,11 +6,12 @@ struct SeedInputAccessory: View {
     let onWordSelected: (String) -> Void
 
     private var suggestions: [String] {
+        let wordlist = getBip39Wordlist()
         let trimmed = currentWord.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty {
-            return Array(BIP39.wordlist.sorted().prefix(5))
+            return Array(wordlist.sorted().prefix(5))
         }
-        return BIP39.getSuggestions(for: trimmed, limit: 5)
+        return getBip39Suggestions(partialWord: trimmed, limit: 5)
     }
 
     var body: some View {
