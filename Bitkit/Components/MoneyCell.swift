@@ -5,6 +5,9 @@ struct MoneyCell: View {
     let sats: Int
     let prefix: String
 
+    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var settings: SettingsViewModel
+
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
             MoneyText(
@@ -15,6 +18,18 @@ struct MoneyCell: View {
                 color: .textPrimary,
                 symbolColor: .textSecondary
             )
+            .overlay(alignment: .trailing) {
+                HStack(spacing: 4) {
+                    Text(prefix)
+                        .foregroundColor(.clear)
+                        .accessibilityIdentifier("ActivityPrefix")
+
+                    Text(primaryValue)
+                        .foregroundColor(.clear)
+                        .accessibilityIdentifier("ActivityAmount")
+                }
+                .allowsHitTesting(false)
+            }
 
             MoneyText(
                 sats: sats,
@@ -22,7 +37,79 @@ struct MoneyCell: View {
                 size: .caption,
                 color: .textSecondary
             )
+            .overlay(alignment: .trailing) {
+                HStack(spacing: 4) {
+                    Text(secondarySymbol)
+                        .foregroundColor(.clear)
+                        .accessibilityIdentifier("ActivityFiatSymbol")
+
+                    Text(secondaryValue)
+                        .foregroundColor(.clear)
+                        .accessibilityIdentifier("ActivityFiatAmount")
+                }
+                .allowsHitTesting(false)
+            }
         }
+    }
+}
+
+// MARK: - Helpers
+
+private extension MoneyCell {
+    var hiddenDots: String { " • • • • •" }
+
+    var convertedAmount: ConvertedAmount? {
+        currency.convert(sats: UInt64(abs(sats)))
+    }
+
+    var primaryValue: String {
+        guard !settings.hideBalance, let convertedAmount else { return hiddenDots }
+
+        switch currency.primaryDisplay {
+        case .bitcoin:
+            return convertedAmount.bitcoinDisplay(unit: currency.displayUnit).value
+        case .fiat:
+            return convertedAmount.formatted
+                .removingFirstOccurrence(of: convertedAmount.symbol)
+                .trimmingCharacters(in: balanceTrimCharacterSet)
+        }
+    }
+
+    var secondarySymbol: String {
+        guard !settings.hideBalance, let convertedAmount else {
+            return currency.primaryDisplay == .bitcoin ? currency.symbol : "₿"
+        }
+
+        switch currency.primaryDisplay {
+        case .bitcoin:
+            return convertedAmount.symbol
+        case .fiat:
+            return convertedAmount.bitcoinDisplay(unit: currency.displayUnit).symbol
+        }
+    }
+
+    var secondaryValue: String {
+        guard !settings.hideBalance, let convertedAmount else { return hiddenDots }
+
+        switch currency.primaryDisplay {
+        case .bitcoin:
+            return convertedAmount.formatted
+                .removingFirstOccurrence(of: convertedAmount.symbol)
+                .trimmingCharacters(in: balanceTrimCharacterSet)
+        case .fiat:
+            return convertedAmount.bitcoinDisplay(unit: currency.displayUnit).value
+        }
+    }
+}
+
+private let balanceTrimCharacterSet = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{00a0}"))
+
+private extension String {
+    func removingFirstOccurrence(of substring: String) -> String {
+        guard let range = range(of: substring) else { return self }
+        var copy = self
+        copy.removeSubrange(range)
+        return copy
     }
 }
 
