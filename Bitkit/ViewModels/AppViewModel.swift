@@ -207,6 +207,8 @@ extension AppViewModel {
             // TODO: add network check
 
             handleNodeUri(url, network)
+        case let .gift(code, amount):
+            sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
             Logger.warn("Unhandled invoice type: \(data)")
             toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")

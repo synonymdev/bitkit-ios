@@ -258,7 +258,7 @@ struct LightningConnectionsView: View {
     private func createFakeChannel(from order: IBtOrder) -> ChannelDetails {
         return ChannelDetails(
             channelId: order.id,
-            counterpartyNodeId: order.lspNode.pubkey,
+            counterpartyNodeId: order.lspNode?.pubkey ?? "",
             fundingTxo: OutPoint(txid: Txid(order.channel?.fundingTx.id ?? ""), vout: UInt32(order.channel?.fundingTx.vout ?? 0)),
             shortChannelId: order.channel?.shortChannelId.flatMap(UInt64.init),
             outboundScidAlias: nil,

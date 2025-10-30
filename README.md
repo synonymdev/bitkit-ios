@@ -17,6 +17,18 @@ This repository contains a **new native iOS app** which is **not ready for produ
 1. Open Bitkit.xcodeproj in XCode
 2. Build
 
+### Building for E2E tests
+
+To produce an E2E build (uses the local Electrum backend), pass the `E2E_BUILD` compilation flag:
+
+```bash
+xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+  -scheme Bitkit \
+  -configuration Debug \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
+  build
+```
+
 ## Localization
 
 Localization files are synced from Transifex. Use [bitkit-transifex-sync](https://github.com/synonymdev/bitkit-transifex-sync) to sync the translations.

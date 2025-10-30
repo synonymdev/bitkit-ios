@@ -46,24 +46,36 @@ class LightningService {
         currentLogFilePath = logFilePath
         builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
 
-        // TODO: switch to electrum after syncing issues are fixed
-        // let electrumConfig = ElectrumSyncConfig(
-        //     backgroundSyncConfig: .init(
-        //         onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-        //         lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-        //         feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
-        //     )
-        // )
-        // builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
+        let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
-        let esploraConfig = EsploraSyncConfig(
-            backgroundSyncConfig: .init(
-                onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
-                feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+        if Env.isE2E {
+            let electrumConfig = ElectrumSyncConfig(
+                backgroundSyncConfig: .init(
+                    onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+                )
             )
-        )
-        builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
+            builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
+        } else {
+            // TODO: switch to electrum after syncing issues are fixed
+            // let electrumConfig = ElectrumSyncConfig(
+            //     backgroundSyncConfig: .init(
+            //         onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+            //         lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+            //         feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+            //     )
+            // )
+            // builder.setChainSourceElectrum(serverUrl: electrumServerUrl, config: electrumConfig)
+            let esploraConfig = EsploraSyncConfig(
+                backgroundSyncConfig: .init(
+                    onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
+                    feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
+                )
+            )
+            builder.setChainSourceEsplora(serverUrl: Env.esploraServerUrl, config: esploraConfig)
+        }
 
         // Configure gossip source from current settings
         configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
