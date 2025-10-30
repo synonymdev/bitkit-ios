@@ -99,7 +99,11 @@ class TransferViewModel: ObservableObject {
 
         let satsPerVbyte = speed.getFeeRate(from: fees)
 
-        let txid = try await lightningService.send(address: order.payment.onchain.address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        guard let address = order.payment?.onchain?.address else {
+            throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
+        }
+
+        _ = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
         lightningSetupStep = 0
         watchOrder(orderId: order.id)
     }
