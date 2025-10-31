@@ -19,7 +19,7 @@ struct ActivityList: View {
 
         if !groupedItems.isEmpty {
             LazyVStack(alignment: .leading, spacing: 16) {
-                ForEach(Array(groupedItems.enumerated()), id: \.offset) { index, groupItem in
+                ForEach(Array(zip(groupedItems.indices, groupedItems)), id: \.1) { index, groupItem in
                     switch groupItem {
                     case let .header(title):
                         CaptionMText(title)
