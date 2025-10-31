@@ -24,6 +24,7 @@ struct MoneyText: View {
     var prefix: String?
     var color: Color = .textPrimary
     var symbolColor: Color?
+    var testIdentifier: String?
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -57,8 +58,27 @@ struct MoneyText: View {
     }
 
     var body: some View {
-        textComponent(displayText)
+        let base = textComponent(displayText)
             .foregroundColor(color)
+
+        if let testIdentifier {
+            base
+                .accessibilityIdentifier(testIdentifier)
+                .accessibilityLabel(accessibilityValue)
+                // Expose the symbol as a separate accessibility node so our E2E tests
+                // can target it independently (mirrors the Android accessibility tree).
+                .overlay(alignment: .leading) {
+                    if let symbolText {
+                        Text(symbolText)
+                            .foregroundColor(.clear)
+                            .allowsHitTesting(false)
+                            .accessibilityIdentifier("MoneyFiatSymbol")
+                            .accessibilityLabel(symbolText)
+                    }
+                }
+        } else {
+            base
+        }
     }
 }
 
@@ -109,6 +129,42 @@ extension MoneyText {
             let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
             return btcComponents.value
         }
+    }
+
+    private var symbolText: String? {
+        guard showSymbol else { return nil }
+        return unit == .bitcoin ? "₿" : fiatSymbol
+    }
+
+    private var accessibilityValue: String {
+        guard !hideBalance, let converted = currency.convert(sats: UInt64(abs(sats))) else {
+            return prefixed(displayDots)
+        }
+
+        let numeric: String = {
+            switch unit {
+            case .fiat:
+                return stripSymbol(converted.formatted, symbol: converted.symbol)
+            case .bitcoin:
+                return converted.bitcoinDisplay(unit: currency.displayUnit).value
+            }
+        }()
+
+        return prefixed(numeric)
+    }
+
+    private func prefixed(_ value: String) -> String {
+        guard let prefix, !prefix.isEmpty else { return value }
+        return "\(prefix) \(value)"
+    }
+
+    private func stripSymbol(_ string: String, symbol: String) -> String {
+        guard let range = string.range(of: symbol) else {
+            return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var copy = string
+        copy.removeSubrange(range)
+        return copy.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

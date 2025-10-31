@@ -34,6 +34,7 @@ struct SavingsWalletView: View {
                     /// Leave some space for TabBar
                     .padding(.bottom, 130)
                 }
+                .accessibilityIdentifier("HomeScrollView")
                 .refreshable {
                     do {
                         try await wallet.sync()

@@ -118,6 +118,7 @@ struct SendAmountView: View {
                         await onContinue()
                     }
                 }
+                .accessibilityIdentifier("ContinueAmount")
             }
         }
         .navigationBarHidden(true)
