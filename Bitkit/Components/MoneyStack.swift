@@ -23,7 +23,8 @@ struct MoneyStack: View {
                     unitType: .secondary,
                     size: .caption,
                     symbol: true,
-                    color: .textSecondary
+                    color: .textSecondary,
+                    testIdentifier: "MoneyText"
                 )
                 .contentTransition(.numericText())
                 .transition(
@@ -31,6 +32,8 @@ struct MoneyStack: View {
                         .combined(with: .opacity)
                         .combined(with: .scale(scale: 1.5, anchor: .topLeading))
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("TotalBalance-secondary")
 
                 HStack {
                     MoneyText(
@@ -39,7 +42,8 @@ struct MoneyStack: View {
                         size: .display,
                         symbol: showSymbol,
                         prefix: prefix,
-                        color: .textPrimary
+                        color: .textPrimary,
+                        testIdentifier: "MoneyText"
                     )
                     .contentTransition(.numericText())
 
@@ -54,13 +58,16 @@ struct MoneyStack: View {
                         .combined(with: .opacity)
                         .combined(with: .scale(scale: 0.5, anchor: .topLeading))
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("TotalBalance-primary")
             } else {
                 MoneyText(
                     sats: sats,
                     unitType: .secondary,
                     size: .caption,
                     symbol: true,
-                    color: .textSecondary
+                    color: .textSecondary,
+                    testIdentifier: "MoneyText"
                 )
                 .contentTransition(.numericText())
                 .transition(
@@ -68,6 +75,8 @@ struct MoneyStack: View {
                         .combined(with: .opacity)
                         .combined(with: .scale(scale: 1.5, anchor: .topLeading))
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("TotalBalance-secondary")
 
                 HStack {
                     MoneyText(
@@ -76,7 +85,8 @@ struct MoneyStack: View {
                         size: .display,
                         symbol: true,
                         prefix: prefix,
-                        color: .textPrimary
+                        color: .textPrimary,
+                        testIdentifier: "MoneyText"
                     )
                     .contentTransition(.numericText())
 
@@ -91,8 +101,12 @@ struct MoneyStack: View {
                         .combined(with: .opacity)
                         .combined(with: .scale(scale: 0.5, anchor: .topLeading))
                 )
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("TotalBalance-primary")
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("TotalBalance")
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(springAnimation) {

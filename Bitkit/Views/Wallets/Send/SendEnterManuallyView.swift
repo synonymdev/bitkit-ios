@@ -30,6 +30,7 @@ struct SendEnterManuallyView: View {
                     .font(.custom(Fonts.bold, size: 22))
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
+                    .accessibilityIdentifier("RecipientInput")
             }
             .background(Color.white06)
             .cornerRadius(8)
@@ -40,6 +41,7 @@ struct SendEnterManuallyView: View {
                 await handleContinue()
             }
             .buttonBottomPadding(isFocused: isTextEditorFocused)
+            .accessibilityIdentifier("AddressContinue")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
