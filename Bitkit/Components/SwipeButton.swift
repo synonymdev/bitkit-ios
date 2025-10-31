@@ -60,6 +60,7 @@ struct SwipeButton: View {
                             }
                         }
                     )
+                    .accessibilityIdentifier("GRAB")
                     .offset(x: max(0, min(offset, geometry.size.width - buttonHeight)))
                     .padding(.horizontal, innerPadding / 2)
                     .gesture(
