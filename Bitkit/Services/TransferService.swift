@@ -116,7 +116,13 @@ class TransferService {
         // If there's an LSP order ID, resolve via Blocktank
         if let orderId = transfer.lspOrderId {
             // Get orders from Blocktank (returns [IBtOrder])
-            let orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
+            var orders: [IBtOrder]? = nil
+
+            do {
+                orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
+            } catch {
+                Logger.error("  Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
+            }
 
             if let order = orders?.first,
                let fundingTxId = order.channel?.fundingTx.id
