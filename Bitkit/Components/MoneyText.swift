@@ -65,6 +65,8 @@ struct MoneyText: View {
             base
                 .accessibilityIdentifier(testIdentifier)
                 .accessibilityLabel(accessibilityValue)
+                // Expose the symbol as a separate accessibility node so our E2E tests
+                // can target it independently (mirrors the Android accessibility tree).
                 .overlay(alignment: .leading) {
                     if let symbolText {
                         Text(symbolText)

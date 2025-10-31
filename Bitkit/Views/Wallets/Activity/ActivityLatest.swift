@@ -13,7 +13,7 @@ struct ActivityLatest: View {
 
             if let items = activity.latestActivities {
                 LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    ForEach(Array(zip(items.indices, items)), id: \.1) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
                             ActivityRow(item: item, feeEstimates: activity.feeEstimates)
                         }
