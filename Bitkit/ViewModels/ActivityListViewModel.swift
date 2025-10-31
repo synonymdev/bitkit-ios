@@ -38,6 +38,7 @@ class ActivityListViewModel: ObservableObject {
 
     private let coreService: CoreService
     private let lightningService: LightningService
+    private let transferService: TransferService
     private var searchCancellable: AnyCancellable?
     private var dateRangeCancellable: AnyCancellable?
     private var tagsCancellable: AnyCancellable?
@@ -64,9 +65,14 @@ class ActivityListViewModel: ObservableObject {
         }
     }
 
-    init(coreService: CoreService = .shared, lightningService: LightningService = .shared) {
+    init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        transferService: TransferService
+    ) {
         self.coreService = coreService
         self.lightningService = lightningService
+        self.transferService = transferService
 
         // Setup search text subscription with debounce
         searchCancellable =
@@ -107,6 +113,22 @@ class ActivityListViewModel: ObservableObject {
         Task {
             await syncState()
         }
+    }
+
+    /// Convenience initializer for testing and previews
+    convenience init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            transferService: transferService
+        )
     }
 
     func syncState() async {
@@ -189,6 +211,16 @@ class ActivityListViewModel: ObservableObject {
             do {
                 try await coreService.activity.syncLdkNodePayments(ldkPayments)
                 await syncState()
+
+                // This ensures pending transfers are marked as settled when channels become ready
+                do {
+                    try await transferService.syncTransferStates()
+                    Logger.debug("Transfer states synced after LDK payments sync", context: "ActivityListViewModel")
+                } catch {
+                    Logger.error("Failed to sync transfer states after LDK payments sync", context: error.localizedDescription)
+                    // Don't throw - we don't want to fail the entire sync if transfer sync fails
+                }
+
                 isSyncingLdkNodePayments = false
             } catch {
                 isSyncingLdkNodePayments = false
