@@ -40,6 +40,7 @@ struct SendSuccess: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: t("wallet__send_sent"), showBackButton: false)
+                        .accessibilityIdentifier("SendSuccess")
 
                     if let sendAmountSats = wallet.sendAmountSats {
                         MoneyStack(sats: Int(sendAmountSats), showSymbol: true)
@@ -65,10 +66,12 @@ struct SendSuccess: View {
                             navigation.navigate(.activityDetail(foundActivity!))
                             sheets.hideSheet()
                         }
+                        .accessibilityIdentifier("Details")
 
                         CustomButton(title: t("common__close")) {
                             sheets.hideSheet()
                         }
+                        .accessibilityIdentifier("Close")
                     }
                 }
                 .padding(.horizontal, 16)

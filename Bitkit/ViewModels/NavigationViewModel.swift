@@ -88,6 +88,7 @@ enum Route: Hashable {
 
     // Dev settings
     case blocktankRegtest
+    case orders
     case logs
 }
 

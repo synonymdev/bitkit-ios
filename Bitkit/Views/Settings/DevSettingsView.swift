@@ -20,6 +20,10 @@ struct DevSettingsView: View {
                         }
                     }
 
+                    NavigationLink(value: Route.orders) {
+                        SettingsListLabel(title: "Orders")
+                    }
+
                     Button {
                         Task {
                             do {
