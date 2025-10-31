@@ -121,7 +121,8 @@ class TransferService {
             do {
                 orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
             } catch {
-                Logger.error("  Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
+                Logger.error("Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
+                return nil
             }
 
             if let order = orders?.first,
