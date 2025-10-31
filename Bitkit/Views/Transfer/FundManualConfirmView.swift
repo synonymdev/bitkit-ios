@@ -86,8 +86,8 @@ struct FundManualConfirmView: View {
 
                             Logger.info("Channel opened successfully with ID: \(channelId)")
 
-                            // Set up event listener to capture funding transaction ID for this specific channel
-                            var fundingTxId: String?
+                            // Use an actor to safely capture the funding transaction ID
+                            let fundingTxCapture = FundingTxCapture()
                             let eventId = "manual-channel-funding-\(channelId)"
 
                             wallet.addOnEvent(id: eventId) { event in
@@ -100,11 +100,13 @@ struct FundManualConfirmView: View {
                                 ) = event {
                                     // Validate this is the channel we just opened
                                     if eventChannelId.description == channelId {
-                                        fundingTxId = fundingTxo.txid.description
-                                        Logger.debug(
-                                            "Captured funding tx ID: \(fundingTxId ?? "nil") for channel: \(channelId)",
-                                            context: "FundManualConfirmView"
-                                        )
+                                        Task {
+                                            await fundingTxCapture.setFundingTxId(fundingTxo.txid.description)
+                                            Logger.debug(
+                                                "Captured funding tx ID: \(fundingTxo.txid.description) for channel: \(channelId)",
+                                                context: "FundManualConfirmView"
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -114,6 +116,9 @@ struct FundManualConfirmView: View {
 
                             // Remove the event listener
                             wallet.removeOnEvent(id: eventId)
+
+                            // Get the captured funding tx ID (thread-safe)
+                            let fundingTxId = await fundingTxCapture.getFundingTxId()
 
                             // Create transfer tracking record for manual channel opening
                             do {
@@ -158,6 +163,20 @@ struct FundManualConfirmView: View {
             await loadFees(refresh: false)
             await loadFees(refresh: true)
         }
+    }
+}
+
+/// Actor to safely capture funding transaction ID from event callbacks
+/// Ensures thread-safe access when the event callback may execute on different threads
+private actor FundingTxCapture {
+    private var fundingTxId: String?
+
+    func setFundingTxId(_ txId: String) {
+        fundingTxId = txId
+    }
+
+    func getFundingTxId() -> String? {
+        return fundingTxId
     }
 }
 
