@@ -111,14 +111,17 @@ struct FundManualConfirmView: View {
                                 }
                             }
 
-                            // Wait a moment for the event to fire
-                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
+                            let fundingTxId = await waitForFundingTx(
+                                capture: fundingTxCapture,
+                                maxAttempts: 10,
+                                initialDelayMs: 50
+                            )
 
-                            // Remove the event listener
                             wallet.removeOnEvent(id: eventId)
 
-                            // Get the captured funding tx ID (thread-safe)
-                            let fundingTxId = await fundingTxCapture.getFundingTxId()
+                            if fundingTxId == nil {
+                                Logger.warn("Timeout waiting for funding tx ID for channel: \(channelId)", context: "FundManualConfirmView")
+                            }
 
                             // Create transfer tracking record for manual channel opening
                             do {
@@ -178,6 +181,45 @@ private actor FundingTxCapture {
     func getFundingTxId() -> String? {
         return fundingTxId
     }
+}
+
+/// Wait for funding transaction ID with exponential backoff
+/// - Parameters:
+///   - capture: The actor holding the funding tx ID
+///   - maxAttempts: Maximum number of polling attempts
+///   - initialDelayMs: Initial delay in milliseconds (will be doubled each attempt)
+/// - Returns: The funding transaction ID if captured, nil if timeout
+private func waitForFundingTx(
+    capture: FundingTxCapture,
+    maxAttempts: Int,
+    initialDelayMs: UInt64
+) async -> String? {
+    var delayMs = initialDelayMs
+
+    for attempt in 1 ... maxAttempts {
+        // Check if we have the funding tx ID
+        if let txId = await capture.getFundingTxId() {
+            Logger.debug("Got funding tx ID on attempt \(attempt)", context: "FundManualConfirmView")
+            return txId
+        }
+
+        // Don't sleep after the last attempt
+        guard attempt < maxAttempts else { break }
+
+        // Sleep with exponential backoff
+        let delayNs = delayMs * 1_000_000 // Convert ms to nanoseconds
+        do {
+            try await Task.sleep(nanoseconds: delayNs)
+        } catch {
+            Logger.debug("Sleep interrupted while waiting for funding tx", context: "FundManualConfirmView")
+            break
+        }
+
+        // Exponential backoff: double the delay, max 2 seconds
+        delayMs = min(delayMs * 2, 2000)
+    }
+
+    return nil
 }
 
 #Preview {
