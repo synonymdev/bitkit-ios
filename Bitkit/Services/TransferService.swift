@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 import LDKNode
 
