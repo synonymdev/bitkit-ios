@@ -98,8 +98,9 @@ class TransferService {
 
         for transfer in toSavings {
             if let channelId = try await resolveChannelId(for: transfer, channels: channels) {
-                // Check if channel still has balance
-                let hasBalance = balances?.totalLightningBalanceSats ?? 0 > 0
+                let hasBalance = balances?.lightningBalances.contains(where: { balance in
+                    balance.channelId == channelId
+                }) ?? false
 
                 if !hasBalance {
                     try await markSettled(id: transfer.id)
