@@ -4,7 +4,7 @@ import LDKNode
 /// Extension to provide convenient access to common properties across all LightningBalance cases
 extension LightningBalance {
     /// Get the amount in satoshis for any LightningBalance case
-    let amountSats: UInt64 {
+    var amountSats: UInt64 {
         switch self {
         case let .claimableOnChannelClose(details):
             return details.amountSatoshis
@@ -22,7 +22,7 @@ extension LightningBalance {
     }
 
     /// Get the channel ID for any LightningBalance case
-    let channelId: String {
+    var channelId: String {
         switch self {
         case let .claimableOnChannelClose(details):
             return details.channelId.description
@@ -40,7 +40,7 @@ extension LightningBalance {
     }
 
     /// Get a user-friendly description of the balance type
-    let balanceUiText: String {
+    var balanceUiText: String {
         switch self {
         case .claimableOnChannelClose:
             return "Claimable on Channel Close"
