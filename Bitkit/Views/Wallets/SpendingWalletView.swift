@@ -18,6 +18,11 @@ struct SpendingWalletView: View {
             )
             .padding(.top)
 
+            if wallet.balanceInTransferToSpending > 0 {
+                IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSpending))
+                    .padding(.top, 8)
+            }
+
             if wallet.totalLightningSats > 0 {
                 if let channels = wallet.channels, !channels.isEmpty {
                     transferButton
