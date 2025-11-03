@@ -64,19 +64,15 @@ class BalanceManager {
             balanceInTransferToSpending: toSpendingAmount
         )
 
-        // Logger.verbose(
-        //     "Active transfers: \(activeTransfers.count)",
-        //     context: "BalanceManager"
-        // )
-        // Logger.debug(
-        //     "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)",
-        //     context: "BalanceManager"
-        // )
-        // Logger.verbose(
-        //     "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount)
-        //     toSpending=\(toSpendingAmount)",
-        //     context: "BalanceManager"
-        // )
+        Logger.debug(
+            "Active transfers: \(activeTransfers.count)"
+        )
+        Logger.debug(
+            "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)"
+        )
+        Logger.debug(
+            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount)"
+        )
 
         return balanceState
     }
@@ -85,9 +81,15 @@ class BalanceManager {
 
     /// Calculates the total amount paid for LSP orders that are still pending
     private func getOrderPaymentsSats(activeTransfers: [Transfer]) -> UInt64 {
-        return activeTransfers
-            .filter { $0.type.isToSpending() && $0.lspOrderId != nil }
-            .reduce(0) { $0 + $1.amountSats }
+        let paidOrders = activeTransfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
+
+        for transfer in paidOrders {
+            Logger.debug(
+                "Order payment transfer: id=\(transfer.id) orderId=\(transfer.lspOrderId ?? "nil") amount=\(transfer.amountSats)"
+            )
+        }
+
+        return paidOrders.reduce(0) { $0 + $1.amountSats }
     }
 
     /// Calculates the total balance in pending (not yet ready) channels
@@ -111,7 +113,11 @@ class BalanceManager {
                 let channelBalance = balances.lightningBalances.first { balance in
                     balance.channelId == channelId
                 }
-                amount += channelBalance?.amountSats ?? 0
+                let balanceAmount = channelBalance?.amountSats ?? 0
+                Logger.debug(
+                    "Pending channel transfer: id=\(transfer.id) channelId=\(channelId) isReady=\(channel.isChannelReady) balance=\(balanceAmount)"
+                )
+                amount += balanceAmount
             }
         }
 
