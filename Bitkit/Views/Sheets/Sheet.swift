@@ -74,6 +74,7 @@ struct SheetHeader: View {
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
                 }
+                .accessibilityIdentifier("NavigationBack")
             } else {
                 Spacer()
                     .frame(width: 24, height: 24)

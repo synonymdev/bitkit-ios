@@ -33,12 +33,17 @@ struct ReceiveTag: View {
             CaptionMText(t("wallet__tags_new"))
                 .padding(.bottom, 8)
 
-            TextField(t("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white06)
-                .focused($isTextFieldFocused)
-                .disabled(isLoading)
-                .autocapitalization(.none)
-                .autocorrectionDisabled(true)
-                .submitLabel(.done)
+            TextField(
+                t("wallet__tags_new_enter"),
+                text: $newTag,
+                backgroundColor: .white06,
+                testIdentifier: "TagInputReceive"
+            )
+            .focused($isTextFieldFocused)
+            .disabled(isLoading)
+            .autocapitalization(.none)
+            .autocorrectionDisabled(true)
+            .submitLabel(.done)
 
             Spacer()
 
@@ -52,6 +57,7 @@ struct ReceiveTag: View {
                 }
             }
             .buttonBottomPadding(isFocused: isTextFieldFocused)
+            .accessibilityIdentifier("ReceiveTagsSubmit")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
