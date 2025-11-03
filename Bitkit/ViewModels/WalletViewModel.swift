@@ -46,19 +46,34 @@ class WalletViewModel: ObservableObject {
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
     private let rgsConfigService: RgsConfigService
+    private let balanceManager: BalanceManager
+    private let transferService: TransferService
 
     @Published var isRestoringWallet = false
+    @Published var balanceState: BalanceState?
+    @Published var balanceInTransferToSavings: Int = 0
+    @Published var balanceInTransferToSpending: Int = 0
 
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
-        rgsConfigService: RgsConfigService = RgsConfigService()
+        rgsConfigService: RgsConfigService = RgsConfigService(),
+        transferService: TransferService? = nil
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
+        self.transferService = transferService ?? TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        balanceManager = BalanceManager(
+            lightningService: lightningService,
+            transferService: self.transferService,
+            coreService: coreService
+        )
     }
 
     deinit {
@@ -441,6 +456,29 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
             totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
             spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        }
+
+        // Update balance state with pending transfers
+        Task { @MainActor in
+            await updateBalanceState()
+        }
+    }
+
+    /// Updates the balance state including pending transfers
+    func updateBalanceState() async {
+        do {
+            let state = try await balanceManager.deriveBalanceState()
+            balanceState = state
+            balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+
+            // Update display values with adjusted balances
+            totalOnchainSats = Int(state.totalOnchainSats)
+            totalLightningSats = Int(state.totalLightningSats)
+            totalBalanceSats = Int(state.totalBalanceSats)
+            maxSendLightningSats = Int(state.maxSendLightningSats)
+        } catch {
+            Logger.error("Failed to update balance state: \(error)", context: "WalletViewModel")
         }
     }
 

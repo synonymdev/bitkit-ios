@@ -113,7 +113,7 @@ class TransferService {
 
     /// Resolve channel ID for a transfer
     /// For LSP orders: match via order->fundingTx, for manual: use directly
-    private func resolveChannelId(for transfer: Transfer, channels: [ChannelDetails]) async throws -> String? {
+    func resolveChannelId(for transfer: Transfer, channels: [ChannelDetails]) async throws -> String? {
         // If there's an LSP order ID, resolve via Blocktank
         if let orderId = transfer.lspOrderId {
             // Get orders from Blocktank (returns [IBtOrder])
