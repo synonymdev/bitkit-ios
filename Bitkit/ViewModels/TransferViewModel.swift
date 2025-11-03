@@ -131,7 +131,7 @@ class TransferViewModel: ObservableObject {
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
-                amountSats: order.lspBalanceSat,
+                amountSats: order.clientBalanceSat,
                 fundingTxId: txid,
                 lspOrderId: order.id
             )
