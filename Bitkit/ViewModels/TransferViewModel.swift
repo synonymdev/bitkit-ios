@@ -26,6 +26,8 @@ class TransferViewModel: ObservableObject {
     private let coreService: CoreService
     private let lightningService: LightningService
     private let currencyService: CurrencyService
+    private let transferService: TransferService
+
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
@@ -36,11 +38,31 @@ class TransferViewModel: ObservableObject {
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared
+        currencyService: CurrencyService = .shared,
+        transferService: TransferService
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
+        self.transferService = transferService
+    }
+
+    /// Convenience initializer for testing and previews
+    convenience init(
+        coreService: CoreService = .shared,
+        lightningService: LightningService = .shared,
+        currencyService: CurrencyService = .shared
+    ) {
+        let transferService = TransferService(
+            lightningService: lightningService,
+            blocktankService: coreService.blocktank
+        )
+        self.init(
+            coreService: coreService,
+            lightningService: lightningService,
+            currencyService: currencyService,
+            transferService: transferService
+        )
     }
 
     deinit {
@@ -103,7 +125,22 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        _ = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+
+        // Create transfer tracking record for spending
+        do {
+            let transferId = try await transferService.createTransfer(
+                type: .toSpending,
+                amountSats: order.lspBalanceSat,
+                fundingTxId: txid,
+                lspOrderId: order.id
+            )
+            Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
+        } catch {
+            Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
+            // Don't throw - we still want to continue with the order
+        }
+
         lightningSetupStep = 0
         watchOrder(orderId: order.id)
     }
@@ -153,6 +190,10 @@ class TransferViewModel: ObservableObject {
 
                     if step > 2 {
                         Logger.debug("Order settled, stopping polling")
+
+                        // Sync transfer states when order completes
+                        try? await transferService.syncTransferStates()
+
                         stopPolling()
                         return
                     }
@@ -186,6 +227,13 @@ class TransferViewModel: ObservableObject {
         var currentStep = 0
 
         if order.channel != nil {
+            do {
+                try await transferService.syncTransferStates()
+            } catch {
+                Logger.error("Failed to sync transfer states after updateOrder", context: error.localizedDescription)
+                // Don't throw - we don't want to fail the entire sync if transfer sync fails
+            }
+
             return 3
         }
 
@@ -328,6 +376,21 @@ class TransferViewModel: ObservableObject {
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
         var failedChannels: [ChannelDetails] = []
 
+        // Create transfer tracking records for each channel being closed
+        for channel in channels {
+            do {
+                let transferId = try await transferService.createTransfer(
+                    type: .toSavings,
+                    amountSats: channel.amountOnClose,
+                    channelId: channel.channelId.description
+                )
+                Logger.info("Created transfer tracking record for channel closure: \(transferId)", context: "TransferViewModel")
+            } catch {
+                Logger.error("Failed to create transfer tracking record for channel: \(channel.channelId)", context: error.localizedDescription)
+                // Continue with closure even if tracking fails
+            }
+        }
+
         try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in
             for channel in channels {
                 group.addTask {
@@ -349,6 +412,9 @@ class TransferViewModel: ObservableObject {
             }
         }
 
+        // Sync transfer states after attempting closures
+        try? await transferService.syncTransferStates()
+
         return failedChannels
     }
 
@@ -369,6 +435,10 @@ class TransferViewModel: ObservableObject {
                     if channelsFailedToCoopClose.isEmpty {
                         channelsToClose = []
                         Logger.info("Coop close success.")
+
+                        // Final sync after successful closure
+                        try? await transferService.syncTransferStates()
+
                         return
                     } else {
                         channelsToClose = channelsFailedToCoopClose
