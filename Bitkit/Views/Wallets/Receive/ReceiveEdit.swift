@@ -33,6 +33,7 @@ struct ReceiveEdit: View {
                             isAmountInputFocused = true
                         }
                     }
+                    .accessibilityIdentifier("ReceiveNumberPadTextField")
 
                 if !isAmountInputFocused {
                     CaptionMText(t("wallet__note"))
@@ -55,6 +56,7 @@ struct ReceiveEdit: View {
                             .onSubmit {
                                 isNoteEditorFocused = false
                             }
+                            .accessibilityIdentifier("ReceiveNote")
                     }
                     .padding()
                     .background(Color.white06)
@@ -72,6 +74,7 @@ struct ReceiveEdit: View {
                         ) {
                             navigationPath.append(.tag)
                         }
+                        .accessibilityIdentifier("TagsAdd")
                     }
 
                     Spacer()
@@ -82,24 +85,30 @@ struct ReceiveEdit: View {
                         }
                     }
                     .buttonBottomPadding(isFocused: isNoteEditorFocused)
+                    .accessibilityIdentifier("ShowQrReceive")
                 }
             }
 
             if isAmountInputFocused {
                 Spacer()
 
-                numberPadButtons
+                VStack(spacing: 0) {
+                    numberPadButtons
 
-                NumberPad(
-                    type: amountViewModel.getNumberPadType(currency: currency),
-                    errorKey: amountViewModel.errorKey
-                ) { key in
-                    amountViewModel.handleNumberPadInput(key, currency: currency)
-                }
+                    NumberPad(
+                        type: amountViewModel.getNumberPadType(currency: currency),
+                        errorKey: amountViewModel.errorKey
+                    ) { key in
+                        amountViewModel.handleNumberPadInput(key, currency: currency)
+                    }
+                    .accessibilityIdentifier("ReceiveNumberField")
 
-                CustomButton(title: t("common__continue")) {
-                    isAmountInputFocused = false
+                    CustomButton(title: t("common__continue")) {
+                        isAmountInputFocused = false
+                    }
+                    .accessibilityIdentifier("ReceiveNumberPadSubmit")
                 }
+                .accessibilityIdentifier("ReceiveNumberPad")
             }
         }
         .navigationBarHidden(true)
@@ -186,6 +195,7 @@ struct ReceiveEdit: View {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
                     }
                 }
+                .accessibilityIdentifier("ReceiveNumberPadUnit")
             }
         }
         .padding(.bottom, 8)
