@@ -58,21 +58,27 @@ class WalletViewModel: ObservableObject {
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
         rgsConfigService: RgsConfigService = RgsConfigService(),
-        transferService: TransferService? = nil
+        transferService: TransferService
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
-        self.transferService = transferService ?? TransferService(
-            lightningService: lightningService,
-            blocktankService: coreService.blocktank
-        )
+        self.transferService = transferService
         balanceManager = BalanceManager(
             lightningService: lightningService,
-            transferService: self.transferService,
+            transferService: transferService,
             coreService: coreService
         )
+    }
+
+    /// Convenience initializer for previews and testing
+    convenience init() {
+        let transferService = TransferService(
+            lightningService: .shared,
+            blocktankService: CoreService.shared.blocktank
+        )
+        self.init(transferService: transferService)
     }
 
     deinit {
