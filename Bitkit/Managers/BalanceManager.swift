@@ -55,29 +55,28 @@ class BalanceManager {
             .minusOrZero(toSavingsAmount)
 
         let maxSendLightningSats = calculateMaxSendLightning(channels: channels)
-        let maxSendOnchainSats = try await getMaxSendAmount(balanceDetails: balanceDetails)
 
         let balanceState = BalanceState(
             totalOnchainSats: totalOnchainSats,
             totalLightningSats: totalLightningSats,
             maxSendLightningSats: maxSendLightningSats,
-            maxSendOnchainSats: maxSendOnchainSats,
             balanceInTransferToSavings: toSavingsAmount,
             balanceInTransferToSpending: toSpendingAmount
         )
 
-        Logger.verbose(
-            "Active transfers: \(activeTransfers.count)",
-            context: "BalanceManager"
-        )
-        Logger.verbose(
-            "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)",
-            context: "BalanceManager"
-        )
-        Logger.verbose(
-            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount)",
-            context: "BalanceManager"
-        )
+        // Logger.verbose(
+        //     "Active transfers: \(activeTransfers.count)",
+        //     context: "BalanceManager"
+        // )
+        // Logger.debug(
+        //     "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)",
+        //     context: "BalanceManager"
+        // )
+        // Logger.verbose(
+        //     "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount)
+        //     toSpending=\(toSpendingAmount)",
+        //     context: "BalanceManager"
+        // )
 
         return balanceState
     }
@@ -112,7 +111,7 @@ class BalanceManager {
                 let channelBalance = balances.lightningBalances.first { balance in
                     balance.channelId == channelId
                 }
-                amount += channelBalance?.claimableAmountSats ?? 0
+                amount += channelBalance?.amountSats ?? 0
             }
         }
 
@@ -136,7 +135,7 @@ class BalanceManager {
                 let channelBalance = balanceDetails.lightningBalances.first { balance in
                     balance.channelId == channelId
                 }
-                toSavingsAmount += channelBalance?.claimableAmountSats ?? 0
+                toSavingsAmount += channelBalance?.amountSats ?? 0
             }
         }
 
@@ -152,54 +151,6 @@ class BalanceManager {
 
         return totalNextOutboundHtlcLimitSats
     }
-
-    /// Calculates maximum sendable on-chain amount (spendable minus estimated fees)
-    /// Uses the on-chain address from @AppStorage for fee estimation
-    /// - Parameter balanceDetails: Current balance details from Lightning service
-    /// - Returns: Maximum sendable amount in satoshis
-    private func getMaxSendAmount(balanceDetails: BalanceDetails) async throws -> UInt64 {
-        let spendableOnchainSats = balanceDetails.spendableOnchainBalanceSats
-
-        if spendableOnchainSats == 0 {
-            return 0
-        }
-
-        let fallback = UInt64(Double(spendableOnchainSats) * Self.fallbackFeePercent)
-
-        // Check if we have a valid address for fee calculation
-        guard !onchainAddress.isEmpty else {
-            Logger.debug("No on-chain address available, using fallback estimation: \(fallback)", context: "BalanceManager")
-            return spendableOnchainSats.minusOrZero(fallback)
-        }
-
-        // Get current fee rate
-        guard let fees = try? await coreService.blocktank.fees(refresh: false) else {
-            Logger.debug("Could not fetch fees for max send calculation, using fallback: \(fallback)", context: "BalanceManager")
-            return spendableOnchainSats.minusOrZero(fallback)
-        }
-
-        // Use normal speed for max send calculation
-        let feeRate = TransactionSpeed.normal.getFeeRate(from: fees)
-
-        // Get available UTXOs
-        let availableUtxos = try? await lightningService.listSpendableOutputs()
-
-        // Calculate actual fee using the stored on-chain address
-        let fee: UInt64
-        do {
-            fee = try await lightningService.calculateTotalFee(
-                address: onchainAddress,
-                amountSats: spendableOnchainSats,
-                satsPerVByte: feeRate,
-                utxosToSpend: availableUtxos
-            )
-        } catch {
-            Logger.debug("Could not calculate max send amount, using fallback: \(fallback)", context: "BalanceManager")
-            return spendableOnchainSats.minusOrZero(fallback)
-        }
-
-        return spendableOnchainSats.minusOrZero(fee)
-    }
 }
 
 // MARK: - UInt64 Extension
@@ -208,45 +159,5 @@ private extension UInt64 {
     /// Subtracts value, returning 0 if result would be negative
     func minusOrZero(_ value: UInt64) -> UInt64 {
         return self >= value ? self - value : 0
-    }
-}
-
-// MARK: - Lightning Balance Extension
-
-private extension LightningBalance {
-    /// Channel ID from the Lightning balance
-    var channelId: String? {
-        switch self {
-        case let .claimableOnChannelClose(id, _, _, _, _, _, _, _):
-            return id
-        case let .claimableAwaitingConfirmations(id, _, _, _, _):
-            return id
-        case let .contentiousClaimable(id, _, _, _, _):
-            return id
-        case let .maybeTimeoutClaimableHtlc(id, _, _, _, _):
-            return id
-        case let .maybePreimageClaimableHtlc(id, _, _, _, _):
-            return id
-        case let .counterpartyRevokedOutputClaimable(id, _, _):
-            return id
-        }
-    }
-
-    /// Claimable amount in satoshis
-    var claimableAmountSats: UInt64 {
-        switch self {
-        case let .claimableOnChannelClose(_, _, amountSatoshis, _, _, _, _, _):
-            return amountSatoshis
-        case let .claimableAwaitingConfirmations(_, _, amountSatoshis, _, _):
-            return amountSatoshis
-        case let .contentiousClaimable(_, _, amountSatoshis, _, _):
-            return amountSatoshis
-        case let .maybeTimeoutClaimableHtlc(_, _, amountSatoshis, _, _):
-            return amountSatoshis
-        case let .maybePreimageClaimableHtlc(_, _, amountSatoshis, _, _):
-            return amountSatoshis
-        case let .counterpartyRevokedOutputClaimable(_, amountSatoshis, _):
-            return amountSatoshis
-        }
     }
 }

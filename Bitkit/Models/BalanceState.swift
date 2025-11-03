@@ -11,9 +11,6 @@ struct BalanceState {
     /// Maximum amount that can be sent via Lightning (outbound capacity)
     let maxSendLightningSats: UInt64
 
-    /// Maximum amount that can be sent on-chain (spendable minus estimated fees)
-    let maxSendOnchainSats: UInt64
-
     /// Amount currently being transferred to savings (on-chain)
     let balanceInTransferToSavings: UInt64
 
@@ -29,14 +26,12 @@ struct BalanceState {
         totalOnchainSats: UInt64 = 0,
         totalLightningSats: UInt64 = 0,
         maxSendLightningSats: UInt64 = 0,
-        maxSendOnchainSats: UInt64 = 0,
         balanceInTransferToSavings: UInt64 = 0,
         balanceInTransferToSpending: UInt64 = 0
     ) {
         self.totalOnchainSats = totalOnchainSats
         self.totalLightningSats = totalLightningSats
         self.maxSendLightningSats = maxSendLightningSats
-        self.maxSendOnchainSats = maxSendOnchainSats
         self.balanceInTransferToSavings = balanceInTransferToSavings
         self.balanceInTransferToSpending = balanceInTransferToSpending
     }

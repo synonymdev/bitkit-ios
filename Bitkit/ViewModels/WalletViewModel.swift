@@ -50,7 +50,6 @@ class WalletViewModel: ObservableObject {
     private let transferService: TransferService
 
     @Published var isRestoringWallet = false
-    @Published var balanceState: BalanceState?
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
 
@@ -453,7 +452,6 @@ class WalletViewModel: ObservableObject {
     func updateBalanceState() async {
         do {
             let state = try await balanceManager.deriveBalanceState()
-            balanceState = state
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
             balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
 
