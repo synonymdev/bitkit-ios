@@ -100,6 +100,18 @@ struct ActivityItemView: View {
         }
     }
 
+    private var boostButtonIdentifier: String {
+        switch viewModel.activity {
+        case let .onchain(activity):
+            if activity.isBoosted {
+                return "BoostedButton"
+            }
+            return shouldDisableBoostButton ? "BoostDisabled" : "BoostButton"
+        case .lightning:
+            return "BoostDisabled"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: navigationTitle)
@@ -112,6 +124,7 @@ struct ActivityItemView: View {
                         Spacer()
                         ActivityIcon(activity: viewModel.activity, size: 48)
                     }
+                    .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
                     statusSection
@@ -252,6 +265,7 @@ struct ActivityItemView: View {
                             .frame(width: 16, height: 16)
                         MoneyText(sats: Int(activity.value), size: .bodySSB)
                     }
+                    .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
                     Divider()
@@ -269,6 +283,7 @@ struct ActivityItemView: View {
                                 .frame(width: 16, height: 16)
                             MoneyText(sats: Int(fee), size: .bodySSB)
                         }
+                        .accessibilityIdentifier("ActivityFee")
                         .padding(.bottom, 16)
 
                         Divider()
@@ -298,6 +313,7 @@ struct ActivityItemView: View {
                         )
                     }
                 }
+                .accessibilityIdentifier("ActivityTags")
                 .padding(.bottom, 16)
 
                 Divider()
@@ -320,6 +336,7 @@ struct ActivityItemView: View {
                             .padding(24)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .background(Color.white10)
+                            .accessibilityIdentifier("InvoiceNote")
                     }
                 }
             }
@@ -354,6 +371,7 @@ struct ActivityItemView: View {
                     }
                     sheets.showSheet(.addTag, data: AddTagConfig(activityId: activityId))
                 }
+                .accessibilityIdentifier("ActivityTag")
             }
             .frame(maxWidth: .infinity)
 
@@ -370,6 +388,7 @@ struct ActivityItemView: View {
                         sheets.showSheet(.boost, data: BoostConfig(onchainActivity: onchainActivity))
                     }
                 }
+                .accessibilityIdentifier(boostButtonIdentifier)
 
                 CustomButton(
                     title: t("wallet__activity_explore"), size: .small,
@@ -379,6 +398,7 @@ struct ActivityItemView: View {
                 ) {
                     navigation.navigate(.activityExplorer(viewModel.activity))
                 }
+                .accessibilityIdentifier("ActivityTxDetails")
             }
             .frame(maxWidth: .infinity)
         }
