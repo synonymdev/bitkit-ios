@@ -13,13 +13,14 @@ struct AppScene: View {
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
     @StateObject private var activity = ActivityListViewModel()
-    @StateObject private var transfer = TransferViewModel()
+    @StateObject private var transfer: TransferViewModel
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var scannerManager = ScannerManager()
     @StateObject private var settings = SettingsViewModel()
     @StateObject private var suggestionsManager = SuggestionsManager()
     @StateObject private var tagManager = TagManager()
+    @StateObject private var transferTracking: TransferTrackingManager
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -36,6 +37,10 @@ struct AppScene: View {
     init() {
         let sheetViewModel = SheetViewModel()
         let navigationViewModel = NavigationViewModel()
+        let transferService = TransferService(
+            lightningService: LightningService.shared,
+            blocktankService: CoreService.shared.blocktank
+        )
 
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
@@ -43,10 +48,12 @@ struct AppScene: View {
         _wallet = StateObject(wrappedValue: WalletViewModel())
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
-        _activity = StateObject(wrappedValue: ActivityListViewModel())
-        _transfer = StateObject(wrappedValue: TransferViewModel())
+        _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
+        _transfer = StateObject(wrappedValue: TransferViewModel(transferService: transferService))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
         _settings = StateObject(wrappedValue: SettingsViewModel())
+
+        _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
     }
 
     var body: some View {
@@ -79,6 +86,7 @@ struct AppScene: View {
             .environmentObject(settings)
             .environmentObject(suggestionsManager)
             .environmentObject(tagManager)
+            .environmentObject(transferTracking)
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
