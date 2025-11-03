@@ -441,21 +441,6 @@ class WalletViewModel: ObservableObject {
 
         if let channels {
             channelCount = channels.count
-
-            // Calculate maximum sendable lightning amount (outbound capacity)
-            let totalNextOutboundHtlcLimitSats = channels
-                .filter(\.isUsable)
-                .map(\.nextOutboundHtlcLimitMsat)
-                .reduce(0, +) / 1000 // Convert from msat to sat
-
-            maxSendLightningSats = Int(totalNextOutboundHtlcLimitSats)
-        }
-
-        if let balanceDetails {
-            totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
-            totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
-            totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
-            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
         }
 
         // Update balance state with pending transfers
