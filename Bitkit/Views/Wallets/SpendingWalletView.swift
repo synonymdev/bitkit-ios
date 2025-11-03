@@ -20,6 +20,7 @@ struct SpendingWalletView: View {
 
             if wallet.balanceInTransferToSpending > 0 {
                 IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSpending))
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 8)
             }
 
