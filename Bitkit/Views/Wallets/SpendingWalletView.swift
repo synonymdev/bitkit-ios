@@ -21,7 +21,7 @@ struct SpendingWalletView: View {
             if wallet.balanceInTransferToSpending > 0 {
                 IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSpending))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 8)
+                    .padding(.top, 16)
             }
 
             if wallet.totalLightningSats > 0 {

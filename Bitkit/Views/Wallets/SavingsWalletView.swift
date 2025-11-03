@@ -21,7 +21,7 @@ struct SavingsWalletView: View {
             if wallet.balanceInTransferToSavings > 0 {
                 IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSavings))
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 8)
+                    .padding(.top, 16)
             }
 
             if wallet.totalOnchainSats > 0 {
