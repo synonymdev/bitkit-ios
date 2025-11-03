@@ -143,8 +143,20 @@ struct ActivityExplorerView: View {
                     .padding(.bottom, 16)
                 }
 
-                Divider()
-                    .padding(.bottom, 16)
+                if !onchain.boostTxIds.isEmpty {
+                    Divider()
+                        .padding(.bottom, 16)
+                    ForEach(Array(onchain.boostTxIds.enumerated()), id: \.offset) { index, boostTxId in
+                        let key = onchain.txType == .received
+                            ? "wallet__activity_boosted_cpfp"
+                            : "wallet__activity_boosted_rbf"
+
+                        InfoSection(
+                            title: t(key, variables: ["num": String(index + 1)]),
+                            content: boostTxId
+                        )
+                    }
+                }
             } else if let lightning {
                 if let preimage = lightning.preimage {
                     InfoSection(
@@ -225,6 +237,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         confirmed: true,
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         isBoosted: false,
+                        boostTxIds: [],
                         isTransfer: false,
                         doesExist: true,
                         confirmTimestamp: nil,
@@ -237,6 +250,8 @@ struct ActivityExplorer_Previews: PreviewProvider {
             )
             .previewDisplayName("Onchain Payment")
         }
+        .environmentObject(AppViewModel())
+        .environmentObject(SettingsViewModel())
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
     }
