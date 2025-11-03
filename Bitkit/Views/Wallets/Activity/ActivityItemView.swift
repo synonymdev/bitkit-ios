@@ -454,6 +454,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                         confirmed: true,
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         isBoosted: false,
+                        boostTxIds: [],
                         isTransfer: false,
                         doesExist: true,
                         confirmTimestamp: nil,
