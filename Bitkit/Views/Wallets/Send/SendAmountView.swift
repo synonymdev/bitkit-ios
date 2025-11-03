@@ -61,7 +61,8 @@ struct SendAmountView: View {
                 HStack(alignment: .bottom) {
                     AvailableAmount(
                         label: t("wallet__send_available"),
-                        amount: Int(availableAmount)
+                        amount: Int(availableAmount),
+                        testIdentifier: "AvailableAmount"
                     )
                     .onTapGesture {
                         amountViewModel.updateFromSats(availableAmount, currency: currency)
