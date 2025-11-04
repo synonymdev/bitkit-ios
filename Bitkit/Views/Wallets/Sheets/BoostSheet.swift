@@ -431,6 +431,7 @@ struct BoostSheet: View {
                             confirmed: false,
                             timestamp: UInt64(Date().timeIntervalSince1970),
                             isBoosted: false,
+                            boostTxIds: [],
                             isTransfer: false,
                             doesExist: true,
                             confirmTimestamp: nil,
