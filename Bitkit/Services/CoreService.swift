@@ -7,8 +7,8 @@ import LDKNode
 class ActivityService {
     private let coreService: CoreService
 
-    // Track replacement transactions (RBF) to mark them as boosted
-    private static var replacementTransactions: Set<String> = []
+    // Track replacement transactions (RBF): newTxId -> parent/original txIds
+    private static var replacementTransactions: [String: [String]] = [:]
 
     // Track replaced transactions that should be ignored during sync
     private static var replacedTransactions: Set<String> = []
@@ -83,23 +83,36 @@ class ActivityService {
                             confirmedTimestamp = timestamp
                         }
 
-                        // Get existing activity to preserve certain flags like isBoosted
+                        // Get existing activity to preserve certain flags like isBoosted and boostTxIds
                         let existingActivity = try getActivityById(activityId: payment.id)
-                        let preservedIsBoosted =
-                            if case let .onchain(existing) = existingActivity {
-                                existing.isBoosted
-                            } else {
-                                false
+                        let existingOnchain: OnchainActivity? = {
+                            if let existingActivity, case let .onchain(existing) = existingActivity {
+                                return existing
                             }
+                            return nil
+                        }()
+                        let preservedIsBoosted = existingOnchain?.isBoosted ?? false
+                        let preservedBoostTxIds = existingOnchain?.boostTxIds ?? []
 
                         // Check if this is a replacement transaction (RBF) that should be marked as boosted
-                        let isReplacementTransaction = ActivityService.replacementTransactions.contains(txid)
+                        let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
                         let shouldMarkAsBoosted = preservedIsBoosted || isReplacementTransaction
+
+                        // Capture tracked parents for replacement transactions (RBF) before removing from tracking
+                        let trackedParents: [String] = {
+                            if isReplacementTransaction {
+                                return ActivityService.replacementTransactions[txid] ?? []
+                            }
+                            return []
+                        }()
+
+                        // Use tracked parents when this is a replacement; otherwise keep preserved
+                        let boostTxIds = isReplacementTransaction ? trackedParents : preservedBoostTxIds
 
                         if isReplacementTransaction {
                             Logger.debug("Found replacement transaction \(txid), marking as boosted", context: "CoreService.syncLdkNodePayments")
-                            // Remove from tracking set since we've processed it
-                            ActivityService.replacementTransactions.remove(txid)
+                            // Remove from tracking map since we've processed it
+                            ActivityService.replacementTransactions.removeValue(forKey: txid)
 
                             // Also clean up any old replaced transactions that might be lingering
                             // This helps prevent the replacedTransactions set from growing indefinitely
@@ -125,6 +138,7 @@ class ActivityService {
                             confirmed: isConfirmed,
                             timestamp: timestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
+                            boostTxIds: boostTxIds,
                             isTransfer: false, // TODO: handle when paying for order
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
@@ -282,6 +296,7 @@ class ActivityService {
 
                 // For CPFP, mark the original activity as boosted (parent transaction still exists)
                 onchainActivity.isBoosted = true
+                onchainActivity.boostTxIds.append(txid)
                 try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
                 Logger.info("Successfully marked activity \(activityId) as boosted via CPFP", context: "CoreService.boostOnchainTransaction")
             } else {
@@ -296,9 +311,11 @@ class ActivityService {
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // Track the replacement transaction so we can mark it as boosted when it syncs
-                ActivityService.replacementTransactions.insert(txid)
-                Logger.debug("Added replacement transaction \(txid) to tracking list", context: "CoreService.boostOnchainTransaction")
+                // Track the replacement transaction with its full parent chain
+                // Include existing boostTxIds (from previous boosts) plus the current txId being replaced
+                let boostedParentsTxIds = onchainActivity.boostTxIds + [onchainActivity.txId]
+                ActivityService.replacementTransactions[txid] = boostedParentsTxIds
+                Logger.debug("Added replacement transaction \(txid) to tracking list with boosted parents txids: \(boostedParentsTxIds)", context: "CoreService.boostOnchainTransaction")
 
                 // Track the original transaction ID so we can ignore it during sync
                 ActivityService.replacedTransactions.insert(onchainActivity.txId)
@@ -374,6 +391,7 @@ class ActivityService {
                                 confirmed: template.confirmed ?? false,
                                 timestamp: timestamp,
                                 isBoosted: template.isBoosted ?? false,
+                                boostTxIds: template.boostTxIds,
                                 isTransfer: template.isTransfer ?? false,
                                 doesExist: true,
                                 confirmTimestamp: template.confirmed == true ? timestamp + 3600 : nil,
@@ -418,6 +436,7 @@ private struct ActivityTemplate {
     let tags: [String]
     let confirmed: Bool?
     let isBoosted: Bool?
+    let boostTxIds: [String]
     let isTransfer: Bool?
 
     init(
@@ -429,7 +448,8 @@ private struct ActivityTemplate {
         tags: [String] = [],
         confirmed: Bool? = nil,
         isBoosted: Bool? = nil,
-        isTransfer: Bool? = nil
+        isTransfer: Bool? = nil,
+        boostTxIds: [String] = []
     ) {
         self.type = type
         self.txType = txType
@@ -440,6 +460,7 @@ private struct ActivityTemplate {
         self.confirmed = confirmed
         self.isBoosted = isBoosted
         self.isTransfer = isTransfer
+        self.boostTxIds = boostTxIds
     }
 }
 
