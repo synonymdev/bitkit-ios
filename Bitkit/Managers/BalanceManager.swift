@@ -4,7 +4,6 @@ import LDKNode
 import SwiftUI
 
 /// Manages balance calculations including pending transfers
-/// Adapted from Android's DeriveBalanceStateUseCase
 class BalanceManager {
     private let lightningService: LightningService
     private let transferService: TransferService
