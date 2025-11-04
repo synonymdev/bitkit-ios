@@ -1,5 +1,5 @@
 {
-  "originHash" : "91f19a52875e12cc0608cfb264edf6948026e2ab58fc15514e863c2ffffe0be7",
+  "originHash" : "afebf53471e2eb2f8c45a9c3fbd45b779930aea0b8a7bf2fd223d03d490867a3",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -62,6 +62,15 @@
       "state" : {
         "revision" : "9683e8e311c76d8114cd308b697dad2f9fc58fed",
         "version" : "0.17.0"
+      }
+    },
+    {
+      "identity" : "vss-rust-client-ffi",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
+      "state" : {
+        "branch" : "master",
+        "revision" : "420518936ef94d38b51442171e43efdf3117dc43"
       }
     },
     {
