@@ -448,6 +448,10 @@ class WalletViewModel: ObservableObject {
             channelCount = channels.count
         }
 
+        if let balanceDetails {
+            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        }
+
         // Update balance state with pending transfers
         Task { @MainActor in
             await updateBalanceState()
