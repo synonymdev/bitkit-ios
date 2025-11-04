@@ -4,12 +4,12 @@ import VssRustClientFfi
 class VssStoreIdProvider {
     static let shared = VssStoreIdProvider()
     
-    private var cachedStoreId: String?
+    private var cachedStoreIds: [Int: String] = [:]
     
     private init() {}
     
     func getVssStoreId(walletIndex: Int) throws -> String {
-        if let cached = cachedStoreId {
+        if let cached = cachedStoreIds[walletIndex] {
             return cached
         }
 
@@ -25,13 +25,17 @@ class VssStoreIdProvider {
             passphrase: passphrase
         )
         
-        cachedStoreId = storeId
+        cachedStoreIds[walletIndex] = storeId
         Logger.info("VSS store id: '\(storeId)'", context: "VssStoreIdProvider")
         return storeId
     }
     
     func clearCache() {
-        cachedStoreId = nil
+        cachedStoreIds.removeAll()
+    }
+    
+    func clearCache(walletIndex: Int) {
+        cachedStoreIds.removeValue(forKey: walletIndex)
     }
 }
 
