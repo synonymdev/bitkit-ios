@@ -315,7 +315,10 @@ class ActivityService {
                 // Include existing boostTxIds (from previous boosts) plus the current txId being replaced
                 let boostedParentsTxIds = onchainActivity.boostTxIds + [onchainActivity.txId]
                 ActivityService.replacementTransactions[txid] = boostedParentsTxIds
-                Logger.debug("Added replacement transaction \(txid) to tracking list with boosted parents txids: \(boostedParentsTxIds)", context: "CoreService.boostOnchainTransaction")
+                Logger.debug(
+                    "Added replacement transaction \(txid) to tracking list with boosted parents txids: \(boostedParentsTxIds)",
+                    context: "CoreService.boostOnchainTransaction"
+                )
 
                 // Track the original transaction ID so we can ignore it during sync
                 ActivityService.replacedTransactions.insert(onchainActivity.txId)
