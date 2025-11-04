@@ -8,7 +8,6 @@ struct FundManualConfirmView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var transfer: TransferViewModel
-    @EnvironmentObject var transferTracking: TransferTrackingManager
 
     let lnPeer: LnPeer
     let amountSats: UInt64
@@ -76,69 +75,18 @@ struct FundManualConfirmView: View {
                         accentColor: .purpleAccent
                     ) {
                         do {
-                            let lightningService = LightningService.shared
-
-                            // Open a channel with the given peer and amount
-                            let channelId = try await lightningService.openChannel(
+                            let (channelId, _) = try await transfer.openManualChannel(
                                 peer: lnPeer,
-                                channelAmountSats: amountSats
+                                amountSats: amountSats,
+                                onEvent: { eventId, handler in
+                                    wallet.addOnEvent(id: eventId, handler: handler)
+                                },
+                                removeEvent: { eventId in
+                                    wallet.removeOnEvent(id: eventId)
+                                }
                             )
 
                             Logger.info("Channel opened successfully with ID: \(channelId)")
-
-                            // Use an actor to safely capture the funding transaction ID
-                            let fundingTxCapture = FundingTxCapture()
-                            let eventId = "manual-channel-funding-\(channelId)"
-
-                            wallet.addOnEvent(id: eventId) { event in
-                                if case let .channelPending(
-                                    eventChannelId,
-                                    userChannelId,
-                                    formerTemporaryChannelId,
-                                    counterpartyNodeId,
-                                    fundingTxo
-                                ) = event {
-                                    // Validate this is the channel we just opened
-                                    if eventChannelId.description == channelId {
-                                        Task {
-                                            await fundingTxCapture.setFundingTxId(fundingTxo.txid.description)
-                                            Logger.debug(
-                                                "Captured funding tx ID: \(fundingTxo.txid.description) for channel: \(channelId)",
-                                                context: "FundManualConfirmView"
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
-                            let fundingTxId = await waitForFundingTx(
-                                capture: fundingTxCapture,
-                                maxAttempts: 10,
-                                initialDelayMs: 50
-                            )
-
-                            wallet.removeOnEvent(id: eventId)
-
-                            if fundingTxId == nil {
-                                Logger.warn("Timeout waiting for funding tx ID for channel: \(channelId)", context: "FundManualConfirmView")
-                            }
-
-                            // Create transfer tracking record for manual channel opening
-                            do {
-                                let transferId = try await transferTracking.createTransfer(
-                                    type: .toSpending,
-                                    amountSats: amountSats,
-                                    channelId: channelId,
-                                    fundingTxId: fundingTxId
-                                )
-                                Logger.info(
-                                    "Created transfer tracking record: \(transferId) with fundingTxId: \(fundingTxId ?? "nil")",
-                                    context: "FundManualConfirmView"
-                                )
-                            } catch {
-                                Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
-                                // Don't throw - we still want to show success even if tracking fails
-                            }
 
                             try await Task.sleep(nanoseconds: 500_000_000)
                             showSuccess = true
@@ -169,59 +117,6 @@ struct FundManualConfirmView: View {
     }
 }
 
-/// Actor to safely capture funding transaction ID from event callbacks
-/// Ensures thread-safe access when the event callback may execute on different threads
-private actor FundingTxCapture {
-    private var fundingTxId: String?
-
-    func setFundingTxId(_ txId: String) {
-        fundingTxId = txId
-    }
-
-    func getFundingTxId() -> String? {
-        return fundingTxId
-    }
-}
-
-/// Wait for funding transaction ID with exponential backoff
-/// - Parameters:
-///   - capture: The actor holding the funding tx ID
-///   - maxAttempts: Maximum number of polling attempts
-///   - initialDelayMs: Initial delay in milliseconds (will be doubled each attempt)
-/// - Returns: The funding transaction ID if captured, nil if timeout
-private func waitForFundingTx(
-    capture: FundingTxCapture,
-    maxAttempts: Int,
-    initialDelayMs: UInt64
-) async -> String? {
-    var delayMs = initialDelayMs
-
-    for attempt in 1 ... maxAttempts {
-        // Check if we have the funding tx ID
-        if let txId = await capture.getFundingTxId() {
-            Logger.debug("Got funding tx ID on attempt \(attempt)", context: "FundManualConfirmView")
-            return txId
-        }
-
-        // Don't sleep after the last attempt
-        guard attempt < maxAttempts else { break }
-
-        // Sleep with exponential backoff
-        let delayNs = delayMs * 1_000_000 // Convert ms to nanoseconds
-        do {
-            try await Task.sleep(nanoseconds: delayNs)
-        } catch {
-            Logger.debug("Sleep interrupted while waiting for funding tx", context: "FundManualConfirmView")
-            break
-        }
-
-        // Exponential backoff: double the delay, max 2 seconds
-        delayMs = min(delayMs * 2, 2000)
-    }
-
-    return nil
-}
-
 #Preview {
     NavigationStack {
         FundManualConfirmView(
@@ -232,10 +127,6 @@ private func waitForFundingTx(
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(TransferViewModel())
-        .environmentObject(TransferTrackingManager(service: TransferService(
-            lightningService: LightningService.shared,
-            blocktankService: CoreService.shared.blocktank
-        )))
     }
     .preferredColorScheme(.dark)
 }

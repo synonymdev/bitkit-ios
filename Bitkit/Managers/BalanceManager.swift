@@ -92,7 +92,10 @@ class BalanceManager {
         return paidOrders.reduce(0) { $0 + $1.amountSats }
     }
 
-    /// Calculates the total balance in pending (not yet ready) channels
+    /// Calculates the total balance in pending (not yet usable) channels
+    /// A channel is considered pending if it's not yet usable for payments,
+    /// even if LDK reports a balance for it. This ensures the balance shows
+    /// as "pending transfer to spending" until the channel funding is confirmed.
     private func getPendingChannelsSats(
         transfers: [Transfer],
         channels: [ChannelDetails],
@@ -101,23 +104,36 @@ class BalanceManager {
         var amount: UInt64 = 0
         let pendingTransfers = transfers.filter { $0.type.isToSpending() && $0.channelId != nil }
 
+        Logger.debug("Checking \(pendingTransfers.count) pending transfers to spending")
+        Logger.debug("Available channels: \(channels.count), Lightning balances: \(balances.lightningBalances.count)")
+
         for transfer in pendingTransfers {
-            guard let channelId = transfer.channelId,
-                  let channel = channels.first(where: { $0.channelId.description == channelId })
-            else {
+            guard let channelId = transfer.channelId else {
+                Logger.debug("Transfer \(transfer.id) has no channelId")
                 continue
             }
 
-            // Only count if channel is not ready yet
-            if !channel.isChannelReady {
+            Logger.debug("Looking for channel: \(channelId)")
+
+            guard let channel = channels.first(where: { $0.channelId.description == channelId }) else {
+                Logger.debug("Channel \(channelId) not found in channels list for transfer: \(transfer.id)")
+                continue
+            }
+
+            // Count balance if channel exists but is not yet usable
+            // isUsable checks both that the channel is ready AND that it can actually be used
+            if !channel.isUsable {
                 let channelBalance = balances.lightningBalances.first { balance in
                     balance.channelId == channelId
                 }
                 let balanceAmount = channelBalance?.amountSats ?? 0
                 Logger.debug(
-                    "Pending channel transfer: id=\(transfer.id) channelId=\(channelId) isReady=\(channel.isChannelReady) balance=\(balanceAmount)"
+                    "Pending channel transfer: id=\(transfer.id) channelId=\(channelId) isUsable=\(channel.isUsable) isReady=\(channel.isChannelReady) balance=\(balanceAmount)"
                 )
                 amount += balanceAmount
+            } else {
+                Logger
+                    .debug("Channel \(channelId) is usable, not counting as pending (isUsable=\(channel.isUsable) isReady=\(channel.isChannelReady))")
             }
         }
 
