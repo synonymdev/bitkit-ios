@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65DFF2EB964B500252335 /* VssRustClientFfi */; };
+		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		4AFCA3702E05933800205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA36F2E05933800205CAE /* Zip */; };
 		4AFCA3722E0596D900205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA3712E0596D900205CAE /* Zip */; };
@@ -90,6 +92,7 @@
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
 				Services/ServiceQueue.swift,
+				Services/VssStoreIdProvider.swift,
 				Utilities/AddressChecker.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
@@ -112,6 +115,7 @@
 				Services/CoreService.swift,
 				Services/LightningService.swift,
 				Services/ServiceQueue.swift,
+				Services/VssStoreIdProvider.swift,
 				Utilities/AddressChecker.swift,
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
@@ -146,6 +150,7 @@
 				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
 				4AFCA3722E0596D900205CAE /* Zip in Frameworks */,
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
+				18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -156,6 +161,7 @@
 				4AFCA3702E05933800205CAE /* Zip in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				96204B782DE9AA43007BAA26 /* SQLite in Frameworks */,
+				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
 				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
 				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
 				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
@@ -234,6 +240,7 @@
 				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
 				4AFCA3712E0596D900205CAE /* Zip */,
 				968FE13F2DFB016B0053CD7F /* LDKNode */,
+				18D65E012EB964BD00252335 /* VssRustClientFfi */,
 			);
 			productName = BitkitNotification;
 			productReference = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */;
@@ -266,6 +273,7 @@
 				96204B772DE9AA43007BAA26 /* SQLite */,
 				4AFCA36F2E05933800205CAE /* Zip */,
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
+				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -375,6 +383,7 @@
 				4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */,
 				968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */,
 				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -864,6 +873,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 		4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/airbnb/lottie-ios";
@@ -939,6 +956,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		18D65DFF2EB964B500252335 /* VssRustClientFfi */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */;
+			productName = VssRustClientFfi;
+		};
+		18D65E012EB964BD00252335 /* VssRustClientFfi */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */;
+			productName = VssRustClientFfi;
+		};
 		4AAB08C92E1FE77600BA63DF /* Lottie */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */;

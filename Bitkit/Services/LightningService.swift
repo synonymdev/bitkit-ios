@@ -1,4 +1,3 @@
-import CryptoKit
 import Foundation
 import LDKNode
 
@@ -82,27 +81,29 @@ class LightningService {
 
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
-        Logger.debug(ldkStoragePath, context: "LDK storage path")
-
         Logger.debug("Building node...")
+        let storeId = try VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
-        // MARK: temp fix as we don't have VSS auth yet
-
-        guard Env.network == .regtest else {
-            fatalError("Do not run this on mainnet until VSS auth is implemented. Below hack is a temporary fix and not safe for mainnet.")
-        }
-        let mnemonicData = Data(mnemonic.utf8)
-        let hashedMnemonic = SHA256.hash(data: mnemonicData)
-        let storeIdHack = Env.vssStoreId + hashedMnemonic.compactMap { String(format: "%02x", $0) }.joined()
-
-        Logger.info("storeIdHack: \(storeIdHack)")
+        let vssUrl = Env.vssServerUrl
+        let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
+        Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
+        Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
         try await ServiceQueue.background(.ldk) {
-            self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                vssUrl: Env.vssServerUrl,
-                storeId: storeIdHack,
-                fixedHeaders: [:]
-            )
+            if !lnurlAuthServerUrl.isEmpty {
+                self.node = try builder.buildWithVssStore(
+                    vssUrl: vssUrl,
+                    storeId: storeId,
+                    lnurlAuthServerUrl: lnurlAuthServerUrl,
+                    fixedHeaders: [:]
+                )
+            } else {
+                self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                    vssUrl: vssUrl,
+                    storeId: storeId,
+                    fixedHeaders: [:]
+                )
+            }
         }
 
         Logger.info("LDK node setup")

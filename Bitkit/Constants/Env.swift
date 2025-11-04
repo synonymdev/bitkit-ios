@@ -211,27 +211,32 @@ enum Env {
 
     static var vssServerUrl: String {
         switch network {
-        case .regtest:
-            return "https://bitkit.stag0.blocktank.to/vss_rs"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
-        case .testnet:
-            fatalError("Testnet network not implemented")
-        case .signet:
-            fatalError("Signet network not implemented")
+        default:
+            return "https://bitkit.stag0.blocktank.to/vss_rs_auth"
         }
     }
 
-    static var vssStoreId: String {
+    static var vssStoreIdPrefix: String {
         switch network {
-        case .regtest:
-            return "bitkit_regtest"
         case .bitcoin:
             fatalError("Bitcoin network not implemented")
+        case .regtest:
+            return "bitkit_v1_regtest"
         case .testnet:
-            fatalError("Testnet network not implemented")
+            return "bitkit_v1_testnet"
         case .signet:
-            fatalError("Signet network not implemented")
+            return "bitkit_v1_signet"
+        }
+    }
+
+    static var lnurlAuthServerUrl: String {
+        switch network {
+        case .bitcoin:
+            fatalError("LNURL-auth server not implemented for mainnet")
+        default:
+            return "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
         }
     }
 
