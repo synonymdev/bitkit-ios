@@ -131,7 +131,7 @@ class TransferViewModel: ObservableObject {
         do {
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
-                amountSats: order.lspBalanceSat,
+                amountSats: order.clientBalanceSat,
                 fundingTxId: txid,
                 lspOrderId: order.id
             )
@@ -358,6 +358,160 @@ class TransferViewModel: ObservableObject {
         )
     }
 
+    // MARK: - Manual Channel Opening
+
+    /// Opens a manual channel and tracks the transfer
+    /// - Parameters:
+    ///   - peer: The Lightning peer to open the channel with
+    ///   - amountSats: The channel funding amount in satoshis
+    ///   - onEvent: Closure to register an event listener (receives eventId and handler)
+    ///   - removeEvent: Closure to remove an event listener (receives eventId)
+    /// - Returns: Tuple containing the channel ID and optional funding transaction ID
+    /// - Throws: Error if channel opening fails
+    func openManualChannel(
+        peer: LnPeer,
+        amountSats: UInt64,
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async throws -> (channelId: String, fundingTxId: String?) {
+        // Open the channel - this returns the user channel ID
+        let userChannelId = try await lightningService.openChannel(
+            peer: peer,
+            channelAmountSats: amountSats
+        )
+
+        Logger.info("Channel opened successfully with user channel ID: \(userChannelId)", context: "TransferViewModel")
+
+        // Wait for the channel pending event to capture both the actual channel ID and funding tx
+        let (actualChannelId, fundingTxId) = await Self.waitForChannelPendingEvent(
+            userChannelId: userChannelId,
+            onEvent: onEvent,
+            removeEvent: removeEvent
+        )
+
+        guard let actualChannelId else {
+            throw AppError(
+                message: "Timeout waiting for channel pending event",
+                debugMessage: "Did not receive channelPending event for userChannelId: \(userChannelId)"
+            )
+        }
+
+        Logger.info(
+            "Captured actual channel ID: \(actualChannelId) and fundingTxId: \(fundingTxId ?? "nil")",
+            context: "TransferViewModel"
+        )
+
+        // Create transfer tracking record with the ACTUAL channel ID (not user channel ID)
+        do {
+            let transferId = try await transferService.createTransfer(
+                type: .toSpending,
+                amountSats: amountSats,
+                channelId: actualChannelId,
+                fundingTxId: fundingTxId
+            )
+            Logger.info(
+                "Created transfer tracking record: \(transferId) with channelId: \(actualChannelId) fundingTxId: \(fundingTxId ?? "nil")",
+                context: "TransferViewModel"
+            )
+        } catch {
+            Logger.error("Failed to create transfer tracking record", context: error.localizedDescription)
+            // Don't throw - channel is already open
+        }
+
+        return (actualChannelId, fundingTxId)
+    }
+
+    /// Waits for a channel pending event and captures both the channel ID and funding transaction ID
+    /// - Parameters:
+    ///   - userChannelId: The user channel ID returned from openChannel
+    ///   - onEvent: Closure to register an event listener
+    ///   - removeEvent: Closure to remove an event listener
+    /// - Returns: Tuple with actual channel ID and funding transaction ID (both nil if timeout)
+    private static func waitForChannelPendingEvent(
+        userChannelId: String,
+        onEvent: @escaping (String, @escaping (Event) -> Void) -> Void,
+        removeEvent: @escaping (String) -> Void
+    ) async -> (channelId: String?, fundingTxId: String?) {
+        let channelCapture = ChannelPendingCapture()
+        let eventId = "manual-channel-funding-\(userChannelId)"
+
+        onEvent(eventId) { event in
+            if case let .channelPending(
+                eventChannelId,
+                eventUserChannelId,
+                _,
+                _,
+                fundingTxo
+            ) = event {
+                // Match by user channel ID
+                if eventUserChannelId.description == userChannelId {
+                    Task {
+                        await channelCapture.setChannelData(
+                            channelId: eventChannelId.description,
+                            fundingTxId: fundingTxo.txid.description
+                        )
+                        Logger.debug(
+                            "Captured channel pending event: channelId=\(eventChannelId.description) userChannelId=\(userChannelId) fundingTxId=\(fundingTxo.txid.description)",
+                            context: "TransferViewModel"
+                        )
+                    }
+                }
+            }
+        }
+
+        let (channelId, fundingTxId) = await waitForChannelData(
+            capture: channelCapture,
+            maxAttempts: 10,
+            initialDelayMs: 50
+        )
+
+        removeEvent(eventId)
+
+        return (channelId, fundingTxId)
+    }
+
+    /// Wait for channel data (channel ID and funding tx) with exponential backoff
+    /// - Parameters:
+    ///   - capture: The actor holding the channel data
+    ///   - maxAttempts: Maximum number of polling attempts
+    ///   - initialDelayMs: Initial delay in milliseconds (will be doubled each attempt)
+    /// - Returns: Tuple with channel ID and funding transaction ID (both nil if timeout)
+    private static func waitForChannelData(
+        capture: ChannelPendingCapture,
+        maxAttempts: Int,
+        initialDelayMs: UInt64
+    ) async -> (channelId: String?, fundingTxId: String?) {
+        var delayMs = initialDelayMs
+
+        for attempt in 1 ... maxAttempts {
+            // Check if we have the channel data
+            if let data = await capture.getChannelData() {
+                Logger.debug(
+                    "Got channel data on attempt \(attempt): channelId=\(data.channelId)",
+                    context: "TransferViewModel"
+                )
+                return (data.channelId, data.fundingTxId)
+            }
+
+            // Don't sleep after the last attempt
+            guard attempt < maxAttempts else { break }
+
+            // Sleep with exponential backoff
+            let delayNs = delayMs * 1_000_000 // Convert ms to nanoseconds
+            do {
+                try await Task.sleep(nanoseconds: delayNs)
+            } catch {
+                Logger.debug("Sleep interrupted while waiting for channel data", context: "TransferViewModel")
+                break
+            }
+
+            // Exponential backoff: double the delay, max 2 seconds
+            delayMs = min(delayMs * 2, 2000)
+        }
+
+        return (nil, nil)
+    }
+
     // MARK: - Savings Transfer Methods
 
     func setSelectedChannelIds(_ ids: [String]) {
@@ -454,5 +608,24 @@ class TransferViewModel: ObservableObject {
             Logger.info("Giving up on coop close.")
             // TODO: Show force transfer UI
         }
+    }
+}
+
+/// Actor to safely capture channel data from channel pending events
+/// Ensures thread-safe access when the event callback may execute on different threads
+actor ChannelPendingCapture {
+    struct ChannelData {
+        let channelId: String
+        let fundingTxId: String
+    }
+
+    private var channelData: ChannelData?
+
+    func setChannelData(channelId: String, fundingTxId: String) {
+        channelData = ChannelData(channelId: channelId, fundingTxId: fundingTxId)
+    }
+
+    func getChannelData() -> ChannelData? {
+        return channelData
     }
 }
