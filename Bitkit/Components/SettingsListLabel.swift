@@ -53,7 +53,7 @@ struct SettingsListLabel: View {
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
                         .disabled(disabled ?? false)
-                        .accessibilityIdentifier(testIdentifier ?? "")
+                        .accessibilityIdentifier(testIdentifier)
 
                 } else {
                     if let rightText {

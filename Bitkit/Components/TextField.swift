@@ -35,7 +35,7 @@ struct TextField: View {
             SwiftUI.TextField("", text: $text, axis: axis)
                 .accentColor(.brandAccent)
                 .font(font)
-                .accessibilityIdentifier(testIdentifier ?? "")
+                .accessibilityIdentifier(testIdentifier)
         }
         .padding()
         .background(backgroundColor)

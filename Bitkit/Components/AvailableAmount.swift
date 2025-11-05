@@ -17,6 +17,6 @@ struct AvailableAmount: View {
             .padding(.bottom, 5)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(testIdentifier ?? "")
+        .accessibilityIdentifier(testIdentifier)
     }
 }
