@@ -3,6 +3,7 @@ import SwiftUI
 struct WalletBalanceView: View {
     let type: WalletType
     let sats: UInt64
+    var showTransferIcon: Bool = false
 
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -20,6 +21,13 @@ struct WalletBalanceView: View {
                             .padding(.trailing, 4)
 
                         SubtitleText(btcComponents.value)
+
+                        if showTransferIcon {
+                            Image("transfer")
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.white64)
+                        }
                     }
                 } else {
                     HStack(spacing: 4) {
@@ -30,6 +38,13 @@ struct WalletBalanceView: View {
                         SubtitleText(converted.symbol)
                             .frame(maxWidth: 12)
                         SubtitleText(converted.formatted)
+
+                        if showTransferIcon {
+                            Image("transfer")
+                                .resizable()
+                                .frame(width: 16, height: 16)
+                                .foregroundColor(.white64)
+                        }
                     }
                 }
             }
@@ -53,6 +68,32 @@ struct WalletBalanceView: View {
             WalletBalanceView(
                 type: .lightning,
                 sats: 123_456
+            )
+        }
+        .environmentObject(
+            {
+                let vm = CurrencyViewModel()
+                vm.primaryDisplay = .bitcoin
+                vm.displayUnit = .modern
+                return vm
+            }()
+        )
+
+        // Bitcoin display (modern) - with transfer icon
+        HStack {
+            WalletBalanceView(
+                type: .onchain,
+                sats: 123_456,
+                showTransferIcon: true
+            )
+
+            Divider()
+                .frame(height: 50)
+
+            WalletBalanceView(
+                type: .lightning,
+                sats: 123_456,
+                showTransferIcon: true
             )
         }
         .environmentObject(

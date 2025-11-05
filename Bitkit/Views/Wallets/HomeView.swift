@@ -28,7 +28,8 @@ struct HomeView: View {
                             NavigationLink(value: Route.savingsWallet) {
                                 WalletBalanceView(
                                     type: .onchain,
-                                    sats: UInt64(wallet.totalOnchainSats)
+                                    sats: UInt64(wallet.totalOnchainSats),
+                                    showTransferIcon: wallet.balanceInTransferToSavings > 0
                                 )
                             }
 
@@ -41,7 +42,8 @@ struct HomeView: View {
                             NavigationLink(value: Route.spendingWallet) {
                                 WalletBalanceView(
                                     type: .lightning,
-                                    sats: UInt64(wallet.totalLightningSats)
+                                    sats: UInt64(wallet.totalLightningSats),
+                                    showTransferIcon: wallet.balanceInTransferToSpending > 0
                                 )
                             }
                         }

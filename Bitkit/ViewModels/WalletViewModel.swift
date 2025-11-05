@@ -46,19 +46,39 @@ class WalletViewModel: ObservableObject {
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
     private let rgsConfigService: RgsConfigService
+    private let balanceManager: BalanceManager
+    private let transferService: TransferService
 
     @Published var isRestoringWallet = false
+    @Published var balanceInTransferToSavings: Int = 0
+    @Published var balanceInTransferToSpending: Int = 0
 
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
-        rgsConfigService: RgsConfigService = RgsConfigService()
+        rgsConfigService: RgsConfigService = RgsConfigService(),
+        transferService: TransferService
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
+        self.transferService = transferService
+        balanceManager = BalanceManager(
+            lightningService: lightningService,
+            transferService: transferService,
+            coreService: coreService
+        )
+    }
+
+    /// Convenience initializer for previews and testing
+    convenience init() {
+        let transferService = TransferService(
+            lightningService: .shared,
+            blocktankService: CoreService.shared.blocktank
+        )
+        self.init(transferService: transferService)
     }
 
     deinit {
@@ -426,21 +446,32 @@ class WalletViewModel: ObservableObject {
 
         if let channels {
             channelCount = channels.count
-
-            // Calculate maximum sendable lightning amount (outbound capacity)
-            let totalNextOutboundHtlcLimitSats = channels
-                .filter(\.isUsable)
-                .map(\.nextOutboundHtlcLimitMsat)
-                .reduce(0, +) / 1000 // Convert from msat to sat
-
-            maxSendLightningSats = Int(totalNextOutboundHtlcLimitSats)
         }
 
         if let balanceDetails {
-            totalOnchainSats = Int(balanceDetails.totalOnchainBalanceSats)
-            totalLightningSats = Int(balanceDetails.totalLightningBalanceSats)
-            totalBalanceSats = Int(balanceDetails.totalLightningBalanceSats + balanceDetails.totalOnchainBalanceSats)
             spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        }
+
+        // Update balance state with pending transfers
+        Task { @MainActor in
+            await updateBalanceState()
+        }
+    }
+
+    /// Updates the balance state including pending transfers
+    func updateBalanceState() async {
+        do {
+            let state = try await balanceManager.deriveBalanceState()
+            balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
+            balanceInTransferToSpending = Int(state.balanceInTransferToSpending)
+
+            // Update display values with adjusted balances
+            totalOnchainSats = Int(state.totalOnchainSats)
+            totalLightningSats = Int(state.totalLightningSats)
+            totalBalanceSats = Int(state.totalBalanceSats)
+            maxSendLightningSats = Int(state.maxSendLightningSats)
+        } catch {
+            Logger.error("Failed to update balance state: \(error)", context: "WalletViewModel")
         }
     }
 
