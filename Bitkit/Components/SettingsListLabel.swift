@@ -60,17 +60,17 @@ struct SettingsListLabel: View {
             Spacer()
 
             if let toggle {
-                if let testIdentifier {
-                    Toggle("", isOn: toggle)
-                        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
-                        .labelsHidden()
-                        .disabled(disabled ?? false)
-                        .accessibilityIdentifier(testIdentifier)
-                } else {
-                    Toggle("", isOn: toggle)
-                        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
-                        .labelsHidden()
-                        .disabled(disabled ?? false)
+                let configuredToggle = Toggle("", isOn: toggle)
+                    .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                    .labelsHidden()
+                    .disabled(disabled ?? false)
+
+                Group {
+                    if let testIdentifier {
+                        configuredToggle.accessibilityIdentifier(testIdentifier)
+                    } else {
+                        configuredToggle
+                    }
                 }
             } else {
                 if let rightText {
@@ -95,6 +95,7 @@ struct SettingsListLabel: View {
             }
         }
 
+        // Attach row identifier only when no toggle is shown (toggles get identifiers above)
         if let testIdentifier, toggle == nil {
             row.accessibilityIdentifier(testIdentifier)
         } else {

@@ -32,15 +32,16 @@ struct TextField: View {
                     .font(font)
             }
 
-            if let testIdentifier {
-                SwiftUI.TextField("", text: $text, axis: axis)
-                    .accentColor(.brandAccent)
-                    .font(font)
-                    .accessibilityIdentifier(testIdentifier)
-            } else {
-                SwiftUI.TextField("", text: $text, axis: axis)
-                    .accentColor(.brandAccent)
-                    .font(font)
+            let configuredField = SwiftUI.TextField("", text: $text, axis: axis)
+                .accentColor(.brandAccent)
+                .font(font)
+
+            Group {
+                if let testIdentifier {
+                    configuredField.accessibilityIdentifier(testIdentifier)
+                } else {
+                    configuredField
+                }
             }
         }
         .padding()
