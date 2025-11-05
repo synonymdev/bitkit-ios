@@ -101,6 +101,7 @@ struct ReceiveEdit: View {
                     ) { key in
                         amountViewModel.handleNumberPadInput(key, currency: currency)
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("ReceiveNumberField")
 
                     CustomButton(title: t("common__continue")) {
@@ -108,6 +109,7 @@ struct ReceiveEdit: View {
                     }
                     .accessibilityIdentifier("ReceiveNumberPadSubmit")
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("ReceiveNumberPad")
             }
         }
