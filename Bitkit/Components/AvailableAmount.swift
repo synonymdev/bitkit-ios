@@ -9,8 +9,13 @@ struct AvailableAmount: View {
         let content = VStack(alignment: .leading, spacing: 8) {
             CaptionMText(label)
 
-            MoneyText(sats: amount, size: .bodySSB, symbol: true, testIdentifier: "MoneyText")
-                .padding(.bottom, 5)
+            MoneyText(
+                sats: amount,
+                size: .bodySSB,
+                symbol: true,
+                testIdentifier: testIdentifier != nil ? "MoneyText" : nil
+            )
+            .padding(.bottom, 5)
         }
 
         if let testIdentifier {
