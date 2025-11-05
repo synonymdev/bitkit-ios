@@ -18,6 +18,12 @@ struct SavingsWalletView: View {
             )
             .padding(.top)
 
+            if wallet.balanceInTransferToSavings > 0 {
+                IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSavings))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 16)
+            }
+
             if wallet.totalOnchainSats > 0 {
                 if !(app.isGeoBlocked ?? true) {
                     transferButton
