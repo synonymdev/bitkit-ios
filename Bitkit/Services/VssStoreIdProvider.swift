@@ -1,41 +1,65 @@
 import Foundation
 import VssRustClientFfi
 
+private actor VssStoreIdCache {
+    private var cachedStoreIds: [Int: String] = [:]
+
+    func get(walletIndex: Int) -> String? {
+        return cachedStoreIds[walletIndex]
+    }
+
+    func set(_ storeId: String, for walletIndex: Int) {
+        cachedStoreIds[walletIndex] = storeId
+    }
+
+    func clear() {
+        cachedStoreIds.removeAll()
+    }
+
+    func clear(walletIndex: Int) {
+        cachedStoreIds.removeValue(forKey: walletIndex)
+    }
+}
+
 class VssStoreIdProvider {
     static let shared = VssStoreIdProvider()
-    
-    private var cachedStoreIds: [Int: String] = [:]
-    
+
+    private let cache = VssStoreIdCache()
+
     private init() {}
-    
-    func getVssStoreId(walletIndex: Int) throws -> String {
-        if let cached = cachedStoreIds[walletIndex] {
+
+    func getVssStoreId(walletIndex: Int) async throws -> String {
+        if let cached = await cache.get(walletIndex: walletIndex) {
             return cached
         }
 
         guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
         }
-        
+
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
-        
+
         let storeId = try vssDeriveStoreId(
             prefix: Env.vssStoreIdPrefix,
             mnemonic: mnemonic,
             passphrase: passphrase
         )
-        
-        cachedStoreIds[walletIndex] = storeId
+
+        await cache.set(storeId, for: walletIndex)
+
         Logger.info("VSS store id: '\(storeId)'", context: "VssStoreIdProvider")
         return storeId
     }
-    
+
     func clearCache() {
-        cachedStoreIds.removeAll()
+        Task {
+            await cache.clear()
+        }
     }
-    
+
     func clearCache(walletIndex: Int) {
-        cachedStoreIds.removeValue(forKey: walletIndex)
+        Task {
+            await cache.clear(walletIndex: walletIndex)
+        }
     }
 }
-
