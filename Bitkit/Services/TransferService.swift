@@ -90,7 +90,15 @@ class TransferService {
                 {
                     try await markSettled(id: transfer.id)
                     Logger.debug("Channel \(channelId) ready, settled transfer: \(transfer.id)", context: "TransferService")
+                } else {
+                    Logger.debug("Channel \(channelId) exists but not yet usable for transfer: \(transfer.id)", context: "TransferService")
                 }
+            } else {
+                // No channel ID resolved - check if we should timeout this transfer
+                Logger.debug(
+                    "Could not resolve channel for transfer: \(transfer.id) orderId: \(transfer.lspOrderId ?? "none")",
+                    context: "TransferService"
+                )
             }
         }
 
@@ -113,7 +121,7 @@ class TransferService {
 
     /// Resolve channel ID for a transfer
     /// For LSP orders: match via order->fundingTx, for manual: use directly
-    private func resolveChannelId(for transfer: Transfer, channels: [ChannelDetails]) async throws -> String? {
+    func resolveChannelId(for transfer: Transfer, channels: [ChannelDetails]) async throws -> String? {
         // If there's an LSP order ID, resolve via Blocktank
         if let orderId = transfer.lspOrderId {
             // Get orders from Blocktank (returns [IBtOrder])
@@ -126,15 +134,21 @@ class TransferService {
                 return nil
             }
 
-            if let order = orders?.first,
-               let fundingTxId = order.channel?.fundingTx.id
-            {
-                // Find channel matching the funding transaction
-                if let channel = channels.first(where: { channel in
-                    channel.fundingTxo?.txid.description == fundingTxId
-                }) {
-                    return channel.channelId.description
+            if let order = orders?.first {
+                if let fundingTxId = order.channel?.fundingTx.id {
+                    // Find channel matching the funding transaction
+                    if let channel = channels.first(where: { channel in
+                        channel.fundingTxo?.txid.description == fundingTxId
+                    }) {
+                        return channel.channelId.description
+                    } else {
+                        Logger.debug("Order \(orderId) has fundingTx \(fundingTxId) but no matching channel found", context: "TransferService")
+                    }
+                } else {
+                    Logger.debug("Order \(orderId) exists but has no fundingTx yet (state: \(order.state))", context: "TransferService")
                 }
+            } else {
+                Logger.debug("Order \(orderId) not found in Blocktank response", context: "TransferService")
             }
         }
 
