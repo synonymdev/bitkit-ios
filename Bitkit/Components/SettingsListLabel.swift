@@ -34,72 +34,55 @@ struct SettingsListLabel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            rowContent
-                .frame(height: 50)
+            HStack(alignment: .center, spacing: 0) {
+                if let iconName {
+                    Label {
+                        BodyMText(title, textColor: .textPrimary)
+                    } icon: {
+                        CircularIcon(icon: iconName, iconColor: .textPrimary)
+                            .padding(.trailing, 8)
+                    }
+                } else {
+                    BodyMText(title, textColor: .textPrimary)
+                }
 
+                Spacer()
+
+                if let toggle {
+                    Toggle("", isOn: toggle)
+                        .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
+                        .labelsHidden()
+                        .disabled(disabled ?? false)
+                        .accessibilityIdentifier(testIdentifier ?? "")
+
+                } else {
+                    if let rightText {
+                        BodyMText(rightText, textColor: .textPrimary)
+                            .padding(.trailing, 5)
+                    }
+
+                    if let rightIcon {
+                        switch rightIcon {
+                        case .chevron:
+                            Image("chevron")
+                                .resizable()
+                                .foregroundColor(.textSecondary)
+                                .frame(width: 24, height: 24)
+                        case .checkmark:
+                            Image("checkmark")
+                                .resizable()
+                                .foregroundColor(.brandAccent)
+                                .frame(width: 32, height: 32)
+                        }
+                    }
+                }
+            }
+            .frame(height: 50)
+
+            // Bottom border
             Rectangle()
                 .fill(Color.white10)
                 .frame(height: 1)
-        }
-    }
-
-    @ViewBuilder
-    private var rowContent: some View {
-        let row = HStack(alignment: .center, spacing: 0) {
-            if let iconName {
-                Label {
-                    BodyMText(title, textColor: .textPrimary)
-                } icon: {
-                    CircularIcon(icon: iconName, iconColor: .textPrimary)
-                        .padding(.trailing, 8)
-                }
-            } else {
-                BodyMText(title, textColor: .textPrimary)
-            }
-
-            Spacer()
-
-            if let toggle {
-                let configuredToggle = Toggle("", isOn: toggle)
-                    .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
-                    .labelsHidden()
-                    .disabled(disabled ?? false)
-
-                Group {
-                    if let testIdentifier {
-                        configuredToggle.accessibilityIdentifier(testIdentifier)
-                    } else {
-                        configuredToggle
-                    }
-                }
-            } else {
-                if let rightText {
-                    BodyMText(rightText, textColor: .textPrimary)
-                        .padding(.trailing, 5)
-                }
-
-                if let rightIcon {
-                    switch rightIcon {
-                    case .chevron:
-                        Image("chevron")
-                            .resizable()
-                            .foregroundColor(.textSecondary)
-                            .frame(width: 24, height: 24)
-                    case .checkmark:
-                        Image("checkmark")
-                            .resizable()
-                            .foregroundColor(.brandAccent)
-                            .frame(width: 32, height: 32)
-                    }
-                }
-            }
-        }
-
-        // Attach row identifier only when no toggle is shown (toggles get identifiers above)
-        if let testIdentifier, toggle == nil {
-            row.accessibilityIdentifier(testIdentifier)
-        } else {
-            row
         }
     }
 }
