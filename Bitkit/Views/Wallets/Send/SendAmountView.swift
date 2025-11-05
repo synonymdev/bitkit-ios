@@ -102,6 +102,7 @@ struct SendAmountView: View {
                             amountViewModel.togglePrimaryDisplay(currency: currency)
                         }
                     }
+                    .accessibilityIdentifier("SendNumberPadUnit")
                 }
                 .padding(.bottom, 12)
 
