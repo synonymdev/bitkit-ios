@@ -100,6 +100,15 @@ struct AppScene: View {
                 ) { notification in
                     handleQuickAction(notification)
                 }
+
+                // Listen for backup failure notifications
+                NotificationCenter.default.addObserver(
+                    forName: .backupFailureNotification,
+                    object: nil,
+                    queue: .main
+                ) { notification in
+                    handleBackupFailure(notification)
+                }
             }
     }
 
@@ -214,6 +223,17 @@ struct AppScene: View {
             Task { try? await activity?.syncLdkNodePayments() }
         }
 
+        if wallet.isRestoringWallet {
+            Task {
+                await BackupService.shared.performFullRestoreFromLatestBackup()
+
+                await MainActor.run {
+                    widgets.loadSavedWidgets()
+                    widgets.objectWillChange.send()
+                }
+            }
+        }
+
         Task { await startWallet() }
     }
 
@@ -253,8 +273,12 @@ struct AppScene: View {
             walletIsInitializing = true
         } else if state == .running {
             walletInitShouldFinish = true
+            BackupService.shared.startObservingBackups()
         } else if case .errorStarting = state {
             walletInitShouldFinish = true
+            BackupService.shared.stopObservingBackups()
+        } else {
+            BackupService.shared.stopObservingBackups()
         }
     }
 
@@ -283,5 +307,14 @@ struct AppScene: View {
         default:
             break
         }
+    }
+
+    private func handleBackupFailure(_ notification: Notification) {
+        let interval = notification.userInfo?["interval"] as? Int ?? 1
+        app.toast(
+            type: .error,
+            title: t("settings__backup__failed_title"),
+            description: t("settings__backup__failed_message", variables: ["interval": "\(interval)"])
+        )
     }
 }
