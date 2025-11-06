@@ -44,7 +44,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     static let shared = SettingsViewModel()
 
     private let defaults = UserDefaults.standard
-    private var isObservingKVO = false
+    private var observedKeys: Set<String> = []
 
     // Reactive publishers for settings changes (used by BackupService)
     private let settingsSubject = PassthroughSubject<[String: Any], Never>()
@@ -142,14 +142,15 @@ class SettingsViewModel: NSObject, ObservableObject {
         // Set up KVO observation
         for key in SettingsBackupConfig.settingsKeys {
             defaults.addObserver(self, forKeyPath: key, options: [.new], context: nil)
+            observedKeys.insert(key)
         }
         defaults.addObserver(self, forKeyPath: "savedWidgets", options: [.new], context: nil)
+        observedKeys.insert("savedWidgets")
 
         for key in SettingsBackupConfig.appStateKeys {
             defaults.addObserver(self, forKeyPath: key, options: [.new], context: nil)
+            observedKeys.insert(key)
         }
-
-        isObservingKVO = true
 
         if hideBalanceOnOpen {
             hideBalance = true
@@ -180,14 +181,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     deinit {
-        guard isObservingKVO else { return }
-
-        for key in SettingsBackupConfig.settingsKeys {
-            defaults.removeObserver(self, forKeyPath: key)
-        }
-        defaults.removeObserver(self, forKeyPath: "savedWidgets")
-
-        for key in SettingsBackupConfig.appStateKeys {
+        for key in observedKeys {
             defaults.removeObserver(self, forKeyPath: key)
         }
     }
