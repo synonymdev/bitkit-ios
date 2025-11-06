@@ -74,25 +74,6 @@ struct NumberPadTextField: View {
 
     @ViewBuilder
     private var primaryDisplayView: some View {
-        let font = Font.custom(Fonts.black, size: 44)
-        let placeholder = viewModel.getPlaceholder(currency: currency)
-
-        let valueText: Text = {
-            if !viewModel.displayText.isEmpty {
-                let entered = Text(viewModel.displayText)
-                    .font(font)
-                    .foregroundColor(.textPrimary)
-                let remainder = Text(placeholder)
-                    .font(font)
-                    .foregroundColor(isFocused ? .textSecondary : .textPrimary)
-                return entered + remainder
-            } else {
-                return Text(placeholder)
-                    .font(font)
-                    .foregroundColor(isFocused ? .textSecondary : .textPrimary)
-            }
-        }()
-
         HStack(spacing: 6) {
             // Symbol
             Text(currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol)
@@ -100,7 +81,11 @@ struct NumberPadTextField: View {
                 .foregroundColor(.textSecondary)
 
             // Value and placeholder
-            valueText
+            (Text(viewModel.displayText)
+                .foregroundColor(.textPrimary)
+                + Text(viewModel.getPlaceholder(currency: currency))
+                .foregroundColor(isFocused ? .textSecondary : .textPrimary))
+                .font(.custom(Fonts.black, size: 44))
         }
     }
 }
