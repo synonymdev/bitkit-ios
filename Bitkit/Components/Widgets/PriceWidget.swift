@@ -76,11 +76,11 @@ struct PriceWidget: View {
         }
     }
 
-    /// Filtered price data based on selected pairs
     private var filteredPriceData: [PriceData] {
         let currentPeriodData = viewModel.getCurrentData(for: options.selectedPeriod)
-        return currentPeriodData.filter { priceData in
-            options.selectedPairs.contains(priceData.name)
+        let dataByPair = Dictionary(uniqueKeysWithValues: currentPeriodData.map { ($0.name, $0) })
+        return options.selectedPairs.compactMap { pair in
+            dataByPair[pair]
         }
     }
 
