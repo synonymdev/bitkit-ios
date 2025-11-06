@@ -147,9 +147,6 @@ class BackupService {
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async {
         try? await ServiceQueue.background(.backup) { self.isRestoring = true }
-        defer {
-            Task { try? await ServiceQueue.background(.backup) { self.isRestoring = false } }
-        }
 
         do {
             try await performRestore(category: .settings) { dataBytes in
@@ -233,6 +230,8 @@ class BackupService {
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
+
+        try? await ServiceQueue.background(.backup) { self.isRestoring = false }
     }
 
     // MARK: - Private Methods
@@ -506,11 +505,22 @@ class BackupService {
                     let tags = try await CoreService.shared.activity.tags(forActivity: activityId)
                     guard !tags.isEmpty else { continue }
 
-                    let (paymentHash, txId, address, isReceive): (String?, String?, String, Bool) = switch activity {
+                    let paymentHash: String?
+                    let txId: String?
+                    let address: String
+                    let isReceive: Bool
+
+                    switch activity {
                     case let .lightning(ln):
-                        (ln.id, nil, "", ln.txType == .received)
+                        paymentHash = ln.id
+                        txId = nil
+                        address = ""
+                        isReceive = ln.txType == .received
                     case let .onchain(on):
-                        (nil, on.id, on.address.isEmpty ? "" : on.address, on.txType == .received)
+                        paymentHash = nil
+                        txId = on.id
+                        address = on.address.isEmpty ? "" : on.address
+                        isReceive = on.txType == .received
                     }
 
                     tagMetadata.append(TagMetadataItem(
