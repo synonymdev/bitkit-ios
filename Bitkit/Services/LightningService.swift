@@ -382,10 +382,8 @@ class LightningService {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
-        let channelId = channel.channelId
-
         return try await ServiceQueue.background(.ldk) {
-            Logger.debug("Initiating channel close (force=\(force)): '\(channelId)'", context: "LightningService")
+            Logger.debug("Initiating channel close (force=\(force)): '\(channel.channelId)'", context: "LightningService")
 
             if force {
                 try node.forceCloseChannel(
