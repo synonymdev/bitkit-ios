@@ -248,7 +248,7 @@ struct PinChangeView: View {
     }
     .preferredColorScheme(.dark)
     .environmentObject(AppViewModel())
-    .environmentObject(SettingsViewModel())
+    .environmentObject(SettingsViewModel.shared)
     .environmentObject(SheetViewModel())
     .environmentObject(WalletViewModel())
 }

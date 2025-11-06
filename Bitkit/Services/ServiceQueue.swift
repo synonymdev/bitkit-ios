@@ -6,6 +6,7 @@ class ServiceQueue {
     private static let coreQueue = DispatchQueue(label: "core-queue", qos: .userInteractive)
     private static let migrationQueue = DispatchQueue(label: "migration-queue", qos: .userInteractive)
     private static let forexQueue = DispatchQueue(label: "forex-queue", qos: .userInteractive)
+    private static let backupQueue = DispatchQueue(label: "backup-queue", qos: .userInitiated)
 
     private init() {}
 
@@ -14,6 +15,7 @@ class ServiceQueue {
         case core
         case migration
         case forex
+        case backup
 
         var queue: DispatchQueue {
             switch self {
@@ -25,6 +27,8 @@ class ServiceQueue {
                 return ServiceQueue.migrationQueue
             case .forex:
                 return ServiceQueue.forexQueue
+            case .backup:
+                return ServiceQueue.backupQueue
             }
         }
     }

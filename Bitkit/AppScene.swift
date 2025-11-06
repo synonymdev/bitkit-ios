@@ -1,3 +1,4 @@
+import Combine
 import LDKNode
 import SwiftUI
 
@@ -17,7 +18,7 @@ struct AppScene: View {
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var scannerManager = ScannerManager()
-    @StateObject private var settings = SettingsViewModel()
+    @StateObject private var settings = SettingsViewModel.shared
     @StateObject private var suggestionsManager = SuggestionsManager()
     @StateObject private var tagManager = TagManager()
     @StateObject private var transferTracking: TransferTrackingManager
@@ -51,7 +52,7 @@ struct AppScene: View {
         _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
         _transfer = StateObject(wrappedValue: TransferViewModel(transferService: transferService))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
-        _settings = StateObject(wrappedValue: SettingsViewModel())
+        _settings = StateObject(wrappedValue: SettingsViewModel.shared)
 
         _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
     }
@@ -100,15 +101,9 @@ struct AppScene: View {
                 ) { notification in
                     handleQuickAction(notification)
                 }
-
-                // Listen for backup failure notifications
-                NotificationCenter.default.addObserver(
-                    forName: .backupFailureNotification,
-                    object: nil,
-                    queue: .main
-                ) { notification in
-                    handleBackupFailure(notification)
-                }
+            }
+            .onReceive(BackupService.shared.backupFailurePublisher) { intervalMinutes in
+                handleBackupFailure(intervalMinutes: intervalMinutes)
             }
     }
 
@@ -274,10 +269,10 @@ struct AppScene: View {
         } else if state == .running {
             walletInitShouldFinish = true
             BackupService.shared.startObservingBackups()
-        } else if case .errorStarting = state {
-            walletInitShouldFinish = true
-            BackupService.shared.stopObservingBackups()
         } else {
+            if case .errorStarting = state {
+                walletInitShouldFinish = true
+            }
             BackupService.shared.stopObservingBackups()
         }
     }
@@ -309,12 +304,11 @@ struct AppScene: View {
         }
     }
 
-    private func handleBackupFailure(_ notification: Notification) {
-        let interval = notification.userInfo?["interval"] as? Int ?? 1
+    private func handleBackupFailure(intervalMinutes: Int) {
         app.toast(
             type: .error,
             title: t("settings__backup__failed_title"),
-            description: t("settings__backup__failed_message", variables: ["interval": "\(interval)"])
+            description: t("settings__backup__failed_message", variables: ["interval": "\(intervalMinutes)"])
         )
     }
 }

@@ -115,7 +115,7 @@ struct PinCheckView: View {
                 print("PIN verified!")
             }
         )
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
     }
     .preferredColorScheme(.dark)
 }

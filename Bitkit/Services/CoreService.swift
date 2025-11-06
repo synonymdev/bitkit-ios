@@ -1,4 +1,5 @@
 import BitkitCore
+import Combine
 import Foundation
 import LDKNode
 
@@ -6,6 +7,12 @@ import LDKNode
 
 class ActivityService {
     private let coreService: CoreService
+
+    private let activitiesChangedSubject = PassthroughSubject<Void, Never>()
+
+    var activitiesChangedPublisher: AnyPublisher<Void, Never> {
+        activitiesChangedSubject.eraseToAnyPublisher()
+    }
 
     // Track replacement transactions (RBF): newTxId -> parent/original txIds
     private static var replacementTransactions: [String: [String]] = [:]
@@ -36,12 +43,33 @@ class ActivityService {
 
                 _ = try deleteActivityById(activityId: id)
             }
+
+            self.activitiesChangedSubject.send()
         }
     }
 
     func insert(_ activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try insertActivity(activity: activity)
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    func upsertList(_ activities: [Activity]) async throws {
+        try await ServiceQueue.background(.core) {
+            try upsertActivities(activities: activities)
+        }
+    }
+
+    func closedChannels(sortDirection: SortDirection = .asc) async throws -> [ClosedChannelDetails] {
+        try await ServiceQueue.background(.core) {
+            try getAllClosedChannels(sortDirection: sortDirection)
+        }
+    }
+
+    func upsertClosedChannelList(_ closedChannels: [ClosedChannelDetails]) async throws {
+        try await ServiceQueue.background(.core) {
+            try upsertClosedChannels(channels: closedChannels)
         }
     }
 
@@ -197,6 +225,7 @@ class ActivityService {
             }
 
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
+            self.activitiesChangedSubject.send()
         }
     }
 
@@ -233,12 +262,15 @@ class ActivityService {
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
+            self.activitiesChangedSubject.send()
         }
     }
 
     func delete(id: String) async throws -> Bool {
         try await ServiceQueue.background(.core) {
-            try deleteActivityById(activityId: id)
+            let result = try deleteActivityById(activityId: id)
+            self.activitiesChangedSubject.send()
+            return result
         }
     }
 
@@ -247,12 +279,14 @@ class ActivityService {
     func appendTags(toActivity id: String, _ tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try addTags(activityId: id, tags: tags)
+            self.activitiesChangedSubject.send()
         }
     }
 
     func dropTags(fromActivity id: String, _ tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try removeTags(activityId: id, tags: tags)
+            self.activitiesChangedSubject.send()
         }
     }
 
@@ -299,6 +333,7 @@ class ActivityService {
                 onchainActivity.boostTxIds.append(txid)
                 try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
                 Logger.info("Successfully marked activity \(activityId) as boosted via CPFP", context: "CoreService.boostOnchainTransaction")
+                self.activitiesChangedSubject.send()
             } else {
                 Logger.info("Executing RBF boost for outgoing transaction", context: "CoreService.boostOnchainTransaction")
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
@@ -345,6 +380,8 @@ class ActivityService {
                         "Warning: Original activity \(activityId) still exists after deletion attempt", context: "CoreService.boostOnchainTransaction"
                     )
                 }
+
+                self.activitiesChangedSubject.send()
             }
 
             return txid
@@ -419,6 +456,7 @@ class ActivityService {
             }
 
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
+            self.activitiesChangedSubject.send()
         }
     }
 }
@@ -576,6 +614,12 @@ private func generateTestDataSets() -> [(String, UInt64, [ActivityTemplate])] {
 class BlocktankService {
     private let coreService: CoreService
 
+    private let stateChangedSubject = PassthroughSubject<Void, Never>()
+
+    var stateChangedPublisher: AnyPublisher<Void, Never> {
+        stateChangedSubject.eraseToAnyPublisher()
+    }
+
     init(coreService: CoreService) {
         self.coreService = coreService
     }
@@ -601,7 +645,7 @@ class BlocktankService {
         Logger.info("Creating CJIT invoice with channel size: \(channelSizeSat) and invoice amount: \(invoiceSat)", context: "BlocktankService")
 
         return try await ServiceQueue.background(.core) {
-            try await createCjitEntry(
+            let entry = try await createCjitEntry(
                 channelSizeSat: channelSizeSat,
                 invoiceSat: invoiceSat,
                 invoiceDescription: invoiceDescription,
@@ -609,6 +653,8 @@ class BlocktankService {
                 channelExpiryWeeks: channelExpiryWeeks,
                 options: options
             )
+            self.stateChangedSubject.send()
+            return entry
         }
     }
 
@@ -635,11 +681,13 @@ class BlocktankService {
         options: CreateOrderOptions
     ) async throws -> IBtOrder {
         try await ServiceQueue.background(.core) {
-            try await createOrder(
+            let order = try await createOrder(
                 lspBalanceSat: lspBalanceSat,
                 channelExpiryWeeks: channelExpiryWeeks,
                 options: options
             )
+            self.stateChangedSubject.send()
+            return order
         }
     }
 
@@ -661,6 +709,29 @@ class BlocktankService {
         try await ServiceQueue.background(.core) {
             try await getOrders(orderIds: orderIds, filter: filter, refresh: refresh)
         }
+    }
+
+    func upsertOrdersList(_ orders: [IBtOrder]) async throws {
+        try await ServiceQueue.background(.core) {
+            try await upsertOrders(orders: orders)
+        }
+    }
+
+    func upsertCjitEntriesList(_ cjitEntries: [IcJitEntry]) async throws {
+        try await ServiceQueue.background(.core) {
+            try await upsertCjitEntries(entries: cjitEntries)
+        }
+    }
+
+    func setInfo(_ info: IBtInfo) async throws {
+        try await ServiceQueue.background(.core) {
+            try await upsertInfo(info: info)
+        }
+    }
+
+    /// Notifies that blocktank state has changed (e.g., after refreshing data)
+    func notifyStateChanged() {
+        stateChangedSubject.send()
     }
 
     func open(orderId: String) async throws -> IBtOrder {

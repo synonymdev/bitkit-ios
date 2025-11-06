@@ -67,5 +67,5 @@ struct SecuritySuccess: View {
 #Preview {
     SecuritySuccess(navigationPath: .constant([.success]))
         .environmentObject(SheetViewModel())
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
 }

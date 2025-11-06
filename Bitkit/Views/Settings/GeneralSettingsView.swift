@@ -82,7 +82,7 @@ struct GeneralSettingsView: View {
 #Preview {
     NavigationStack {
         GeneralSettingsView()
-            .environmentObject(SettingsViewModel())
+            .environmentObject(SettingsViewModel.shared)
             .environmentObject(CurrencyViewModel())
             .environmentObject(AppViewModel())
     }
