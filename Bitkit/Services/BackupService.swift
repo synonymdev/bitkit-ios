@@ -62,6 +62,7 @@ class BackupService {
             guard shouldStart == true else { return }
 
             try? await vssBackupClient.setup()
+            Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             startBackupStatusObservers()
             startDataStoreListeners()
             startPeriodicBackupFailureCheck()
@@ -85,6 +86,7 @@ class BackupService {
 
             guard shouldStop == true else { return }
             cancellables.removeAll()
+            Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
         }
     }
 
@@ -95,6 +97,8 @@ class BackupService {
         }
 
         let backupTask = Task {
+            Logger.debug("Backup starting for: '\(category.rawValue)'", context: "BackupService")
+
             updateBackupStatus(category: category) { status in
                 BackupItemStatus(
                     synced: status.synced,
@@ -148,6 +152,8 @@ class BackupService {
     func performFullRestoreFromLatestBackup() async {
         try? await ServiceQueue.background(.backup) { self.isRestoring = true }
 
+        Logger.debug("Full restore starting", context: "BackupService")
+
         do {
             try await performRestore(category: .settings) { dataBytes in
                 guard let settingsDict = try JSONSerialization.jsonObject(with: dataBytes) as? [String: Any] else {
@@ -155,7 +161,6 @@ class BackupService {
                 }
 
                 await SettingsViewModel.shared.restoreSettingsDictionary(settingsDict)
-                Logger.info("Settings restored successfully", context: "BackupService")
             }
 
             try await performRestore(category: .widgets) { dataBytes in
@@ -166,36 +171,27 @@ class BackupService {
                 let decodedWidgets = try WidgetsBackupConverter.convertFromAndroidFormat(jsonDict: jsonDict)
                 let encodedData = try JSONEncoder().encode(decodedWidgets)
                 UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
-                Logger.info("Widgets restored successfully, count: \(decodedWidgets.count)", context: "BackupService")
             }
 
             try await performRestore(category: .wallet) { dataBytes in
                 let payload = try JSONDecoder().decode(WalletBackupV1.self, from: dataBytes)
                 try TransferStorage.shared.upsertList(payload.transfers)
 
-                Logger.info("Restored \(payload.transfers.count) transfers", context: "BackupService")
+                Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
             }
 
             try await performRestore(category: .metadata) { dataBytes in
                 let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: dataBytes)
 
-                for tagMetadata in payload.tagMetadata {
-                    do {
-                        let existingTags = try await CoreService.shared.activity.tags(forActivity: tagMetadata.id)
-                        if !existingTags.isEmpty {
-                            try await CoreService.shared.activity.dropTags(fromActivity: tagMetadata.id, existingTags)
-                        }
-                        if !tagMetadata.tags.isEmpty {
-                            try await CoreService.shared.activity.appendTags(toActivity: tagMetadata.id, tagMetadata.tags)
-                        }
-                    } catch {
-                        Logger.warn("Failed to restore tags for activity \(tagMetadata.id): \(error)", context: "BackupService")
-                    }
+                let activityTags = payload.tagMetadata.map { item in
+                    ActivityTags(activityId: item.id, tags: item.tags)
                 }
+
+                try await CoreService.shared.activity.upsertTags(activityTags)
 
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
-                Logger.info("Restored app state and \(payload.tagMetadata.count) tags metadata", context: "BackupService")
+                Logger.debug("Restored caches and \(payload.tagMetadata.count) tags metadata records", context: "BackupService")
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -208,10 +204,7 @@ class BackupService {
                     try await CoreService.shared.blocktank.setInfo(info)
                 }
 
-                Logger.info(
-                    "Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJIT entries\(payload.info != nil ? ", with info" : "")",
-                    context: "BackupService"
-                )
+                Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
             }
 
             try await performRestore(category: .activity) { dataBytes in
@@ -220,13 +213,13 @@ class BackupService {
                 try await CoreService.shared.activity.upsertList(payload.activities)
                 try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
 
-                Logger.info(
+                Logger.debug(
                     "Restored \(payload.activities.count) activities, \(payload.closedChannels.count) closed channels",
                     context: "BackupService"
                 )
             }
 
-            Logger.info("Full restore completed", context: "BackupService")
+            Logger.info("Full restore success", context: "BackupService")
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
@@ -263,6 +256,8 @@ class BackupService {
                 }
                 .store(in: &cancellables)
         }
+
+        Logger.debug("Started \(BackupCategory.allCases.count) backup status observers", context: "BackupService")
     }
 
     private func startDataStoreListeners() {
@@ -327,6 +322,8 @@ class BackupService {
                 }
             }
             .store(in: &cancellables)
+
+        Logger.debug("Started 7 data store listeners", context: "BackupService")
     }
 
     private func startPeriodicBackupFailureCheck() {
@@ -444,7 +441,6 @@ class BackupService {
                 return (category, value)
             })
         } catch {
-            Logger.error("Failed to decode backup statuses: \(error)", context: "BackupService")
             return [:]
         }
     }
@@ -477,7 +473,6 @@ class BackupService {
                 let savedWidgets = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
                 return try WidgetsBackupConverter.convertToAndroidFormat(savedWidgets: savedWidgets)
             } catch {
-                Logger.error("Failed to convert widgets to Android format: \(error)", context: "BackupService")
                 return widgetsData
             }
 
@@ -492,51 +487,7 @@ class BackupService {
 
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970)
-
-            var tagMetadata: [TagMetadataItem] = []
-            do {
-                let activities = try await CoreService.shared.activity.get()
-                for activity in activities {
-                    let activityId = switch activity {
-                    case let .lightning(ln): ln.id
-                    case let .onchain(on): on.id
-                    }
-
-                    let tags = try await CoreService.shared.activity.tags(forActivity: activityId)
-                    guard !tags.isEmpty else { continue }
-
-                    let paymentHash: String?
-                    let txId: String?
-                    let address: String
-                    let isReceive: Bool
-
-                    switch activity {
-                    case let .lightning(ln):
-                        paymentHash = ln.id
-                        txId = nil
-                        address = ""
-                        isReceive = ln.txType == .received
-                    case let .onchain(on):
-                        paymentHash = nil
-                        txId = on.id
-                        address = on.address.isEmpty ? "" : on.address
-                        isReceive = on.txType == .received
-                    }
-
-                    tagMetadata.append(TagMetadataItem(
-                        id: activityId,
-                        paymentHash: paymentHash,
-                        txId: txId,
-                        address: address,
-                        isReceive: isReceive,
-                        tags: tags,
-                        createdAt: currentTime
-                    ))
-                }
-            } catch {
-                Logger.warn("Failed to get activities for metadata backup: \(error)", context: "BackupService")
-            }
-
+            let tagMetadata = try await CoreService.shared.activity.getAllTagMetadata()
             let cache = await SettingsViewModel.shared.getAppCacheData()
 
             let payload = MetadataBackupV1(
@@ -592,10 +543,10 @@ class BackupService {
                 try await restoreAction(item.value)
                 Logger.info("Restore success for: '\(category.rawValue)'", context: "BackupService")
             } else {
-                Logger.warn("Restore null for: '\(category.rawValue)' - no backup found", context: "BackupService")
+                Logger.warn("Restore null for: '\(category.rawValue)'", context: "BackupService")
             }
         } catch {
-            Logger.error("Restore error for: '\(category.rawValue)': \(error)", context: "BackupService")
+            Logger.debug("Restore error for: '\(category.rawValue)'", context: "BackupService")
         }
 
         updateBackupStatus(category: category) { status in
