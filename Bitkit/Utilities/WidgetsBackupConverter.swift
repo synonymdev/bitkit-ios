@@ -107,13 +107,7 @@ enum WidgetsBackupConverter {
                 return nil
             }
 
-            // Android serializes position as Int (JSON number), JSONSerialization may return Int or NSNumber
-            let position: Int
-            if let posInt = widgetDict["position"] as? Int {
-                position = posInt
-            } else if let posNumber = widgetDict["position"] as? NSNumber {
-                position = posNumber.intValue
-            } else {
+            guard let position = widgetDict["position"] as? Int else {
                 Logger.warn("Invalid position value for widget: \(typeString)", context: "WidgetsBackupConverter")
                 return nil
             }

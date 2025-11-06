@@ -80,24 +80,8 @@ struct BackupSettings: View {
                         ForEach(BackupCategory.allCases, id: \.self) { category in
                             let status = viewModel.getStatus(for: category)
                             let statusText = viewModel.formatStatusText(for: category)
-                            let iconColor: Color = {
-                                if status.running {
-                                    return .yellowAccent
-                                } else if status.synced < status.required {
-                                    return .redAccent
-                                } else {
-                                    return .greenAccent
-                                }
-                            }()
-                            let backgroundColor: Color = {
-                                if status.running {
-                                    return .yellow16
-                                } else if status.synced < status.required {
-                                    return .red16
-                                } else {
-                                    return .green16
-                                }
-                            }()
+                            let iconColor = viewModel.iconColor(for: status)
+                            let backgroundColor = viewModel.backgroundColor(for: status)
                             let showRetry = status.synced < status.required && !status.running
 
                             StatusItemView(
