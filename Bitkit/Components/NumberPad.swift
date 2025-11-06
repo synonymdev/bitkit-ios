@@ -61,7 +61,8 @@ struct NumberPad: View {
                         NumberPadButton(
                             text: ".",
                             height: buttonHeight,
-                            hasError: errorKey == "."
+                            hasError: errorKey == ".",
+                            testID: "NDecimal"
                         ) {
                             Haptics.play(.buttonTap)
                             onPress(".")
@@ -94,6 +95,7 @@ struct NumberPad: View {
                         .frame(height: buttonHeight)
                 }
                 .buttonStyle(NumberPadButtonStyle())
+                .accessibilityIdentifier("NRemove")
                 .frame(maxWidth: .infinity)
             }
         }

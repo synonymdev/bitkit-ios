@@ -47,6 +47,13 @@ struct DefaultUnitSettingsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     ForEach(BitcoinDisplayUnit.allCases, id: \.self) { unit in
+                        let identifier: String = {
+                            switch unit {
+                            case .modern: return "DenominationModern"
+                            case .classic: return "DenominationClassic"
+                            }
+                        }()
+
                         Button(action: {
                             currency.displayUnit = unit
                         }) {
@@ -56,6 +63,7 @@ struct DefaultUnitSettingsView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .accessibilityIdentifier(identifier)
                     }
                 }
             }
