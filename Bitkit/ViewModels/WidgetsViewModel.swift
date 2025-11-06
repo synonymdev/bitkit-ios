@@ -291,10 +291,13 @@ class WidgetsViewModel: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func loadSavedWidgets() {
+    func loadSavedWidgets() {
+        let widgetsData = UserDefaults.standard.data(forKey: "savedWidgets") ?? .init()
+
         do {
-            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: savedWidgetsData)
+            savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+            savedWidgetsData = widgetsData
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
@@ -305,7 +308,9 @@ class WidgetsViewModel: ObservableObject {
 
     private func persistSavedWidgets() {
         do {
-            savedWidgetsData = try JSONEncoder().encode(savedWidgetsWithOptions)
+            let encodedData = try JSONEncoder().encode(savedWidgetsWithOptions)
+            savedWidgetsData = encodedData
+            UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
         } catch {
             print("Failed to persist widgets: \(error)")
         }

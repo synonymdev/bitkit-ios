@@ -38,22 +38,26 @@ struct SecurityPrivacySettingsView: View {
                     // Privacy Settings Section
                     SettingsListLabel(
                         title: t("settings__security__swipe_balance_to_hide"),
-                        toggle: $settings.swipeBalanceToHide
+                        toggle: $settings.swipeBalanceToHide,
+                        testIdentifier: "SwipeBalanceToHide"
                     )
 
                     SettingsListLabel(
                         title: t("settings__security__hide_balance_on_open"),
-                        toggle: $settings.hideBalanceOnOpen
+                        toggle: $settings.hideBalanceOnOpen,
+                        testIdentifier: "HideBalanceOnOpen"
                     )
 
                     SettingsListLabel(
                         title: t("settings__security__clipboard"),
-                        toggle: $settings.readClipboard
+                        toggle: $settings.readClipboard,
+                        testIdentifier: "AutoReadClipboard"
                     )
 
                     SettingsListLabel(
                         title: t("settings__security__warn_100"),
-                        toggle: $settings.warnWhenSendingOver100
+                        toggle: $settings.warnWhenSendingOver100,
+                        testIdentifier: "SendAmountWarning"
                     )
 
                     // PIN Code Section
@@ -66,6 +70,7 @@ struct SecurityPrivacySettingsView: View {
                                 rightText: t("settings__security__pin_disabled")
                             )
                         }
+                        .accessibilityIdentifier("PINCode")
                     } else {
                         NavigationLink(value: Route.disablePin) {
                             SettingsListLabel(
@@ -73,6 +78,7 @@ struct SecurityPrivacySettingsView: View {
                                 rightText: t("settings__security__pin_enabled")
                             )
                         }
+                        .accessibilityIdentifier("PINCode")
                     }
 
                     if settings.pinEnabled {
@@ -81,6 +87,7 @@ struct SecurityPrivacySettingsView: View {
                                 title: t("settings__security__pin_change")
                             )
                         }
+                        .accessibilityIdentifier("PINChange")
 
                         Button {
                             showPinCheckForPayments = true
@@ -94,6 +101,7 @@ struct SecurityPrivacySettingsView: View {
                                 )
                             )
                         }
+                        .accessibilityIdentifier("EnablePinForPayments")
 
                         if isBiometricAvailable {
                             // Biometrics toggle with custom handling
@@ -104,7 +112,8 @@ struct SecurityPrivacySettingsView: View {
                                     set: { newValue in
                                         handleBiometricToggle(newValue)
                                     }
-                                )
+                                ),
+                                testIdentifier: "UseBiometryInstead"
                             )
 
                             // Footer text for Biometrics
