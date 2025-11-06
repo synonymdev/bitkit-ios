@@ -624,6 +624,9 @@ class TransferViewModel: ObservableObject {
 
         Logger.info("Force closing \(channelsToClose.count) channel(s)")
 
+        var errors: [(channelId: String, error: Error)] = []
+        var successfulChannels: [ChannelDetails] = []
+
         for channel in channelsToClose {
             do {
                 try await lightningService.closeChannel(
@@ -632,17 +635,28 @@ class TransferViewModel: ObservableObject {
                     forceCloseReason: "User requested force close after cooperative close failed"
                 )
                 Logger.info("Successfully initiated force close for channel: \(channel.channelId)")
+                successfulChannels.append(channel)
             } catch {
                 Logger.error("Failed to force close channel: \(channel.channelId)", context: error.localizedDescription)
-                throw error
+                errors.append((channelId: channel.channelId, error: error))
             }
         }
 
-        // Clear the channels to close list after force closing
-        channelsToClose = []
+        // Remove successfully closed channels from the list
+        channelsToClose.removeAll { channel in
+            successfulChannels.contains { $0.channelId == channel.channelId }
+        }
 
-        // Sync transfer states
         try? await transferService.syncTransferStates()
+
+        // If any errors occurred, throw an aggregated error
+        if !errors.isEmpty {
+            let errorMessages = errors.map { "\($0.channelId): \($0.error.localizedDescription)" }.joined(separator: ", ")
+            throw AppError(
+                message: "Failed to force close \(errors.count) of \(errors.count + successfulChannels.count) channel(s)",
+                debugMessage: errorMessages
+            )
+        }
     }
 }
 
