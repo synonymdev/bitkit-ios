@@ -30,7 +30,7 @@ struct WidgetsSettingsView: View {
 #Preview {
     NavigationView {
         WidgetsSettingsView()
-            .environmentObject(SettingsViewModel())
+            .environmentObject(SettingsViewModel.shared)
     }
     .preferredColorScheme(.dark)
 }

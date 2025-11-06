@@ -52,5 +52,5 @@ struct DisablePinView: View {
         DisablePinView()
     }
     .preferredColorScheme(.dark)
-    .environmentObject(SettingsViewModel())
+    .environmentObject(SettingsViewModel.shared)
 }

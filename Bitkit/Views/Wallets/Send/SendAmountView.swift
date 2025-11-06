@@ -276,7 +276,7 @@ struct SendAmountView: View {
                         .environmentObject(AppViewModel())
                         .environmentObject(WalletViewModel())
                         .environmentObject(CurrencyViewModel())
-                        .environmentObject(SettingsViewModel())
+                        .environmentObject(SettingsViewModel.shared)
                 }
                 .presentationDetents([.height(UIScreen.screenHeight - 120)])
             }

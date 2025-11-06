@@ -25,6 +25,26 @@ class BackupViewModel: ObservableObject {
         return backupStatuses[category] ?? BackupItemStatus()
     }
 
+    func iconColor(for status: BackupItemStatus) -> Color {
+        if status.running {
+            return .yellowAccent
+        } else if status.synced < status.required {
+            return .redAccent
+        } else {
+            return .greenAccent
+        }
+    }
+
+    func backgroundColor(for status: BackupItemStatus) -> Color {
+        if status.running {
+            return .yellow16
+        } else if status.synced < status.required {
+            return .red16
+        } else {
+            return .green16
+        }
+    }
+
     /// Formats the status text for display
     func formatStatusText(for category: BackupCategory) -> String {
         let status = getStatus(for: category)
