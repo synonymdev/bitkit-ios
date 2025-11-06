@@ -414,8 +414,6 @@ class LightningService {
                     counterpartyNodeId: channel.counterpartyNodeId
                 )
             }
-
-            Logger.info("Channel close initiated (force=\(force)): '\(channelId)'", context: "LightningService")
         }
     }
 
