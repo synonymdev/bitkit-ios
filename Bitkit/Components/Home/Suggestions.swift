@@ -266,6 +266,6 @@ struct Suggestions: View {
         Suggestions()
     }
     .environmentObject(SheetViewModel())
-    .environmentObject(SettingsViewModel())
+    .environmentObject(SettingsViewModel.shared)
     .preferredColorScheme(.dark)
 }

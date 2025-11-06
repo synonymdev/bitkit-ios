@@ -122,7 +122,7 @@ struct TransactionSpeedSettingsView: View {
 #Preview {
     NavigationStack {
         TransactionSpeedSettingsView()
-            .environmentObject(SettingsViewModel())
+            .environmentObject(SettingsViewModel.shared)
     }
     .preferredColorScheme(.dark)
 }

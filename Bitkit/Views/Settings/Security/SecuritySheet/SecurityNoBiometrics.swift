@@ -53,5 +53,5 @@ struct SecurityNoBiometrics: View {
 
 #Preview {
     SecurityNoBiometrics(navigationPath: .constant([.biometrics]))
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
 }
