@@ -76,6 +76,7 @@ class BlocktankViewModel: ObservableObject {
     func refreshInfo() async throws {
         info = try await getInfo(refresh: false) // Instant set cached info to state before refreshing
         info = try await getInfo(refresh: true)
+        coreService.blocktank.notifyStateChanged()
     }
 
     func refreshOrders() async throws {
@@ -94,6 +95,7 @@ class BlocktankViewModel: ObservableObject {
         cJitEntries = try await coreService.blocktank.cjitOrders(refresh: true)
 
         Logger.debug("Orders refreshed")
+        coreService.blocktank.notifyStateChanged()
     }
 
     func refreshOrder(id: String) async throws -> IBtOrder? {
@@ -105,6 +107,7 @@ class BlocktankViewModel: ObservableObject {
             orders?[index] = refreshedOrder
         }
 
+        coreService.blocktank.notifyStateChanged()
         return refreshedOrder
     }
 
@@ -158,6 +161,7 @@ class BlocktankViewModel: ObservableObject {
             orders?[index] = order
         }
 
+        coreService.blocktank.notifyStateChanged()
         return order
     }
 

@@ -3,12 +3,11 @@ import Foundation
 enum BackupCategory: String, CaseIterable {
     case lightningConnections = "LIGHTNING_CONNECTIONS"
     case blocktank = "BLOCKTANK"
-    case ldkActivity = "LDK_ACTIVITY"
+    case activity = "ACTIVITY"
     case wallet = "WALLET"
     case settings = "SETTINGS"
     case widgets = "WIDGETS"
     case metadata = "METADATA"
-    case slashtags = "SLASHTAGS"
 }
 
 // MARK: - UI Extensions
@@ -20,7 +19,7 @@ extension BackupCategory {
             return "bolt-hollow"
         case .blocktank:
             return "note"
-        case .ldkActivity:
+        case .activity:
             return "transfer"
         case .wallet:
             return "timer-alt"
@@ -30,8 +29,6 @@ extension BackupCategory {
             return "stack"
         case .metadata:
             return "tag"
-        case .slashtags:
-            return "users"
         }
     }
 
@@ -41,7 +38,7 @@ extension BackupCategory {
             return t("settings__backup__category_connections")
         case .blocktank:
             return t("settings__backup__category_connection_receipts")
-        case .ldkActivity:
+        case .activity:
             return t("settings__backup__category_transaction_log")
         case .wallet:
             return t("settings__backup__category_wallet")
@@ -51,8 +48,6 @@ extension BackupCategory {
             return t("settings__backup__category_widgets")
         case .metadata:
             return t("settings__backup__category_tags")
-        case .slashtags:
-            return t("settings__backup__category_contacts")
         }
     }
 }

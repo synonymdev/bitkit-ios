@@ -112,7 +112,7 @@ struct CoinSelectionAlgorithmOption: View {
 }
 
 struct CoinSelectionSettingsView: View {
-    @StateObject private var settingsViewModel = SettingsViewModel()
+    @EnvironmentObject private var settingsViewModel: SettingsViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {

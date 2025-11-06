@@ -176,7 +176,7 @@ struct AuthCheck: View {
     AuthCheck {
         print("PIN verified!")
     }
-    .environmentObject(SettingsViewModel())
+    .environmentObject(SettingsViewModel.shared)
     .environmentObject(WalletViewModel())
     .environmentObject(AppViewModel())
     .preferredColorScheme(.dark)

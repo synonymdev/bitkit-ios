@@ -251,7 +251,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
             .previewDisplayName("Onchain Payment")
         }
         .environmentObject(AppViewModel())
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
         .environmentObject(CurrencyViewModel())
         .preferredColorScheme(.dark)
     }
