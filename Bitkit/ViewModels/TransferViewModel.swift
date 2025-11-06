@@ -27,7 +27,7 @@ class TransferViewModel: ObservableObject {
     private let lightningService: LightningService
     private let currencyService: CurrencyService
     private let transferService: TransferService
-    private weak var sheetViewModel: SheetViewModel?
+    private let sheetViewModel: SheetViewModel
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -41,7 +41,7 @@ class TransferViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         transferService: TransferService,
-        sheetViewModel: SheetViewModel? = nil
+        sheetViewModel: SheetViewModel
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
@@ -54,7 +54,8 @@ class TransferViewModel: ObservableObject {
     convenience init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared
+        currencyService: CurrencyService = .shared,
+        sheetViewModel: SheetViewModel = SheetViewModel()
     ) {
         let transferService = TransferService(
             lightningService: lightningService,
@@ -64,7 +65,8 @@ class TransferViewModel: ObservableObject {
             coreService: coreService,
             lightningService: lightningService,
             currencyService: currencyService,
-            transferService: transferService
+            transferService: transferService,
+            sheetViewModel: sheetViewModel
         )
     }
 
@@ -611,7 +613,7 @@ class TransferViewModel: ObservableObject {
             Logger.info("Giving up on coop close. Showing force transfer UI.")
 
             // Show force transfer sheet
-            sheetViewModel?.showSheet(.forceTransfer)
+            sheetViewModel.showSheet(.forceTransfer)
         }
     }
 
