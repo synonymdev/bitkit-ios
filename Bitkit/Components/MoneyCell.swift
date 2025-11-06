@@ -42,7 +42,7 @@ private extension MoneyCell {
     }
 
     static func previewSettingsVM(hideBalance: Bool = false) -> SettingsViewModel {
-        let vm = SettingsViewModel()
+        let vm = SettingsViewModel.shared
         vm.hideBalance = hideBalance
         return vm
     }

@@ -87,5 +87,5 @@ struct SecurityPin: View {
 
 #Preview {
     SecurityPin(navigationPath: .constant([.pin]))
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
 }

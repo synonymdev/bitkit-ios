@@ -9,7 +9,7 @@ class TransferService {
     private let blocktankService: BlocktankService
 
     init(
-        storage: TransferStorage = TransferStorage(),
+        storage: TransferStorage = TransferStorage.shared,
         lightningService: LightningService,
         blocktankService: BlocktankService
     ) {

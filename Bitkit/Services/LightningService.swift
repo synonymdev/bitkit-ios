@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import LDKNode
 
@@ -7,6 +8,12 @@ class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
     private var currentLogFilePath: String?
+
+    private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
+
+    var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
+        syncStatusChangedSubject.eraseToAnyPublisher()
+    }
 
     static var shared = LightningService()
 
@@ -234,6 +241,16 @@ class LightningService {
             // try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
         Logger.info("LDK synced")
+
+        // Emit state change with sync timestamp from node status
+        let nodeStatus = node.status()
+        if let latestSyncTimestamp = nodeStatus.latestLightningWalletSyncTimestamp {
+            let syncTimestamp = UInt64(latestSyncTimestamp)
+            syncStatusChangedSubject.send(syncTimestamp)
+        } else {
+            let syncTimestamp = UInt64(Date().timeIntervalSince1970)
+            syncStatusChangedSubject.send(syncTimestamp)
+        }
     }
 
     func newAddress() async throws -> String {
