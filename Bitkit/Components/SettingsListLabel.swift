@@ -12,6 +12,7 @@ struct SettingsListLabel: View {
     let rightIcon: SettingsListRightIcon?
     let toggle: Binding<Bool>?
     let disabled: Bool?
+    let testIdentifier: String?
 
     init(
         title: String,
@@ -19,7 +20,8 @@ struct SettingsListLabel: View {
         rightText: String? = nil,
         rightIcon: SettingsListRightIcon? = .chevron,
         toggle: Binding<Bool>? = nil,
-        disabled: Bool? = nil
+        disabled: Bool? = nil,
+        testIdentifier: String? = nil
     ) {
         self.title = title
         self.iconName = iconName
@@ -27,6 +29,7 @@ struct SettingsListLabel: View {
         self.rightIcon = rightIcon
         self.toggle = toggle
         self.disabled = disabled
+        self.testIdentifier = testIdentifier
     }
 
     var body: some View {
@@ -50,6 +53,8 @@ struct SettingsListLabel: View {
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
                         .disabled(disabled ?? false)
+                        .accessibilityIdentifierIfPresent(testIdentifier)
+
                 } else {
                     if let rightText {
                         BodyMText(rightText, textColor: .textPrimary)

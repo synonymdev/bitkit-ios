@@ -82,7 +82,7 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         Logger.debug("Building node...")
-        let storeId = try VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
+        let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
         let vssUrl = Env.vssServerUrl
         let lnurlAuthServerUrl = Env.lnurlAuthServerUrl
