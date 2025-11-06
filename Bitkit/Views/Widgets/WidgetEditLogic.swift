@@ -146,13 +146,13 @@ class WidgetEditLogic: ObservableObject {
                 toggleTradingPair("BTC/GBP")
             case "BTC/JPY":
                 toggleTradingPair("BTC/JPY")
-            case "period_1D":
+            case "1D":
                 priceOptions.selectedPeriod = .oneDay
-            case "period_1W":
+            case "1W":
                 priceOptions.selectedPeriod = .oneWeek
-            case "period_1M":
+            case "1M":
                 priceOptions.selectedPeriod = .oneMonth
-            case "period_1Y":
+            case "1Y":
                 priceOptions.selectedPeriod = .oneYear
             case "showSource":
                 priceOptions.showSource.toggle()
