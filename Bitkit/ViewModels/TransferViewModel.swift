@@ -27,6 +27,7 @@ class TransferViewModel: ObservableObject {
     private let lightningService: LightningService
     private let currencyService: CurrencyService
     private let transferService: TransferService
+    private weak var sheetViewModel: SheetViewModel?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -39,12 +40,14 @@ class TransferViewModel: ObservableObject {
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
-        transferService: TransferService
+        transferService: TransferService,
+        sheetViewModel: SheetViewModel? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
         self.transferService = transferService
+        self.sheetViewModel = sheetViewModel
     }
 
     /// Convenience initializer for testing and previews
@@ -605,9 +608,41 @@ class TransferViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1_000_000_000))
             }
 
-            Logger.info("Giving up on coop close.")
-            // TODO: Show force transfer UI
+            Logger.info("Giving up on coop close. Showing force transfer UI.")
+
+            // Show force transfer sheet
+            sheetViewModel?.showSheet(.forceTransfer)
         }
+    }
+
+    /// Force close all channels that failed to cooperatively close
+    func forceCloseChannel() async throws {
+        guard !channelsToClose.isEmpty else {
+            Logger.warning("No channels to force close")
+            return
+        }
+
+        Logger.info("Force closing \(channelsToClose.count) channel(s)")
+
+        for channel in channelsToClose {
+            do {
+                try await lightningService.closeChannel(
+                    channel,
+                    force: true,
+                    forceCloseReason: "User requested force close after cooperative close failed"
+                )
+                Logger.info("Successfully initiated force close for channel: \(channel.channelId)")
+            } catch {
+                Logger.error("Failed to force close channel: \(channel.channelId)", context: error.localizedDescription)
+                throw error
+            }
+        }
+
+        // Clear the channels to close list after force closing
+        channelsToClose = []
+
+        // Sync transfer states
+        try? await transferService.syncTransferStates()
     }
 }
 
