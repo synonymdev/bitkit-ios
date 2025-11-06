@@ -1,11 +1,20 @@
+import Combine
 import Foundation
 
 /// Handles persistence of Transfer objects using UserDefaults
 class TransferStorage {
+    static let shared = TransferStorage()
+
     private let defaults: UserDefaults
     private let transfersKey = "transfers"
 
-    init(suiteName: String? = nil) {
+    private let transfersChangedSubject = PassthroughSubject<Void, Never>()
+
+    var transfersChangedPublisher: AnyPublisher<Void, Never> {
+        transfersChangedSubject.eraseToAnyPublisher()
+    }
+
+    private init(suiteName: String? = nil) {
         if let suiteName {
             defaults = UserDefaults(suiteName: suiteName) ?? .standard
         } else {
@@ -19,6 +28,7 @@ class TransferStorage {
         transfers.append(transfer)
         try save(transfers)
         Logger.info("Inserted transfer: id=\(transfer.id) type=\(transfer.type)", context: "TransferStorage")
+        transfersChangedSubject.send()
     }
 
     /// Update an existing transfer
@@ -28,6 +38,31 @@ class TransferStorage {
             transfers[index] = transfer
             try save(transfers)
             Logger.info("Updated transfer: id=\(transfer.id)", context: "TransferStorage")
+            transfersChangedSubject.send()
+        }
+    }
+
+    /// Upsert a list of transfers (insert or update)
+    func upsertList(_ transfers: [Transfer]) throws {
+        var allTransfers = try getAll()
+        var hasChanges = false
+
+        for transfer in transfers {
+            if let index = allTransfers.firstIndex(where: { $0.id == transfer.id }) {
+                // Update existing
+                allTransfers[index] = transfer
+                hasChanges = true
+            } else {
+                // Insert new
+                allTransfers.append(transfer)
+                hasChanges = true
+            }
+        }
+
+        if hasChanges {
+            try save(allTransfers)
+            Logger.info("Upserted \(transfers.count) transfers", context: "TransferStorage")
+            transfersChangedSubject.send()
         }
     }
 
@@ -62,6 +97,7 @@ class TransferStorage {
             transfers[index] = transfer
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")
+            transfersChangedSubject.send()
         }
     }
 
@@ -76,12 +112,11 @@ class TransferStorage {
         if transfers.count != originalCount {
             try save(transfers)
             Logger.info("Deleted \(originalCount - transfers.count) old settled transfers", context: "TransferStorage")
+            transfersChangedSubject.send()
         }
     }
 
-    // MARK: - Private Helpers
-
-    private func getAll() throws -> [Transfer] {
+    func getAll() throws -> [Transfer] {
         guard let data = defaults.data(forKey: transfersKey) else {
             return []
         }
@@ -89,6 +124,8 @@ class TransferStorage {
         let decoder = JSONDecoder()
         return try decoder.decode([Transfer].self, from: data)
     }
+
+    // MARK: - Private Helpers
 
     private func save(_ transfers: [Transfer]) throws {
         let encoder = JSONEncoder()

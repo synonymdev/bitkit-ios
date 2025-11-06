@@ -241,6 +241,6 @@ struct SecurityPrivacySettingsView: View {
 #Preview {
     SecurityPrivacySettingsView()
         .environmentObject(SheetViewModel())
-        .environmentObject(SettingsViewModel())
+        .environmentObject(SettingsViewModel.shared)
         .preferredColorScheme(.dark)
 }
