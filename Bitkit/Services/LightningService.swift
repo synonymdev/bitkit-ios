@@ -242,9 +242,15 @@ class LightningService {
         }
         Logger.info("LDK synced")
 
-        // Emit state change with sync timestamp
-        let syncTimestamp = UInt64(Date().timeIntervalSince1970)
-        syncStatusChangedSubject.send(syncTimestamp)
+        // Emit state change with sync timestamp from node status
+        let nodeStatus = node.status()
+        if let latestSyncTimestamp = nodeStatus.latestLightningWalletSyncTimestamp {
+            let syncTimestamp = UInt64(latestSyncTimestamp)
+            syncStatusChangedSubject.send(syncTimestamp)
+        } else {
+            let syncTimestamp = UInt64(Date().timeIntervalSince1970)
+            syncStatusChangedSubject.send(syncTimestamp)
+        }
     }
 
     func newAddress() async throws -> String {

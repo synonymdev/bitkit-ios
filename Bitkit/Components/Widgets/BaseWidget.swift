@@ -262,6 +262,6 @@ struct WidgetButtonStyle: ButtonStyle {
     .environmentObject(WidgetsViewModel())
     .environmentObject(NavigationViewModel())
     .environmentObject(CurrencyViewModel())
-    .environmentObject(SettingsViewModel())
+    .environmentObject(SettingsViewModel.shared)
     .preferredColorScheme(.dark)
 }

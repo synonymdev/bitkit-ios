@@ -159,27 +159,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         updatePinEnabledState()
     }
 
-    init(
-        lightningService: LightningService = .shared,
-        electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
-        rgsConfigService: RgsConfigService = RgsConfigService()
-    ) {
-        self.lightningService = lightningService
-        self.electrumConfigService = electrumConfigService
-        self.rgsConfigService = rgsConfigService
-
-        // Initialize electrumCurrentServer with current server (stored or default)
-        electrumCurrentServer = electrumConfigService.getCurrentServer()
-
-        super.init()
-
-        if hideBalanceOnOpen {
-            hideBalance = true
-        }
-
-        updatePinEnabledState()
-    }
-
     deinit {
         for key in observedKeys {
             defaults.removeObserver(self, forKeyPath: key)
