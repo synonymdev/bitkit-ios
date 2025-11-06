@@ -391,7 +391,7 @@ class LightningService {
                 try node.forceCloseChannel(
                     userChannelId: channel.userChannelId,
                     counterpartyNodeId: channel.counterpartyNodeId,
-                    broadcastLatestTxn: forceCloseReason ?? "" // TODO: CHECK
+                    reason: forceCloseReason ?? ""
                 )
             } else {
                 try node.closeChannel(

@@ -618,7 +618,7 @@ class TransferViewModel: ObservableObject {
     /// Force close all channels that failed to cooperatively close
     func forceCloseChannel() async throws {
         guard !channelsToClose.isEmpty else {
-            Logger.warning("No channels to force close")
+            Logger.warn("No channels to force close")
             return
         }
 
