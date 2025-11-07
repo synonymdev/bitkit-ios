@@ -33,6 +33,7 @@ struct Widgets: View {
                         .resizable()
                         .foregroundColor(.textSecondary)
                         .frame(width: 24, height: 24)
+                        .accessibilityIdentifier("WidgetsEdit")
                 }
             }
             .padding(.bottom, 16)
@@ -63,6 +64,7 @@ struct Widgets: View {
                 }
             }
             .padding(.top, 16)
+            .accessibilityIdentifier("WidgetsAdd")
         }
     }
 }

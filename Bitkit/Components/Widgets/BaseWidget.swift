@@ -150,6 +150,7 @@ struct BaseWidget<Content: View>: View {
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
                                 .trackButtonLocation { _ in }
+                                .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
 
                                 // Edit button
                                 Button {
@@ -163,11 +164,13 @@ struct BaseWidget<Content: View>: View {
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
                                 .trackButtonLocation { _ in }
+                                .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
 
                                 Image("burger")
                                     .resizable()
                                     .foregroundColor(.textPrimary)
                                     .frame(width: 24, height: 24)
+                                    .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                             }
                         }
                     }
@@ -186,7 +189,7 @@ struct BaseWidget<Content: View>: View {
             }
             .contentShape(Rectangle())
         }
-        .accessibilityIdentifier("\(type.rawValue)-widget")
+        .accessibilityIdentifier("\(type.rawValue.capitalized)Widget")
         .buttonStyle(WidgetButtonStyle())
         .frame(maxWidth: .infinity)
         .padding(16)
