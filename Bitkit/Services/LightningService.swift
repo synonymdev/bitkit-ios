@@ -172,12 +172,7 @@ class LightningService {
         }
 
         await MainActor.run {
-            channelCache.removeAll()
-            if let channels {
-                for channel in channels {
-                    channelCache[channel.channelId.description] = channel
-                }
-            }
+            channelCache = Dictionary(uniqueKeysWithValues: (channels ?? []).map { ($0.channelId.description, $0) })
             Logger.debug("Refreshed channel cache: \(channelCache.count) channels", context: "LightningService")
         }
     }
@@ -638,8 +633,8 @@ extension LightningService {
                 inboundCapacityMsat: channel.inboundCapacityMsat,
                 counterpartyUnspendablePunishmentReserve: channel.counterpartyUnspendablePunishmentReserve,
                 unspendablePunishmentReserve: channel.unspendablePunishmentReserve ?? 0,
-                forwardingFeeProportionalMillionths: channel.counterpartyForwardingInfoFeeProportionalMillionths ?? 0,
-                forwardingFeeBaseMsat: channel.counterpartyForwardingInfoFeeBaseMsat ?? 0,
+                forwardingFeeProportionalMillionths: channel.config.forwardingFeeProportionalMillionths,
+                forwardingFeeBaseMsat: channel.config.forwardingFeeBaseMsat,
                 channelName: channelName,
                 channelClosureReason: reason
             )

@@ -11,6 +11,32 @@ struct LightningConnectionDetailView: View {
     let linkedOrder: IBtOrder?
     let title: String
 
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "MMM d, yyyy - HH:mm"
+        return formatter
+    }()
+
+    private static let iso8601FormatterWithFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let inputDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: title)
@@ -321,34 +347,23 @@ struct LightningConnectionDetailView: View {
 
     private func formatDate(_ timestamp: UInt64) -> String? {
         let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy - HH:mm"
-        return formatter.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 
     private func formatDate(_ dateString: String) -> String? {
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateFormat = "MMM d, yyyy - HH:mm"
-
         // Try ISO 8601 format with fractional seconds
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = isoFormatter.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.iso8601FormatterWithFractionalSeconds.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Try ISO 8601 format without fractional seconds
-        let isoFormatter2 = ISO8601DateFormatter()
-        isoFormatter2.formatOptions = [.withInternetDateTime]
-        if let date = isoFormatter2.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.iso8601Formatter.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Try simple date format as fallback
-        let inputFormatter = DateFormatter()
-        inputFormatter.dateFormat = "yyyy-MM-dd"
-        if let date = inputFormatter.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.inputDateFormatter.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Return nil if parsing fails
