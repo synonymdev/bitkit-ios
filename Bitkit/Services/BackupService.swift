@@ -425,6 +425,16 @@ class BackupService {
         return statuses[category] ?? BackupItemStatus()
     }
 
+    func getLatestBackupTime() -> UInt64? {
+        let statuses = getAllBackupStatuses()
+        let syncedTimestamps = BackupCategory.allCases.compactMap { category -> UInt64? in
+            let status = statuses[category] ?? BackupItemStatus()
+            return status.synced > 0 ? status.synced : nil
+        }
+
+        return syncedTimestamps.max()
+    }
+
     private func updateBackupStatus(category: BackupCategory, update: @escaping (BackupItemStatus) -> BackupItemStatus) {
         statusUpdateQueue.sync {
             var statuses = getAllBackupStatuses()
