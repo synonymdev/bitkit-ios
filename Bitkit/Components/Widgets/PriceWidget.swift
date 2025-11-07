@@ -47,6 +47,7 @@ struct PriceWidget: View {
                 } else {
                     ForEach(filteredPriceData, id: \.name) { priceData in
                         PriceRow(data: priceData)
+                            .accessibilityIdentifier("PriceWidgetRow-\(priceData.name)")
                     }
                 }
 
@@ -62,6 +63,7 @@ struct PriceWidget: View {
 
                 if options.showSource {
                     WidgetContentBuilder.sourceRow(source: "Bitfinex.com")
+                        .accessibilityIdentifier("PriceWidgetSource")
                 }
             }
         }
