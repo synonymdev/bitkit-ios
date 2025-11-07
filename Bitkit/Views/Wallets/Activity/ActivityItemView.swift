@@ -112,6 +112,21 @@ struct ActivityItemView: View {
         }
     }
 
+    private var statusAccessibilityIdentifier: String? {
+        switch viewModel.activity {
+        case let .onchain(activity):
+            if activity.confirmed == true {
+                return "StatusConfirmed"
+            }
+            if activity.isBoosted {
+                return "StatusBoosting"
+            }
+            return "StatusConfirming"
+        case .lightning:
+            return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: navigationTitle)
@@ -124,6 +139,7 @@ struct ActivityItemView: View {
                         Spacer()
                         ActivityIcon(activity: viewModel.activity, size: 48)
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
@@ -208,6 +224,7 @@ struct ActivityItemView: View {
                     }
                 }
             }
+            .accessibilityIdentifierIfPresent(statusAccessibilityIdentifier)
             .padding(.bottom, 16)
 
             Divider()
