@@ -1,3 +1,4 @@
+import BitkitCore
 import Combine
 import Foundation
 import LDKNode
@@ -10,6 +11,8 @@ class LightningService {
     private var currentLogFilePath: String?
 
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
+
+    private var channelCache: [String: ChannelDetails] = [:]
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
@@ -156,7 +159,27 @@ class LightningService {
             try node.start()
         }
 
+        await refreshChannelCache()
+
         Logger.info("Node started")
+    }
+
+    private func refreshChannelCache() async {
+        guard let node else { return }
+
+        let channels = try? await ServiceQueue.background(.ldk) {
+            node.listChannels()
+        }
+
+        await MainActor.run {
+            channelCache.removeAll()
+            if let channels {
+                for channel in channels {
+                    channelCache[channel.channelId.description] = channel
+                }
+            }
+            Logger.debug("Refreshed channel cache: \(channelCache.count) channels", context: "LightningService")
+        }
     }
 
     func stop() async throws {
@@ -175,6 +198,11 @@ class LightningService {
             try node.stop()
         }
         self.node = nil
+
+        await MainActor.run {
+            channelCache.removeAll()
+        }
+
         Logger.info("Node stopped")
     }
 
@@ -241,6 +269,8 @@ class LightningService {
             // try? self.setMaxDustHtlcExposureForCurrentChannels()
         }
         Logger.info("LDK synced")
+
+        await refreshChannelCache()
 
         // Emit state change with sync timestamp from node status
         let nodeStatus = node.status()
@@ -554,13 +584,70 @@ extension LightningService {
                         "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")"
                     )
                 case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
+                    let reasonString = reason.map { String(describing: $0) } ?? ""
                     Logger.info(
-                        "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reason.debugDescription)"
+                        "⛔ Channel closed: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") reason: \(reasonString)"
                     )
+
+                    let channelIdString = channelId.description
+                    let channel = await MainActor.run {
+                        channelCache[channelIdString]
+                    }
+
+                    if let channel {
+                        await registerClosedChannel(channel: channel, reason: reasonString)
+                    } else {
+                        Logger.error("Could not find channel details for closed channel: \(userChannelId) in cache", context: "LightningService")
+                    }
                 case .paymentForwarded:
                     break
                 }
+
+                await refreshChannelCache()
             }
+        }
+    }
+
+    private func registerClosedChannel(
+        channel: ChannelDetails,
+        reason: String
+    ) async {
+        do {
+            let channelName: String
+            if let scidAlias = channel.inboundScidAlias {
+                channelName = String(scidAlias)
+            } else {
+                let channelIdString = channel.channelId.description
+                let prefix = String(channelIdString.prefix(10))
+                channelName = "\(prefix)…"
+            }
+
+            guard let fundingTxo = channel.fundingTxo else {
+                Logger.error("Channel has no funding transaction", context: "LightningService")
+                return
+            }
+
+            let closedChannel = ClosedChannelDetails(
+                channelId: channel.channelId.description,
+                counterpartyNodeId: channel.counterpartyNodeId.description,
+                fundingTxoTxid: fundingTxo.txid.description,
+                fundingTxoIndex: fundingTxo.vout,
+                channelValueSats: channel.channelValueSats,
+                closedAt: UInt64(Date().timeIntervalSince1970),
+                outboundCapacityMsat: channel.outboundCapacityMsat,
+                inboundCapacityMsat: channel.inboundCapacityMsat,
+                counterpartyUnspendablePunishmentReserve: channel.counterpartyUnspendablePunishmentReserve,
+                unspendablePunishmentReserve: channel.unspendablePunishmentReserve ?? 0,
+                forwardingFeeProportionalMillionths: channel.counterpartyForwardingInfoFeeProportionalMillionths ?? 0,
+                forwardingFeeBaseMsat: channel.counterpartyForwardingInfoFeeBaseMsat ?? 0,
+                channelName: channelName,
+                channelClosureReason: reason
+            )
+
+            try await CoreService.shared.activity.upsertClosedChannelList([closedChannel])
+            Logger.info("Registered closed channel: \(channel.userChannelId)", context: "LightningService")
+        } catch {
+            Logger.error("Failed to register closed channel: \(error)", context: "LightningService")
         }
     }
 }
