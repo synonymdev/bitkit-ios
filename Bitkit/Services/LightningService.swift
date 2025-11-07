@@ -644,7 +644,7 @@ extension LightningService {
                 channelClosureReason: reason
             )
 
-            try await CoreService.shared.activity.upsertClosedChannelList([closedChannel])
+            try await CoreService.shared.activity.upsertClosedChannel(closedChannel)
             Logger.info("Registered closed channel: \(channel.userChannelId)", context: "LightningService")
         } catch {
             Logger.error("Failed to register closed channel: \(error)", context: "LightningService")
