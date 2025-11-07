@@ -381,16 +381,26 @@ class LightningService {
         }
     }
 
-    func closeChannel(userChannelId: ChannelId, counterpartyNodeId: PublicKey) async throws {
+    func closeChannel(userChannelId: ChannelId, counterpartyNodeId: PublicKey, force: Bool = false, forceCloseReason: String? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
         return try await ServiceQueue.background(.ldk) {
-            try node.closeChannel(
-                userChannelId: userChannelId,
-                counterpartyNodeId: counterpartyNodeId
-            )
+            Logger.debug("Initiating channel close (force=\(force)): userChannelId=\(userChannelId)", context: "LightningService")
+
+            if force {
+                try node.forceCloseChannel(
+                    userChannelId: userChannelId,
+                    counterpartyNodeId: counterpartyNodeId,
+                    reason: forceCloseReason ?? ""
+                )
+            } else {
+                try node.closeChannel(
+                    userChannelId: userChannelId,
+                    counterpartyNodeId: counterpartyNodeId
+                )
+            }
         }
     }
 
