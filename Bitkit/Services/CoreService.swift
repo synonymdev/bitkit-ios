@@ -302,6 +302,18 @@ class ActivityService {
         }
     }
 
+    func getAllTagMetadata() async throws -> [ActivityTagsMetadata] {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getAllTagMetadata()
+        }
+    }
+
+    func upsertTags(_ activityTags: [ActivityTags]) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertTags(activityTags: activityTags)
+        }
+    }
+
     func boostOnchainTransaction(activityId: String, feeRate: UInt32) async throws -> String {
         return try await ServiceQueue.background(.core) {
             // Get the existing activity
