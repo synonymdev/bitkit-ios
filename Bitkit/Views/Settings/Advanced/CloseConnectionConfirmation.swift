@@ -6,6 +6,7 @@ struct CloseConnectionConfirmation: View {
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var isClosing = false
@@ -64,20 +65,44 @@ struct CloseConnectionConfirmation: View {
                     )
                 }
             } else {
-                // Failed to close
-                app.toast(
-                    type: .error,
-                    title: t("lightning__close_error"),
-                    description: t("lightning__close_error_msg")
-                )
+                // Failed to close - store failed channels and show force close dialog
+                DispatchQueue.main.async {
+                    dismiss()
+
+                    // Show error toast
+                    app.toast(
+                        type: .error,
+                        title: t("lightning__close_error"),
+                        description: t("lightning__close_error_msg")
+                    )
+
+                    // Store the failed channels for force close
+                    transfer.channelsToClose = failedChannels
+
+                    // Show force transfer sheet
+                    sheets.showSheet(.forceTransfer)
+                }
             }
         } catch {
             Logger.error("Failed to close channel: \(error)")
-            app.toast(
-                type: .error,
-                title: t("lightning__close_error"),
-                description: error.localizedDescription
-            )
+
+            // On error, also offer force close option
+            DispatchQueue.main.async {
+                dismiss()
+
+                // Show error toast
+                app.toast(
+                    type: .error,
+                    title: t("lightning__close_error"),
+                    description: error.localizedDescription
+                )
+
+                // Store the channel for force close
+                transfer.channelsToClose = [channel]
+
+                // Show force transfer sheet
+                sheets.showSheet(.forceTransfer)
+            }
         }
 
         isClosing = false
@@ -89,6 +114,7 @@ struct CloseConnectionConfirmation: View {
         CloseConnectionConfirmation(channel: ChannelDetails.mock())
             .environmentObject(TransferViewModel())
             .environmentObject(AppViewModel())
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)
 }
