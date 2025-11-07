@@ -12,18 +12,8 @@ struct WalletBackupV1: Codable {
 struct MetadataBackupV1: Codable {
     let version: Int
     let createdAt: UInt64
-    let tagMetadata: [TagMetadataItem]
+    let tagMetadata: [ActivityTagsMetadata]
     let cache: AppCacheData
-}
-
-struct TagMetadataItem: Codable {
-    let id: String
-    let paymentHash: String?
-    let txId: String?
-    let address: String
-    let isReceive: Bool
-    let tags: [String]
-    let createdAt: UInt64
 }
 
 struct AppCacheData: Codable {

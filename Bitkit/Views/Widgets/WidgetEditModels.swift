@@ -391,7 +391,7 @@ enum WidgetEditItemFactory {
 
             items.append(
                 WidgetEditItem(
-                    key: "period_\(period.rawValue)",
+                    key: period.rawValue,
                     type: .toggleItem,
                     titleView: AnyView(
                         PriceChart(
