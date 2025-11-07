@@ -16,7 +16,7 @@ struct WidgetsIntroView: View {
                 navigation.navigate(.widgetsList)
             },
             imagePosition: .center,
-            testID: "WidgetsIntro"
+            testID: "WidgetsOnboarding"
         )
         .navigationBarHidden(true)
     }
