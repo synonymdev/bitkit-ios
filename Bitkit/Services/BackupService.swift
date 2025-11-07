@@ -180,6 +180,18 @@ class BackupService {
                 Logger.debug("Restored \(payload.transfers.count) transfers", context: "BackupService")
             }
 
+            try await performRestore(category: .activity) { dataBytes in
+                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: dataBytes)
+
+                try await CoreService.shared.activity.upsertList(payload.activities)
+                try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
+
+                Logger.debug(
+                    "Restored \(payload.activities.count) activities, \(payload.closedChannels.count) closed channels",
+                    context: "BackupService"
+                )
+            }
+
             try await performRestore(category: .metadata) { dataBytes in
                 let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: dataBytes)
 
@@ -205,18 +217,6 @@ class BackupService {
                 }
 
                 Logger.debug("Restored \(payload.orders.count) orders, \(payload.cjitEntries.count) CJITs", context: "BackupService")
-            }
-
-            try await performRestore(category: .activity) { dataBytes in
-                let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: dataBytes)
-
-                try await CoreService.shared.activity.upsertList(payload.activities)
-                try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
-
-                Logger.debug(
-                    "Restored \(payload.activities.count) activities, \(payload.closedChannels.count) closed channels",
-                    context: "BackupService"
-                )
             }
 
             Logger.info("Full restore success", context: "BackupService")
@@ -263,6 +263,7 @@ class BackupService {
     private func startDataStoreListeners() {
         // SETTINGS
         SettingsViewModel.shared.settingsPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .settings)
@@ -271,6 +272,7 @@ class BackupService {
 
         // WIDGETS
         SettingsViewModel.shared.widgetsPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .widgets)
@@ -279,6 +281,7 @@ class BackupService {
 
         // TRANSFERS
         TransferStorage.shared.transfersChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .wallet)
@@ -287,6 +290,7 @@ class BackupService {
 
         // ACTIVITIES (triggers both metadata and activity backups)
         CoreService.shared.activity.activitiesChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .metadata)
@@ -295,6 +299,7 @@ class BackupService {
             .store(in: &cancellables)
 
         SettingsViewModel.shared.appStatePublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .metadata)
@@ -303,6 +308,7 @@ class BackupService {
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
                 markBackupRequired(category: .blocktank)
@@ -311,6 +317,7 @@ class BackupService {
 
         // LIGHTNING SYNC STATUS
         LightningService.shared.syncStatusChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] lastSync in
                 guard let self, !self.isRestoring else { return }
                 updateBackupStatus(category: .lightningConnections) { _ in
