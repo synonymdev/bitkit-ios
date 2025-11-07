@@ -32,6 +32,7 @@ struct GeneralSettingsView: View {
                             title: t("settings__general__unit"),
                             rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
                         )
+                        .accessibilityIdentifier("UnitSettings")
                     }
 
                     NavigationLink(value: Route.transactionSpeedSettings) {

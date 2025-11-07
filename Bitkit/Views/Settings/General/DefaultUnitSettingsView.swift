@@ -56,6 +56,7 @@ struct DefaultUnitSettingsView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .accessibilityIdentifier(unit.testIdentifier)
                     }
                 }
             }
@@ -63,5 +64,14 @@ struct DefaultUnitSettingsView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+    }
+}
+
+private extension BitcoinDisplayUnit {
+    var testIdentifier: String {
+        switch self {
+        case .modern: "DenominationModern"
+        case .classic: "DenominationClassic"
+        }
     }
 }
