@@ -115,6 +115,7 @@ struct BoostSheet: View {
                                     .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate <= minFeeRate)
+                                .accessibilityIdentifier("Minus")
 
                                 Spacer()
 
@@ -141,12 +142,14 @@ struct BoostSheet: View {
                                     .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate >= maxFeeRate)
+                                .accessibilityIdentifier("Plus")
                             }
 
                             CustomButton(title: "Use Suggested Fee", size: .small) {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }
+                            .accessibilityIdentifier("RecomendedFeeButton")
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
@@ -203,6 +206,7 @@ struct BoostSheet: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .disabled(feeRate == nil || fetchingFees)
+                            .accessibilityIdentifier("CustomFeeButton")
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
@@ -219,6 +223,8 @@ struct BoostSheet: View {
                 }
             }
             .padding(.horizontal, 16)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(isIncoming ? "CPFPBoost" : "RBFBoost")
         }
         .onAppear {
             fetchFeeRate()
