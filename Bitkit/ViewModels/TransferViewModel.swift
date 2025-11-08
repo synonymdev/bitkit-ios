@@ -534,22 +534,9 @@ class TransferViewModel: ObservableObject {
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
         var failedChannels: [ChannelDetails] = []
+        var successfulChannels: [ChannelDetails] = []
 
-        // Create transfer tracking records for each channel being closed
-        for channel in channels {
-            do {
-                let transferId = try await transferService.createTransfer(
-                    type: .toSavings,
-                    amountSats: channel.amountOnClose,
-                    channelId: channel.channelId.description
-                )
-                Logger.info("Created transfer tracking record for channel closure: \(transferId)", context: "TransferViewModel")
-            } catch {
-                Logger.error("Failed to create transfer tracking record for channel: \(channel.channelId)", context: error.localizedDescription)
-                // Continue with closure even if tracking fails
-            }
-        }
-
+        // Close channels in parallel and track which ones succeeded
         try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in
             for channel in channels {
                 group.addTask {
@@ -568,6 +555,26 @@ class TransferViewModel: ObservableObject {
                 if let failedChannel = result {
                     failedChannels.append(failedChannel)
                 }
+            }
+        }
+
+        // Determine which channels closed successfully
+        successfulChannels = channels.filter { channel in
+            !failedChannels.contains { $0.channelId == channel.channelId }
+        }
+
+        // Create transfer tracking records only for successfully closed channels
+        for channel in successfulChannels {
+            do {
+                let transferId = try await transferService.createTransfer(
+                    type: .toSavings,
+                    amountSats: channel.amountOnClose,
+                    channelId: channel.channelId.description
+                )
+                Logger.info("Created transfer tracking record for channel closure: \(transferId)", context: "TransferViewModel")
+            } catch {
+                Logger.error("Failed to create transfer tracking record for channel: \(channel.channelId)", context: error.localizedDescription)
+                // Don't fail the entire operation - the channel is already closed
             }
         }
 
@@ -631,6 +638,7 @@ class TransferViewModel: ObservableObject {
 
         for channel in channelsToClose {
             do {
+                // Force close the channel first
                 try await lightningService.closeChannel(
                     channel,
                     force: true,
@@ -638,6 +646,22 @@ class TransferViewModel: ObservableObject {
                 )
                 Logger.info("Successfully initiated force close for channel: \(channel.channelId)")
                 successfulChannels.append(channel)
+
+                // Only create transfer tracking record if force close succeeded
+                do {
+                    let transferId = try await transferService.createTransfer(
+                        type: .toSavings,
+                        amountSats: channel.amountOnClose,
+                        channelId: channel.channelId.description
+                    )
+                    Logger.info("Created transfer tracking record for force channel closure: \(transferId)", context: "TransferViewModel")
+                } catch {
+                    Logger.error(
+                        "Failed to create transfer tracking record for force-closed channel: \(channel.channelId)",
+                        context: error.localizedDescription
+                    )
+                    // Don't fail the entire operation - the channel is already force-closed
+                }
             } catch {
                 Logger.error("Failed to force close channel: \(channel.channelId)", context: error.localizedDescription)
                 errors.append((channelId: channel.channelId, error: error))
