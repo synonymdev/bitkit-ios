@@ -49,9 +49,9 @@ class BackupService {
         }
         if clearedStatuses != statuses {
             saveBackupStatuses(clearedStatuses)
-        } else {
-            backupStatusesSubject.send(clearedStatuses)
         }
+
+        backupStatusesSubject.send(clearedStatuses)
     }
 
     // MARK: - Constants
@@ -389,13 +389,19 @@ class BackupService {
     }
 
     private func scheduleBackup(category: BackupCategory) async {
-        let currentStatus = getBackupStatus(category: category)
-        if currentStatus.running {
-            let existingTask = try? await ServiceQueue.background(.backup) { self.backupJobs[category] }
-            if let existingTask, !existingTask.isCancelled {
-                return
+        let hasExistingTask = try? await ServiceQueue.background(.backup) {
+            if let existingTask = self.backupJobs[category], !existingTask.isCancelled {
+                return true
             }
-        } else {
+            return false
+        }
+
+        if hasExistingTask == true {
+            return
+        }
+
+        let currentStatus = getBackupStatus(category: category)
+        if !currentStatus.running {
             updateBackupStatus(category: category) { status in
                 BackupItemStatus(
                     synced: status.synced,
