@@ -81,17 +81,11 @@ struct NumberPadTextField: View {
                 .foregroundColor(.textSecondary)
 
             // Value and placeholder
-            HStack(spacing: 0) {
-                if !viewModel.displayText.isEmpty {
-                    Text(viewModel.displayText)
-                        .font(.custom(Fonts.black, size: 44))
-                        .foregroundColor(.textPrimary)
-                }
-
-                Text(viewModel.getPlaceholder(currency: currency))
-                    .font(.custom(Fonts.black, size: 44))
-                    .foregroundColor(isFocused ? .textSecondary : .textPrimary)
-            }
+            (Text(viewModel.displayText)
+                .foregroundColor(.textPrimary)
+                + Text(viewModel.getPlaceholder(currency: currency))
+                .foregroundColor(isFocused ? .textSecondary : .textPrimary))
+                .font(.custom(Fonts.black, size: 44))
         }
     }
 }

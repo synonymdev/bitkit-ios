@@ -88,13 +88,15 @@ struct OnboardingView: View {
                     onButtonPress()
                 }
                 .padding(.top, 32)
+                .accessibilityIdentifierIfPresent(testID.map { "\($0)-button" })
             }
             .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .accessibilityIdentifier(testID ?? "")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifierIfPresent(testID)
     }
 }
 

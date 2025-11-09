@@ -50,6 +50,7 @@ struct WalletBalanceView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier(type == .onchain ? "ActivitySavings" : "ActivitySpending")
     }
 }
 

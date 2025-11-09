@@ -73,6 +73,12 @@ class ActivityService {
         }
     }
 
+    func upsertClosedChannel(_ closedChannel: ClosedChannelDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertClosedChannel(channel: closedChannel)
+        }
+    }
+
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
         try await ServiceQueue.background(.core) {
             var addedCount = 0
@@ -299,6 +305,18 @@ class ActivityService {
     func allPossibleTags() async throws -> [String] {
         try await ServiceQueue.background(.core) {
             try getAllUniqueTags()
+        }
+    }
+
+    func getAllTagMetadata() async throws -> [ActivityTagsMetadata] {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getAllTagMetadata()
+        }
+    }
+
+    func upsertTags(_ activityTags: [ActivityTags]) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertTags(activityTags: activityTags)
         }
     }
 
