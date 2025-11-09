@@ -73,6 +73,12 @@ class ActivityService {
         }
     }
 
+    func upsertClosedChannel(_ closedChannel: ClosedChannelDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertClosedChannel(channel: closedChannel)
+        }
+    }
+
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
         try await ServiceQueue.background(.core) {
             var addedCount = 0
