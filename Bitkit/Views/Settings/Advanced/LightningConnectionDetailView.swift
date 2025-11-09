@@ -7,9 +7,35 @@ struct LightningConnectionDetailView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    let channel: ChannelDetails
+    let channel: ChannelDisplayable
     let linkedOrder: IBtOrder?
     let title: String
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "MMM d, yyyy - HH:mm"
+        return formatter
+    }()
+
+    private static let iso8601FormatterWithFractionalSeconds: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601Formatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private static let inputDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale.current
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,7 +49,7 @@ struct LightningConnectionDetailView: View {
                             capacity: channel.channelValueSats,
                             localBalance: channel.outboundCapacityMsat / 1000,
                             remoteBalance: channel.inboundCapacityMsat / 1000,
-                            status: channelStatus
+                            status: channel.isClosed ? .closed : channelStatus
                         )
                         .padding(.bottom, 28)
 
@@ -66,10 +92,8 @@ struct LightningConnectionDetailView: View {
                                         }
                                     }
 
-                                    if channelStatus != .pending {
-                                        if let txid = channel.fundingTxo?.txid {
-                                            DetailRow(label: t("lightning__transaction"), value: txid)
-                                        }
+                                    if channelStatus != .pending, let txid = channel.displayedFundingTxoTxid {
+                                        DetailRow(label: t("lightning__transaction"), value: txid)
                                     }
 
                                     DetailRowWithAmount(label: t("lightning__order_fee"), amount: order.feeSat - order.clientBalanceSat)
@@ -91,7 +115,7 @@ struct LightningConnectionDetailView: View {
                                 )
                                 DetailRowWithAmount(
                                     label: t("lightning__reserve_balance"),
-                                    amount: channel.unspendablePunishmentReserve ?? 0
+                                    amount: channel.displayedUnspendablePunishmentReserve
                                 )
                                 DetailRowWithAmount(label: t("lightning__total_size"), amount: channel.channelValueSats)
                             }
@@ -101,8 +125,8 @@ struct LightningConnectionDetailView: View {
                                 CaptionMText(t("lightning__fees"))
                                     .padding(.bottom, 16)
 
-                                DetailRowWithAmount(label: t("lightning__base_fee"), amount: UInt64(channel.config.forwardingFeeBaseMsat / 1000))
-                                DetailRow(label: t("lightning__fee_rate"), value: "\(channel.config.forwardingFeeProportionalMillionths) ppm")
+                                DetailRowWithAmount(label: t("lightning__base_fee"), amount: UInt64(channel.forwardingFeeBaseMsat / 1000))
+                                DetailRow(label: t("lightning__fee_rate"), value: "\(channel.forwardingFeeProportionalMillionths) ppm")
                             }
 
                             // OTHER Section
@@ -117,26 +141,26 @@ struct LightningConnectionDetailView: View {
                                     //     DetailRow(label: t("lightning__opened_on"), value: formattedDate)
                                     // }
 
-                                    if let closeTime = linkedOrder?.channel?.close?.registeredAt {
-                                        if let formattedCloseDate = formatDate(closeTime) {
+                                    if let closedAt = channel.displayedClosedAt {
+                                        if let formattedCloseDate = formatDate(closedAt) {
                                             DetailRow(label: t("lightning__closed_on"), value: formattedCloseDate)
                                         }
                                     }
 
-                                    DetailRow(label: t("lightning__channel_id"), value: channel.userChannelId)
+                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
 
-                                    if channelStatus != .pending {
-                                        if let fundingTxo = channel.fundingTxo {
-                                            DetailRow(label: t("lightning__channel_point"), value: "\(fundingTxo.txid):\(fundingTxo.vout)")
-                                        }
+                                    if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
+                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
                                     }
 
                                     DetailRow(
                                         label: t("lightning__channel_node_id"),
-                                        value: channel.counterpartyNodeId.description
+                                        value: channel.counterpartyNodeIdString
                                     )
 
-                                    // TODO: closure reason not available in current bitkit-core bindings
+                                    if let reason = channel.closureReason {
+                                        DetailRow(label: t("lightning__closure_reason"), value: reason)
+                                    }
                                 }
                             }
                         }
@@ -150,9 +174,9 @@ struct LightningConnectionDetailView: View {
                                 navigation.navigate(Route.support)
                             }
 
-                            if channelStatus == .open {
+                            if channelStatus == .open, let openChannel = channel as? ChannelDetails {
                                 CustomButton(title: t("lightning__close_conn")) {
-                                    navigation.navigate(Route.closeConnection(channel: channel))
+                                    navigation.navigate(Route.closeConnection(channel: openChannel))
                                 }
                             }
                         }
@@ -169,6 +193,9 @@ struct LightningConnectionDetailView: View {
     // MARK: - Computed Properties
 
     private var channelStatus: ChannelStatus {
+        if channel.isClosed {
+            return .closed
+        }
         if !channel.isChannelReady {
             return .pending
         }
@@ -176,6 +203,15 @@ struct LightningConnectionDetailView: View {
     }
 
     private var detailedStatus: (text: String, color: Color, icon: String) {
+        // Handle closed channels
+        if channel.isClosed {
+            return (
+                text: t("lightning__conn_closed"),
+                color: .textSecondary,
+                icon: "bolt"
+            )
+        }
+
         // Use open/closed status from LDK if available
         if channel.isChannelReady {
             if !channel.isUsable {
@@ -309,29 +345,25 @@ struct LightningConnectionDetailView: View {
         .frame(height: 51)
     }
 
-    private func formatDate(_ dateString: String) -> String? {
-        let outputFormatter = DateFormatter()
-        outputFormatter.dateFormat = "MMM d, yyyy - HH:mm"
+    private func formatDate(_ timestamp: UInt64) -> String? {
+        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+        return Self.dateFormatter.string(from: date)
+    }
 
+    private func formatDate(_ dateString: String) -> String? {
         // Try ISO 8601 format with fractional seconds
-        let isoFormatter = ISO8601DateFormatter()
-        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = isoFormatter.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.iso8601FormatterWithFractionalSeconds.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Try ISO 8601 format without fractional seconds
-        let isoFormatter2 = ISO8601DateFormatter()
-        isoFormatter2.formatOptions = [.withInternetDateTime]
-        if let date = isoFormatter2.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.iso8601Formatter.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Try simple date format as fallback
-        let inputFormatter = DateFormatter()
-        inputFormatter.dateFormat = "yyyy-MM-dd"
-        if let date = inputFormatter.date(from: dateString) {
-            return outputFormatter.string(from: date)
+        if let date = Self.inputDateFormatter.date(from: dateString) {
+            return Self.dateFormatter.string(from: date)
         }
 
         // Return nil if parsing fails
