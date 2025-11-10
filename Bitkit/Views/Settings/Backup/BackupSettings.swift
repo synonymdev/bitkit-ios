@@ -82,7 +82,7 @@ struct BackupSettings: View {
                             let statusText = viewModel.formatStatusText(for: category)
                             let iconColor = viewModel.iconColor(for: status)
                             let backgroundColor = viewModel.backgroundColor(for: status)
-                            let showRetry = status.synced < status.required && !status.running
+                            let showRetry = status.isRequired && !status.running
 
                             StatusItemView(
                                 imageName: category.uiIcon,

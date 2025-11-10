@@ -28,7 +28,7 @@ class BackupViewModel: ObservableObject {
     func iconColor(for status: BackupItemStatus) -> Color {
         if status.running {
             return .yellowAccent
-        } else if status.synced < status.required {
+        } else if status.isRequired {
             return .redAccent
         } else {
             return .greenAccent
@@ -38,7 +38,7 @@ class BackupViewModel: ObservableObject {
     func backgroundColor(for status: BackupItemStatus) -> Color {
         if status.running {
             return .yellow16
-        } else if status.synced < status.required {
+        } else if status.isRequired {
             return .red16
         } else {
             return .green16
@@ -53,7 +53,7 @@ class BackupViewModel: ObservableObject {
             return "Running"
         }
 
-        if status.synced < status.required {
+        if status.isRequired {
             return "Required"
         }
 

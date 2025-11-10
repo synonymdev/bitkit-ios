@@ -14,6 +14,7 @@ struct AppStatusView: View {
                 internetStatusRow
                 nodeStatusRow
                 channelsStatusRow
+                backupStatusRow
             }
 
             Spacer()
@@ -71,6 +72,35 @@ struct AppStatusView: View {
             status: status,
             onTap: {
                 navigation.navigate(.connections)
+            }
+        )
+    }
+
+    private var backupStatusRow: some View {
+        let timestamp = BackupService.shared.getLatestBackupTime()
+        let description: String
+        let status: HealthStatus
+
+        if let timestamp {
+            let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            formatter.locale = Locale.current
+            description = formatter.string(from: date)
+            status = .ready
+        } else {
+            description = t("settings__status__backup__error")
+            status = .error
+        }
+
+        return StatusRow(
+            imageName: "rewind",
+            title: t("settings__status__backup__title"),
+            description: description,
+            status: status,
+            onTap: {
+                navigation.navigate(.backupSettings)
             }
         )
     }

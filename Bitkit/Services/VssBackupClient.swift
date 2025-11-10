@@ -4,14 +4,15 @@ import VssRustClientFfi
 class VssBackupClient {
     static let shared = VssBackupClient()
 
-    private let walletIndex: Int
     private var isSetup: Task<Void, Error>?
 
-    private init(walletIndex: Int = 0) {
-        self.walletIndex = walletIndex
+    private init() {}
+
+    func reset() {
+        isSetup = nil
     }
 
-    func setup() async throws {
+    func setup(walletIndex: Int = 0) async throws {
         do {
             try await withTimeout(seconds: 30) {
                 Logger.debug("VSS client setting up…", context: "VssBackupClient")
@@ -21,13 +22,13 @@ class VssBackupClient {
                 Logger.debug("Building VSS client with vssUrl: '\(vssUrl)'", context: "VssBackupClient")
                 Logger.debug("Building VSS client with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'", context: "VssBackupClient")
 
-                let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: self.walletIndex)
+                let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
                 if !lnurlAuthServerUrl.isEmpty {
-                    guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: self.walletIndex)) else {
+                    guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
                         throw CustomServiceError.mnemonicNotFound
                     }
-                    let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: self.walletIndex))
+                    let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
 
                     try await vssNewClientWithLnurlAuth(
                         baseUrl: vssUrl,
