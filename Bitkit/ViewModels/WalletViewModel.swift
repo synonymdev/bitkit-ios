@@ -232,9 +232,10 @@ class WalletViewModel: ObservableObject {
     ///   - address: The bitcoin address to send to
     ///   - sats: The amount in satoshis to send
     ///   - isMaxAmount: Whether this is a max amount send (uses sendAllToAddress)
+    ///   - isTransfer: Whether this is a transfer between wallets (e.g., channel funding)
     /// - Returns: The transaction ID (txid) of the sent transaction
     /// - Throws: An error if the transaction fails or if fee rates cannot be retrieved
-    func send(address: String, sats: UInt64, isMaxAmount: Bool = false) async throws -> Txid {
+    func send(address: String, sats: UInt64, isMaxAmount: Bool = false, isTransfer: Bool = false) async throws -> Txid {
         guard let selectedFeeRateSatsPerVByte else {
             throw AppError(message: "Fee rate not set", debugMessage: "Please set a fee rate before selecting UTXOs.")
         }
@@ -252,6 +253,18 @@ class WalletViewModel: ObservableObject {
             utxosToSpend: selectedUtxos,
             isMaxAmount: isMaxAmount
         )
+
+        // Capture transaction metadata for later activity update
+        let metadata = TransactionMetadata(
+            txId: txid,
+            feeRate: UInt64(selectedFeeRateSatsPerVByte),
+            address: address,
+            isTransfer: isTransfer,
+            channelId: nil,
+            createdAt: UInt64(Date().timeIntervalSince1970)
+        )
+        try? TransactionMetadataStorage.shared.insert(metadata)
+        Logger.debug("Captured transaction metadata for txid: \(txid), isTransfer: \(isTransfer)", context: "WalletViewModel")
 
         Task {
             // Best to auto sync on chain so we have latest state
