@@ -239,6 +239,9 @@ struct AppScene: View {
 
             // Start watching pending orders after wallet is ready
             await blocktank.startWatchingPendingOrders(transferViewModel: transfer)
+
+            // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
+            await BackupService.shared.scheduleFullBackup()
         } catch {
             Logger.error("Failed to start wallet")
             Haptics.notify(.error)

@@ -376,7 +376,7 @@
 "security__mnemonic_data_text" = "Il tuo profilo, i tuoi contatti, i tuoi account, i tuoi tag e le tue attività saranno sottoposti a backup automatico sul nostro servizio cloud gratuito.";
 "security__mnemonic_multiple_header" = "Dispositivi Multipli";
 "security__mnemonic_multiple_text" = "Non utilizzare la tua recovery phrase Bitkit su più telefoni contemporaneamente, in quanto potrebbe corrompere i tuoi dati.";
-"security__mnemonic_latest_backup" = "<bold>Ultimo backup dei dati:</bold> {time}";
+"security__mnemonic_latest_backup" = "<accent>Ultimo backup dei dati:</accent> {time}";
 "security__pin_security_header" = "Aumentare la Sicurezza";
 "security__pin_security_title" = "<accent>Proteggi</accent>\ni tuoi Bitcoin";
 "security__pin_security_text" = "Per aumentare la sicurezza del portafoglio, puoi impostare un codice PIN e Face ID.";

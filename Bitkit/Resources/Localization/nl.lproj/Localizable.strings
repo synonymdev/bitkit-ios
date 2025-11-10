@@ -251,7 +251,7 @@
 "security__mnemonic_data_text" = "Uw profiel, contacten, web accounts, labels en activiteiten worden automatisch opgeslagen met onze gratis cloud dienst. ";
 "security__mnemonic_multiple_header" = "Meerdere Apparaten";
 "security__mnemonic_multiple_text" = "Gebruik dezelfde Bitkit herstelwoorden niet op verschillende apparaten te gelijk, dit kan uw data corrumpteren. ";
-"security__mnemonic_latest_backup" = "<bold>Meeste recente backup:</bold>{time}";
+"security__mnemonic_latest_backup" = "<accent>Meeste recente backup:</accent>{time}";
 "security__pin_security_header" = "Verbeter de Beveiliging";
 "security__pin_security_title" = "<accent>Bescherm</accent>\nuw bitcoin";
 "security__pin_security_text" = "Om uw wallet nog beter te beveiligen, kunt u een PIN-code en Face ID instellen.";
