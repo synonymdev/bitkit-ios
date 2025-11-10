@@ -139,8 +139,6 @@ struct ActivityItemView: View {
                         Spacer()
                         ActivityIcon(activity: viewModel.activity, size: 48)
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
                     statusSection
@@ -280,8 +278,9 @@ struct ActivityItemView: View {
                         Image("user")
                             .foregroundColor(accentColor)
                             .frame(width: 16, height: 16)
-                        MoneyText(sats: Int(activity.value), size: .bodySSB)
+                        MoneyText(sats: Int(activity.value), size: .bodySSB, testIdentifier: "MoneyText")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
@@ -298,8 +297,9 @@ struct ActivityItemView: View {
                             Image("timer")
                                 .foregroundColor(accentColor)
                                 .frame(width: 16, height: 16)
-                            MoneyText(sats: Int(fee), size: .bodySSB)
+                            MoneyText(sats: Int(fee), size: .bodySSB, testIdentifier: "MoneyText")
                         }
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("ActivityFee")
                         .padding(.bottom, 16)
 
