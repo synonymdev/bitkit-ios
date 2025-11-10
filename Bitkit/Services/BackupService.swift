@@ -31,7 +31,10 @@ class BackupService {
 
     var backupStatusesPublisher: AnyPublisher<[BackupCategory: BackupItemStatus], Never> {
         backupStatusesSubject
-            .removeDuplicates()
+            .removeDuplicates { old, new in
+                NSDictionary(dictionary: Dictionary(uniqueKeysWithValues: old.map { ($0.key.rawValue, $0.value) }))
+                    .isEqual(to: Dictionary(uniqueKeysWithValues: new.map { ($0.key.rawValue, $0.value) }))
+            }
             .eraseToAnyPublisher()
     }
 
