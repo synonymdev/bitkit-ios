@@ -10,6 +10,7 @@ struct LightningConnectionsView: View {
 
     @State private var showClosedConnections = false
     @State private var isRefreshing = false
+    @State private var closedChannels: [ClosedChannelDetails] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -140,44 +141,46 @@ struct LightningConnectionsView: View {
                         }
 
                         // Closed Connections section
-                        if showClosedConnections && !closedConnections.isEmpty {
+                        if showClosedConnections && !closedChannels.isEmpty {
                             VStack(alignment: .leading, spacing: 16) {
                                 CaptionMText(t("lightning__conn_closed"))
                                     .padding(.top, 16)
 
-                                ForEach(Array(closedConnections.enumerated()), id: \.element.id) { index, order in
-                                    VStack(spacing: 0) {
-                                        HStack {
-                                            SubtitleText("\(t("lightning__connection")) \(index + 1)")
-                                            Spacer()
-                                            Image("chevron")
-                                                .resizable()
-                                                .foregroundColor(.textSecondary)
-                                                .frame(width: 24, height: 24)
+                                ForEach(Array(closedChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                    NavigationLink(destination: LightningConnectionDetailView(
+                                        channel: channel,
+                                        linkedOrder: nil,
+                                        title: "\(t("lightning__connection")) \(index + 1)"
+                                    )) {
+                                        VStack(spacing: 0) {
+                                            HStack {
+                                                SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                                Spacer()
+                                                Image("chevron")
+                                                    .resizable()
+                                                    .foregroundColor(.textSecondary)
+                                                    .frame(width: 24, height: 24)
+                                            }
+                                            .padding(.bottom, 12)
+
+                                            LightningChannel(
+                                                capacity: channel.channelValueSats,
+                                                localBalance: channel.outboundCapacityMsat / 1000,
+                                                remoteBalance: channel.inboundCapacityMsat / 1000,
+                                                status: .closed
+                                            )
+                                            .padding(.bottom, 16)
+
+                                            Divider()
                                         }
-                                        .padding(.bottom, 12)
-
-                                        LightningChannel(
-                                            capacity: order.lspBalanceSat + order.clientBalanceSat,
-                                            localBalance: order.clientBalanceSat,
-                                            remoteBalance: order.lspBalanceSat,
-                                            status: .closed
-                                        )
-                                        .padding(.bottom, 16)
-
-                                        Divider()
-                                    }
-                                    .opacity(0.64)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        // Handle tap for order details
+                                        .opacity(0.64)
                                     }
                                 }
                             }
                             .padding(.bottom, 16)
                         }
 
-                        if !closedConnections.isEmpty {
+                        if !closedChannels.isEmpty {
                             // Show Closed & Failed button
                             CustomButton(
                                 title: showClosedConnections
@@ -212,6 +215,13 @@ struct LightningConnectionsView: View {
         .padding(.horizontal, 16)
         .refreshable {
             await refreshData()
+        }
+        .task {
+            do {
+                closedChannels = try await CoreService.shared.activity.closedChannels()
+            } catch {
+                Logger.error("Failed to load closed channels: \(error)")
+            }
         }
     }
 
@@ -303,11 +313,6 @@ struct LightningConnectionsView: View {
         return channels.filter(\.isChannelReady)
     }
 
-    private var closedConnections: [IBtOrder] {
-        guard let orders = blocktank.orders else { return [] }
-        return orders.filter { $0.state == .closed }
-    }
-
     // MARK: - Helper Methods
 
     private func refreshData() async {
@@ -330,6 +335,18 @@ struct LightningConnectionsView: View {
                     try await wallet.sync()
                 } catch {
                     Logger.error("Failed to sync wallet: \(error)")
+                }
+            }
+
+            // Load closed channels from bitkit-core
+            group.addTask {
+                do {
+                    let channels = try await CoreService.shared.activity.closedChannels()
+                    await MainActor.run {
+                        closedChannels = channels
+                    }
+                } catch {
+                    Logger.error("Failed to load closed channels: \(error)")
                 }
             }
         }
