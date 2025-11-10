@@ -150,7 +150,7 @@ struct BoostSheet: View {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }
-                            .accessibilityIdentifier("RecomendedFeeButton")
+                            .accessibilityIdentifier("RecommendedFeeButton")
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
