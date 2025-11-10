@@ -350,16 +350,20 @@ class LightningService {
         sats: UInt64,
         satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        isMaxAmount: Bool = false
+        isMaxAmount: Bool = false,
+        isTransfer: Bool = false
     ) async throws -> Txid {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        Logger.info("Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount))")
+        Logger
+            .info(
+                "Sending \(sats) sats to \(address) with fee rate \(satsPerVbyte) sats/vbyte (isMaxAmount: \(isMaxAmount), isTransfer: \(isTransfer))"
+            )
 
         do {
-            return try await ServiceQueue.background(.ldk) {
+            let txid = try await ServiceQueue.background(.ldk) {
                 if isMaxAmount {
                     // For max amount sends, use sendAllToAddress to send all available funds
                     try node.onchainPayment().sendAllToAddress(
@@ -377,6 +381,20 @@ class LightningService {
                     )
                 }
             }
+
+            // Capture transaction metadata for later activity update
+            let metadata = TransactionMetadata(
+                txId: txid,
+                feeRate: UInt64(satsPerVbyte),
+                address: address,
+                isTransfer: isTransfer,
+                channelId: nil,
+                createdAt: UInt64(Date().timeIntervalSince1970)
+            )
+            try? TransactionMetadataStorage.shared.insert(metadata)
+            Logger.debug("Captured transaction metadata for txid: \(txid), isTransfer: \(isTransfer)", context: "LightningService")
+
+            return txid
         } catch {
             dumpLdkLogs()
             throw error

@@ -130,7 +130,12 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        let txid = try await lightningService.send(
+            address: address,
+            sats: order.feeSat,
+            satsPerVbyte: satsPerVbyte,
+            isTransfer: true
+        )
 
         // Create transfer tracking record for spending
         do {

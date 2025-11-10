@@ -251,20 +251,9 @@ class WalletViewModel: ObservableObject {
             sats: sats,
             satsPerVbyte: selectedFeeRateSatsPerVByte,
             utxosToSpend: selectedUtxos,
-            isMaxAmount: isMaxAmount
+            isMaxAmount: isMaxAmount,
+            isTransfer: isTransfer
         )
-
-        // Capture transaction metadata for later activity update
-        let metadata = TransactionMetadata(
-            txId: txid,
-            feeRate: UInt64(selectedFeeRateSatsPerVByte),
-            address: address,
-            isTransfer: isTransfer,
-            channelId: nil,
-            createdAt: UInt64(Date().timeIntervalSince1970)
-        )
-        try? TransactionMetadataStorage.shared.insert(metadata)
-        Logger.debug("Captured transaction metadata for txid: \(txid), isTransfer: \(isTransfer)", context: "WalletViewModel")
 
         Task {
             // Best to auto sync on chain so we have latest state
