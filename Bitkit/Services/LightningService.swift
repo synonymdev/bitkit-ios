@@ -434,6 +434,8 @@ class LightningService {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
+        Logger.debug("closeChannel called to channel=\(channel), force=\(force)", context: "LightningService")
+
         return try await closeChannel(
             userChannelId: channel.userChannelId,
             counterpartyNodeId: channel.counterpartyNodeId,
