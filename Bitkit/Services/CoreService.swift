@@ -233,6 +233,8 @@ class ActivityService {
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
             self.activitiesChangedSubject.send()
         }
+
+        try await updateActivitiesMetadata()
     }
 
     func updateActivitiesMetadata() async throws {
