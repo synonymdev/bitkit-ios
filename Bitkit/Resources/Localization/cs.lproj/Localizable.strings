@@ -465,7 +465,7 @@
 "security__mnemonic_data_text" = "Váš profil, kontakty, účty, tagy a aktivita budou automaticky zálohovány do naší bezplatné cloudové služby.";
 "security__mnemonic_multiple_header" = "Více zařízení";
 "security__mnemonic_multiple_text" = "Nepoužívejte obnovovací frázi Bitkit na více telefonech současně, protože by to mohlo poškodit vaše data.";
-"security__mnemonic_latest_backup" = "<bold>Nejnovější záloha dat:</bold> {time}";
+"security__mnemonic_latest_backup" = "<accent>Nejnovější záloha dat:</accent> {time}";
 "security__pin_security_header" = "Zvýšit zabezpečení";
 "security__pin_security_title" = "<accent>Chraňte</accent>\nsvé bitcoiny";
 "security__pin_security_text" = "Chcete-li zvýšit zabezpečení peněženky, můžete si nastavit kód PIN a Face ID.";
