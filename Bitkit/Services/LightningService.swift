@@ -434,22 +434,12 @@ class LightningService {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
-        return try await ServiceQueue.background(.ldk) {
-            Logger.debug("Initiating channel close (force=\(force)): '\(channel.channelId)'", context: "LightningService")
-
-            if force {
-                try node.forceCloseChannel(
-                    userChannelId: channel.userChannelId,
-                    counterpartyNodeId: channel.counterpartyNodeId,
-                    reason: forceCloseReason ?? ""
-                )
-            } else {
-                try node.closeChannel(
-                    userChannelId: channel.userChannelId,
-                    counterpartyNodeId: channel.counterpartyNodeId
-                )
-            }
-        }
+        return try await closeChannel(
+            userChannelId: channel.userChannelId,
+            counterpartyNodeId: channel.counterpartyNodeId,
+            force: force,
+            forceCloseReason: forceCloseReason
+        )
     }
 
     func sign(message: String) async throws -> String {
