@@ -196,7 +196,7 @@
 "security__mnemonic_data_text" = "Se realizará una copia de seguridad automática de su perfil, contactos, cuentas, etiquetas y actividad en nuestro servicio gratuito en la nube.";
 "security__mnemonic_multiple_header" = "Múltiples Dispositivos";
 "security__mnemonic_multiple_text" = "No utilice su frase de recuperación Bitkit en varios teléfonos simultáneamente, ya que esto puede corromper sus datos.";
-"security__mnemonic_latest_backup" = "<bold>Última copia de seguridad:</bold> {time}";
+"security__mnemonic_latest_backup" = "<accent>Última copia de seguridad:</accent> {time}";
 "security__pin_security_header" = "Aumentar la seguridad";
 "security__pin_choose_header" = "Elija el PIN de 4 dígitos";
 "security__pin_choose_text" = "Por favor, utilice un PIN que recuerde. Si olvida su PIN puede restablecerlo, pero para ello tendrá que restaurar su monedero.";

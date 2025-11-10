@@ -260,7 +260,7 @@
 "security__mnemonic_keep_header" = "Manteniu-ho segur";
 "security__mnemonic_data_header" = "Dades de la cartera";
 "security__mnemonic_multiple_header" = "Múltiples dispositius";
-"security__mnemonic_latest_backup" = "<bold>Data última còpia de seguretat:</bold> {time}";
+"security__mnemonic_latest_backup" = "<accent>Data última còpia de seguretat:</accent> {time}";
 "security__pin_security_header" = "Incrementa la seguretat";
 "security__pin_security_title" = "<accent>Protegeix</accent>\nels teus bitcoins";
 "security__pin_security_text" = "Per augmentar la seguretat de la cartera, pots configurar un codi PIN i Face ID.";
