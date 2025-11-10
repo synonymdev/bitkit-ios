@@ -26,6 +26,7 @@ struct BoostSheet: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var activityList: ActivityListViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     let config: BoostSheetItem
 
     @State private var feeRate: UInt32?
@@ -397,6 +398,7 @@ struct BoostSheet: View {
 
             Logger.info("Boost transaction completed successfully, hiding sheet", context: "BoostSheet.performBoost")
             sheets.hideSheet()
+            navigation.reset()
 
         } catch {
             Logger.error("Failed to boost transaction: \(error)", context: "BoostSheet.performBoost")
