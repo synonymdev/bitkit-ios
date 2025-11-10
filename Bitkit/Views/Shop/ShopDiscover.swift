@@ -105,10 +105,12 @@ struct ShopDiscover: View {
                 .padding(.horizontal, 16)
 
             Group {
-                if selectedTab == .shop {
+                switch selectedTab {
+                case .shop:
                     shopContent
-                } else {
-                    mapContent
+                case .map:
+                    ShopWebView(url: Env.btcMapUrl)
+                        .padding(.top, 16)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -166,11 +168,6 @@ struct ShopDiscover: View {
                 .padding(.horizontal, 16)
             }
         }
-    }
-
-    private var mapContent: some View {
-        ShopMapContent()
-            .padding(.top, 16)
     }
 }
 

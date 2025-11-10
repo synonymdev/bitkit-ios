@@ -9,19 +9,11 @@ struct ShopMap: View {
                 showMenuButton: false
             )
 
-            ShopMapContent()
+            ShopWebView(url: Env.btcMapUrl)
                 .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-    }
-}
-
-// MARK: - Shop Map Content
-
-struct ShopMapContent: View {
-    var body: some View {
-        ShopWebView(url: Env.btcMapUrl)
     }
 }
 
