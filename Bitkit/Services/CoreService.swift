@@ -235,6 +235,77 @@ class ActivityService {
         }
     }
 
+    func updateActivitiesMetadata() async throws {
+        let allMetadata = try TransactionMetadataStorage.shared.getAll()
+
+        guard !allMetadata.isEmpty else {
+            Logger.debug("No transaction metadata to update", context: "CoreService.updateActivitiesMetadata")
+            return
+        }
+
+        try await ServiceQueue.background(.core) {
+            Logger.info("Updating activities with \(allMetadata.count) metadata entries", context: "CoreService.updateActivitiesMetadata")
+
+            var updatedCount = 0
+            var removedCount = 0
+
+            for metadata in allMetadata {
+                do {
+                    // Find activity by txId
+                    guard let activity = try getActivityById(activityId: metadata.txId) else {
+                        Logger.debug(
+                            "Activity not found for txId: \(metadata.txId), keeping metadata for next sync",
+                            context: "CoreService.updateActivitiesMetadata"
+                        )
+                        continue
+                    }
+
+                    // Only update onchain activities
+                    guard case var .onchain(onchainActivity) = activity else {
+                        Logger.debug("Activity \(metadata.txId) is not onchain, skipping", context: "CoreService.updateActivitiesMetadata")
+                        // Remove metadata since it won't be applicable
+                        try? TransactionMetadataStorage.shared.remove(txId: metadata.txId)
+                        removedCount += 1
+                        continue
+                    }
+
+                    // Update with metadata
+                    onchainActivity.feeRate = metadata.feeRate
+                    onchainActivity.address = metadata.address
+                    onchainActivity.isTransfer = metadata.isTransfer
+                    onchainActivity.channelId = metadata.channelId
+
+                    // Update transferTxId if this is a transfer
+                    if metadata.isTransfer {
+                        onchainActivity.transferTxId = metadata.txId
+                    }
+
+                    onchainActivity.updatedAt = UInt64(Date().timeIntervalSince1970)
+
+                    // Save updated activity
+                    try updateActivity(activityId: metadata.txId, activity: .onchain(onchainActivity))
+                    updatedCount += 1
+
+                    // Remove metadata after successful update
+                    try? TransactionMetadataStorage.shared.remove(txId: metadata.txId)
+                    removedCount += 1
+
+                    Logger.debug("Updated activity with metadata: \(metadata.txId)", context: "CoreService.updateActivitiesMetadata")
+                } catch {
+                    Logger.error("Failed to update activity metadata for \(metadata.txId): \(error)", context: "CoreService.updateActivitiesMetadata")
+                }
+            }
+
+            if updatedCount > 0 {
+                Logger.info(
+                    "Updated \(updatedCount) activities with metadata, removed \(removedCount) metadata entries",
+                    context: "CoreService.updateActivitiesMetadata"
+                )
+                self.activitiesChangedSubject.send()
+            }
+        }
+    }
+
     func getActivity(id: String) async throws -> Activity? {
         try await ServiceQueue.background(.core) {
             try getActivityById(activityId: id)
