@@ -257,6 +257,7 @@ enum Env {
     static let privacyPolicyUrl = "https://www.bitkit.to/privacy-policy"
     static let geoCheckUrl = "https://api1.blocktank.to/api/geocheck"
     static let bitrefillRef = "AL6dyZYt"
+    static let btcMapUrl = "https://btcmap.org/map"
     static let helpUrl = "https://help.bitkit.to"
     static let supportApiUrl = "https://synonym.to/api/chatwoot"
 
