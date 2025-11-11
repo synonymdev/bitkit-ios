@@ -30,6 +30,9 @@ struct SendEnterManuallyView: View {
                     .font(.custom(Fonts.bold, size: 22))
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
+                    .submitLabel(.done)
+                    .dismissKeyboardOnReturn(text: $text, isFocused: $isTextEditorFocused)
+                    .accessibilityValue(text)
                     .accessibilityIdentifier("RecipientInput")
             }
             .background(Color.white06)
