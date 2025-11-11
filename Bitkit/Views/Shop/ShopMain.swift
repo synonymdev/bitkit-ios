@@ -10,8 +10,6 @@ struct ShopMain: View {
 
     let page: String
 
-    @State private var webView: WKWebView?
-
     private var uri: String {
         let baseUrl = "https://embed.bitrefill.com"
         let paymentMethod = "bitcoin" // Payment method "bitcoin" gives a unified invoice
@@ -21,11 +19,13 @@ struct ShopMain: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("other__shop__main__nav_title"))
+            NavigationBar(
+                title: t("other__shop__main__nav_title"),
+                showMenuButton: false
+            )
 
-            WebView(
+            ShopWebView(
                 url: uri,
-                webView: $webView,
                 onMessage: handleMessage
             )
             .padding(.top, 16)
@@ -60,67 +60,6 @@ struct ShopMain: View {
             } catch {
                 app.toast(error)
             }
-        }
-    }
-}
-
-// MARK: - WebView Component
-
-struct WebView: UIViewRepresentable {
-    let url: String
-    @Binding var webView: WKWebView?
-    let onMessage: (String) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.userContentController.add(context.coordinator, name: "messageHandler")
-
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.isOpaque = false
-        webView.backgroundColor = UIColor(red: 0x14 / 255.0, green: 0x17 / 255.0, blue: 0x16 / 255.0, alpha: 1.0) // #141716
-        webView.scrollView.backgroundColor = webView.backgroundColor
-        webView.layer.cornerRadius = 8
-        webView.clipsToBounds = true
-
-        self.webView = webView
-
-        if let url = URL(string: url) {
-            webView.load(URLRequest(url: url))
-        }
-
-        return webView
-    }
-
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        // Updates handled by coordinator
-    }
-
-    class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
-        var parent: WebView
-
-        init(_ parent: WebView) {
-            self.parent = parent
-        }
-
-        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-            if message.name == "messageHandler", let body = message.body as? String {
-                parent.onMessage(body)
-            }
-        }
-
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            // Inject JavaScript to capture postMessage events
-            let script = """
-                window.addEventListener('message', function(event) {
-                    window.webkit.messageHandlers.messageHandler.postMessage(JSON.stringify(event.data));
-                });
-            """
-            webView.evaluateJavaScript(script)
         }
     }
 }

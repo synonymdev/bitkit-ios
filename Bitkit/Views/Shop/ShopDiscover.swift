@@ -18,8 +18,23 @@ struct ShopCard: Identifiable {
     let route: String
 }
 
+enum ShopTab: String, CaseIterable, CustomStringConvertible {
+    case shop
+    case map
+
+    var description: String {
+        switch self {
+        case .shop:
+            return t("other__shop__discover__tabs__shop")
+        case .map:
+            return t("other__shop__discover__tabs__map")
+        }
+    }
+}
+
 struct ShopDiscover: View {
     @EnvironmentObject var navigation: NavigationViewModel
+    @State private var selectedTab: ShopTab = .shop
 
     // Categories data
     private let categories: [ShopCategory] = [
@@ -84,57 +99,75 @@ struct ShopDiscover: View {
             NavigationBar(title: t("other__shop__discover__nav_title"))
                 .padding(.horizontal, 16)
 
-            GeometryReader { geometry in
-                let cardSize = (geometry.size.width - 32 - 16) / 2
+            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases)
+                .padding(.top, 16)
+                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LazyVGrid(
-                            columns: [
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16),
-                            ],
-                            spacing: 16
-                        ) {
-                            ForEach(cards) { card in
-                                ShopDiscoverCard(
-                                    title: card.title,
-                                    description: card.description,
-                                    imageName: card.imageName,
-                                    color: card.color,
-                                    size: cardSize
-                                ) {
-                                    navigation.navigate(.shopMain(page: card.route))
-                                }
-                            }
-                        }
-                        .padding(.bottom, 16)
+            Group {
+                switch selectedTab {
+                case .shop:
+                    shopContent
+                case .map:
+                    ShopWebView(url: Env.btcMapUrl)
+                        .padding(.top, 16)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .navigationBarHidden(true)
+    }
 
-                        VStack {
-                            CaptionMText(t("other__shop__discover__label"))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(height: 50)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.bottom, 8)
+    private var shopContent: some View {
+        GeometryReader { geometry in
+            let cardSize = (geometry.size.width - 32 - 16) / 2
 
-                        LazyVStack(spacing: 0) {
-                            ForEach(categories) { category in
-                                ShopCategoryRow(
-                                    title: category.title,
-                                    iconName: category.iconName
-                                ) {
-                                    navigation.navigate(.shopMain(page: category.route))
-                                }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(), spacing: 16),
+                            GridItem(.flexible(), spacing: 16),
+                        ],
+                        spacing: 16
+                    ) {
+                        ForEach(cards) { card in
+                            ShopDiscoverCard(
+                                title: card.title,
+                                description: card.description,
+                                imageName: card.imageName,
+                                color: card.color,
+                                size: cardSize
+                            ) {
+                                navigation.navigate(.shopMain(page: card.route))
                             }
                         }
                     }
-                    .padding(.top, 16)
-                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
+
+                    VStack {
+                        CaptionMText(t("other__shop__discover__label"))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 50)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 8)
+
+                    LazyVStack(spacing: 0) {
+                        ForEach(categories) { category in
+                            ShopCategoryRow(
+                                title: category.title,
+                                iconName: category.iconName
+                            ) {
+                                navigation.navigate(.shopMain(page: category.route))
+                            }
+                        }
+                    }
                 }
+                .padding(.top, 16)
+                .padding(.horizontal, 16)
             }
         }
-        .navigationBarHidden(true)
     }
 }
 
