@@ -315,6 +315,7 @@ struct MainNavView: View {
             case .shopIntro: ShopIntro()
             case .shopDiscover: ShopDiscover()
             case let .shopMain(page): ShopMain(page: page)
+            case .shopMap: ShopMap()
 
             // Widgets
             case .widgetsIntro: WidgetsIntroView()

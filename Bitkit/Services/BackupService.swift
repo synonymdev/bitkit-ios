@@ -39,7 +39,22 @@ class BackupService {
     }
 
     private init() {
-        backupStatusesSubject.send(getAllBackupStatuses())
+        let statuses = getAllBackupStatuses()
+        var clearedStatuses = statuses
+        for category in BackupCategory.allCases {
+            if let status = clearedStatuses[category], status.running {
+                clearedStatuses[category] = BackupItemStatus(
+                    synced: status.synced,
+                    required: status.required,
+                    running: false
+                )
+            }
+        }
+        if clearedStatuses != statuses {
+            saveBackupStatuses(clearedStatuses)
+        }
+
+        backupStatusesSubject.send(clearedStatuses)
     }
 
     // MARK: - Constants
@@ -152,6 +167,9 @@ class BackupService {
     func performFullRestoreFromLatestBackup() async {
         try? await ServiceQueue.background(.backup) { self.isRestoring = true }
 
+        VssStoreIdProvider.shared.clearCache()
+        VssBackupClient.shared.reset()
+
         Logger.debug("Full restore starting", context: "BackupService")
 
         do {
@@ -249,7 +267,7 @@ class BackupService {
                         let isRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
                         guard isRestoring != true else { return }
 
-                        if status.synced < status.required && !status.running {
+                        if status.isRequired && !status.running {
                             await self.scheduleBackup(category: category)
                         }
                     }
@@ -352,34 +370,76 @@ class BackupService {
             BackupItemStatus(
                 synced: status.synced,
                 required: UInt64(Date().timeIntervalSince1970),
-                running: status.running
+                running: true
             )
         }
 
         Task {
             let status = getBackupStatus(category: category)
             let isCurrentlyRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
-            if status.synced < status.required && !status.running && isCurrentlyRestoring != true {
+            if status.isRequired && isCurrentlyRestoring != true {
                 await scheduleBackup(category: category)
+            } else if !status.isRequired {
+                updateBackupStatus(category: category) { status in
+                    BackupItemStatus(
+                        synced: status.synced,
+                        required: status.required,
+                        running: false
+                    )
+                }
             }
         }
     }
 
     private func scheduleBackup(category: BackupCategory) async {
-        let currentStatus = getBackupStatus(category: category)
-        if currentStatus.running {
+        let hasExistingTask = try? await ServiceQueue.background(.backup) {
+            if let existingTask = self.backupJobs[category], !existingTask.isCancelled {
+                return true
+            }
+            return false
+        }
+
+        if hasExistingTask == true {
             return
         }
 
+        let currentStatus = getBackupStatus(category: category)
+        if !currentStatus.running {
+            updateBackupStatus(category: category) { status in
+                BackupItemStatus(
+                    synced: status.synced,
+                    required: status.required,
+                    running: true
+                )
+            }
+        }
+
         let backupTask = Task {
+            defer {
+                Task {
+                    try? await ServiceQueue.background(.backup) {
+                        self.backupJobs.removeValue(forKey: category)
+                    }
+                }
+            }
+
             try? await Task.sleep(nanoseconds: UInt64(Self.backupDebounce * 1_000_000_000))
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                updateBackupStatus(category: category) { status in
+                    BackupItemStatus(synced: status.synced, required: status.required, running: false)
+                }
+                return
+            }
 
             let status = getBackupStatus(category: category)
             let isCurrentlyRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
-            if status.synced < status.required && !status.running && isCurrentlyRestoring != true {
+            if status.isRequired && isCurrentlyRestoring != true {
                 await triggerBackup(category: category)
+            } else {
+                updateBackupStatus(category: category) { status in
+                    BackupItemStatus(synced: status.synced, required: status.required, running: false)
+                }
             }
         }
 
@@ -394,7 +454,7 @@ class BackupService {
 
         let hasFailedBackups = BackupCategory.allCases.contains { category in
             let status = getBackupStatus(category: category)
-            return status.synced < status.required &&
+            return status.isRequired &&
                 (currentTime - status.required) > Self.failedBackupCheckTime
         }
 
@@ -423,6 +483,37 @@ class BackupService {
     func getBackupStatus(category: BackupCategory) -> BackupItemStatus {
         let statuses = getAllBackupStatuses()
         return statuses[category] ?? BackupItemStatus()
+    }
+
+    func getLatestBackupTime() -> UInt64? {
+        let statuses = getAllBackupStatuses()
+        let syncedTimestamps = BackupCategory.allCases.compactMap { category -> UInt64? in
+            let status = statuses[category] ?? BackupItemStatus()
+            return status.synced > 0 ? status.synced : nil
+        }
+
+        return syncedTimestamps.max()
+    }
+
+    func scheduleFullBackup() async {
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        for category in BackupCategory.allCases {
+            updateBackupStatus(category: category) { status in
+                let newRequired = status.synced == 0 ? currentTime : status.required
+                return BackupItemStatus(
+                    synced: status.synced,
+                    required: newRequired,
+                    running: status.running
+                )
+            }
+        }
+
+        for category in BackupCategory.allCases {
+            let status = getBackupStatus(category: category)
+            if status.isRequired && !status.running {
+                await scheduleBackup(category: category)
+            }
+        }
     }
 
     private func updateBackupStatus(category: BackupCategory, update: @escaping (BackupItemStatus) -> BackupItemStatus) {
@@ -556,10 +647,11 @@ class BackupService {
             Logger.debug("Restore error for: '\(category.rawValue)'", context: "BackupService")
         }
 
-        updateBackupStatus(category: category) { status in
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        updateBackupStatus(category: category) { _ in
             BackupItemStatus(
-                synced: UInt64(Date().timeIntervalSince1970),
-                required: status.required,
+                synced: currentTime,
+                required: currentTime,
                 running: false
             )
         }

@@ -425,7 +425,7 @@
 "security__mnemonic_data_text" = "Ваш профиль, контакты, учетные записи, теги и транзакции будут автоматически сохранены в нашем бесплатном облачном сервисе.";
 "security__mnemonic_multiple_header" = "Несколько Устройств";
 "security__mnemonic_multiple_text" = "Не используйте фразу восстановления Bitkit на нескольких телефонах одновременно, так как это может привести к повреждению ваших данных.";
-"security__mnemonic_latest_backup" = "<bold>Последнее резервное копирование данных:</bold> {time}";
+"security__mnemonic_latest_backup" = "<accent>Последнее резервное копирование данных:</accent> {time}";
 "security__pin_security_header" = "Повысьте Безопасность";
 "security__pin_security_title" = "<accent>Защитите</accent>\nсвои биткойны";
 "security__pin_security_text" = "Для повышения безопасности кошелька вы можете установить PIN-код и Face ID.";

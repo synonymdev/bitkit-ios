@@ -248,7 +248,7 @@
 "security__mnemonic_data_text" = "Twój profil, kontakty, konta, tagi oraz aktywność będzie automatycznie skopiowana do naszego darmowego serwisu w chmurze.";
 "security__mnemonic_multiple_header" = "Wiele urządzeń";
 "security__mnemonic_multiple_text" = "Nie używaj jednego hasła Bitkit na wielu urządzeniach jednocześnie, ponieważ może to spowodować uszkodzenie danych.";
-"security__mnemonic_latest_backup" = "<brand>Ostatni backup danych: </brand>{time}";
+"security__mnemonic_latest_backup" = "<accent>Ostatni backup danych: </accent>{time}";
 "security__pin_security_header" = "Zwieksz bezpieczeństwo";
 "security__pin_security_text" = "Aby zwiększyć bezpieczeństwo portfela, możesz ustawić kod PIN i Face ID.";
 "security__pin_security_button" = "Zabezpiecz portfel";

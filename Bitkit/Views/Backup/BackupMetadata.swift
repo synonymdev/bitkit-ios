@@ -2,6 +2,7 @@ import SwiftUI
 
 struct BackupMetadata: View {
     @EnvironmentObject private var sheets: SheetViewModel
+    @State private var lastBackupTime: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,14 +21,14 @@ struct BackupMetadata: View {
 
                 Spacer()
 
-                // TODO: Add actual last backup time
-                BodySText(
-                    tTodo("<accent>Latest full backup:</accent> {time}", variables: ["time": "12/06/2025 12:00"]),
-                    textColor: .textPrimary,
-                    accentColor: .textPrimary,
-                    accentFont: Fonts.bold
-                )
-                .padding(.bottom, 16)
+                if let lastBackupTime {
+                    BodySText(
+                        t("security__mnemonic_latest_backup", variables: ["time": lastBackupTime]),
+                        textColor: .textPrimary,
+                        accentFont: Fonts.bold
+                    )
+                    .padding(.bottom, 16)
+                }
 
                 CustomButton(title: t("common__ok")) {
                     sheets.hideSheet()
@@ -39,5 +40,19 @@ struct BackupMetadata: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            await loadLastBackupTime()
+        }
+    }
+
+    private func loadLastBackupTime() async {
+        if let timestamp = BackupService.shared.getLatestBackupTime() {
+            let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .short
+            formatter.locale = Locale.current
+            lastBackupTime = formatter.string(from: date)
+        }
     }
 }
