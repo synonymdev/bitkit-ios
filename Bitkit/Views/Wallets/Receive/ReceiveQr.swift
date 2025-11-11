@@ -102,6 +102,7 @@ struct ReceiveQr: View {
                         CustomButton(title: showDetails ? tTodo("QR Code") : tTodo("Show Details")) {
                             showDetails.toggle()
                         }
+                        .accessibilityIdentifier(showDetails ? "QRCode" : "ShowDetails")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -115,6 +116,8 @@ struct ReceiveQr: View {
         }
         .navigationBarHidden(true)
         .sheetBackground()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("ReceiveScreen")
         .task {
             do {
                 try await withThrowingTaskGroup(of: Void.self) { group in
