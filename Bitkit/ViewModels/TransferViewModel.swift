@@ -660,7 +660,7 @@ class TransferViewModel: ObservableObject {
         if !errors.isEmpty {
             let errorMessages = errors.map { "\($0.channelId): \($0.error.localizedDescription)" }.joined(separator: ", ")
             throw AppError(
-                message: "Failed to force close \(errors.count) of \(errors.count + successfulChannels.count) channel(s)",
+                message: "Failed to force close \(errors.count) of \(channelsToClose.count)) channel(s)",
                 debugMessage: errorMessages
             )
         }
