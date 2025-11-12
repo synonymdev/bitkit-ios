@@ -117,7 +117,7 @@ class ActivityService {
                             confirmedTimestamp = timestamp
                         }
 
-                        // Get existing activity to preserve certain flags like isBoosted and boostTxIds
+                        // Get existing activity to preserve certain flags like isBoosted, boostTxIds, isTransfer, etc.
                         let existingActivity = try getActivityById(activityId: payment.id)
                         let existingOnchain: OnchainActivity? = {
                             if let existingActivity, case let .onchain(existing) = existingActivity {
@@ -127,6 +127,11 @@ class ActivityService {
                         }()
                         let preservedIsBoosted = existingOnchain?.isBoosted ?? false
                         let preservedBoostTxIds = existingOnchain?.boostTxIds ?? []
+                        let preservedIsTransfer = existingOnchain?.isTransfer ?? false
+                        let preservedChannelId = existingOnchain?.channelId
+                        let preservedTransferTxId = existingOnchain?.transferTxId
+                        let preservedFeeRate = existingOnchain?.feeRate ?? 1
+                        let preservedAddress = existingOnchain?.address ?? "todo_find_address"
 
                         // Check if this is a replacement transaction (RBF) that should be marked as boosted
                         let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
@@ -167,25 +172,35 @@ class ActivityService {
                             txId: txid,
                             value: value,
                             fee: (payment.feePaidMsat ?? 0) / 1000,
-                            feeRate: 1, // TODO: get from somewhere
-                            address: "todo_find_address",
+                            feeRate: preservedFeeRate, // Preserve metadata fee rate
+                            address: preservedAddress, // Preserve metadata address
                             confirmed: isConfirmed,
                             timestamp: timestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
                             boostTxIds: boostTxIds,
-                            isTransfer: false, // TODO: handle when paying for order
+                            isTransfer: preservedIsTransfer, // Preserve metadata isTransfer flag
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
-                            channelId: nil, // TODO: get from linked order
-                            transferTxId: nil, // TODO: get from linked order
+                            channelId: preservedChannelId, // Preserve metadata channelId
+                            transferTxId: preservedTransferTxId, // Preserve metadata transferTxId
                             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
                             updatedAt: timestamp
                         )
 
-                        if existingActivity != nil {
-                            try updateActivity(activityId: payment.id, activity: .onchain(onchain))
-                            print(payment)
-                            updatedCount += 1
+                        if let existingOnchain {
+                            // Only update if the new data is actually newer
+                            // This prevents overwriting metadata updates with older LDK sync data
+                            let existingUpdatedAt = existingOnchain.updatedAt ?? 0
+                            if timestamp >= existingUpdatedAt {
+                                try updateActivity(activityId: payment.id, activity: .onchain(onchain))
+                                print(payment)
+                                updatedCount += 1
+                            } else {
+                                Logger.debug(
+                                    "Skipping update for \(txid) - existing data is newer (existing: \(existingUpdatedAt), new: \(timestamp))",
+                                    context: "CoreService.syncLdkNodePayments"
+                                )
+                            }
                         } else {
                             try upsertActivity(activity: .onchain(onchain))
                             print(payment)
@@ -253,8 +268,28 @@ class ActivityService {
 
             for metadata in allMetadata {
                 do {
-                    // Find activity by txId
-                    guard let activity = try getActivityById(activityId: metadata.txId) else {
+                    // Find activity by txId field (not by ID)
+                    // Note: Activity IDs are payment.id, but we need to match on the txId field for onchain activities
+                    let allActivities = try getActivities(
+                        filter: nil,
+                        txType: nil,
+                        tags: nil,
+                        search: nil,
+                        minDate: nil,
+                        maxDate: nil,
+                        limit: nil,
+                        sortDirection: nil
+                    )
+                    var matchingActivity: Activity?
+
+                    for activity in allActivities {
+                        if case let .onchain(onchainActivity) = activity, onchainActivity.txId == metadata.txId {
+                            matchingActivity = activity
+                            break
+                        }
+                    }
+
+                    guard let activity = matchingActivity else {
                         Logger.debug(
                             "Activity not found for txId: \(metadata.txId), keeping metadata for next sync",
                             context: "CoreService.updateActivitiesMetadata"
@@ -262,7 +297,7 @@ class ActivityService {
                         continue
                     }
 
-                    // Only update onchain activities
+                    // Only update onchain activities (already verified above)
                     guard case var .onchain(onchainActivity) = activity else {
                         Logger.debug("Activity \(metadata.txId) is not onchain, skipping", context: "CoreService.updateActivitiesMetadata")
                         // Remove metadata since it won't be applicable
@@ -284,8 +319,8 @@ class ActivityService {
 
                     onchainActivity.updatedAt = UInt64(Date().timeIntervalSince1970)
 
-                    // Save updated activity
-                    try updateActivity(activityId: metadata.txId, activity: .onchain(onchainActivity))
+                    // Save updated activity using the activity ID (not txId)
+                    try updateActivity(activityId: onchainActivity.id, activity: .onchain(onchainActivity))
                     updatedCount += 1
 
                     // Remove metadata after successful update
