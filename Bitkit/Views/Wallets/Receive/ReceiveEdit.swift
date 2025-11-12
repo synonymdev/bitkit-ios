@@ -53,9 +53,8 @@ struct ReceiveEdit: View {
                             .scrollContentBackground(.hidden)
                             .padding(EdgeInsets(top: -8, leading: -5, bottom: -5, trailing: -5))
                             .frame(minHeight: 30, maxHeight: 50)
-                            .onSubmit {
-                                isNoteEditorFocused = false
-                            }
+                            .dismissKeyboardOnReturn(text: $note, isFocused: $isNoteEditorFocused)
+                            .accessibilityValue(note)
                             .accessibilityIdentifier("ReceiveNote")
                     }
                     .padding()
