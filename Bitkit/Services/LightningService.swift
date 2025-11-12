@@ -394,7 +394,7 @@ class LightningService {
             do {
                 try TransactionMetadataStorage.shared.insert(metadata)
             } catch {
-                Logger.error("Failed to insert transaction metadata", context: error)
+                Logger.error("Failed to insert transaction metadata", context: error.localizedDescription)
             }
             Logger.debug("Captured transaction metadata for txid: \(txid), isTransfer: \(isTransfer)", context: "LightningService")
 
