@@ -33,6 +33,7 @@ struct AppCacheData: Codable {
     let highBalanceIgnoreTimestamp: TimeInterval
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
+    let transactionsMetadata: [TransactionMetadata]
 }
 
 struct BlocktankBackupV1: Codable {

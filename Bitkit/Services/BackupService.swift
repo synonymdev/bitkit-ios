@@ -222,6 +222,9 @@ class BackupService {
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
                 Logger.debug("Restored caches and \(payload.tagMetadata.count) tags metadata records", context: "BackupService")
+
+                // Apply transaction metadata to activities after restore
+                try await CoreService.shared.activity.updateActivitiesMetadata()
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -324,6 +327,14 @@ class BackupService {
             }
             .store(in: &cancellables)
 
+        TransactionMetadataStorage.shared.metadataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.isRestoring else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
+
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
@@ -348,7 +359,7 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        Logger.debug("Started 7 data store listeners", context: "BackupService")
+        Logger.debug("Started 8 data store listeners", context: "BackupService")
     }
 
     private func startPeriodicBackupFailureCheck() {
