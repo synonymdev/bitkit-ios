@@ -43,13 +43,19 @@ struct ActivityRowOnchain: View {
         if item.isTransfer {
             switch item.txType {
             case .sent:
-                return item.confirmed ?
-                    t("wallet__activity_transfer_spending_done") :
-                    t("wallet__activity_transfer_spending_pending", variables: ["duration": "TODO"])
+                if item.confirmed {
+                    return t("wallet__activity_transfer_spending_done")
+                } else {
+                    let feeDescription = TransactionSpeed.getFeeDescription(feeRate: item.feeRate, feeEstimates: feeEstimates)
+                    return t("wallet__activity_transfer_spending_pending", variables: ["duration": feeDescription])
+                }
             case .received:
-                return item.confirmed ?
-                    t("wallet__activity_transfer_savings_done") :
-                    t("wallet__activity_transfer_savings_pending", variables: ["duration": "TODO"])
+                if item.confirmed {
+                    return t("wallet__activity_transfer_savings_done")
+                } else {
+                    let feeDescription = TransactionSpeed.getFeeDescription(feeRate: item.feeRate, feeEstimates: feeEstimates)
+                    return t("wallet__activity_transfer_savings_pending", variables: ["duration": feeDescription])
+                }
             }
         } else {
             if item.confirmed {
