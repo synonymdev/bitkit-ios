@@ -391,7 +391,11 @@ class LightningService {
                 channelId: nil,
                 createdAt: UInt64(Date().timeIntervalSince1970)
             )
-            try? TransactionMetadataStorage.shared.insert(metadata)
+            do {
+                try TransactionMetadataStorage.shared.insert(metadata)
+            } catch {
+                Logger.error("Failed to insert transaction metadata", context: error)
+            }
             Logger.debug("Captured transaction metadata for txid: \(txid), isTransfer: \(isTransfer)", context: "LightningService")
 
             return txid

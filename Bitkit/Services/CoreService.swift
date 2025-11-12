@@ -289,7 +289,11 @@ class ActivityService {
                     updatedCount += 1
 
                     // Remove metadata after successful update
-                    try? TransactionMetadataStorage.shared.remove(txId: metadata.txId)
+                    do {
+                        try TransactionMetadataStorage.shared.remove(txId: metadata.txId)
+                    } catch {
+                        Logger.error("Failed to remove metadata for \(metadata.txId): \(error)", context: "CoreService.updateActivitiesMetadata")
+                    }
                     removedCount += 1
 
                     Logger.debug("Updated activity with metadata: \(metadata.txId)", context: "CoreService.updateActivitiesMetadata")
