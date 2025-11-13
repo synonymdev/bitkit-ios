@@ -29,6 +29,7 @@ struct IdentifiableLightningBalance: Identifiable {
 
 struct NodeStateView: View {
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var app: AppViewModel
 
     @State private var closingChannels: [String] = []
 
@@ -118,7 +119,29 @@ struct NodeStateView: View {
                         Text("\(peer.nodeId)@\(peer.address)")
                             .font(.caption)
                         Spacer()
-                        Text(peer.isConnected ? "✅" : "❌")
+
+                        Button {
+                            Task { @MainActor in
+                                do {
+                                    try await wallet.disconnectPeer(peer)
+                                    app.toast(
+                                        type: .info,
+                                        title: tTodo("success"),
+                                        description: tTodo("Peer disconnected.")
+                                    )
+                                } catch {
+                                    app.toast(
+                                        type: .error,
+                                        title: "error_occured",
+                                        description: error.localizedDescription
+                                    )
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundColor(.redAccent)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }

@@ -139,6 +139,14 @@ struct MainNavView: View {
         ) {
             config in SendSheet(config: config)
         }
+        .sheet(
+            item: $sheets.forceTransferSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in ForceTransferSheet(config: config)
+        }
         .accentColor(.white)
         .overlay {
             TabBar()
