@@ -264,6 +264,8 @@ struct SendConfirmationView: View {
     }
 
     private func performPayment() async throws {
+        var createdMetadataPaymentId: String? = nil
+
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
@@ -272,6 +274,7 @@ struct SendConfirmationView: View {
 
                 // Create pre-activity metadata for tags and activity address
                 let paymentHash = invoice.paymentHash.hex
+                createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
                 // Perform the Lightning payment
@@ -299,6 +302,10 @@ struct SendConfirmationView: View {
             }
         } catch {
             Logger.error("Payment failed: \(error)")
+
+            if let paymentId = createdMetadataPaymentId {
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
+            }
 
             // TODO: remove toast and use failure screen instead
             app.toast(error)

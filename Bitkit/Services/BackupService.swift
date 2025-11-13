@@ -312,6 +312,16 @@ class BackupService {
             }
             .store(in: &cancellables)
 
+        // METADATA (from ActivityService)
+        CoreService.shared.activity.metadataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.isRestoring else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
+
+        // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in

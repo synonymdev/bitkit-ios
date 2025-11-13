@@ -14,6 +14,16 @@ class ActivityService {
         activitiesChangedSubject.eraseToAnyPublisher()
     }
 
+    private let metadataChangedSubject = PassthroughSubject<Void, Never>()
+
+    var metadataChangedPublisher: AnyPublisher<Void, Never> {
+        metadataChangedSubject.eraseToAnyPublisher()
+    }
+
+    // Maximum address index to search when current address exists
+    // This provides a reasonable upper bound for address derivation search
+    private static let maxAddressSearchIndex: UInt32 = 100_000
+
     // Track replacement transactions (RBF): newTxId -> parent/original txIds
     private static var replacementTransactions: [String: [String]] = [:]
 
@@ -309,7 +319,7 @@ class ActivityService {
             var index: UInt32 = 0
             var currentAddressIndex: UInt32? = nil
             let hasCurrentAddress = !currentWalletAddress.isEmpty
-            let maxIndex: UInt32 = hasCurrentAddress ? 100_000 : batchSize // 100k if current address exists, one batch otherwise
+            let maxIndex: UInt32 = hasCurrentAddress ? Self.maxAddressSearchIndex : batchSize
 
             while index < maxIndex {
                 let accountAddresses = try await coreService.utility.getAccountAddresses(
@@ -448,21 +458,21 @@ class ActivityService {
     func addPreActivityMetadata(_ preActivityMetadata: BitkitCore.PreActivityMetadata) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadata(preActivityMetadata: preActivityMetadata)
-            SettingsViewModel.shared.notifyAppStateChanged()
+            self.metadataChangedSubject.send()
         }
     }
 
     func addPreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadataTags(paymentId: paymentId, tags: tags)
-            SettingsViewModel.shared.notifyAppStateChanged()
+            self.metadataChangedSubject.send()
         }
     }
 
     func removePreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.removePreActivityMetadataTags(paymentId: paymentId, tags: tags)
-            SettingsViewModel.shared.notifyAppStateChanged()
+            self.metadataChangedSubject.send()
         }
     }
 
@@ -475,14 +485,14 @@ class ActivityService {
     func deletePreActivityMetadata(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.deletePreActivityMetadata(paymentId: paymentId)
-            SettingsViewModel.shared.notifyAppStateChanged()
+            self.metadataChangedSubject.send()
         }
     }
 
     func resetPreActivityMetadataTags(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.resetPreActivityMetadataTags(paymentId: paymentId)
-            SettingsViewModel.shared.notifyAppStateChanged()
+            self.metadataChangedSubject.send()
         }
     }
 
