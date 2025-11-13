@@ -12,6 +12,7 @@ struct AppStatusView: View {
 
             VStack(spacing: 16) {
                 internetStatusRow
+                bitcoinNodeStatusRow
                 nodeStatusRow
                 channelsStatusRow
                 backupStatusRow
@@ -42,6 +43,21 @@ struct AppStatusView: View {
                 if let settingsUrl = URL(string: "App-Prefs:Settings") {
                     UIApplication.shared.open(settingsUrl)
                 }
+            }
+        )
+    }
+
+    private var bitcoinNodeStatusRow: some View {
+        let status = AppStatusHelper.bitcoinNodeStatus(from: wallet, network: network)
+        let description: String = t("settings__status__electrum__\(status.rawValue)")
+
+        return StatusRow(
+            imageName: "status-bitcoin",
+            title: t("settings__status__electrum__title"),
+            description: description,
+            status: status,
+            onTap: {
+                navigation.navigate(.electrumSettings)
             }
         )
     }
