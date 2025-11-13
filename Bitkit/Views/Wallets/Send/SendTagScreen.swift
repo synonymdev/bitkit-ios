@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct SendTagScreen: View {
-    @EnvironmentObject var activityListViewModel: ActivityListViewModel
     @EnvironmentObject var tagManager: TagManager
     @Environment(\.dismiss) private var dismiss
 
@@ -9,60 +8,28 @@ struct SendTagScreen: View {
     @State private var newTagText = ""
     @FocusState private var isTextFieldFocused: Bool
 
-    private var trimmedTagText: String {
-        newTagText.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__tags_add"), showBackButton: true)
 
-            VStack(alignment: .leading, spacing: 0) {
-                let tagsToShow = tagManager.lastUsedTags
+            PreviouslyUsedTagsView { tag in
+                await addTag(tag)
+            }
 
-                if !tagsToShow.isEmpty {
-                    CaptionMText(t("wallet__tags_previously"))
-                        .padding(.bottom, 16)
-
-                    WrappingHStack(spacing: 8) {
-                        ForEach(tagsToShow, id: \.self) { tag in
-                            Tag(tag, onPress: {
-                                addTag(tag)
-                            })
-                        }
-                    }
-                    .padding(.bottom, 32)
-                }
-
-                CaptionMText(t("wallet__tags_new"))
-                    .padding(.bottom, 8)
-
-                TextField(t("wallet__tags_new_enter"), text: $newTagText, backgroundColor: .white08)
-                    .focused($isTextFieldFocused)
-                    .autocapitalization(.none)
-                    .autocorrectionDisabled(true)
-
-                Spacer()
-
-                CustomButton(
-                    title: t("wallet__tags_add_button"),
-                    isDisabled: trimmedTagText.isEmpty
-                ) {
-                    addTag(trimmedTagText)
-                }
-                .buttonBottomPadding(isFocused: isTextFieldFocused)
+            TagInputForm(
+                tagText: $newTagText,
+                isTextFieldFocused: $isTextFieldFocused
+            ) { tag in
+                await addTag(tag)
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            isTextFieldFocused = true
-        }
     }
 
-    private func addTag(_ tag: String) {
+    private func addTag(_ tag: String) async {
         tagManager.addTagToSelection(tag)
         dismiss()
     }

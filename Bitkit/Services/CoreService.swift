@@ -161,6 +161,17 @@ class ActivityService {
                             return
                         }
 
+                        // Find the address for the transaction
+                        // Outbound txs have address set in bitkit-core automatically from the pre-activity metadata
+                        var address = "todo_find_address"
+                        if payment.direction == .inbound {
+                            do {
+                                address = try await self.findReceivingAddress(for: txid, value: value)
+                            } catch {
+                                Logger.warn("Failed to find address for txid \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
+                            }
+                        }
+
                         let onchain = OnchainActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
@@ -168,7 +179,7 @@ class ActivityService {
                             value: value,
                             fee: (payment.feePaidMsat ?? 0) / 1000,
                             feeRate: 1, // TODO: get from somewhere
-                            address: "todo_find_address",
+                            address: address,
                             confirmed: isConfirmed,
                             timestamp: timestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
@@ -233,6 +244,118 @@ class ActivityService {
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
             self.activitiesChangedSubject.send()
         }
+    }
+
+    /// Check pre-activity metadata for addresses in the transaction
+    private func findAddressInPreActivityMetadata(txDetails: TxDetails, value: UInt64) async -> String? {
+        for output in txDetails.vout {
+            guard let address = output.scriptpubkey_address else { continue }
+            if let metadata = try? await getPreActivityMetadata(searchKey: address, searchByAddress: true),
+               metadata.isReceive
+            {
+                return address
+            }
+        }
+
+        return nil
+    }
+
+    /// Find the receiving address for an onchain transaction
+    private func findReceivingAddress(for txid: String, value: UInt64) async throws -> String {
+        let txDetails = try await AddressChecker.getTransaction(txid: txid)
+        let batchSize: UInt32 = 20
+        let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+
+        // Check if an address matches any transaction output
+        func matchesTransaction(_ address: String) -> Bool {
+            txDetails.vout.contains { output in
+                output.scriptpubkey_address == address
+            }
+        }
+
+        // Find matching address from a list, preferring exact value match
+        func findMatch(in addresses: [String]) -> String? {
+            // Try exact value match first
+            for address in addresses {
+                for output in txDetails.vout {
+                    if output.scriptpubkey_address == address,
+                       output.value == Int64(value)
+                    {
+                        return address
+                    }
+                }
+            }
+            // Fallback to any address match
+            for address in addresses {
+                if matchesTransaction(address) {
+                    return address
+                }
+            }
+            return nil
+        }
+
+        // First, check pre-activity metadata for addresses in the transaction
+        if let address = await findAddressInPreActivityMetadata(txDetails: txDetails, value: value) {
+            return address
+        }
+
+        // Check current address if it exists
+        if !currentWalletAddress.isEmpty && matchesTransaction(currentWalletAddress) {
+            return currentWalletAddress
+        }
+
+        // Search addresses forward in batches
+        func searchAddresses(isChange: Bool) async throws -> String? {
+            var index: UInt32 = 0
+            var currentAddressIndex: UInt32? = nil
+            let hasCurrentAddress = !currentWalletAddress.isEmpty
+            let maxIndex: UInt32 = hasCurrentAddress ? 100_000 : batchSize // 100k if current address exists, one batch otherwise
+
+            while index < maxIndex {
+                let accountAddresses = try await coreService.utility.getAccountAddresses(
+                    walletIndex: 0,
+                    isChange: isChange,
+                    startIndex: index,
+                    count: batchSize
+                )
+
+                let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
+
+                // Track when we find the current address
+                if hasCurrentAddress, currentAddressIndex == nil, addresses.contains(currentWalletAddress) {
+                    currentAddressIndex = index
+                }
+
+                // Check for matches
+                if let match = findMatch(in: addresses) {
+                    return match
+                }
+
+                // Stop if we've checked one batch after finding current address
+                if let foundIndex = currentAddressIndex, index >= foundIndex + batchSize {
+                    break
+                }
+
+                // Stop if we've reached the end
+                if addresses.count < Int(batchSize) {
+                    break
+                }
+
+                index += batchSize
+            }
+            return nil
+        }
+
+        // Try receiving addresses first, then change addresses
+        if let address = try await searchAddresses(isChange: false) {
+            return address
+        }
+        if let address = try await searchAddresses(isChange: true) {
+            return address
+        }
+
+        // Fallback: return first output address
+        return txDetails.vout.first?.scriptpubkey_address ?? "todo_find_address"
     }
 
     func getActivity(id: String) async throws -> Activity? {
@@ -308,15 +431,67 @@ class ActivityService {
         }
     }
 
-    func getAllTagMetadata() async throws -> [ActivityTagsMetadata] {
+    func getAllActivitiesTags() async throws -> [ActivityTags] {
         try await ServiceQueue.background(.core) {
-            try BitkitCore.getAllTagMetadata()
+            try BitkitCore.getAllActivitiesTags()
         }
     }
 
     func upsertTags(_ activityTags: [ActivityTags]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.upsertTags(activityTags: activityTags)
+        }
+    }
+
+    // MARK: - Pre-Activity Metadata Methods
+
+    func addPreActivityMetadata(_ preActivityMetadata: BitkitCore.PreActivityMetadata) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.addPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+        }
+    }
+
+    func addPreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.addPreActivityMetadataTags(paymentId: paymentId, tags: tags)
+        }
+    }
+
+    func removePreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.removePreActivityMetadataTags(paymentId: paymentId, tags: tags)
+        }
+    }
+
+    func getPreActivityMetadata(searchKey: String, searchByAddress: Bool = false) async throws -> BitkitCore.PreActivityMetadata? {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getPreActivityMetadata(searchKey: searchKey, searchByAddress: searchByAddress)
+        }
+    }
+
+    func deletePreActivityMetadata(paymentId: String) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.deletePreActivityMetadata(paymentId: paymentId)
+        }
+    }
+
+    func resetPreActivityMetadataTags(paymentId: String) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.resetPreActivityMetadataTags(paymentId: paymentId)
+        }
+    }
+
+    // MARK: - Pre-Activity Metadata Methods (for backup service)
+
+    func upsertPreActivityMetadata(_ preActivityMetadata: [BitkitCore.PreActivityMetadata]) async throws {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.upsertPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+        }
+    }
+
+    func getAllPreActivityMetadata() async throws -> [BitkitCore.PreActivityMetadata] {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getAllPreActivityMetadata()
         }
     }
 

@@ -1,3 +1,4 @@
+import BitkitCore
 import SwiftUI
 
 struct ReceiveEdit: View {
@@ -6,6 +7,7 @@ struct ReceiveEdit: View {
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var transfer: TransferViewModel
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var tagManager: TagManager
     @Environment(\.dismiss) private var dismiss
 
     @Binding var navigationPath: [ReceiveRoute]
@@ -62,17 +64,16 @@ struct ReceiveEdit: View {
                     .cornerRadius(8)
 
                     if !isNoteEditorFocused {
-                        CaptionMText(t("wallet__tags"))
-                            .padding(.top, 16)
-                            .padding(.bottom, 8)
-
-                        CustomButton(
-                            title: t("wallet__tags_add"),
-                            size: .small,
-                            icon: Image("tag").foregroundColor(.brandAccent)
-                        ) {
-                            navigationPath.append(.tag)
-                        }
+                        TagSelectionView(
+                            onDelete: { tag in
+                                Task {
+                                    await deleteTag(tag)
+                                }
+                            },
+                            onAddTag: {
+                                navigationPath.append(.tag)
+                            }
+                        )
                         .accessibilityIdentifier("TagsAdd")
                     }
 
@@ -151,6 +152,22 @@ struct ReceiveEdit: View {
                 title: "Lightning not ready",
                 description: "Lightning node must be running to create an invoice"
             )
+        }
+    }
+
+    private func deleteTag(_ tag: String) async {
+        guard let paymentId = await wallet.paymentId(), !paymentId.isEmpty else { return }
+        do {
+            try await CoreService.shared.activity.removePreActivityMetadataTags(
+                paymentId: paymentId,
+                tags: [tag]
+            )
+
+            await MainActor.run {
+                tagManager.removeTagFromSelection(tag)
+            }
+        } catch {
+            app.toast(type: .error, title: "Failed to delete tag", description: error.localizedDescription)
         }
     }
 
