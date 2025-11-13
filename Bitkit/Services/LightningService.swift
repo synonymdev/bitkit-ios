@@ -444,6 +444,25 @@ class LightningService {
         )
     }
 
+    func disconnectPeer(peer: PeerDetails) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let uri = "\(peer.nodeId)@\(peer.address)"
+        Logger.debug("Disconnecting peer: \(uri)")
+
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.disconnect(nodeId: peer.nodeId)
+            }
+            Logger.info("Peer disconnected: \(uri)")
+        } catch {
+            Logger.warn("Peer disconnect error: \(uri)")
+            throw error
+        }
+    }
+
     func sign(message: String) async throws -> String {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

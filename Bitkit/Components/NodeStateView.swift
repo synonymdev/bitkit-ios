@@ -118,7 +118,16 @@ struct NodeStateView: View {
                         Text("\(peer.nodeId)@\(peer.address)")
                             .font(.caption)
                         Spacer()
-                        Text(peer.isConnected ? "✅" : "❌")
+
+                        Button {
+                            Task { @MainActor in
+                                try? await wallet.disconnectPeer(peer)
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle")
+                                .foregroundColor(.redAccent)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
