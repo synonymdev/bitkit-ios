@@ -303,12 +303,11 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        // ACTIVITIES (triggers both metadata and activity backups)
+        // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
-                markBackupRequired(category: .metadata)
                 markBackupRequired(category: .activity)
             }
             .store(in: &cancellables)
