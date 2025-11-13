@@ -27,6 +27,7 @@ class TransferViewModel: ObservableObject {
     private let lightningService: LightningService
     private let currencyService: CurrencyService
     private let transferService: TransferService
+    private let sheetViewModel: SheetViewModel
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -39,19 +40,22 @@ class TransferViewModel: ObservableObject {
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
-        transferService: TransferService
+        transferService: TransferService,
+        sheetViewModel: SheetViewModel
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
         self.transferService = transferService
+        self.sheetViewModel = sheetViewModel
     }
 
     /// Convenience initializer for testing and previews
     convenience init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        currencyService: CurrencyService = .shared
+        currencyService: CurrencyService = .shared,
+        sheetViewModel: SheetViewModel = SheetViewModel()
     ) {
         let transferService = TransferService(
             lightningService: lightningService,
@@ -61,7 +65,8 @@ class TransferViewModel: ObservableObject {
             coreService: coreService,
             lightningService: lightningService,
             currencyService: currencyService,
-            transferService: transferService
+            transferService: transferService,
+            sheetViewModel: sheetViewModel
         )
     }
 
@@ -537,22 +542,9 @@ class TransferViewModel: ObservableObject {
 
     func closeChannels(channels: [ChannelDetails]) async throws -> [ChannelDetails] {
         var failedChannels: [ChannelDetails] = []
+        var successfulChannels: [ChannelDetails] = []
 
-        // Create transfer tracking records for each channel being closed
-        for channel in channels {
-            do {
-                let transferId = try await transferService.createTransfer(
-                    type: .toSavings,
-                    amountSats: channel.amountOnClose,
-                    channelId: channel.channelId.description
-                )
-                Logger.info("Created transfer tracking record for channel closure: \(transferId)", context: "TransferViewModel")
-            } catch {
-                Logger.error("Failed to create transfer tracking record for channel: \(channel.channelId)", context: error.localizedDescription)
-                // Continue with closure even if tracking fails
-            }
-        }
-
+        // Close channels in parallel and track which ones succeeded
         try await withThrowingTaskGroup(of: ChannelDetails?.self) { group in
             for channel in channels {
                 group.addTask {
@@ -571,6 +563,26 @@ class TransferViewModel: ObservableObject {
                 if let failedChannel = result {
                     failedChannels.append(failedChannel)
                 }
+            }
+        }
+
+        // Determine which channels closed successfully
+        successfulChannels = channels.filter { channel in
+            !failedChannels.contains { $0.channelId == channel.channelId }
+        }
+
+        // Create transfer tracking records only for successfully closed channels
+        for channel in successfulChannels {
+            do {
+                let transferId = try await transferService.createTransfer(
+                    type: .toSavings,
+                    amountSats: channel.amountOnClose,
+                    channelId: channel.channelId.description
+                )
+                Logger.info("Created transfer tracking record for channel closure: \(transferId)", context: "TransferViewModel")
+            } catch {
+                Logger.error("Failed to create transfer tracking record for channel: \(channel.channelId)", context: error.localizedDescription)
+                // Don't fail the entire operation - the channel is already closed
             }
         }
 
@@ -613,8 +625,71 @@ class TransferViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1_000_000_000))
             }
 
-            Logger.info("Giving up on coop close.")
-            // TODO: Show force transfer UI
+            Logger.info("Giving up on coop close. Showing force transfer UI.")
+
+            // Show force transfer sheet
+            sheetViewModel.showSheet(.forceTransfer)
+        }
+    }
+
+    /// Force close all channels that failed to cooperatively close
+    func forceCloseChannel() async throws {
+        guard !channelsToClose.isEmpty else {
+            Logger.warn("No channels to force close")
+            return
+        }
+
+        Logger.info("Force closing \(channelsToClose.count) channel(s)")
+
+        var errors: [(channelId: String, error: Error)] = []
+        var successfulChannels: [ChannelDetails] = []
+
+        for channel in channelsToClose {
+            do {
+                // Force close the channel first
+                try await lightningService.closeChannel(
+                    channel,
+                    force: true,
+                    forceCloseReason: "User requested force close after cooperative close failed"
+                )
+                Logger.info("Successfully initiated force close for channel: \(channel.channelId)")
+                successfulChannels.append(channel)
+
+                // Only create transfer tracking record if force close succeeded
+                do {
+                    let transferId = try await transferService.createTransfer(
+                        type: .toSavings,
+                        amountSats: channel.amountOnClose,
+                        channelId: channel.channelId.description
+                    )
+                    Logger.info("Created transfer tracking record for force channel closure: \(transferId)", context: "TransferViewModel")
+                } catch {
+                    Logger.error(
+                        "Failed to create transfer tracking record for force-closed channel: \(channel.channelId)",
+                        context: error.localizedDescription
+                    )
+                    // Don't fail the entire operation - the channel is already force-closed
+                }
+            } catch {
+                Logger.error("Failed to force close channel: \(channel.channelId)", context: error.localizedDescription)
+                errors.append((channelId: channel.channelId, error: error))
+            }
+        }
+
+        // Remove successfully closed channels from the list
+        channelsToClose.removeAll { channel in
+            successfulChannels.contains { $0.channelId == channel.channelId }
+        }
+
+        try? await transferService.syncTransferStates()
+
+        // If any errors occurred, throw an aggregated error
+        if !errors.isEmpty {
+            let errorMessages = errors.map { "\($0.channelId): \($0.error.localizedDescription)" }.joined(separator: ", ")
+            throw AppError(
+                message: "Failed to force close \(errors.count) of \(errors.count + successfulChannels.count) channel(s)",
+                debugMessage: errorMessages
+            )
         }
     }
 
