@@ -112,6 +112,21 @@ struct ActivityItemView: View {
         }
     }
 
+    private var statusAccessibilityIdentifier: String? {
+        switch viewModel.activity {
+        case let .onchain(activity):
+            if activity.confirmed == true {
+                return "StatusConfirmed"
+            }
+            if activity.isBoosted {
+                return "StatusBoosting"
+            }
+            return "StatusConfirming"
+        case .lightning:
+            return nil
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: navigationTitle)
@@ -124,7 +139,6 @@ struct ActivityItemView: View {
                         Spacer()
                         ActivityIcon(activity: viewModel.activity, size: 48)
                     }
-                    .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
                     statusSection
@@ -208,6 +222,7 @@ struct ActivityItemView: View {
                     }
                 }
             }
+            .accessibilityIdentifierIfPresent(statusAccessibilityIdentifier)
             .padding(.bottom, 16)
 
             Divider()
@@ -263,8 +278,9 @@ struct ActivityItemView: View {
                         Image("user")
                             .foregroundColor(accentColor)
                             .frame(width: 16, height: 16)
-                        MoneyText(sats: Int(activity.value), size: .bodySSB)
+                        MoneyText(sats: Int(activity.value), size: .bodySSB, testIdentifier: "MoneyText")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("ActivityAmount")
                     .padding(.bottom, 16)
 
@@ -281,8 +297,9 @@ struct ActivityItemView: View {
                             Image("timer")
                                 .foregroundColor(accentColor)
                                 .frame(width: 16, height: 16)
-                            MoneyText(sats: Int(fee), size: .bodySSB)
+                            MoneyText(sats: Int(fee), size: .bodySSB, testIdentifier: "MoneyText")
                         }
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("ActivityFee")
                         .padding(.bottom, 16)
 

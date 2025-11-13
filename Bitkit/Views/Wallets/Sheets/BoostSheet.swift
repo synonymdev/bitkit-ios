@@ -26,6 +26,7 @@ struct BoostSheet: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var activityList: ActivityListViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     let config: BoostSheetItem
 
     @State private var feeRate: UInt32?
@@ -115,6 +116,7 @@ struct BoostSheet: View {
                                     .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate <= minFeeRate)
+                                .accessibilityIdentifier("Minus")
 
                                 Spacer()
 
@@ -141,12 +143,14 @@ struct BoostSheet: View {
                                     .cornerRadius(200)
                                 }
                                 .disabled(currentFeeRate >= maxFeeRate)
+                                .accessibilityIdentifier("Plus")
                             }
 
                             CustomButton(title: "Use Suggested Fee", size: .small) {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }
+                            .accessibilityIdentifier("RecommendedFeeButton")
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
@@ -203,6 +207,7 @@ struct BoostSheet: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                             .disabled(feeRate == nil || fetchingFees)
+                            .accessibilityIdentifier("CustomFeeButton")
                         }
                         .padding(.vertical, 12)
                         .cornerRadius(12)
@@ -219,6 +224,8 @@ struct BoostSheet: View {
                 }
             }
             .padding(.horizontal, 16)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(isIncoming ? "CPFPBoost" : "RBFBoost")
         }
         .onAppear {
             fetchFeeRate()
@@ -391,6 +398,7 @@ struct BoostSheet: View {
 
             Logger.info("Boost transaction completed successfully, hiding sheet", context: "BoostSheet.performBoost")
             sheets.hideSheet()
+            navigation.reset()
 
         } catch {
             Logger.error("Failed to boost transaction: \(error)", context: "BoostSheet.performBoost")

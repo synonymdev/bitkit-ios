@@ -76,7 +76,14 @@ struct ActivityExplorerView: View {
     private struct InfoSection: View {
         let title: String
         let content: String
+        let testId: String?
         @EnvironmentObject var app: AppViewModel
+
+        init(title: String, content: String, testId: String? = nil) {
+            self.title = title
+            self.content = content
+            self.testId = testId
+        }
 
         var body: some View {
             Button {
@@ -94,6 +101,7 @@ struct ActivityExplorerView: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifierIfPresent(testId)
         }
     }
 
@@ -112,7 +120,8 @@ struct ActivityExplorerView: View {
             if let onchain {
                 InfoSection(
                     title: t("wallet__activity_tx_id"),
-                    content: onchain.txId
+                    content: onchain.txId,
+                    testId: "TXID"
                 )
 
                 if let txDetails {
@@ -153,7 +162,8 @@ struct ActivityExplorerView: View {
 
                         InfoSection(
                             title: t(key, variables: ["num": String(index + 1)]),
-                            content: boostTxId
+                            content: boostTxId,
+                            testId: onchain.txType == .received ? "CPFPBoosted" : "RBFBoosted"
                         )
                     }
                 }
