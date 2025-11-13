@@ -432,8 +432,18 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func closeChannel(_ channel: ChannelDetails) async throws {
-        try await lightningService.closeChannel(userChannelId: channel.userChannelId, counterpartyNodeId: channel.counterpartyNodeId)
+    func closeChannel(_ channel: ChannelDetails, force: Bool = false, forceCloseReason: String? = nil) async throws {
+        try await lightningService.closeChannel(
+            userChannelId: channel.userChannelId,
+            counterpartyNodeId: channel.counterpartyNodeId,
+            force: force,
+            forceCloseReason: forceCloseReason
+        )
+        syncState()
+    }
+
+    func disconnectPeer(_ peer: PeerDetails) async throws {
+        try await lightningService.disconnectPeer(peer: peer)
         syncState()
     }
 
