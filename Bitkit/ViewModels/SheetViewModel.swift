@@ -5,6 +5,7 @@ enum SheetID: String, CaseIterable {
     case appUpdate
     case backup
     case boost
+    case forceTransfer
     case forgotPin
     case gift
     case highBalance
@@ -280,6 +281,18 @@ class SheetViewModel: ObservableObject {
             let sendConfig = config.data as? SendConfig
             let initialRoute = sendConfig?.initialRoute ?? .options
             return SendSheetItem(initialRoute: initialRoute)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var forceTransferSheetItem: ForceTransferSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .forceTransfer else { return nil }
+            return ForceTransferSheetItem()
         }
         set {
             if newValue == nil {

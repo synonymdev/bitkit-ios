@@ -406,29 +406,60 @@ class LightningService {
         }
     }
 
-    func closeChannel(userChannelId: ChannelId, counterpartyNodeId: PublicKey) async throws {
+    func closeChannel(userChannelId: ChannelId, counterpartyNodeId: PublicKey, force: Bool = false, forceCloseReason: String? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
         return try await ServiceQueue.background(.ldk) {
-            try node.closeChannel(
-                userChannelId: userChannelId,
-                counterpartyNodeId: counterpartyNodeId
-            )
+            Logger.debug("Initiating channel close (force=\(force)): userChannelId=\(userChannelId)", context: "LightningService")
+
+            if force {
+                try node.forceCloseChannel(
+                    userChannelId: userChannelId,
+                    counterpartyNodeId: counterpartyNodeId,
+                    reason: forceCloseReason ?? ""
+                )
+            } else {
+                try node.closeChannel(
+                    userChannelId: userChannelId,
+                    counterpartyNodeId: counterpartyNodeId
+                )
+            }
         }
     }
 
-    func closeChannel(_ channel: ChannelDetails) async throws {
+    func closeChannel(_ channel: ChannelDetails, force: Bool = false, forceCloseReason: String? = nil) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
-        return try await ServiceQueue.background(.ldk) {
-            try node.closeChannel(
-                userChannelId: channel.userChannelId,
-                counterpartyNodeId: channel.counterpartyNodeId
-            )
+        Logger.debug("closeChannel called to channel=\(channel), force=\(force)", context: "LightningService")
+
+        return try await closeChannel(
+            userChannelId: channel.userChannelId,
+            counterpartyNodeId: channel.counterpartyNodeId,
+            force: force,
+            forceCloseReason: forceCloseReason
+        )
+    }
+
+    func disconnectPeer(peer: PeerDetails) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let uri = "\(peer.nodeId)@\(peer.address)"
+        Logger.debug("Disconnecting peer: \(uri)")
+
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.disconnect(nodeId: peer.nodeId)
+            }
+            Logger.info("Peer disconnected: \(uri)")
+        } catch {
+            Logger.warn("Peer disconnect error: \(uri)")
+            throw error
         }
     }
 
