@@ -569,6 +569,9 @@ class WalletViewModel: ObservableObject {
             txId: nil,
             address: onchainAddress,
             isReceive: true,
+            feeRate: 0,
+            isTransfer: false,
+            channelId: nil,
             createdAt: currentTime
         )
 

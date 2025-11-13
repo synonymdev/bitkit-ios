@@ -287,7 +287,7 @@ struct SendConfirmationView: View {
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: wallet.isMaxAmountSend)
 
                 // Create pre-activity metadata for tags and activity address
-                await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid)
+                await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
 
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
@@ -394,7 +394,13 @@ struct SendConfirmationView: View {
         return true
     }
 
-    private func createPreActivityMetadata(paymentId: String, paymentHash: String? = nil, address: String? = nil, txId: String? = nil) async {
+    private func createPreActivityMetadata(
+        paymentId: String,
+        paymentHash: String? = nil,
+        address: String? = nil,
+        txId: String? = nil,
+        feeRate: UInt32? = nil
+    ) async {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
             paymentId: paymentId,
@@ -403,6 +409,9 @@ struct SendConfirmationView: View {
             txId: txId,
             address: address,
             isReceive: false,
+            feeRate: feeRate.map { UInt64($0) } ?? 0,
+            isTransfer: false,
+            channelId: nil,
             createdAt: currentTime
         )
         try? await CoreService.shared.activity.addPreActivityMetadata(preActivityMetadata)
