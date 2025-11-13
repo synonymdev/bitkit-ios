@@ -618,8 +618,35 @@ class TransferViewModel: ObservableObject {
         }
     }
 
-    /// Create pre-activity metadata for a transfer transaction
+    /// Create pre-activity metadata for a transfer transaction, or update existing activity if it already exists
     private func createTransferMetadata(txId: String, channelId: String? = nil, feeRate: UInt64? = nil, address: String? = nil) async {
+        // Check if activity already exists (may have been synced from LDK while waiting for channel pending event)
+        do {
+            let activities = try await coreService.activity.get(filter: .onchain, limit: 20)
+            if let existingActivity = activities.first(where: { activity in
+                guard case let .onchain(onchain) = activity else { return false }
+                return onchain.txId == txId
+            }),
+                case var .onchain(onchain) = existingActivity
+            {
+                // Activity already exists, update it directly with transfer metadata
+                onchain.isTransfer = true
+                onchain.channelId = channelId
+                if let feeRate, feeRate > 0 {
+                    onchain.feeRate = feeRate
+                }
+                if let address, !address.isEmpty {
+                    onchain.address = address
+                }
+                try? await coreService.activity.update(id: existingActivity.id, activity: .onchain(onchain))
+                Logger.info("Updated existing activity \(existingActivity.id) with transfer metadata", context: "TransferViewModel")
+                return
+            }
+        } catch {
+            Logger.warn("Failed to check for existing activity: \(error)", context: "TransferViewModel")
+        }
+
+        // Activity doesn't exist yet, create pre-activity metadata (will be applied on insert)
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
             paymentId: txId,
