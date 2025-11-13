@@ -448,18 +448,21 @@ class ActivityService {
     func addPreActivityMetadata(_ preActivityMetadata: BitkitCore.PreActivityMetadata) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadata(preActivityMetadata: preActivityMetadata)
+            SettingsViewModel.shared.notifyAppStateChanged()
         }
     }
 
     func addPreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.addPreActivityMetadataTags(paymentId: paymentId, tags: tags)
+            SettingsViewModel.shared.notifyAppStateChanged()
         }
     }
 
     func removePreActivityMetadataTags(paymentId: String, tags: [String]) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.removePreActivityMetadataTags(paymentId: paymentId, tags: tags)
+            SettingsViewModel.shared.notifyAppStateChanged()
         }
     }
 
@@ -472,12 +475,14 @@ class ActivityService {
     func deletePreActivityMetadata(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.deletePreActivityMetadata(paymentId: paymentId)
+            SettingsViewModel.shared.notifyAppStateChanged()
         }
     }
 
     func resetPreActivityMetadataTags(paymentId: String) async throws {
         try await ServiceQueue.background(.core) {
             try BitkitCore.resetPreActivityMetadataTags(paymentId: paymentId)
+            SettingsViewModel.shared.notifyAppStateChanged()
         }
     }
 
