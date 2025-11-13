@@ -638,8 +638,8 @@ class TransferViewModel: ObservableObject {
                 if let address, !address.isEmpty {
                     onchain.address = address
                 }
-                try? await coreService.activity.update(id: existingActivity.id, activity: .onchain(onchain))
-                Logger.info("Updated existing activity \(existingActivity.id) with transfer metadata", context: "TransferViewModel")
+                try? await coreService.activity.update(id: onchain.id, activity: .onchain(onchain))
+                Logger.info("Updated existing activity \(onchain.id) with transfer metadata", context: "TransferViewModel")
                 return
             }
         } catch {
