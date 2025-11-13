@@ -129,6 +129,9 @@ class TransferViewModel: ObservableObject {
 
         // Create transfer tracking record for spending
         do {
+            // Create pre-activity metadata for the transfer transaction
+            await createTransferMetadata(txId: txid, feeRate: UInt64(satsPerVbyte), address: address)
+
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
                 amountSats: order.clientBalanceSat,
@@ -403,6 +406,11 @@ class TransferViewModel: ObservableObject {
 
         // Create transfer tracking record with the ACTUAL channel ID (not user channel ID)
         do {
+            // Create pre-activity metadata for the transfer transaction if we have a fundingTxId
+            if let fundingTxId {
+                await createTransferMetadata(txId: fundingTxId, channelId: actualChannelId)
+            }
+
             let transferId = try await transferService.createTransfer(
                 type: .toSpending,
                 amountSats: amountSats,
@@ -608,6 +616,24 @@ class TransferViewModel: ObservableObject {
             Logger.info("Giving up on coop close.")
             // TODO: Show force transfer UI
         }
+    }
+
+    /// Create pre-activity metadata for a transfer transaction
+    private func createTransferMetadata(txId: String, channelId: String? = nil, feeRate: UInt64? = nil, address: String? = nil) async {
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            paymentId: txId,
+            tags: [],
+            paymentHash: nil,
+            txId: txId,
+            address: address,
+            isReceive: false,
+            feeRate: feeRate ?? 0,
+            isTransfer: true,
+            channelId: channelId,
+            createdAt: currentTime
+        )
+        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
     }
 }
 
