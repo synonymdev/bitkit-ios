@@ -141,7 +141,7 @@ class ActivityService {
                         let preservedChannelId = existingOnchain?.channelId
                         let preservedTransferTxId = existingOnchain?.transferTxId
                         let preservedFeeRate = existingOnchain?.feeRate ?? 1
-                        let preservedAddress = existingOnchain?.address ?? "todo_find_address"
+                        let preservedAddress = existingOnchain?.address ?? "Loading..."
 
                         // Check if this is a replacement transaction (RBF) that should be marked as boosted
                         let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
