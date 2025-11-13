@@ -281,27 +281,6 @@ class ActivityListViewModel: ObservableObject {
         try await coreService.activity.tags(forActivity: activityId)
     }
 
-    func findActivityAndAddTags(paymentHashOrTxId: String, tags: [String]) async throws {
-        guard !tags.isEmpty else { return }
-
-        // Find the activity by payment ID
-        let activity = try await tryNTimes(
-            toTry: { try await findActivity(byPaymentId: paymentHashOrTxId) },
-            times: 12,
-            interval: 5
-        )
-
-        let activityId = switch activity {
-        case let .lightning(lightning): lightning.id
-        case let .onchain(onchain): onchain.id
-        }
-
-        // Apply tags to the activity
-        try await appendTags(toActivity: activityId, tags: tags)
-
-        Logger.info("Applied tags to activity: \(tags)")
-    }
-
     // MARK: - Boost Methods
 
     func boost(activityId: String, feeRate: UInt32) async throws -> String {

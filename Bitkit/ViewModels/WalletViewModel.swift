@@ -541,6 +541,40 @@ class WalletViewModel: ObservableObject {
         bip21 = newBip21
     }
 
+    /// Payment hash from the current bolt11 invoice, if available
+    private func paymentHash() async -> String? {
+        guard !bolt11.isEmpty else { return nil }
+        guard case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
+        return lightningInvoice.paymentHash.hex
+    }
+
+    /// Payment ID for the current invoice/address
+    func paymentId() async -> String? {
+        if let paymentHash = await paymentHash() {
+            return paymentHash
+        }
+        return onchainAddress.isEmpty ? nil : onchainAddress
+    }
+
+    func persistPreActivityMetadata() async {
+        guard let paymentId = await paymentId(), !paymentId.isEmpty else { return }
+
+        let paymentHash = await paymentHash()
+
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            paymentId: paymentId,
+            tags: [],
+            paymentHash: paymentHash,
+            txId: nil,
+            address: onchainAddress,
+            isReceive: true,
+            createdAt: currentTime
+        )
+
+        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
+    }
+
     private func startPolling() {
         stopPolling()
 
