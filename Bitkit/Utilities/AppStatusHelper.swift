@@ -28,6 +28,23 @@ struct AppStatusHelper {
         return network.isConnected ? .ready : .error
     }
 
+    static func bitcoinNodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
+        let isOnline = network.isConnected
+
+        guard isOnline else {
+            return .error
+        }
+
+        switch wallet.nodeLifecycleState {
+        case .running:
+            return .ready
+        case .starting, .initializing:
+            return .pending
+        case .stopping, .stopped, .errorStarting:
+            return .error
+        }
+    }
+
     static func nodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
         let isOnline = network.isConnected
 
@@ -56,9 +73,10 @@ struct AppStatusHelper {
 
     static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
         let internetState = internetStatus(network: network)
+        let bitcoinNodeState = bitcoinNodeStatus(from: wallet, network: network)
         let nodeState = nodeStatus(from: wallet, network: network)
 
-        let states = [internetState, nodeState]
+        let states = [internetState, bitcoinNodeState, nodeState]
 
         // If any component is in error state, return error
         if states.contains(.error) {
