@@ -351,6 +351,7 @@
 "security__use_pin" = "Utilizar código PIN";
 "security__wiped_title" = "Datos de Monedero Borrados";
 "security__wiped_message" = "Bitkit ha sido restaurado y todos los datos de monedero han sido borrados.";
+"settings__settings" = "Ajustes";
 "settings__dev_enabled_title" = "Opciones de desarrollo activadas";
 "settings__dev_disabled_title" = "Opciones de desarrollo desactivadas";
 "settings__general_title" = "General";
