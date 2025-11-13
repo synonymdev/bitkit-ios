@@ -137,6 +137,11 @@ class ActivityService {
                         }()
                         let preservedIsBoosted = existingOnchain?.isBoosted ?? false
                         let preservedBoostTxIds = existingOnchain?.boostTxIds ?? []
+                        let preservedIsTransfer = existingOnchain?.isTransfer ?? false
+                        let preservedChannelId = existingOnchain?.channelId
+                        let preservedTransferTxId = existingOnchain?.transferTxId
+                        let preservedFeeRate = existingOnchain?.feeRate ?? 1
+                        let preservedAddress = existingOnchain?.address ?? "todo_find_address"
 
                         // Check if this is a replacement transaction (RBF) that should be marked as boosted
                         let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
@@ -173,7 +178,7 @@ class ActivityService {
 
                         // Find the address for the transaction
                         // Outbound txs have address set in bitkit-core automatically from the pre-activity metadata
-                        var address = "todo_find_address"
+                        var address: String? = nil
                         if payment.direction == .inbound {
                             do {
                                 address = try await self.findReceivingAddress(for: txid, value: value)
@@ -182,23 +187,29 @@ class ActivityService {
                             }
                         }
 
+                        let finalAddress = address ?? preservedAddress
+                        let finalFeeRate = preservedFeeRate
+                        let finalIsTransfer = preservedIsTransfer
+                        let finalChannelId = preservedChannelId
+                        let finalTransferTxId = preservedTransferTxId
+
                         let onchain = OnchainActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
                             txId: txid,
                             value: value,
                             fee: (payment.feePaidMsat ?? 0) / 1000,
-                            feeRate: 1, // TODO: get from somewhere
-                            address: address,
+                            feeRate: finalFeeRate,
+                            address: finalAddress,
                             confirmed: isConfirmed,
                             timestamp: timestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
                             boostTxIds: boostTxIds,
-                            isTransfer: false, // TODO: handle when paying for order
+                            isTransfer: finalIsTransfer,
                             doesExist: true,
                             confirmTimestamp: confirmedTimestamp,
-                            channelId: nil, // TODO: get from linked order
-                            transferTxId: nil, // TODO: get from linked order
+                            channelId: finalChannelId,
+                            transferTxId: finalTransferTxId,
                             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
                             updatedAt: timestamp
                         )
@@ -271,7 +282,7 @@ class ActivityService {
     }
 
     /// Find the receiving address for an onchain transaction
-    private func findReceivingAddress(for txid: String, value: UInt64) async throws -> String {
+    private func findReceivingAddress(for txid: String, value: UInt64) async throws -> String? {
         let txDetails = try await AddressChecker.getTransaction(txid: txid)
         let batchSize: UInt32 = 20
         let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
@@ -365,7 +376,7 @@ class ActivityService {
         }
 
         // Fallback: return first output address
-        return txDetails.vout.first?.scriptpubkey_address ?? "todo_find_address"
+        return txDetails.vout.first?.scriptpubkey_address
     }
 
     func getActivity(id: String) async throws -> Activity? {
