@@ -12,6 +12,9 @@ struct SheetIntro: View {
     let testID: String?
     let onCancel: (() -> Void)?
     let onContinue: () -> Void
+    private var baseTestID: String {
+        testID ?? "SheetIntro"
+    }
 
     init(
         navTitle: String,
@@ -52,6 +55,7 @@ struct SheetIntro: View {
                     .frame(width: UIScreen.main.bounds.width * 0.8)
                     .frame(maxHeight: 256)
                     .padding(.bottom, 32)
+                    .accessibilityIdentifier("\(baseTestID)Image")
 
                 DisplayText(title, accentColor: accentColor)
                     .padding(.bottom, 14)
@@ -59,13 +63,15 @@ struct SheetIntro: View {
 
                 BodyMText(description, accentFont: accentFont)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("\(baseTestID)Description")
             }
 
             buttonStack
                 .padding(.top, 32)
         }
         .padding(.horizontal, 32)
-        .accessibilityIdentifier(testID ?? "SheetIntro")
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(baseTestID)
     }
 
     @ViewBuilder
@@ -78,12 +84,14 @@ struct SheetIntro: View {
                 ) {
                     onCancel()
                 }
+                .accessibilityIdentifier("\(baseTestID)Cancel")
 
                 CustomButton(
                     title: continueText
                 ) {
                     onContinue()
                 }
+                .accessibilityIdentifier("\(baseTestID)Continue")
             }
         } else {
             CustomButton(
@@ -91,6 +99,7 @@ struct SheetIntro: View {
             ) {
                 onContinue()
             }
+            .accessibilityIdentifier("\(baseTestID)Continue")
         }
     }
 }

@@ -31,44 +31,54 @@ struct ActivityIcon: View {
     }
 
     var body: some View {
-        if isLightning {
-            if status == .failed {
+        Group {
+            if isLightning {
+                if status == .failed {
+                    CircularIcon(
+                        icon: "x-circle",
+                        iconColor: .purpleAccent,
+                        backgroundColor: .purple16,
+                        size: size
+                    )
+                } else if status == .pending {
+                    CircularIcon(
+                        icon: "hourglass-simple",
+                        iconColor: .purpleAccent,
+                        backgroundColor: .purple16,
+                        size: size
+                    )
+                } else {
+                    CircularIcon(
+                        icon: txType == .sent ? "arrow-up" : "arrow-down",
+                        iconColor: .purpleAccent,
+                        backgroundColor: .purple16,
+                        size: size
+                    )
+                }
+            } else if isBoosted && !(confirmed ?? false) {
                 CircularIcon(
-                    icon: "x-circle",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16,
-                    size: size
-                )
-            } else if status == .pending {
-                CircularIcon(
-                    icon: "hourglass-simple",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16,
+                    icon: "timer-alt",
+                    iconColor: .yellow,
+                    backgroundColor: .yellow16,
                     size: size
                 )
             } else {
+                let paymentIcon = txType == PaymentType.sent ? "arrow-up" : "arrow-down"
                 CircularIcon(
-                    icon: txType == .sent ? "arrow-up" : "arrow-down",
-                    iconColor: .purpleAccent,
-                    backgroundColor: .purple16,
+                    icon: isTransfer ? "arrow-up-down" : paymentIcon,
+                    iconColor: .brandAccent,
+                    backgroundColor: .brand16,
                     size: size
                 )
             }
-        } else if isBoosted && !(confirmed ?? false) {
-            CircularIcon(
-                icon: "timer-alt",
-                iconColor: .yellow,
-                backgroundColor: .yellow16,
-                size: size
-            )
-        } else {
-            let paymentIcon = txType == PaymentType.sent ? "arrow-up" : "arrow-down"
-            CircularIcon(
-                icon: isTransfer ? "arrow-up-down" : paymentIcon,
-                iconColor: .brandAccent,
-                backgroundColor: .brand16,
-                size: size
-            )
         }
+        .accessibilityIdentifierIfPresent(iconAccessibilityIdentifier)
+    }
+
+    private var iconAccessibilityIdentifier: String? {
+        if !isLightning, isBoosted, !(confirmed ?? false) {
+            return "BoostingIcon"
+        }
+        return nil
     }
 }
