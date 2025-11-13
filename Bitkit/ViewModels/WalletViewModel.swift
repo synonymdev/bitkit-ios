@@ -442,6 +442,11 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
+    func disconnectPeer(_ peer: PeerDetails) async throws {
+        try await lightningService.disconnectPeer(peer: peer)
+        syncState()
+    }
+
     func syncState() {
         nodeStatus = lightningService.status
         nodeId = lightningService.nodeId
