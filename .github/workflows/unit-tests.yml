@@ -4,14 +4,17 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
   
 jobs:
+    
   test:
+    if: github.event.pull_request.draft == false
     name: Run Tests
     runs-on: macos-15
     timeout-minutes: 60
@@ -38,6 +41,25 @@ jobs:
           echo "\n=== Device Pairs ==="
           xcrun simctl list devicetypes
 
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', '**/*.xcodeproj/**') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
       - name: Install dependencies
         run: |
           xcodebuild -resolvePackageDependencies | xcbeautify
@@ -51,7 +73,7 @@ jobs:
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-            -enableCodeCoverage YES \
+            -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
             | xcbeautify --report junit
 
