@@ -4,13 +4,18 @@ on:
   push:
     branches: [master]
   pull_request:
-    branches: [master]
+
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
   
 jobs:
+  build:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    
   test:
     name: Run Tests
     runs-on: macos-15
