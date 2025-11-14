@@ -152,8 +152,10 @@ class LightningService {
         }
 
         await MainActor.run {
-            channelCache = Dictionary(uniqueKeysWithValues: (channels ?? []).map { ($0.channelId.description, $0) })
-            Logger.debug("Refreshed channel cache: \(channelCache.count) channels", context: "LightningService")
+            let newChannels = Dictionary(uniqueKeysWithValues: (channels ?? []).map { ($0.channelId.description, $0) })
+            for (key, value) in newChannels {
+                channelCache[key] = value
+            }
         }
     }
 
@@ -602,8 +604,14 @@ extension LightningService {
 
                     if let channel {
                         await registerClosedChannel(channel: channel, reason: reasonString)
+                        await MainActor.run {
+                            channelCache.removeValue(forKey: channelIdString)
+                        }
                     } else {
-                        Logger.error("Could not find channel details for closed channel: \(userChannelId) in cache", context: "LightningService")
+                        Logger.error(
+                            "Could not find channel details for closed channel: channelId=\(channelIdString) userChannelId=\(userChannelId) in cache",
+                            context: "LightningService"
+                        )
                     }
                 case .paymentForwarded:
                     break

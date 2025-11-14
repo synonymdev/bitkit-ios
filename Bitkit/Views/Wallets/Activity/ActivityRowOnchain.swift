@@ -39,23 +39,31 @@ struct ActivityRowOnchain: View {
         return DateFormatterHelpers.getActivityItemDate(item.timestamp)
     }
 
+    private var feeDescription: String {
+        TransactionSpeed.getFeeDescription(feeRate: item.feeRate, feeEstimates: feeEstimates)
+    }
+
+    private var durationWithoutSymbol: String {
+        // Remove ± symbol since localization strings already include it
+        feeDescription.replacingOccurrences(of: "±", with: "")
+    }
+
     private var description: String {
         if item.isTransfer {
             switch item.txType {
             case .sent:
                 return item.confirmed ?
                     t("wallet__activity_transfer_spending_done") :
-                    t("wallet__activity_transfer_spending_pending", variables: ["duration": "TODO"])
+                    t("wallet__activity_transfer_spending_pending", variables: ["duration": durationWithoutSymbol])
             case .received:
                 return item.confirmed ?
                     t("wallet__activity_transfer_savings_done") :
-                    t("wallet__activity_transfer_savings_pending", variables: ["duration": "TODO"])
+                    t("wallet__activity_transfer_savings_pending", variables: ["duration": durationWithoutSymbol])
             }
         } else {
             if item.confirmed {
                 return formattedTime
             } else {
-                let feeDescription = TransactionSpeed.getFeeDescription(feeRate: item.feeRate, feeEstimates: feeEstimates)
                 return t("wallet__activity_confirms_in", variables: ["feeRateDescription": feeDescription])
             }
         }
