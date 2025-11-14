@@ -91,8 +91,14 @@ struct SendConfirmationView: View {
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            TagSelectionView(navigationPath: $navigationPath)
-                .padding(.top, 16)
+            TagSelectionView(
+                onDelete: { tag in
+                    tagManager.removeTagFromSelection(tag)
+                },
+                onAddTag: {
+                    navigationPath.append(.tag)
+                }
+            )
 
             Spacer()
 
@@ -258,31 +264,35 @@ struct SendConfirmationView: View {
     }
 
     private func performPayment() async throws {
+        var createdMetadataPaymentId: String? = nil
+
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
 
-                // Perform the Lightning payment
-                let paymentHash = try await wallet.send(bolt11: invoice.bolt11, sats: amount)
-                Logger.info("Lightning payment successful: \(paymentHash)")
+                // Create pre-activity metadata for tags and activity address
+                let paymentHash = invoice.paymentHash.hex
+                createdMetadataPaymentId = paymentHash
+                await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
-                // Apply tags to the Lightning payment
-                await applyTagsToPayment(paymentId: paymentHash)
+                // Perform the Lightning payment
+                try await wallet.send(bolt11: invoice.bolt11, sats: amount)
+                Logger.info("Lightning payment successful: \(paymentHash)")
 
                 navigationPath.append(.success(paymentHash))
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: wallet.isMaxAmountSend)
 
+                // Create pre-activity metadata for tags and activity address
+                await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
+
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
 
                 Logger.info("Onchain send result txid: \(txid)")
-
-                // Apply tags to the transaction
-                await applyTagsToPayment(paymentId: txid)
 
                 navigationPath.append(.success(txid))
             } else {
@@ -292,6 +302,10 @@ struct SendConfirmationView: View {
             }
         } catch {
             Logger.error("Payment failed: \(error)")
+
+            if let paymentId = createdMetadataPaymentId {
+                try? await CoreService.shared.activity.deletePreActivityMetadata(paymentId: paymentId)
+            }
 
             // TODO: remove toast and use failure screen instead
             app.toast(error)
@@ -380,23 +394,27 @@ struct SendConfirmationView: View {
         return true
     }
 
-    private func applyTagsToPayment(paymentId: String) async {
-        if !tagManager.selectedTags.isEmpty {
-            Logger.info("Applying tags to payment: \(tagManager.selectedTagsArray)")
-
-            Task {
-                do {
-                    try await activityListViewModel.findActivityAndAddTags(
-                        paymentHashOrTxId: paymentId,
-                        tags: tagManager.selectedTagsArray
-                    )
-                    Logger.info("Applied tags to payment: \(tagManager.selectedTagsArray)")
-                } catch {
-                    Logger.warn("Failed to apply tags to payment \(paymentId): \(error)")
-                    // Don't fail the payment if tagging fails
-                }
-            }
-        }
+    private func createPreActivityMetadata(
+        paymentId: String,
+        paymentHash: String? = nil,
+        address: String? = nil,
+        txId: String? = nil,
+        feeRate: UInt32? = nil
+    ) async {
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            paymentId: paymentId,
+            tags: tagManager.selectedTagsArray,
+            paymentHash: paymentHash,
+            txId: txId,
+            address: address,
+            isReceive: false,
+            feeRate: feeRate.map { UInt64($0) } ?? 0,
+            isTransfer: false,
+            channelId: nil,
+            createdAt: currentTime
+        )
+        try? await CoreService.shared.activity.addPreActivityMetadata(preActivityMetadata)
     }
 
     @ViewBuilder

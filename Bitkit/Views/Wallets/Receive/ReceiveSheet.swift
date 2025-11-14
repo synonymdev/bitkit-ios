@@ -32,6 +32,7 @@ struct ReceiveSheet: View {
     let config: ReceiveSheetItem
     @State private var navigationPath: [ReceiveRoute] = []
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var tagManager: TagManager
 
     var body: some View {
         Sheet(id: .receive, data: config) {
@@ -45,7 +46,12 @@ struct ReceiveSheet: View {
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""
+            tagManager.clearSelectedTags()
             Task {
+                // Reset tags for current payment ID before refreshing
+                if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
+                    try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
+                }
                 try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
