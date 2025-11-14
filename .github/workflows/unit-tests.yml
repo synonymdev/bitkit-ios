@@ -75,7 +75,7 @@ jobs:
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-            -enableCodeCoverage YES \
+            -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
             | xcbeautify --report junit
 
