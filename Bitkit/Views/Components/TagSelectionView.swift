@@ -4,6 +4,7 @@ struct TagSelectionView: View {
     @EnvironmentObject var tagManager: TagManager
     let onDelete: (String) -> Void
     let onAddTag: () -> Void
+    var buttonTestId: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,6 +24,7 @@ struct TagSelectionView: View {
             ) {
                 onAddTag()
             }
+            .accessibilityIdentifierIfPresent(buttonTestId)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

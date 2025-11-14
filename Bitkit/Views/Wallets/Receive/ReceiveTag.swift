@@ -22,11 +22,12 @@ struct ReceiveTag: View {
             TagInputForm(
                 tagText: $newTag,
                 isTextFieldFocused: $isTextFieldFocused,
-                isLoading: isLoading
+                isLoading: isLoading,
+                textFieldTestId: "TagInputReceive",
+                buttonTestId: "ReceiveTagsSubmit"
             ) { tag in
                 await appendTagAndClose(tag)
             }
-            .accessibilityIdentifier("ReceiveTagsSubmit")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
