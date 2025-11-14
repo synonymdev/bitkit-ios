@@ -12,11 +12,9 @@ concurrency:
   cancel-in-progress: true
   
 jobs:
-  build:
-    if: github.event.pull_request.draft == false
-    runs-on: ubuntu-latest
     
   test:
+    if: github.event.pull_request.draft == false
     name: Run Tests
     runs-on: macos-15
     timeout-minutes: 60
