@@ -64,10 +64,16 @@ struct ActivityIcon: View {
                 )
             } else {
                 let paymentIcon = txType == PaymentType.sent ? "arrow-up" : "arrow-down"
+                let (iconColor, backgroundColor): (Color, Color) = if isTransfer {
+                    // From savings (to spending) = sent = orange, From spending (to savings) = received = purple
+                    txType == .sent ? (.brandAccent, .brand16) : (.purpleAccent, .purple16)
+                } else {
+                    (.brandAccent, .brand16)
+                }
                 CircularIcon(
                     icon: isTransfer ? "arrow-up-down" : paymentIcon,
-                    iconColor: .brandAccent,
-                    backgroundColor: .brand16,
+                    iconColor: iconColor,
+                    backgroundColor: backgroundColor,
                     size: size
                 )
             }
