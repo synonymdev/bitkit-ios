@@ -145,11 +145,19 @@ class ActivityService {
                         }()
                         let preservedIsBoosted = existingOnchain?.isBoosted ?? false
                         let preservedBoostTxIds = existingOnchain?.boostTxIds ?? []
-                        let preservedIsTransfer = existingOnchain?.isTransfer ?? false
-                        let preservedChannelId = existingOnchain?.channelId
+                        var preservedIsTransfer = existingOnchain?.isTransfer ?? false
+                        var preservedChannelId = existingOnchain?.channelId
                         let preservedTransferTxId = existingOnchain?.transferTxId
                         let preservedFeeRate = existingOnchain?.feeRate ?? 1
                         let preservedAddress = existingOnchain?.address ?? "Loading..."
+
+                        // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
+                        if payment.direction == .inbound && (preservedChannelId == nil || !preservedIsTransfer) {
+                            if let channelId = await self.findClosedChannelForTransaction(txid: txid) {
+                                preservedChannelId = channelId
+                                preservedIsTransfer = true
+                            }
+                        }
 
                         // Check if this is a replacement transaction (RBF) that should be marked as boosted
                         let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
@@ -286,6 +294,34 @@ class ActivityService {
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
             self.activitiesChangedSubject.send()
         }
+    }
+
+    /// Check if a transaction spends a closed channel's funding UTXO
+    private func findClosedChannelForTransaction(txid: String) async -> String? {
+        do {
+            let closedChannels = try await getAllClosedChannels(sortDirection: .desc)
+            guard !closedChannels.isEmpty else { return nil }
+
+            let txDetails = try await AddressChecker.getTransaction(txid: txid)
+
+            // Check if any input spends a closed channel's funding UTXO
+            for input in txDetails.vin {
+                guard let inputTxid = input.txid, let inputVout = input.vout else { continue }
+
+                if let matchingChannel = closedChannels.first(where: { channel in
+                    channel.fundingTxoTxid == inputTxid && channel.fundingTxoIndex == UInt32(inputVout)
+                }) {
+                    return matchingChannel.channelId
+                }
+            }
+        } catch {
+            Logger.warn(
+                "Failed to check if transaction \(txid) spends closed channel funding UTXO: \(error)",
+                context: "CoreService.findClosedChannelForTransaction"
+            )
+        }
+
+        return nil
     }
 
     /// Check pre-activity metadata for addresses in the transaction
