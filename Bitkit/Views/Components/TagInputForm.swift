@@ -5,6 +5,8 @@ struct TagInputForm: View {
     @FocusState.Binding var isTextFieldFocused: Bool
     var isLoading: Bool = false
     var autoFocus: Bool = true
+    var textFieldTestId: String?
+    var buttonTestId: String?
     var onSubmit: (String) async -> Void
 
     private var trimmedTag: String {
@@ -18,7 +20,8 @@ struct TagInputForm: View {
         TextField(
             t("wallet__tags_new_enter"),
             text: $tagText,
-            backgroundColor: .white08
+            backgroundColor: .white08,
+            testIdentifier: textFieldTestId
         )
         .focused($isTextFieldFocused)
         .disabled(isLoading)
@@ -41,6 +44,7 @@ struct TagInputForm: View {
             Task { await onSubmit(trimmedTag) }
         }
         .buttonBottomPadding(isFocused: isTextFieldFocused)
+        .accessibilityIdentifierIfPresent(buttonTestId)
         .task {
             if autoFocus {
                 isTextFieldFocused = true

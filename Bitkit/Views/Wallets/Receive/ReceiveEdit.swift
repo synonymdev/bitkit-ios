@@ -72,9 +72,9 @@ struct ReceiveEdit: View {
                             },
                             onAddTag: {
                                 navigationPath.append(.tag)
-                            }
+                            },
+                            buttonTestId: "TagsAdd"
                         )
-                        .accessibilityIdentifier("TagsAdd")
                     }
 
                     Spacer()
