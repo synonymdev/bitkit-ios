@@ -59,6 +59,7 @@ struct SettingsListLabel: View {
                     if let rightText {
                         BodyMText(rightText, textColor: .textPrimary)
                             .padding(.trailing, 5)
+                            .accessibilityIdentifier("Value")
                     }
 
                     if let rightIcon {

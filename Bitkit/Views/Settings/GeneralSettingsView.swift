@@ -26,14 +26,15 @@ struct GeneralSettingsView: View {
                             rightText: currency.selectedCurrency
                         )
                     }
+                    .accessibilityIdentifier("CurrenciesSettings")
 
                     NavigationLink(value: Route.unitSettings) {
                         SettingsListLabel(
                             title: t("settings__general__unit"),
                             rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
                         )
-                        .accessibilityIdentifier("UnitSettings")
                     }
+                    .accessibilityIdentifier("UnitSettings")
 
                     NavigationLink(value: Route.transactionSpeedSettings) {
                         SettingsListLabel(
@@ -41,6 +42,8 @@ struct GeneralSettingsView: View {
                             rightText: settings.defaultTransactionSpeed.displayTitle
                         )
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("TransactionSpeedSettings")
 
                     if !tagManager.lastUsedTags.isEmpty {
                         NavigationLink(value: Route.tagSettings) {
@@ -49,6 +52,7 @@ struct GeneralSettingsView: View {
                                 rightText: String(tagManager.lastUsedTags.count)
                             )
                         }
+                        .accessibilityIdentifier("TagsSettings")
                     }
 
                     NavigationLink(value: Route.widgetsSettings) {
@@ -57,6 +61,7 @@ struct GeneralSettingsView: View {
                             rightText: settings.showWidgets ? tTodo("On") : tTodo("Off")
                         )
                     }
+                    .accessibilityIdentifier("WidgetsSettings")
 
                     NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                         SettingsListLabel(
@@ -64,6 +69,7 @@ struct GeneralSettingsView: View {
                             rightText: settings.enableQuickpay ? tTodo("On") : tTodo("Off")
                         )
                     }
+                    .accessibilityIdentifier("QuickpaySettings")
 
                     NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
                         SettingsListLabel(
@@ -71,6 +77,7 @@ struct GeneralSettingsView: View {
                             rightText: settings.enableNotifications ? tTodo("On") : tTodo("Off")
                         )
                     }
+                    .accessibilityIdentifier("NotificationsSettings")
                 }
             }
         }
