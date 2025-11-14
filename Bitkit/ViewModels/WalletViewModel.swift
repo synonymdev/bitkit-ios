@@ -498,6 +498,15 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+        // Get old payment ID and tags before refreshing (which may change payment ID)
+        let oldPaymentId = await paymentId()
+        var tagsToMigrate: [String] = []
+        if let oldPaymentId, !oldPaymentId.isEmpty {
+            if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
+                tagsToMigrate = oldMetadata.tags
+            }
+        }
+
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
@@ -549,6 +558,9 @@ class WalletViewModel: ObservableObject {
         }
 
         bip21 = newBip21
+
+        // Persist metadata with migrated tags
+        await persistPreActivityMetadata(tags: tagsToMigrate)
     }
 
     /// Payment hash from the current bolt11 invoice, if available
@@ -566,7 +578,7 @@ class WalletViewModel: ObservableObject {
         return onchainAddress.isEmpty ? nil : onchainAddress
     }
 
-    func persistPreActivityMetadata() async {
+    func persistPreActivityMetadata(tags: [String] = []) async {
         guard let paymentId = await paymentId(), !paymentId.isEmpty else { return }
 
         let paymentHash = await paymentHash()
@@ -574,7 +586,7 @@ class WalletViewModel: ObservableObject {
         let currentTime = UInt64(Date().timeIntervalSince1970)
         let preActivityMetadata = BitkitCore.PreActivityMetadata(
             paymentId: paymentId,
-            tags: [],
+            tags: tags,
             paymentHash: paymentHash,
             txId: nil,
             address: onchainAddress,

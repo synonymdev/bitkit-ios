@@ -48,9 +48,11 @@ struct ReceiveSheet: View {
             wallet.invoiceNote = ""
             tagManager.clearSelectedTags()
             Task {
+                // Reset tags for current payment ID before refreshing
+                if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
+                    try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
+                }
                 try? await wallet.refreshBip21(forceRefreshBolt11: true)
-                // Create pre-activity metadata after refreshing the invoice/address
-                await wallet.persistPreActivityMetadata()
             }
         }
     }
