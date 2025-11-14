@@ -5,6 +5,7 @@ struct TransactionSpeedSettingsRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     var customSetSpeed: String?
+    var testIdentifier: String?
 
     var iconColor: Color {
         switch speed {
@@ -48,6 +49,7 @@ struct TransactionSpeedSettingsRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
+        .accessibilityIdentifierIfPresent(testIdentifier)
     }
 }
 
@@ -74,7 +76,8 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .fast,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .fast
-                            }
+                            },
+                            testIdentifier: "fast"
                         )
 
                         Divider()
@@ -84,7 +87,8 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .normal,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .normal
-                            }
+                            },
+                            testIdentifier: "normal"
                         )
 
                         Divider()
@@ -94,7 +98,8 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .slow,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .slow
-                            }
+                            },
+                            testIdentifier: "slow"
                         )
 
                         Divider()
@@ -107,7 +112,8 @@ struct TransactionSpeedSettingsView: View {
                             onSelect: {
                                 navigation.navigate(.customSpeedSettings)
                             },
-                            customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed
+                            customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed,
+                            testIdentifier: "custom"
                         )
                     }
                 }
