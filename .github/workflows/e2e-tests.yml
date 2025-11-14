@@ -236,3 +236,17 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           cd docker && docker compose down -v || true
+
+  e2e-status:
+    name: e2e-status
+    runs-on: ubuntu-latest
+    needs: [e2e-tests]
+    if: always()
+    steps:
+      - name: Verify all E2E shards succeeded
+        run: |
+          if [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+            echo "❌ Some E2E shards failed."
+            exit 1
+          fi
+          echo "✅ All E2E shards passed!"
