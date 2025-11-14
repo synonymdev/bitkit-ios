@@ -113,22 +113,30 @@ class ActivityService {
                             continue
                         }
 
+                        let paymentTimestamp = payment.latestUpdateTimestamp
+
+                        let existingActivity = try getActivityById(activityId: payment.id)
+
+                        // Check if existing activity has newer updatedAt timestamp - skip update to avoid overwriting newer local data
+                        if let existingActivity, case let .onchain(existing) = existingActivity {
+                            let existingUpdatedAt = existing.updatedAt ?? 0
+                            if existingUpdatedAt > paymentTimestamp {
+                                continue
+                            }
+                        }
+
                         var isConfirmed = false
                         var confirmedTimestamp: UInt64?
-                        if case let .confirmed(blockHash, height, timestamp) = txStatus {
+                        if case let .confirmed(blockHash, height, blockTimestamp) = txStatus {
                             isConfirmed = true
-                            confirmedTimestamp = timestamp
+                            confirmedTimestamp = blockTimestamp
                         }
 
-                        // Ensure confirmTimestamp is at least equal to timestamp when confirmed
-                        let timestamp = payment.latestUpdateTimestamp
-
-                        if isConfirmed && confirmedTimestamp != nil && confirmedTimestamp! < timestamp {
-                            confirmedTimestamp = timestamp
+                        // Ensure confirmTimestamp is at least equal to paymentTimestamp when confirmed
+                        if isConfirmed && confirmedTimestamp != nil && confirmedTimestamp! < paymentTimestamp {
+                            confirmedTimestamp = paymentTimestamp
                         }
 
-                        // Get existing activity to preserve certain flags like isBoosted and boostTxIds
-                        let existingActivity = try getActivityById(activityId: payment.id)
                         let existingOnchain: OnchainActivity? = {
                             if let existingActivity, case let .onchain(existing) = existingActivity {
                                 return existing
@@ -202,7 +210,7 @@ class ActivityService {
                             feeRate: finalFeeRate,
                             address: finalAddress,
                             confirmed: isConfirmed,
-                            timestamp: timestamp,
+                            timestamp: paymentTimestamp,
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
                             boostTxIds: boostTxIds,
                             isTransfer: finalIsTransfer,
@@ -211,7 +219,7 @@ class ActivityService {
                             channelId: finalChannelId,
                             transferTxId: finalTransferTxId,
                             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
-                            updatedAt: timestamp
+                            updatedAt: paymentTimestamp
                         )
 
                         if existingActivity != nil {
@@ -227,6 +235,19 @@ class ActivityService {
                         // Skip pending inbound payments, just means they created an invoice
                         guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
 
+                        let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
+
+                        // Get existing activity early to check updatedAt before processing
+                        let existingActivity = try getActivityById(activityId: payment.id)
+
+                        // Check if existing activity has newer updatedAt timestamp - skip update to avoid overwriting newer local data
+                        if let existingActivity, case let .lightning(existing) = existingActivity {
+                            let existingUpdatedAt = existing.updatedAt ?? 0
+                            if existingUpdatedAt > paymentTimestamp {
+                                continue
+                            }
+                        }
+
                         let ln = LightningActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
@@ -235,13 +256,13 @@ class ActivityService {
                             fee: (payment.feePaidMsat ?? 0) / 1000,
                             invoice: bolt11 ?? "No invoice",
                             message: description ?? "",
-                            timestamp: UInt64(payment.latestUpdateTimestamp),
+                            timestamp: paymentTimestamp,
                             preimage: preimage,
-                            createdAt: UInt64(payment.latestUpdateTimestamp),
-                            updatedAt: UInt64(payment.latestUpdateTimestamp)
+                            createdAt: paymentTimestamp,
+                            updatedAt: paymentTimestamp
                         )
 
-                        if try (getActivityById(activityId: payment.id)) != nil {
+                        if existingActivity != nil {
                             try updateActivity(activityId: payment.id, activity: .lightning(ln))
                             updatedCount += 1
                         } else {
