@@ -76,6 +76,7 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .fast,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .fast
+                                navigation.navigateBack()
                             },
                             testIdentifier: "fast"
                         )
@@ -87,6 +88,7 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .normal,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .normal
+                                navigation.navigateBack()
                             },
                             testIdentifier: "normal"
                         )
@@ -98,6 +100,7 @@ struct TransactionSpeedSettingsView: View {
                             isSelected: settings.defaultTransactionSpeed == .slow,
                             onSelect: {
                                 settings.defaultTransactionSpeed = .slow
+                                navigation.navigateBack()
                             },
                             testIdentifier: "slow"
                         )
