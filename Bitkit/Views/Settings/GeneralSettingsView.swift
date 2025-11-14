@@ -42,6 +42,7 @@ struct GeneralSettingsView: View {
                             rightText: settings.defaultTransactionSpeed.displayTitle
                         )
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("TransactionSpeedSettings")
 
                     if !tagManager.lastUsedTags.isEmpty {
