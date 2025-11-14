@@ -12,7 +12,7 @@ struct WalletBackupV1: Codable {
 struct MetadataBackupV1: Codable {
     let version: Int
     let createdAt: UInt64
-    let tagMetadata: [ActivityTagsMetadata]
+    let tagMetadata: [PreActivityMetadata]
     let cache: AppCacheData
 }
 
@@ -47,5 +47,6 @@ struct ActivityBackupV1: Codable {
     let version: Int
     let createdAt: UInt64
     let activities: [Activity]
+    let activityTags: [ActivityTags]
     let closedChannels: [ClosedChannelDetails]
 }

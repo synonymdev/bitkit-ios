@@ -9,24 +9,15 @@ struct TagSettingsView: View {
             NavigationBar(title: t("settings__general__tags"))
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("settings__general__tags_previously"))
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                    WrappingHStack(spacing: 8) {
-                        ForEach(tagManager.lastUsedTags, id: \.self) { tag in
-                            Tag(
-                                tag,
-                                icon: .trash,
-                                onDelete: {
-                                    tagManager.removeFromLastUsedTags(tag)
-                                }
-                            )
-                        }
-                    }
-                }
+                TagsListView(
+                    tags: tagManager.lastUsedTags,
+                    icon: .trash,
+                    onTagDelete: { tag in
+                        tagManager.removeFromLastUsedTags(tag)
+                    },
+                    title: t("settings__general__tags_previously"),
+                    topPadding: 24
+                )
             }
         }
         .navigationBarHidden(true)

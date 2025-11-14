@@ -498,6 +498,15 @@ class WalletViewModel: ObservableObject {
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+        // Get old payment ID and tags before refreshing (which may change payment ID)
+        let oldPaymentId = await paymentId()
+        var tagsToMigrate: [String] = []
+        if let oldPaymentId, !oldPaymentId.isEmpty {
+            if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
+                tagsToMigrate = oldMetadata.tags
+            }
+        }
+
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
@@ -549,6 +558,46 @@ class WalletViewModel: ObservableObject {
         }
 
         bip21 = newBip21
+
+        // Persist metadata with migrated tags
+        await persistPreActivityMetadata(tags: tagsToMigrate)
+    }
+
+    /// Payment hash from the current bolt11 invoice, if available
+    private func paymentHash() async -> String? {
+        guard !bolt11.isEmpty else { return nil }
+        guard case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
+        return lightningInvoice.paymentHash.hex
+    }
+
+    /// Payment ID for the current invoice/address
+    func paymentId() async -> String? {
+        if let paymentHash = await paymentHash() {
+            return paymentHash
+        }
+        return onchainAddress.isEmpty ? nil : onchainAddress
+    }
+
+    func persistPreActivityMetadata(tags: [String] = []) async {
+        guard let paymentId = await paymentId(), !paymentId.isEmpty else { return }
+
+        let paymentHash = await paymentHash()
+
+        let currentTime = UInt64(Date().timeIntervalSince1970)
+        let preActivityMetadata = BitkitCore.PreActivityMetadata(
+            paymentId: paymentId,
+            tags: tags,
+            paymentHash: paymentHash,
+            txId: nil,
+            address: onchainAddress,
+            isReceive: true,
+            feeRate: 0,
+            isTransfer: false,
+            channelId: nil,
+            createdAt: currentTime
+        )
+
+        try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
     }
 
     private func startPolling() {

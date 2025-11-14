@@ -175,6 +175,10 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
+    nonisolated func notifyAppStateChanged() {
+        appStateSubject.send()
+    }
+
     // MARK: - Computed Properties
 
     var electrumHasEdited: Bool {

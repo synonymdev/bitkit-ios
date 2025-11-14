@@ -35,51 +35,27 @@ struct AddTagSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 SheetHeader(title: t("wallet__tags_add"))
 
-                if !tagManager.lastUsedTags.isEmpty {
-                    CaptionMText(t("wallet__tags_previously"))
-                        .padding(.bottom, 16)
-
-                    WrappingHStack(spacing: 8) {
-                        ForEach(tagManager.lastUsedTags, id: \.self) { tag in
-                            Tag(
-                                tag,
-                                onPress: {
-                                    Task { await appendTagAndClose(tag) }
-                                }
-                            )
-                        }
-                    }
-                    .padding(.bottom, 28)
+                PreviouslyUsedTagsView { tag in
+                    await appendTagAndClose(tag)
                 }
 
-                CaptionMText(t("wallet__tags_new"))
-                    .padding(.bottom, 8)
-
-                TextField(t("wallet__tags_new_enter"), text: $newTag, backgroundColor: .white08)
-                    .focused($isTextFieldFocused)
-                    .disabled(isLoading)
-                    .padding(.top, 8)
-
-                Spacer()
-
-                CustomButton(
-                    title: t("wallet__tags_add_button"),
-                    isDisabled: newTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                TagInputForm(
+                    tagText: $newTag,
+                    isTextFieldFocused: $isTextFieldFocused,
                     isLoading: isLoading
-                ) {
-                    Task {
-                        await appendTagAndClose(newTag.trimmingCharacters(in: .whitespacesAndNewlines))
-                    }
+                ) { tag in
+                    await appendTagAndClose(tag)
                 }
-                .buttonBottomPadding(isFocused: isTextFieldFocused)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
         }
     }
 
     private func appendTagAndClose(_ tag: String) async {
         guard !tag.isEmpty else { return }
         isLoading = true
+        defer { isLoading = false }
+
         do {
             tagManager.addToLastUsedTags(tag)
             try await activityListViewModel.appendTags(toActivity: config.activityId, tags: [tag])
@@ -87,6 +63,5 @@ struct AddTagSheet: View {
         } catch {
             app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
         }
-        isLoading = false
     }
 }

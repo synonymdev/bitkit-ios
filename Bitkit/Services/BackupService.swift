@@ -202,10 +202,11 @@ class BackupService {
                 let payload = try JSONDecoder().decode(ActivityBackupV1.self, from: dataBytes)
 
                 try await CoreService.shared.activity.upsertList(payload.activities)
+                try await CoreService.shared.activity.upsertTags(payload.activityTags)
                 try await CoreService.shared.activity.upsertClosedChannelList(payload.closedChannels)
 
                 Logger.debug(
-                    "Restored \(payload.activities.count) activities, \(payload.closedChannels.count) closed channels",
+                    "Restored \(payload.activities.count) activities, \(payload.activityTags.count) activity tags, \(payload.closedChannels.count) closed channels",
                     context: "BackupService"
                 )
             }
@@ -213,15 +214,11 @@ class BackupService {
             try await performRestore(category: .metadata) { dataBytes in
                 let payload = try JSONDecoder().decode(MetadataBackupV1.self, from: dataBytes)
 
-                let activityTags = payload.tagMetadata.map { item in
-                    ActivityTags(activityId: item.id, tags: item.tags)
-                }
-
-                try await CoreService.shared.activity.upsertTags(activityTags)
+                try await CoreService.shared.activity.upsertPreActivityMetadata(payload.tagMetadata)
 
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
-                Logger.debug("Restored caches and \(payload.tagMetadata.count) tags metadata records", context: "BackupService")
+                Logger.debug("Restored caches, \(payload.tagMetadata.count) pre-activity metadata", context: "BackupService")
             }
 
             try await performRestore(category: .blocktank) { dataBytes in
@@ -306,16 +303,25 @@ class BackupService {
             }
             .store(in: &cancellables)
 
-        // ACTIVITIES (triggers both metadata and activity backups)
+        // ACTIVITIES
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self, !self.isRestoring else { return }
-                markBackupRequired(category: .metadata)
                 markBackupRequired(category: .activity)
             }
             .store(in: &cancellables)
 
+        // METADATA (from ActivityService)
+        CoreService.shared.activity.metadataChangedPublisher
+            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, !self.isRestoring else { return }
+                markBackupRequired(category: .metadata)
+            }
+            .store(in: &cancellables)
+
+        // APP STATE (UserDefaults changes, etc.)
         SettingsViewModel.shared.appStatePublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -585,13 +591,14 @@ class BackupService {
 
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970)
-            let tagMetadata = try await CoreService.shared.activity.getAllTagMetadata()
             let cache = await SettingsViewModel.shared.getAppCacheData()
+
+            let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
 
             let payload = MetadataBackupV1(
                 version: 1,
                 createdAt: currentTime,
-                tagMetadata: tagMetadata,
+                tagMetadata: preActivityMetadata,
                 cache: cache
             )
             return try JSONEncoder().encode(payload)
@@ -614,11 +621,13 @@ class BackupService {
         case .activity:
             let activities = try await CoreService.shared.activity.get()
             let closedChannels = try await CoreService.shared.activity.closedChannels()
+            let activityTags = try await CoreService.shared.activity.getAllActivitiesTags()
 
             let payload = ActivityBackupV1(
                 version: 1,
                 createdAt: UInt64(Date().timeIntervalSince1970),
                 activities: activities,
+                activityTags: activityTags,
                 closedChannels: closedChannels
             )
 

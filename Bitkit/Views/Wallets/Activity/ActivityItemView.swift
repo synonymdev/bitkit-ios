@@ -315,23 +315,18 @@ struct ActivityItemView: View {
     private var tagsSection: some View {
         if !viewModel.tags.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(t("wallet__tags"))
-                    .padding(.bottom, 8)
-
-                WrappingHStack(spacing: 8) {
-                    ForEach(viewModel.tags, id: \.self) { tag in
-                        Tag(
-                            tag,
-                            onDelete: {
-                                Task {
-                                    await viewModel.removeTag(tag)
-                                }
-                            }
-                        )
-                    }
-                }
+                TagsListView(
+                    tags: viewModel.tags,
+                    icon: .close,
+                    onTagDelete: { tag in
+                        Task {
+                            await viewModel.removeTag(tag)
+                        }
+                    },
+                    title: t("wallet__tags"),
+                    bottomPadding: 16
+                )
                 .accessibilityIdentifier("ActivityTags")
-                .padding(.bottom, 16)
 
                 Divider()
             }
