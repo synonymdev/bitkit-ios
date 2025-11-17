@@ -49,6 +49,10 @@ struct ActivityRowOnchain: View {
     }
 
     private var description: String {
+        if !item.doesExist {
+            return t("wallet__activity_removed")
+        }
+
         if item.isTransfer {
             switch item.txType {
             case .sent:

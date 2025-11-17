@@ -225,7 +225,12 @@ struct ActivityItemView: View {
                         BodySSBText(t("wallet__activity_failed"), textColor: .purpleAccent)
                     }
                 case let .onchain(activity):
-                    if activity.confirmed == true {
+                    if !activity.doesExist {
+                        Image("x-circle")
+                            .foregroundColor(.textSecondary)
+                            .frame(width: 16, height: 16)
+                        BodySSBText(t("wallet__activity_removed_title"), textColor: .textSecondary)
+                    } else if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
                             .frame(width: 16, height: 16)
