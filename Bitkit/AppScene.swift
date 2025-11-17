@@ -22,6 +22,7 @@ struct AppScene: View {
     @StateObject private var suggestionsManager = SuggestionsManager()
     @StateObject private var tagManager = TagManager()
     @StateObject private var transferTracking: TransferTrackingManager
+    @StateObject private var channelDetails = ChannelDetailsViewModel.shared
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -88,6 +89,7 @@ struct AppScene: View {
             .environmentObject(suggestionsManager)
             .environmentObject(tagManager)
             .environmentObject(transferTracking)
+            .environmentObject(channelDetails)
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true

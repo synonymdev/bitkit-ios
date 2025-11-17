@@ -99,4 +99,19 @@ class ActivityItemViewModel: ObservableObject {
             Logger.error(error, context: "Failed to refresh activity \(activityId)")
         }
     }
+
+    func calculateFeeAmount(linkedOrder: IBtOrder?) -> UInt64? {
+        switch activity {
+        case let .lightning(lightningActivity):
+            return lightningActivity.fee
+        case let .onchain(onchainActivity):
+            let isTransferToSpending = onchainActivity.isTransfer && onchainActivity.txType == .sent
+
+            if isTransferToSpending, let order = linkedOrder {
+                return order.serviceFeeSat + order.networkFeeSat
+            }
+
+            return onchainActivity.fee
+        }
+    }
 }

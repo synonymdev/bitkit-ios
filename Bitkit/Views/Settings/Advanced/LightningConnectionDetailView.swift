@@ -3,13 +3,12 @@ import LDKNode
 import SwiftUI
 
 struct LightningConnectionDetailView: View {
-    @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var channelDetails: ChannelDetailsViewModel
 
-    let channel: ChannelDisplayable
-    let linkedOrder: IBtOrder?
-    let title: String
+    let channelId: String
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -39,151 +38,172 @@ struct LightningConnectionDetailView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: title)
+            NavigationBar(title: t("lightning__connection"))
                 .padding(.bottom, 16)
+                .task {
+                    await channelDetails.findChannel(channelId: channelId, wallet: wallet)
 
-            GeometryReader { geometry in
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        LightningChannel(
-                            capacity: channel.channelValueSats,
-                            localBalance: channel.outboundCapacityMsat / 1000,
-                            remoteBalance: channel.inboundCapacityMsat / 1000,
-                            status: channel.isClosed ? .closed : channelStatus
+                    // If channel not found after loading, show toast and go back
+                    if !channelDetails.isLoading, channelDetails.foundChannel == nil {
+                        app.toast(
+                            type: .error,
+                            title: t("lightning__connection_not_found_title"),
+                            description: t("lightning__connection_not_found_message")
                         )
-                        .padding(.bottom, 28)
+                        navigation.navigateBack()
+                    }
+                }
 
-                        VStack(alignment: .leading, spacing: 32) {
-                            // STATUS Section
-                            VStack(alignment: .leading, spacing: 16) {
-                                Divider()
+            GeometryReader { _ in
+                ScrollView(showsIndicators: false) {
+                    if let channel = channelDetails.foundChannel {
+                        VStack(alignment: .leading, spacing: 0) {
+                            LightningChannel(
+                                capacity: channel.channelValueSats,
+                                localBalance: channel.outboundCapacityMsat / 1000,
+                                remoteBalance: channel.inboundCapacityMsat / 1000,
+                                status: channel.isClosed ? .closed : channelStatus(for: channel)
+                            )
+                            .padding(.bottom, 28)
 
-                                CaptionMText(t("lightning__status"))
+                            VStack(alignment: .leading, spacing: 32) {
+                                // STATUS Section
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Divider()
 
-                                HStack(alignment: .center, spacing: 8) {
-                                    CircularIcon(
-                                        icon: detailedStatus.icon,
-                                        iconColor: detailedStatus.color,
-                                        backgroundColor: detailedStatus.color.opacity(0.16),
-                                        size: 32
-                                    )
+                                    CaptionMText(t("lightning__status"))
 
-                                    BodyMSBText(detailedStatus.text, textColor: detailedStatus.color)
+                                    HStack(alignment: .center, spacing: 8) {
+                                        let status = detailedStatus(for: channel)
+                                        CircularIcon(
+                                            icon: status.icon,
+                                            iconColor: status.color,
+                                            backgroundColor: status.color.opacity(0.16),
+                                            size: 32
+                                        )
+
+                                        BodyMSBText(status.text, textColor: status.color)
+                                    }
+
+                                    Divider()
                                 }
 
-                                Divider()
-                            }
+                                // ORDER DETAILS Section
+                                if let order = channelDetails.linkedOrder {
+                                    VStack(alignment: .leading, spacing: 0) {
+                                        CaptionMText(t("lightning__order_details"))
+                                            .padding(.bottom, 16)
 
-                            // ORDER DETAILS Section
-                            if let order = linkedOrder {
+                                        DetailRow(label: t("lightning__order"), value: order.id)
+
+                                        if let formattedDate = formatDate(order.createdAt) {
+                                            DetailRow(label: t("lightning__created_on"), value: formattedDate)
+                                        }
+
+                                        if channelStatus(for: channel) == .pending {
+                                            if let formattedExpiry = formatDate(order.orderExpiresAt) {
+                                                DetailRow(label: t("lightning__order_expiry"), value: formattedExpiry)
+                                            }
+                                        }
+
+                                        if channelStatus(for: channel) != .pending, let txid = channel.displayedFundingTxoTxid {
+                                            DetailRow(label: t("lightning__transaction"), value: txid)
+                                        }
+
+                                        DetailRowWithAmount(label: t("lightning__order_fee"), amount: order.feeSat - order.clientBalanceSat)
+                                    }
+                                }
+
+                                // BALANCE Section
                                 VStack(alignment: .leading, spacing: 0) {
-                                    CaptionMText(t("lightning__order_details"))
+                                    CaptionMText(t("lightning__balance"))
                                         .padding(.bottom, 16)
 
-                                    DetailRow(label: t("lightning__order"), value: order.id)
+                                    DetailRowWithAmount(
+                                        label: t("lightning__receiving_label"),
+                                        amount: channel.inboundCapacityMsat / 1000
+                                    )
+                                    DetailRowWithAmount(
+                                        label: t("lightning__spending_label"),
+                                        amount: channel.outboundCapacityMsat / 1000
+                                    )
+                                    DetailRowWithAmount(
+                                        label: t("lightning__reserve_balance"),
+                                        amount: channel.displayedUnspendablePunishmentReserve
+                                    )
+                                    DetailRowWithAmount(label: t("lightning__total_size"), amount: channel.channelValueSats)
+                                }
 
-                                    if let formattedDate = formatDate(order.createdAt) {
-                                        DetailRow(label: t("lightning__created_on"), value: formattedDate)
-                                    }
+                                // FEES Section
+                                VStack(alignment: .leading, spacing: 0) {
+                                    CaptionMText(t("lightning__fees"))
+                                        .padding(.bottom, 16)
 
-                                    if channelStatus == .pending {
-                                        if let formattedExpiry = formatDate(order.orderExpiresAt) {
-                                            DetailRow(label: t("lightning__order_expiry"), value: formattedExpiry)
+                                    DetailRowWithAmount(label: t("lightning__base_fee"), amount: UInt64(channel.forwardingFeeBaseMsat / 1000))
+                                    DetailRow(label: t("lightning__fee_rate"), value: "\(channel.forwardingFeeProportionalMillionths) ppm")
+                                }
+
+                                // OTHER Section
+                                VStack(alignment: .leading, spacing: 16) {
+                                    CaptionMText(t("lightning__other"))
+
+                                    VStack(spacing: 0) {
+                                        DetailRow(label: t("lightning__is_usable"), value: channel.isUsable ? t("common__yes") : t("common__no"))
+
+                                        // TODO: Add channel opening date
+                                        // if let formattedDate = formatDate(channel.fundingTxo) {
+                                        //     DetailRow(label: t("lightning__opened_on"), value: formattedDate)
+                                        // }
+
+                                        if let closedAt = channel.displayedClosedAt {
+                                            if let formattedCloseDate = formatDate(closedAt) {
+                                                DetailRow(label: t("lightning__closed_on"), value: formattedCloseDate)
+                                            }
+                                        }
+
+                                        DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
+
+                                        if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
+                                            DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
+                                        }
+
+                                        DetailRow(
+                                            label: t("lightning__channel_node_id"),
+                                            value: channel.counterpartyNodeIdString
+                                        )
+
+                                        if let reason = channel.closureReason {
+                                            DetailRow(label: t("lightning__closure_reason"), value: reason)
                                         }
                                     }
-
-                                    if channelStatus != .pending, let txid = channel.displayedFundingTxoTxid {
-                                        DetailRow(label: t("lightning__transaction"), value: txid)
-                                    }
-
-                                    DetailRowWithAmount(label: t("lightning__order_fee"), amount: order.feeSat - order.clientBalanceSat)
                                 }
                             }
+                            .padding(.bottom, 32)
 
-                            // BALANCE Section
-                            VStack(alignment: .leading, spacing: 0) {
-                                CaptionMText(t("lightning__balance"))
-                                    .padding(.bottom, 16)
+                            // Bottom buttons
+                            HStack(spacing: 16) {
+                                CustomButton(title: t("lightning__support"), variant: .secondary) {
+                                    // TODO: Handle support action
+                                    navigation.navigate(Route.support)
+                                }
 
-                                DetailRowWithAmount(
-                                    label: t("lightning__receiving_label"),
-                                    amount: channel.inboundCapacityMsat / 1000
-                                )
-                                DetailRowWithAmount(
-                                    label: t("lightning__spending_label"),
-                                    amount: channel.outboundCapacityMsat / 1000
-                                )
-                                DetailRowWithAmount(
-                                    label: t("lightning__reserve_balance"),
-                                    amount: channel.displayedUnspendablePunishmentReserve
-                                )
-                                DetailRowWithAmount(label: t("lightning__total_size"), amount: channel.channelValueSats)
-                            }
-
-                            // FEES Section
-                            VStack(alignment: .leading, spacing: 0) {
-                                CaptionMText(t("lightning__fees"))
-                                    .padding(.bottom, 16)
-
-                                DetailRowWithAmount(label: t("lightning__base_fee"), amount: UInt64(channel.forwardingFeeBaseMsat / 1000))
-                                DetailRow(label: t("lightning__fee_rate"), value: "\(channel.forwardingFeeProportionalMillionths) ppm")
-                            }
-
-                            // OTHER Section
-                            VStack(alignment: .leading, spacing: 16) {
-                                CaptionMText(t("lightning__other"))
-
-                                VStack(spacing: 0) {
-                                    DetailRow(label: t("lightning__is_usable"), value: channel.isUsable ? t("common__yes") : t("common__no"))
-
-                                    // TODO: Add channel opening date
-                                    // if let formattedDate = formatDate(channel.fundingTxo) {
-                                    //     DetailRow(label: t("lightning__opened_on"), value: formattedDate)
-                                    // }
-
-                                    if let closedAt = channel.displayedClosedAt {
-                                        if let formattedCloseDate = formatDate(closedAt) {
-                                            DetailRow(label: t("lightning__closed_on"), value: formattedCloseDate)
-                                        }
-                                    }
-
-                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
-
-                                    if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
-                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
-                                    }
-
-                                    DetailRow(
-                                        label: t("lightning__channel_node_id"),
-                                        value: channel.counterpartyNodeIdString
-                                    )
-
-                                    if let reason = channel.closureReason {
-                                        DetailRow(label: t("lightning__closure_reason"), value: reason)
+                                if channelStatus(for: channel) == .open, let openChannel = channel as? ChannelDetails {
+                                    CustomButton(title: t("lightning__close_conn")) {
+                                        navigation.navigate(Route.closeConnection(channel: openChannel))
                                     }
                                 }
                             }
                         }
-
-                        Spacer(minLength: 32)
-
-                        // Bottom buttons
-                        HStack(spacing: 16) {
-                            CustomButton(title: t("lightning__support"), variant: .secondary) {
-                                // TODO: Handle support action
-                                navigation.navigate(Route.support)
-                            }
-
-                            if channelStatus == .open, let openChannel = channel as? ChannelDetails {
-                                CustomButton(title: t("lightning__close_conn")) {
-                                    navigation.navigate(Route.closeConnection(channel: openChannel))
-                                }
-                            }
+                    } else if channelDetails.isLoading {
+                        // Loading state
+                        VStack {
+                            Spacer()
+                            ActivityIndicator()
+                            Spacer()
                         }
                     }
-                    .frame(minHeight: geometry.size.height)
-                    .bottomSafeAreaPadding()
                 }
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
@@ -192,7 +212,7 @@ struct LightningConnectionDetailView: View {
 
     // MARK: - Computed Properties
 
-    private var channelStatus: ChannelStatus {
+    private func channelStatus(for channel: ChannelDisplayable) -> ChannelStatus {
         if channel.isClosed {
             return .closed
         }
@@ -202,7 +222,7 @@ struct LightningConnectionDetailView: View {
         return .open
     }
 
-    private var detailedStatus: (text: String, color: Color, icon: String) {
+    private func detailedStatus(for channel: ChannelDisplayable) -> (text: String, color: Color, icon: String) {
         // Handle closed channels
         if channel.isClosed {
             return (
@@ -228,7 +248,7 @@ struct LightningConnectionDetailView: View {
             )
         }
 
-        if let order = linkedOrder {
+        if let order = channelDetails.linkedOrder {
             // If the channel is with the LSP, we can show a more accurate status for pending channels
             let orderState = order.state2
             let paymentState = order.payment?.state2

@@ -77,6 +77,7 @@ enum Route: Hashable {
     // Advanced settings
     case coinSelection
     case connections
+    case connectionDetail(channelId: String)
     case closeConnection(channel: ChannelDetails)
     case node
     case electrumSettings

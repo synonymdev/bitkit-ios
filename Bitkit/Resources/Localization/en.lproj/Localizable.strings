@@ -213,6 +213,8 @@
 "lightning__peer_saved" = "The Lightning peer was successfully added and saved.";
 "lightning__invoice_copied" = "Copied Invoice to Clipboard";
 "lightning__connection" = "Connection";
+"lightning__connection_not_found_title" = "Connection Not Found";
+"lightning__connection_not_found_message" = "Failed to load connection details. Please try again later.";
 "lightning__status" = "Status";
 "lightning__order_details" = "Order Details";
 "lightning__order" = "Order ID";
@@ -1007,6 +1009,7 @@
 "wallet__activity_transfer_spending_pending" = "From Savings (±{duration})";
 "wallet__activity_transfer_spending_done" = "From Savings";
 "wallet__activity_transfer_to_spending" = "To Spending";
+"wallet__activity_transfer_to_savings" = "To Savings";
 "wallet__activity_transfer_pending" = "Transfer (±{duration})";
 "wallet__activity_confirms_in" = "Confirms in {feeRateDescription}";
 "wallet__activity_confirms_in_boosted" = "Boosting. Confirms in {feeRateDescription}";
@@ -1023,6 +1026,7 @@
 "wallet__activity_removed_msg" = "Please check your activity list. The {count} impacted transaction(s) will be highlighted in red.";
 "wallet__activity_boosting" = "Boosting";
 "wallet__activity_fee" = "Fee";
+"wallet__activity_fee_prepaid" = "Fee (Prepaid)";
 "wallet__activity_payment" = "Payment";
 "wallet__activity_status" = "Status";
 "wallet__activity_date" = "Date";

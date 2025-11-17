@@ -360,6 +360,7 @@ struct MainNavView: View {
             // Advanced settings
             case .coinSelection: CoinSelectionSettingsView()
             case .connections: LightningConnectionsView()
+            case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
             case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
             case .node: NodeStateView()
             case .electrumSettings: ElectrumSettingsScreen()
