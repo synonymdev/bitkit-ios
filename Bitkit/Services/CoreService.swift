@@ -151,9 +151,11 @@ class ActivityService {
                         let preservedFeeRate = existingOnchain?.feeRate ?? 1
                         let preservedAddress = existingOnchain?.address ?? "Loading..."
 
-                        // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
-                        if payment.direction == .inbound && (preservedChannelId == nil || !preservedIsTransfer) {
-                            if let channelId = await self.findClosedChannelForTransaction(txid: txid) {
+                        // Check if this transaction is a channel transfer (open or close)
+                        if preservedChannelId == nil || !preservedIsTransfer {
+                            let channelId = await self.findChannelForTransaction(txid: txid, direction: payment.direction)
+
+                            if let channelId {
                                 preservedChannelId = channelId
                                 preservedIsTransfer = true
                             }
@@ -296,6 +298,18 @@ class ActivityService {
         }
     }
 
+    /// Finds the channel ID associated with a transaction based on its direction
+    private func findChannelForTransaction(txid: String, direction: PaymentDirection) async -> String? {
+        switch direction {
+        case .inbound:
+            // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
+            return await findClosedChannelForTransaction(txid: txid)
+        case .outbound:
+            // Check if this transaction is a channel open by checking if it's the funding transaction for an open channel
+            return await findOpenChannelForTransaction(txid: txid)
+        }
+    }
+
     /// Check if a transaction spends a closed channel's funding UTXO
     private func findClosedChannelForTransaction(txid: String) async -> String? {
         do {
@@ -318,6 +332,48 @@ class ActivityService {
             Logger.warn(
                 "Failed to check if transaction \(txid) spends closed channel funding UTXO: \(error)",
                 context: "CoreService.findClosedChannelForTransaction"
+            )
+        }
+
+        return nil
+    }
+
+    /// Check if a transaction is the funding transaction for an open channel
+    private func findOpenChannelForTransaction(txid: String) async -> String? {
+        guard let channels = LightningService.shared.channels, !channels.isEmpty else {
+            return nil
+        }
+
+        // First, check if the transaction matches any channel's funding transaction directly
+        if let channel = channels.first(where: { $0.fundingTxo?.txid.description == txid }) {
+            return channel.channelId.description
+        }
+
+        // If no direct match, check Blocktank orders for payment transactions
+        do {
+            let orders = try await coreService.blocktank.orders(orderIds: nil, filter: nil, refresh: false)
+
+            // Find order with matching payment transaction
+            guard let order = orders.first(where: { order in
+                order.payment?.onchain?.transactions.contains { $0.txId == txid } ?? false
+            }) else {
+                return nil
+            }
+
+            // Find channel that matches this order's channel funding transaction
+            guard let orderChannel = order.channel else {
+                return nil
+            }
+
+            if let channel = channels.first(where: { channel in
+                channel.fundingTxo?.txid.description == orderChannel.fundingTx.id
+            }) {
+                return channel.channelId.description
+            }
+        } catch {
+            Logger.warn(
+                "Failed to fetch Blocktank orders: \(error)",
+                context: "CoreService.findOpenChannelForTransaction"
             )
         }
 
