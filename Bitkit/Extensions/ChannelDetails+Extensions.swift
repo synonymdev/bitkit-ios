@@ -1,3 +1,4 @@
+import BitkitCore
 import Foundation
 import LDKNode
 
@@ -5,6 +6,47 @@ extension ChannelDetails {
     /// Returns the spendable balance in satoshis (outbound capacity + punishment reserve)
     var spendableBalanceSats: UInt64 {
         return outboundCapacityMsat / 1000 + (unspendablePunishmentReserve ?? 0)
+    }
+
+    /// Find the linked Blocktank order for this channel
+    /// - Parameter orders: Array of Blocktank orders to search
+    /// - Returns: The matching order if found, nil otherwise
+    func findLinkedOrder(in orders: [IBtOrder]) -> IBtOrder? {
+        // Match by userChannelId (which is set to order.id for Blocktank orders)
+        if let order = orders.first(where: { $0.id == userChannelId }) {
+            return order
+        }
+
+        // Match by short channel ID
+        if let shortChannelId {
+            let shortChannelIdString = String(shortChannelId)
+            if let order = orders.first(where: { order in
+                order.channel?.shortChannelId == shortChannelIdString
+            }) {
+                return order
+            }
+        }
+
+        // Match by funding transaction
+        if let fundingTxo {
+            if let order = orders.first(where: { order in
+                order.channel?.fundingTx.id == fundingTxo.txid
+            }) {
+                return order
+            }
+        }
+
+        // Match by counterparty node ID (less reliable, could match multiple)
+        let counterpartyNodeIdString = counterpartyNodeId.description
+        if let order = orders.first(where: { order in
+            guard let orderChannel = order.channel else { return false }
+            return orderChannel.clientNodePubkey == counterpartyNodeIdString ||
+                orderChannel.lspNodePubkey == counterpartyNodeIdString
+        }) {
+            return order
+        }
+
+        return nil
     }
 }
 

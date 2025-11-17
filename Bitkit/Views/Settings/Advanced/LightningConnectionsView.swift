@@ -356,49 +356,7 @@ struct LightningConnectionsView: View {
 
     private func findLinkedOrder(for channel: ChannelDetails) -> IBtOrder? {
         guard let orders = blocktank.orders else { return nil }
-
-        // For fake channels created from orders, match by userChannelId (which we set to order.id)
-        for order in orders {
-            if order.id == channel.userChannelId {
-                return order
-            }
-        }
-
-        // Try to match by short channel ID first (most reliable)
-        if let shortChannelId = channel.shortChannelId {
-            let shortChannelIdString = String(shortChannelId)
-            for order in orders {
-                if let orderChannel = order.channel,
-                   let orderShortChannelId = orderChannel.shortChannelId,
-                   orderShortChannelId == shortChannelIdString
-                {
-                    return order
-                }
-            }
-        }
-
-        // Try to match by funding transaction if available
-        if let fundingTxo = channel.fundingTxo {
-            for order in orders {
-                if let orderChannel = order.channel,
-                   orderChannel.fundingTx.id == fundingTxo.txid
-                {
-                    return order
-                }
-            }
-        }
-
-        // Try to match by counterparty node ID (less reliable, could match multiple)
-        let counterpartyNodeIdString = channel.counterpartyNodeId.description
-        for order in orders {
-            if let orderChannel = order.channel,
-               orderChannel.clientNodePubkey == counterpartyNodeIdString || orderChannel.lspNodePubkey == counterpartyNodeIdString
-            {
-                return order
-            }
-        }
-
-        return nil
+        return channel.findLinkedOrder(in: orders)
     }
 
     private func formatNumber(_ number: UInt64) -> String {
