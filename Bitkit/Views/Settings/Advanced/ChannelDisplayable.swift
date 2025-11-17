@@ -23,7 +23,7 @@ protocol ChannelDisplayable {
 
 extension ChannelDetails: ChannelDisplayable {
     var channelIdString: String {
-        userChannelId.description
+        channelId.description
     }
 
     var counterpartyNodeIdString: String {

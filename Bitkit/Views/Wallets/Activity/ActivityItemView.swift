@@ -11,6 +11,7 @@ struct ActivityItemView: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
     init(item: Activity) {
@@ -89,31 +90,6 @@ struct ActivityItemView: View {
     private var transferChannelId: String? {
         guard case let .onchain(activity) = viewModel.activity else { return nil }
         return activity.channelId
-    }
-
-    @State private var closedChannels: [ClosedChannelDetails] = []
-    @State private var foundChannel: ChannelDisplayable? = nil
-
-    private var transferChannel: ChannelDisplayable? {
-        // Return cached found channel if available
-        if let found = foundChannel {
-            return found
-        }
-
-        // Quick synchronous check for open channels (before async task completes)
-        guard let channelId = transferChannelId,
-              let channels = wallet.channels,
-              let openChannel = channels.first(where: { $0.channelId.description == channelId })
-        else {
-            return nil
-        }
-        return openChannel
-    }
-
-    private var findLinkedOrder: IBtOrder? {
-        guard let channel = transferChannel as? ChannelDetails,
-              let orders = blocktank.orders else { return nil }
-        return channel.findLinkedOrder(in: orders)
     }
 
     private var navigationTitle: String {
@@ -215,26 +191,9 @@ struct ActivityItemView: View {
             }
         }
         .task {
-            // Load closed channels if this is a transfer (to find the channel)
+            // Load channel if this is a transfer
             guard isTransfer, let channelId = transferChannelId else { return }
-
-            // First check if channel is already in open channels
-            if let channels = wallet.channels,
-               let openChannel = channels.first(where: { $0.channelId.description == channelId })
-            {
-                foundChannel = openChannel
-                return
-            }
-
-            // Load closed channels
-            do {
-                closedChannels = try await CoreService.shared.activity.closedChannels()
-                if let closedChannel = closedChannels.first(where: { $0.channelId == channelId }) {
-                    foundChannel = closedChannel
-                }
-            } catch {
-                Logger.warn("Failed to load closed channels: \(error)")
-            }
+            await channelDetails.findChannel(channelId: channelId, wallet: wallet)
         }
     }
 
@@ -365,13 +324,8 @@ struct ActivityItemView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                if let fee = activity.fee {
+                if let feeAmount = viewModel.calculateFeeAmount(linkedOrder: channelDetails.linkedOrder) {
                     let feeLabel = isTransferFromSpending ? t("wallet__activity_fee_prepaid") : t("wallet__activity_fee")
-                    let feeAmount: UInt64 = if isTransferToSpending, let order = findLinkedOrder {
-                        order.serviceFeeSat + order.networkFeeSat
-                    } else {
-                        fee
-                    }
 
                     VStack(alignment: .leading, spacing: 0) {
                         CaptionMText(feeLabel)
@@ -486,18 +440,15 @@ struct ActivityItemView: View {
                 }
                 .accessibilityIdentifier(boostButtonIdentifier)
 
-                if isTransfer, let channel = transferChannel {
+                if isTransfer, let channelId = transferChannelId {
                     CustomButton(
                         title: t("lightning__connection"), size: .small,
                         icon: Image("bolt-hollow")
                             .foregroundColor(accentColor),
-                        shouldExpand: true,
-                        destination: LightningConnectionDetailView(
-                            channel: channel,
-                            linkedOrder: findLinkedOrder,
-                            title: t("lightning__connection")
-                        )
-                    )
+                        shouldExpand: true
+                    ) {
+                        navigation.navigate(.connectionDetail(channelId: channelId))
+                    }
                     .accessibilityIdentifier("ChannelButton")
                 } else {
                     CustomButton(
