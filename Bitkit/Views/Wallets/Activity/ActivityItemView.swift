@@ -9,6 +9,8 @@ struct ActivityItemView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var blocktank: BlocktankViewModel
     @StateObject private var viewModel: ActivityItemViewModel
 
     init(item: Activity) {
@@ -69,13 +71,54 @@ struct ActivityItemView: View {
         }
     }
 
+    private var isTransferFromSpending: Bool {
+        isTransfer && !isSent
+    }
+
+    private var isTransferToSpending: Bool {
+        isTransfer && isSent
+    }
+
     private var accentColor: Color {
-        isLightning ? .purpleAccent : .brandAccent
+        if isTransferFromSpending {
+            return .purpleAccent
+        }
+        return isLightning ? .purpleAccent : .brandAccent
+    }
+
+    private var transferChannelId: String? {
+        guard case let .onchain(activity) = viewModel.activity else { return nil }
+        return activity.channelId
+    }
+
+    @State private var closedChannels: [ClosedChannelDetails] = []
+    @State private var foundChannel: ChannelDisplayable? = nil
+
+    private var transferChannel: ChannelDisplayable? {
+        // Return cached found channel if available
+        if let found = foundChannel {
+            return found
+        }
+
+        // Quick synchronous check for open channels (before async task completes)
+        guard let channelId = transferChannelId,
+              let channels = wallet.channels,
+              let openChannel = channels.first(where: { $0.channelId.description == channelId })
+        else {
+            return nil
+        }
+        return openChannel
+    }
+
+    private var findLinkedOrder: IBtOrder? {
+        guard let channel = transferChannel as? ChannelDetails,
+              let orders = blocktank.orders else { return nil }
+        return channel.findLinkedOrder(in: orders)
     }
 
     private var navigationTitle: String {
         if isTransfer {
-            return isSent
+            return isTransferToSpending
                 ? t("wallet__activity_transfer_spending_done")
                 : t("wallet__activity_transfer_savings_done")
         }
@@ -171,6 +214,28 @@ struct ActivityItemView: View {
                 }
             }
         }
+        .task {
+            // Load closed channels if this is a transfer (to find the channel)
+            guard isTransfer, let channelId = transferChannelId else { return }
+
+            // First check if channel is already in open channels
+            if let channels = wallet.channels,
+               let openChannel = channels.first(where: { $0.channelId.description == channelId })
+            {
+                foundChannel = openChannel
+                return
+            }
+
+            // Load closed channels
+            do {
+                closedChannels = try await CoreService.shared.activity.closedChannels()
+                if let closedChannel = closedChannels.first(where: { $0.channelId == channelId }) {
+                    foundChannel = closedChannel
+                }
+            } catch {
+                Logger.warn("Failed to load closed channels: \(error)")
+            }
+        }
     }
 
     @ViewBuilder
@@ -215,10 +280,12 @@ struct ActivityItemView: View {
                             textColor: .yellowAccent
                         )
                     } else {
+                        // Use accent color for transfers (purple for from spending, orange for from savings)
+                        let statusColor = isTransfer ? accentColor : .brandAccent
                         Image("hourglass-simple")
-                            .foregroundColor(.brandAccent)
+                            .foregroundColor(statusColor)
                             .frame(width: 16, height: 16)
-                        BodySSBText(t("wallet__activity_confirming"), textColor: .brandAccent)
+                        BodySSBText(t("wallet__activity_confirming"), textColor: statusColor)
                     }
                 }
             }
@@ -268,16 +335,26 @@ struct ActivityItemView: View {
 
     @ViewBuilder
     private var feeSection: some View {
-        if isSent {
+        if isSent || isTransfer {
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("wallet__activity_payment"))
-                        .padding(.bottom, 8)
+                    CaptionMText(
+                        isTransferToSpending ? t("wallet__activity_transfer_to_spending") :
+                            isTransferFromSpending ? t("wallet__activity_transfer_to_savings") :
+                            t("wallet__activity_payment")
+                    )
+                    .padding(.bottom, 8)
 
                     HStack(spacing: 4) {
-                        Image("user")
-                            .foregroundColor(accentColor)
-                            .frame(width: 16, height: 16)
+                        Image(
+                            isTransferToSpending ? "bolt-hollow" :
+                                isTransferFromSpending ? "status-bitcoin" :
+                                "user"
+                        )
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(accentColor)
+                        .frame(width: 16, height: 16)
                         MoneyText(sats: Int(activity.value), size: .bodySSB, testIdentifier: "MoneyText")
                     }
                     .accessibilityElement(children: .contain)
@@ -289,15 +366,22 @@ struct ActivityItemView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let fee = activity.fee {
+                    let feeLabel = isTransferFromSpending ? t("wallet__activity_fee_prepaid") : t("wallet__activity_fee")
+                    let feeAmount: UInt64 = if isTransferToSpending, let order = findLinkedOrder {
+                        order.serviceFeeSat + order.networkFeeSat
+                    } else {
+                        fee
+                    }
+
                     VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(t("wallet__activity_fee"))
+                        CaptionMText(feeLabel)
                             .padding(.bottom, 8)
 
                         HStack(spacing: 4) {
                             Image("timer")
                                 .foregroundColor(accentColor)
                                 .frame(width: 16, height: 16)
-                            MoneyText(sats: Int(fee), size: .bodySSB, testIdentifier: "MoneyText")
+                            MoneyText(sats: Int(feeAmount), size: .bodySSB, testIdentifier: "MoneyText")
                         }
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("ActivityFee")
@@ -402,15 +486,30 @@ struct ActivityItemView: View {
                 }
                 .accessibilityIdentifier(boostButtonIdentifier)
 
-                CustomButton(
-                    title: t("wallet__activity_explore"), size: .small,
-                    icon: Image("branch")
-                        .foregroundColor(accentColor),
-                    shouldExpand: true
-                ) {
-                    navigation.navigate(.activityExplorer(viewModel.activity))
+                if isTransfer, let channel = transferChannel {
+                    CustomButton(
+                        title: t("lightning__connection"), size: .small,
+                        icon: Image("bolt-hollow")
+                            .foregroundColor(accentColor),
+                        shouldExpand: true,
+                        destination: LightningConnectionDetailView(
+                            channel: channel,
+                            linkedOrder: findLinkedOrder,
+                            title: t("lightning__connection")
+                        )
+                    )
+                    .accessibilityIdentifier("ChannelButton")
+                } else {
+                    CustomButton(
+                        title: t("wallet__activity_explore"), size: .small,
+                        icon: Image("branch")
+                            .foregroundColor(accentColor),
+                        shouldExpand: true
+                    ) {
+                        navigation.navigate(.activityExplorer(viewModel.activity))
+                    }
+                    .accessibilityIdentifier("ActivityTxDetails")
                 }
-                .accessibilityIdentifier("ActivityTxDetails")
             }
             .frame(maxWidth: .infinity)
         }
