@@ -213,6 +213,8 @@
 "lightning__peer_saved" = "The Lightning peer was successfully added and saved.";
 "lightning__invoice_copied" = "Copied Invoice to Clipboard";
 "lightning__connection" = "Connection";
+"lightning__connection_not_found_title" = "Connection Not Found";
+"lightning__connection_not_found_message" = "Failed to load connection details. Please try again later.";
 "lightning__status" = "Status";
 "lightning__order_details" = "Order Details";
 "lightning__order" = "Order ID";

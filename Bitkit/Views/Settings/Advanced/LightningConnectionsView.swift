@@ -5,12 +5,14 @@ import SwiftUI
 struct LightningConnectionsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showClosedConnections = false
     @State private var isRefreshing = false
     @State private var closedChannels: [ClosedChannelDetails] = []
+    @State private var pendingConnections: [ChannelDetails] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -67,11 +69,9 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(pendingConnections.enumerated()), id: \.element.channelId) { index, channel in
-                                    NavigationLink(destination: LightningConnectionDetailView(
-                                        channel: channel,
-                                        linkedOrder: findLinkedOrder(for: channel),
-                                        title: "\(t("lightning__connection")) \(index + 1)"
-                                    )) {
+                                    Button {
+                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                    } label: {
                                         VStack(spacing: 0) {
                                             HStack {
                                                 SubtitleText("\(t("lightning__connection")) \(index + 1)")
@@ -94,6 +94,7 @@ struct LightningConnectionsView: View {
                                             Divider()
                                         }
                                     }
+                                    .buttonStyle(PlainButtonStyle())
                                 }
                             }
                             .padding(.bottom, 16)
@@ -106,13 +107,9 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
-                                    NavigationLink(
-                                        destination: LightningConnectionDetailView(
-                                            channel: channel,
-                                            linkedOrder: findLinkedOrder(for: channel),
-                                            title: "\(t("lightning__connection")) \(index + 1)"
-                                        )
-                                    ) {
+                                    Button {
+                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                    } label: {
                                         VStack(spacing: 0) {
                                             HStack {
                                                 SubtitleText("\(t("lightning__connection")) \(index + 1)")
@@ -147,11 +144,9 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(closedChannels.enumerated()), id: \.element.channelId) { index, channel in
-                                    NavigationLink(destination: LightningConnectionDetailView(
-                                        channel: channel,
-                                        linkedOrder: nil,
-                                        title: "\(t("lightning__connection")) \(index + 1)"
-                                    )) {
+                                    Button {
+                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                    } label: {
                                         VStack(spacing: 0) {
                                             HStack {
                                                 SubtitleText("\(t("lightning__connection")) \(index + 1)")
@@ -217,11 +212,7 @@ struct LightningConnectionsView: View {
             await refreshData()
         }
         .task {
-            do {
-                closedChannels = try await CoreService.shared.activity.closedChannels()
-            } catch {
-                Logger.error("Failed to load closed channels: \(error)")
-            }
+            await loadData()
         }
     }
 
@@ -236,84 +227,36 @@ struct LightningConnectionsView: View {
         wallet.totalInboundLightningSats ?? 0
     }
 
-    private var pendingChannels: [ChannelDetails] {
-        guard let channels = wallet.channels else { return [] }
-        return channels.filter { !$0.isChannelReady }
-    }
-
-    private var pendingOrders: [IBtOrder] {
-        guard let orders = blocktank.orders else { return [] }
-        return orders.filter { order in
-            // Include orders that are created or paid but not yet opened
-            order.state2 == .created || order.state2 == .paid
-        }
-    }
-
-    private var pendingConnections: [ChannelDetails] {
-        var connections: [ChannelDetails] = []
-
-        // Add actual pending channels
-        connections.append(contentsOf: pendingChannels)
-
-        // Create fake channels from pending orders
-        for order in pendingOrders {
-            let fakeChannel = createFakeChannel(from: order)
-            connections.append(fakeChannel)
-        }
-
-        return connections
-    }
-
-    /// Creates a fake channel from a Blocktank order for UI display purposes
-    private func createFakeChannel(from order: IBtOrder) -> ChannelDetails {
-        return ChannelDetails(
-            channelId: order.id,
-            counterpartyNodeId: order.lspNode?.pubkey ?? "",
-            fundingTxo: OutPoint(txid: Txid(order.channel?.fundingTx.id ?? ""), vout: UInt32(order.channel?.fundingTx.vout ?? 0)),
-            shortChannelId: order.channel?.shortChannelId.flatMap(UInt64.init),
-            outboundScidAlias: nil,
-            inboundScidAlias: nil,
-            channelValueSats: order.lspBalanceSat + order.clientBalanceSat,
-            unspendablePunishmentReserve: 1000,
-            userChannelId: order.id,
-            feerateSatPer1000Weight: 2500,
-            outboundCapacityMsat: order.clientBalanceSat * 1000,
-            inboundCapacityMsat: order.lspBalanceSat * 1000,
-            confirmationsRequired: nil,
-            confirmations: 0,
-            isOutbound: false,
-            isChannelReady: false,
-            isUsable: false,
-            isAnnounced: false,
-            cltvExpiryDelta: 144,
-            counterpartyUnspendablePunishmentReserve: 1000,
-            counterpartyOutboundHtlcMinimumMsat: 1000,
-            counterpartyOutboundHtlcMaximumMsat: 99_000_000,
-            counterpartyForwardingInfoFeeBaseMsat: 1000,
-            counterpartyForwardingInfoFeeProportionalMillionths: 100,
-            counterpartyForwardingInfoCltvExpiryDelta: 144,
-            nextOutboundHtlcLimitMsat: order.clientBalanceSat * 1000,
-            nextOutboundHtlcMinimumMsat: 1000,
-            forceCloseSpendDelay: nil,
-            inboundHtlcMinimumMsat: 1000,
-            inboundHtlcMaximumMsat: order.lspBalanceSat * 1000,
-            config: .init(
-                forwardingFeeProportionalMillionths: 0,
-                forwardingFeeBaseMsat: 0,
-                cltvExpiryDelta: 0,
-                maxDustHtlcExposure: .feeRateMultiplier(multiplier: 0),
-                forceCloseAvoidanceMaxFeeSatoshis: 0,
-                acceptUnderpayingHtlcs: true
-            )
-        )
-    }
-
     private var openChannels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
         return channels.filter(\.isChannelReady)
     }
 
     // MARK: - Helper Methods
+
+    private func loadData() async {
+        await withTaskGroup(of: Void.self) { group in
+            // Load pending connections
+            group.addTask {
+                let connections = await channelDetails.pendingConnections(wallet: wallet)
+                await MainActor.run {
+                    pendingConnections = connections
+                }
+            }
+
+            // Load closed channels
+            group.addTask {
+                do {
+                    let channels = try await CoreService.shared.activity.closedChannels()
+                    await MainActor.run {
+                        closedChannels = channels
+                    }
+                } catch {
+                    Logger.error("Failed to load closed channels: \(error)")
+                }
+            }
+        }
+    }
 
     private func refreshData() async {
         guard !isRefreshing else { return }
@@ -351,12 +294,10 @@ struct LightningConnectionsView: View {
             }
         }
 
-        isRefreshing = false
-    }
+        // Reload after refresh
+        await loadData()
 
-    private func findLinkedOrder(for channel: ChannelDetails) -> IBtOrder? {
-        guard let orders = blocktank.orders else { return nil }
-        return channel.findLinkedOrder(in: orders)
+        isRefreshing = false
     }
 
     private func formatNumber(_ number: UInt64) -> String {

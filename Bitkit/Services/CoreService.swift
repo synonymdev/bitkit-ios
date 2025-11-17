@@ -153,13 +153,7 @@ class ActivityService {
 
                         // Check if this transaction is a channel transfer (open or close)
                         if preservedChannelId == nil || !preservedIsTransfer {
-                            let channelId: String? = if payment.direction == .inbound {
-                                // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
-                                await self.findClosedChannelForTransaction(txid: txid)
-                            } else {
-                                // Check if this transaction is a channel open by checking if it's the funding transaction for an open channel
-                                await self.findOpenChannelForTransaction(txid: txid)
-                            }
+                            let channelId = await self.findChannelForTransaction(txid: txid, direction: payment.direction)
 
                             if let channelId {
                                 preservedChannelId = channelId
@@ -301,6 +295,18 @@ class ActivityService {
 
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
             self.activitiesChangedSubject.send()
+        }
+    }
+
+    /// Finds the channel ID associated with a transaction based on its direction
+    private func findChannelForTransaction(txid: String, direction: PaymentDirection) async -> String? {
+        switch direction {
+        case .inbound:
+            // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
+            return await findClosedChannelForTransaction(txid: txid)
+        case .outbound:
+            // Check if this transaction is a channel open by checking if it's the funding transaction for an open channel
+            return await findOpenChannelForTransaction(txid: txid)
         }
     }
 
