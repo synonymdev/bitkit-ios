@@ -232,7 +232,7 @@ struct ActivityItemView: View {
                         Image("x-circle")
                             .foregroundColor(.textSecondary)
                             .frame(width: 16, height: 16)
-                        BodySSBText(t("wallet__activity_removed_title"), textColor: .textSecondary)
+                        BodySSBText(t("wallet__activity_removed"), textColor: .textSecondary)
                     } else if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
