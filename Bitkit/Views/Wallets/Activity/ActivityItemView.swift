@@ -229,10 +229,12 @@ struct ActivityItemView: View {
                     }
                 case let .onchain(activity):
                     if !activity.doesExist {
-                        Image("x-circle")
-                            .foregroundColor(.textSecondary)
+                        Image("x-mark")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.redAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(t("wallet__activity_removed"), textColor: .textSecondary)
+                        BodySSBText(t("wallet__activity_removed"), textColor: .redAccent)
                     } else if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
