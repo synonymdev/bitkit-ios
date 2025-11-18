@@ -134,6 +134,9 @@ struct ActivityItemView: View {
     private var statusAccessibilityIdentifier: String? {
         switch viewModel.activity {
         case let .onchain(activity):
+            if !activity.doesExist {
+                return "StatusRemoved"
+            }
             if activity.confirmed == true {
                 return "StatusConfirmed"
             }
