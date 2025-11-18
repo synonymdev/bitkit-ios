@@ -1340,6 +1340,10 @@ class CoreService {
     }
 
     func checkGeoStatus() async throws -> Bool? {
+        if !Env.isGeoblockingEnabled {
+            return false
+        }
+
         try await ServiceQueue.background(.core) {
             Logger.info("Checking geo status...", context: "GeoCheck")
             guard let url = URL(string: Env.geoCheckUrl) else {
