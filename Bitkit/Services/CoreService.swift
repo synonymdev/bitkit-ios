@@ -731,6 +731,13 @@ class ActivityService {
                     "Added original transaction \(onchainActivity.txId) to replaced transactions list", context: "CoreService.boostOnchainTransaction"
                 )
 
+                // For RBF, mark the old activity as boosted before marking it as replaced
+                onchainActivity.isBoosted = true
+                Logger.debug(
+                    "Marked original activity \(activityId) as boosted before RBF replacement",
+                    context: "CoreService.boostOnchainTransaction"
+                )
+
                 // For RBF, mark the original activity as doesExist = false instead of deleting it
                 // This allows it to be displayed with the "removed" status
                 Logger.debug(
