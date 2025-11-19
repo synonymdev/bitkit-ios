@@ -298,19 +298,23 @@ class LightningService {
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
-    /// - Parameter amountSats
+    /// - Parameter amountSats: Amount to send in satoshis
+    /// - Parameter isGeoblocked: If true, only count capacity from non-LSP channels
     /// - Returns: True if we can send the amount
-    func canSend(amountSats: UInt64) -> Bool {
+    func canSend(amountSats: UInt64, isGeoblocked: Bool = false) -> Bool {
         guard let channels else {
             Logger.warn("Channels not available")
             return false
         }
 
+        // When geoblocked, only count non-LSP channels
+        let channelsToUse = isGeoblocked ? getNonLspChannels() : channels
+
         let totalNextOutboundHtlcLimitSats =
-            channels
+            channelsToUse
                 .filter(\.isUsable)
                 .map(\.nextOutboundHtlcLimitMsat)
-                .reduce(0, +) * 1000
+                .reduce(0, +) / 1000
 
         guard totalNextOutboundHtlcLimitSats > amountSats else {
             Logger.warn("Insufficient outbound capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)")
