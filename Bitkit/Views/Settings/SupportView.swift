@@ -25,6 +25,7 @@ struct SupportView: View {
                 NavigationLink(value: Route.appStatus) {
                     SettingsListLabel(title: t("settings__support__status"))
                 }
+                .accessibilityIdentifier("AppStatus")
             }
 
             Spacer(minLength: 32)

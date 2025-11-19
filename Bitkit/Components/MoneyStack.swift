@@ -144,6 +144,7 @@ private extension MoneyStack {
                 .frame(width: 24, height: 24)
                 .foregroundColor(.textPrimary)
         }
+        .accessibilityIdentifier("ShowBalance")
         .padding(.leading, 8)
     }
 }

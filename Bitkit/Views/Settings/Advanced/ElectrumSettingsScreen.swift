@@ -18,7 +18,8 @@ struct ElectrumSettingsScreen: View {
                         .resizable()
                         .foregroundColor(.textPrimary)
                         .frame(width: 32, height: 32)
-                })
+                }
+                .accessibilityIdentifier("NavigationAction"))
             )
             .padding(.bottom, 16)
 
@@ -34,11 +35,15 @@ struct ElectrumSettingsScreen: View {
                             } else {
                                 if settings.electrumIsConnected {
                                     BodyMText(settings.electrumCurrentServer.url, textColor: .greenAccent)
+                                        .accessibilityIdentifier("Connected")
                                 } else {
                                     BodyMText(t("settings__es__disconnected"), textColor: .redAccent)
+                                        .accessibilityIdentifier("Disconnected")
                                 }
                             }
                         }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("ElectrumStatus")
                         .padding(.bottom, 32)
 
                         // Host Input Section
@@ -52,6 +57,7 @@ struct ElectrumSettingsScreen: View {
                                 .onSubmit {
                                     isTextFieldFocused = false
                                 }
+                                .accessibilityIdentifier("HostInput")
                         }
                         .padding(.bottom, 16)
 
@@ -61,6 +67,7 @@ struct ElectrumSettingsScreen: View {
                             TextField("50001", text: $settings.electrumPort)
                                 .focused($isTextFieldFocused)
                                 .keyboardType(.numberPad)
+                                .accessibilityIdentifier("PortInput")
                         }
                         .padding(.bottom, 27)
 
@@ -82,6 +89,7 @@ struct ElectrumSettingsScreen: View {
                             CustomButton(title: t("settings__es__button_reset"), variant: .secondary) {
                                 onReset()
                             }
+                            .accessibilityIdentifier("ResetToDefault")
 
                             CustomButton(
                                 title: t("settings__es__button_connect"),
@@ -90,6 +98,7 @@ struct ElectrumSettingsScreen: View {
                             ) {
                                 onConnect()
                             }
+                            .accessibilityIdentifier("ConnectToHost")
                         }
                         .buttonBottomPadding(isFocused: isTextFieldFocused)
                     }
