@@ -133,7 +133,8 @@ struct ReceiveEdit: View {
             do {
                 wallet.invoiceAmountSats = amountSats
                 wallet.invoiceNote = note
-                try await wallet.refreshBip21(forceRefreshBolt11: true)
+                let isGeoblocked = app.isGeoBlocked ?? false
+                try await wallet.refreshBip21(forceRefreshBolt11: true, isGeoblocked: isGeoblocked)
 
                 // Check if CJIT flow should be shown
                 if needsAdditionalCjit() {

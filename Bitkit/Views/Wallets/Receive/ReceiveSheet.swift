@@ -33,6 +33,7 @@ struct ReceiveSheet: View {
     @State private var navigationPath: [ReceiveRoute] = []
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
+    @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
         Sheet(id: .receive, data: config) {
@@ -52,7 +53,8 @@ struct ReceiveSheet: View {
                 if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
                     try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
                 }
-                try? await wallet.refreshBip21(forceRefreshBolt11: true)
+                let isGeoblocked = app.isGeoBlocked ?? false
+                try? await wallet.refreshBip21(forceRefreshBolt11: true, isGeoblocked: isGeoblocked)
             }
         }
     }

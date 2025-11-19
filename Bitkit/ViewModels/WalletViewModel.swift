@@ -512,7 +512,13 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+    /// Check if there are non-LSP (non-Blocktank) channels available
+    /// Used for geoblocking to determine if Lightning operations can proceed
+    func hasNonLspChannels() -> Bool {
+        return !lightningService.getNonLspChannels().isEmpty
+    }
+
+    func refreshBip21(forceRefreshBolt11: Bool = false, isGeoblocked: Bool = false) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -539,7 +545,14 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        if channels?.count ?? 0 > 0 {
+        // When geoblocked, only create Lightning invoice if we have non-LSP channels
+        let hasUsableChannels: Bool = if isGeoblocked {
+            hasNonLspChannels()
+        } else {
+            channels?.count ?? 0 > 0
+        }
+
+        if hasUsableChannels {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {

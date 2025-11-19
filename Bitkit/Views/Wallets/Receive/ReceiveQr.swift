@@ -42,9 +42,19 @@ struct ReceiveQr: View {
         }
     }
 
+    /// Check if there are usable channels for Lightning receive
+    /// When geoblocked, only count non-LSP channels
+    private var hasUsableChannels: Bool {
+        if app.isGeoBlocked == true {
+            return wallet.hasNonLspChannels()
+        } else {
+            return wallet.channelCount != 0
+        }
+    }
+
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        // Only show unified tab if there are channels
-        if wallet.channelCount != 0 {
+        // Only show unified tab if there are usable channels
+        if hasUsableChannels {
             return [
                 TabItem(.savings),
                 TabItem(.unified, activeColor: .white),
@@ -75,7 +85,7 @@ struct ReceiveQr: View {
                 TabView(selection: $selectedTab) {
                     tabContent(for: .savings)
 
-                    if wallet.channelCount != 0 {
+                    if hasUsableChannels {
                         tabContent(for: .unified)
                     }
 
@@ -305,7 +315,8 @@ struct ReceiveQr: View {
     func refreshBip21() async {
         guard wallet.nodeLifecycleState == .running else { return }
         do {
-            try await wallet.refreshBip21()
+            let isGeoblocked = app.isGeoBlocked ?? false
+            try await wallet.refreshBip21(isGeoblocked: isGeoblocked)
         } catch {
             app.toast(error)
         }
