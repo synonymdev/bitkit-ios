@@ -194,6 +194,7 @@ struct Suggestions: View {
                         data: card,
                         onDismiss: { dismissCard(card) }
                     )
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
                 .accessibilityIdentifier("Suggestions")

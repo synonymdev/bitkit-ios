@@ -144,11 +144,11 @@ enum Env {
     static var ldkRgsServerUrl: String? {
         switch network {
         case .regtest:
-            return nil
+            return "https://bitkit.stag0.blocktank.to/rgs/snapshot"
         case .bitcoin:
-            return "https://rapidsync.lightningdevkit.org/snapshot/"
+            return "https://rgs.blocktank.to/snapshot"
         case .testnet:
-            return nil
+            return "https://rapidsync.lightningdevkit.org/testnet/snapshot"
         case .signet:
             return nil
         }
