@@ -342,8 +342,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        let electrumServer = electrumConfigService.getCurrentServer().url
-        if !electrumServer.isEmpty { dict["electrumServer"] = electrumServer }
+        let electrumServer = electrumConfigService.getCurrentServer()
+        let protocolPrefix = electrumServer.protocolType == .ssl ? "ssl://" : "tcp://"
+        let electrumServerUrl = "\(protocolPrefix)\(electrumServer.url)"
+        if !electrumServerUrl.isEmpty { dict["electrumServer"] = electrumServerUrl }
 
         let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
         if !rgsServerUrl.isEmpty { dict["rgsServerUrl"] = rgsServerUrl }
@@ -351,6 +353,46 @@ class SettingsViewModel: NSObject, ObservableObject {
         dict["isDevModeEnabled"] = Env.isDebug && Env.network != .bitcoin
 
         return dict
+    }
+
+    /// Parses Electrum server URL from backup format (handles various formats)
+    private func parseElectrumServerUrlForRestore(_ urlString: String) -> ElectrumServer? {
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") && !urlString.hasPrefix("tcp://") && !urlString.hasPrefix("ssl://") {
+            let parts = urlString.split(separator: ":")
+            guard parts.count >= 2 else { return nil }
+
+            let host = String(parts[0])
+            let port = String(parts[1])
+            let shortProtocol = parts.count > 2 ? String(parts[2]) : nil
+
+            let protocolType: ElectrumProtocol = if let shortProtocol {
+                shortProtocol == "s" ? .ssl : .tcp
+            } else {
+                electrumConfigService.getProtocolForPort(port)
+            }
+
+            return ElectrumServer(host: host, portString: port, protocolType: protocolType)
+        }
+
+        if urlString.hasPrefix("tcp://") || urlString.hasPrefix("ssl://") {
+            let withoutProtocol = urlString.replacingOccurrences(of: "tcp://", with: "").replacingOccurrences(of: "ssl://", with: "")
+            let parts = withoutProtocol.split(separator: ":")
+            guard parts.count >= 2 else { return nil }
+
+            let host = String(parts[0])
+            let port = String(parts[1])
+            let protocolType: ElectrumProtocol = urlString.hasPrefix("ssl://") ? .ssl : .tcp
+
+            return ElectrumServer(host: host, portString: port, protocolType: protocolType)
+        }
+
+        guard let url = URL(string: urlString) else { return nil }
+
+        let host = url.host ?? ""
+        let port = (url.port ?? 0) > 0 ? String(url.port ?? 0) : (url.scheme == "https" ? "443" : "80")
+        let protocolType: ElectrumProtocol = url.scheme == "https" ? .ssl : .tcp
+
+        return ElectrumServer(host: host, portString: port, protocolType: protocolType)
     }
 
     /// Restores settings dictionary to UserDefaults
@@ -407,12 +449,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         if let electrumServerUrl = dict["electrumServer"] as? String, !electrumServerUrl.isEmpty {
-            let components = electrumServerUrl.split(separator: ":")
-            if components.count >= 2 {
-                let host = String(components[0])
-                let portString = String(components[1])
-                let protocolType = electrumConfigService.getProtocolForPort(portString)
-                let server = ElectrumServer(host: host, portString: portString, protocolType: protocolType)
+            if let server = parseElectrumServerUrlForRestore(electrumServerUrl) {
                 electrumConfigService.saveServerConfig(server)
             }
         }
