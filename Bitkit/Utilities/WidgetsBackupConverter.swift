@@ -3,7 +3,7 @@ import Foundation
 /// Converts between iOS `SavedWidget` format and Android `WidgetsData` format for backup/restore
 enum WidgetsBackupConverter {
     /// Converts iOS `[SavedWidget]` to Android `WidgetsData` format
-    static func convertToAndroidFormat(savedWidgets: [SavedWidget]) throws -> Data {
+    static func convertToAndroidFormat(savedWidgets: [SavedWidget]) throws -> [String: Any] {
         var widgetsArray: [[String: Any]] = []
         var blocksPreferences: [String: Any]?
         var newsPreferences: [String: Any]?
@@ -93,7 +93,7 @@ enum WidgetsBackupConverter {
             "price": NSNull(),
         ]
 
-        return try JSONSerialization.data(withJSONObject: androidWidgetsData, options: [])
+        return androidWidgetsData
     }
 
     /// Converts Android `WidgetsData` format to iOS `[SavedWidget]`
