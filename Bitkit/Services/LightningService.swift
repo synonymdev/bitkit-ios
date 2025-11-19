@@ -378,8 +378,8 @@ class LightningService {
         if isGeoblocked && !hasExternalPeers() {
             Logger.error("Cannot send Lightning payment when geoblocked without external peers")
             throw AppError(
-                title: "Lightning send unavailable",
-                description: "You need channels with non-Blocktank nodes to send Lightning payments."
+                message: "Lightning send unavailable",
+                debugMessage: "You need channels with non-Blocktank nodes to send Lightning payments."
             )
         }
 
