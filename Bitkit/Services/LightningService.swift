@@ -369,9 +369,18 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil, isGeoblocked: Bool = false) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        // When geoblocked, verify we have external (non-LSP) peers
+        if isGeoblocked && !hasExternalPeers() {
+            Logger.error("Cannot send Lightning payment when geoblocked without external peers")
+            throw AppError(
+                title: "Lightning send unavailable",
+                description: "You need channels with non-Blocktank nodes to send Lightning payments."
+            )
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
