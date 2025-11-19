@@ -165,7 +165,8 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
+                    let isGeoblocked = isGeoBlocked ?? false
+                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis, isGeoblocked: isGeoblocked) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
@@ -181,7 +182,8 @@ extension AppViewModel {
             }
 
             Logger.debug("Lightning: \(invoice)")
-            if lightningService.canSend(amountSats: invoice.amountSatoshis) {
+            let isGeoblocked = isGeoBlocked ?? false
+            if lightningService.canSend(amountSats: invoice.amountSatoshis, isGeoblocked: isGeoblocked) {
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
