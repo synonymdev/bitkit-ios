@@ -102,6 +102,7 @@ struct NodeStateView: View {
             Section("Node ID") {
                 Text(nodeId)
                     .font(.caption)
+                    .accessibilityIdentifier("LDKNodeID")
                     .onTapGesture {
                         UIPasteboard.general.string = nodeId
                         Haptics.play(.copiedToClipboard)
