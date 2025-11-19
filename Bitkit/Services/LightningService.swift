@@ -546,6 +546,31 @@ extension LightningService {
     var peers: [PeerDetails]? { node?.listPeers() }
     var channels: [ChannelDetails]? { node?.listChannels() }
     var payments: [PaymentDetails]? { node?.listPayments() }
+
+    /// Returns LSP (Blocktank) peer node IDs
+    func getLspPeerNodeIds() -> [String] {
+        return Env.trustedLnPeers.map(\.nodeId)
+    }
+
+    /// Checks if there are connected peers other than LSP peers
+    /// Used for geoblocking to determine if Lightning operations can proceed
+    func hasExternalPeers() -> Bool {
+        guard let peers else { return false }
+        let lspNodeIds = Set(getLspPeerNodeIds())
+        return peers.contains { peer in
+            !lspNodeIds.contains(peer.nodeId)
+        }
+    }
+
+    /// Filters channels to exclude LSP channels
+    /// Used for geoblocking to only allow operations through non-Blocktank channels
+    func getNonLspChannels() -> [ChannelDetails] {
+        guard let channels else { return [] }
+        let lspNodeIds = Set(getLspPeerNodeIds())
+        return channels.filter { channel in
+            !lspNodeIds.contains(channel.counterpartyNodeId)
+        }
+    }
 }
 
 // MARK: Events
