@@ -278,7 +278,9 @@ struct AppScene: View {
             if case .errorStarting = state {
                 walletInitShouldFinish = true
             }
-            BackupService.shared.stopObservingBackups()
+            Task {
+                await BackupService.shared.stopObservingBackups()
+            }
         }
     }
 

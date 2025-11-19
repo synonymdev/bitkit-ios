@@ -148,7 +148,7 @@ struct RestoreWalletView: View {
                         focusedField: $focusedField
                     )
                     .onChange(of: firstFieldText) { newValue in
-                        if index == 0 && newValue.contains(" ") {
+                        if index == 0 && newValue.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
                             handlePastedWords(newValue)
                         } else if index == 0 {
                             words[index] = newValue
