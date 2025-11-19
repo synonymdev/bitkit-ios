@@ -69,7 +69,12 @@ struct ReceiveQr: View {
     }
 
     var showingCjitOnboarding: Bool {
-        return wallet.channelCount == 0 && cjitInvoice == nil && selectedTab == .spending
+        // Show CJIT onboarding when:
+        // 1. No channels at all, OR
+        // 2. Geoblocked with only Blocktank channels (treat as no usable channels)
+        let hasNoUsableChannels = (wallet.channelCount == 0) ||
+            (app.isGeoBlocked == true && !wallet.hasNonLspChannels())
+        return hasNoUsableChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -106,7 +111,16 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            navigationPath.append(.cjitAmount)
+                            // Check if geoblocked with only Blocktank channels
+                            if app.isGeoBlocked == true && !wallet.hasNonLspChannels() {
+                                app.toast(
+                                    type: .error,
+                                    title: "Instant Payments Unavailable",
+                                    description: "Bitkit does not provide Lightning services in your country, but you can still connect to other nodes."
+                                )
+                            } else {
+                                navigationPath.append(.cjitAmount)
+                            }
                         }
                     } else {
                         CustomButton(title: showDetails ? tTodo("QR Code") : tTodo("Show Details")) {
@@ -152,7 +166,7 @@ struct ReceiveQr: View {
     @ViewBuilder
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
+            if showingCjitOnboarding {
                 cjitOnboarding
             } else if showDetails {
                 detailsContent(for: tab)
