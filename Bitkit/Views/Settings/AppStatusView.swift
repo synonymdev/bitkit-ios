@@ -45,6 +45,7 @@ struct AppStatusView: View {
                 }
             }
         )
+        .accessibilityIdentifier("Status-internet")
     }
 
     private var bitcoinNodeStatusRow: some View {
@@ -60,6 +61,7 @@ struct AppStatusView: View {
                 navigation.navigate(.electrumSettings)
             }
         )
+        .accessibilityIdentifier("Status-electrum")
     }
 
     private var nodeStatusRow: some View {
@@ -75,6 +77,7 @@ struct AppStatusView: View {
                 navigation.navigate(.node)
             }
         )
+        .accessibilityIdentifier("Status-lightning_node")
     }
 
     private var channelsStatusRow: some View {
@@ -90,6 +93,7 @@ struct AppStatusView: View {
                 navigation.navigate(.connections)
             }
         )
+        .accessibilityIdentifier("Status-lightning_connection")
     }
 
     private var backupStatusRow: some View {
@@ -119,5 +123,6 @@ struct AppStatusView: View {
                 navigation.navigate(.backupSettings)
             }
         )
+        .accessibilityIdentifier("Status-backup")
     }
 }

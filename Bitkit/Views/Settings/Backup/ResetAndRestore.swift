@@ -44,7 +44,6 @@ struct ResetAndRestore: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .accessibilityIdentifier("ResetAndRestore")
         .alert(isPresented: $showAlert) {
             Alert(
                 title: Text(t("security__reset_dialog_title")),

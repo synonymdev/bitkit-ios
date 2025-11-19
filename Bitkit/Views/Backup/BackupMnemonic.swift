@@ -93,6 +93,7 @@ struct BackupMnemonicView: View {
                                 : BackupRoute.passphrase(mnemonic: mnemonic, passphrase: passphrase)
                         navigationPath.append(route)
                     }
+                    .accessibilityIdentifier("ContinueShowMnemonic")
                 }
             }
             .padding(.horizontal, 16)
