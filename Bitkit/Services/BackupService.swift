@@ -15,12 +15,14 @@ class BackupService {
     private var periodicCheckTask: Task<Void, Never>?
     private var isObserving = false
     private var isRestoring = false
+    private var isWiping = false
     private var lastNotificationTime: UInt64 = 0
 
     private let defaults = UserDefaults.standard
     private let backupStatusesKey = "backupStatuses"
 
     private let statusUpdateQueue = DispatchQueue(label: "backup-service-status-update", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "backup-service-state", qos: .userInitiated)
     private let backupStatusesSubject = PassthroughSubject<[BackupCategory: BackupItemStatus], Never>()
 
     private let backupFailureSubject = PassthroughSubject<Int, Never>()
@@ -66,6 +68,13 @@ class BackupService {
 
     // MARK: - Public Methods
 
+    /// Sets the wiping flag to prevent backups during wipe operations
+    func setWiping(_ isWiping: Bool) {
+        stateQueue.sync {
+            self.isWiping = isWiping
+        }
+    }
+
     func startObservingBackups() {
         Task {
             let shouldStart = try? await ServiceQueue.background(.backup) {
@@ -84,25 +93,23 @@ class BackupService {
         }
     }
 
-    func stopObservingBackups() {
-        Task {
-            let shouldStop = try? await ServiceQueue.background(.backup) {
-                guard self.isObserving else { return false }
-                self.isObserving = false
+    func stopObservingBackups() async {
+        let shouldStop = try? await ServiceQueue.background(.backup) {
+            guard self.isObserving else { return false }
+            self.isObserving = false
 
-                self.backupJobs.values.forEach { $0.cancel() }
-                self.backupJobs.removeAll()
-                self.runningBackupTasks.values.forEach { $0.cancel() }
-                self.runningBackupTasks.removeAll()
-                self.periodicCheckTask?.cancel()
-                self.periodicCheckTask = nil
-                return true
-            }
-
-            guard shouldStop == true else { return }
-            cancellables.removeAll()
-            Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
+            self.backupJobs.values.forEach { $0.cancel() }
+            self.backupJobs.removeAll()
+            self.runningBackupTasks.values.forEach { $0.cancel() }
+            self.runningBackupTasks.removeAll()
+            self.periodicCheckTask?.cancel()
+            self.periodicCheckTask = nil
+            return true
         }
+
+        guard shouldStop == true else { return }
+        cancellables.removeAll()
+        Logger.debug("Stopped observing backup statuses and data store changes", context: "BackupService")
     }
 
     func triggerBackup(category: BackupCategory) async {
@@ -165,7 +172,15 @@ class BackupService {
 
     /// Performs full restore from latest backup
     func performFullRestoreFromLatestBackup() async {
-        try? await ServiceQueue.background(.backup) { self.isRestoring = true }
+        stateQueue.sync {
+            isRestoring = true
+        }
+
+        defer {
+            stateQueue.sync {
+                isRestoring = false
+            }
+        }
 
         VssStoreIdProvider.shared.clearCache()
         VssBackupClient.shared.reset()
@@ -174,20 +189,14 @@ class BackupService {
 
         do {
             try await performRestore(category: .settings) { dataBytes in
-                guard let settingsDict = try JSONSerialization.jsonObject(with: dataBytes) as? [String: Any] else {
-                    throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to parse settings JSON"])
-                }
-
-                await SettingsViewModel.shared.restoreSettingsDictionary(settingsDict)
+                let payload = try SettingsBackupV1.decode(from: dataBytes)
+                await SettingsViewModel.shared.restoreSettingsDictionary(payload.settings)
             }
 
             try await performRestore(category: .widgets) { dataBytes in
-                guard let jsonDict = try JSONSerialization.jsonObject(with: dataBytes) as? [String: Any] else {
-                    throw NSError(domain: "BackupService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid widgets format"])
-                }
-
-                let decodedWidgets = try WidgetsBackupConverter.convertFromAndroidFormat(jsonDict: jsonDict)
-                let encodedData = try JSONEncoder().encode(decodedWidgets)
+                let payload = try WidgetsBackupV1.decode(from: dataBytes)
+                let widgets = try WidgetsBackupConverter.convertFromAndroidFormat(jsonDict: payload.widgets)
+                let encodedData = try JSONEncoder().encode(widgets)
                 UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
             }
 
@@ -218,6 +227,9 @@ class BackupService {
 
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
+                // Force address rotation by clearing onchain address
+                UserDefaults.standard.set("", forKey: "onchainAddress")
+
                 Logger.debug("Restored caches, \(payload.tagMetadata.count) pre-activity metadata", context: "BackupService")
             }
 
@@ -238,8 +250,6 @@ class BackupService {
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
-
-        try? await ServiceQueue.background(.backup) { self.isRestoring = false }
     }
 
     // MARK: - Private Methods
@@ -259,12 +269,9 @@ class BackupService {
             distinctPublisher
                 .dropFirst()
                 .sink { [weak self] status in
-                    guard let self else { return }
-                    Task {
-                        let isRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
-                        guard isRestoring != true else { return }
-
-                        if status.isRequired && !status.running {
+                    guard let self, !self.shouldSkipBackup() else { return }
+                    if status.isRequired && !status.running {
+                        Task {
                             await self.scheduleBackup(category: category)
                         }
                     }
@@ -280,7 +287,7 @@ class BackupService {
         SettingsViewModel.shared.settingsPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .settings)
             }
             .store(in: &cancellables)
@@ -289,7 +296,7 @@ class BackupService {
         SettingsViewModel.shared.widgetsPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .widgets)
             }
             .store(in: &cancellables)
@@ -298,7 +305,7 @@ class BackupService {
         TransferStorage.shared.transfersChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .wallet)
             }
             .store(in: &cancellables)
@@ -307,7 +314,7 @@ class BackupService {
         CoreService.shared.activity.activitiesChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .activity)
             }
             .store(in: &cancellables)
@@ -316,7 +323,7 @@ class BackupService {
         CoreService.shared.activity.metadataChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
             }
             .store(in: &cancellables)
@@ -325,7 +332,7 @@ class BackupService {
         SettingsViewModel.shared.appStatePublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .metadata)
             }
             .store(in: &cancellables)
@@ -334,7 +341,7 @@ class BackupService {
         CoreService.shared.blocktank.stateChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 markBackupRequired(category: .blocktank)
             }
             .store(in: &cancellables)
@@ -343,7 +350,7 @@ class BackupService {
         LightningService.shared.syncStatusChangedPublisher
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .sink { [weak self] lastSync in
-                guard let self, !self.isRestoring else { return }
+                guard let self, !self.shouldSkipBackup() else { return }
                 updateBackupStatus(category: .lightningConnections) { _ in
                     BackupItemStatus(
                         synced: lastSync,
@@ -371,6 +378,12 @@ class BackupService {
         }
     }
 
+    private func shouldSkipBackup() -> Bool {
+        return stateQueue.sync {
+            isRestoring || isWiping
+        }
+    }
+
     private func markBackupRequired(category: BackupCategory) {
         updateBackupStatus(category: category) { status in
             BackupItemStatus(
@@ -382,8 +395,7 @@ class BackupService {
 
         Task {
             let status = getBackupStatus(category: category)
-            let isCurrentlyRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
-            if status.isRequired && isCurrentlyRestoring != true {
+            if status.isRequired && !shouldSkipBackup() {
                 await scheduleBackup(category: category)
             } else if !status.isRequired {
                 updateBackupStatus(category: category) { status in
@@ -439,8 +451,7 @@ class BackupService {
             }
 
             let status = getBackupStatus(category: category)
-            let isCurrentlyRestoring = try? await ServiceQueue.background(.backup) { self.isRestoring }
-            if status.isRequired && isCurrentlyRestoring != true {
+            if status.isRequired && !shouldSkipBackup() {
                 await triggerBackup(category: category)
             } else {
                 updateBackupStatus(category: category) { status in
@@ -566,19 +577,30 @@ class BackupService {
         switch category {
         case .settings:
             let settingsDict = await SettingsViewModel.shared.getSettingsDictionary()
-            return try JSONSerialization.data(withJSONObject: settingsDict, options: [])
+            let payload = SettingsBackupV1(
+                version: 1,
+                createdAt: UInt64(Date().timeIntervalSince1970),
+                settings: settingsDict
+            )
+            return try payload.encode()
 
         case .widgets:
-            guard let widgetsData = UserDefaults.standard.data(forKey: "savedWidgets") else {
-                return Data()
+            let savedWidgets: [SavedWidget] = if let widgetsData = UserDefaults.standard.data(forKey: "savedWidgets") {
+                try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
+            } else {
+                []
             }
 
-            do {
-                let savedWidgets = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
-                return try WidgetsBackupConverter.convertToAndroidFormat(savedWidgets: savedWidgets)
-            } catch {
-                return widgetsData
-            }
+            let androidWidgetsDict = try WidgetsBackupConverter.convertToAndroidFormat(savedWidgets: savedWidgets)
+
+            let payload = WidgetsBackupV1(
+                version: 1,
+                createdAt: UInt64(Date().timeIntervalSince1970),
+                widgets: androidWidgetsDict
+            )
+            let encoded = try payload.encode()
+            Logger.debug("Widgets backup: \(savedWidgets.count) widgets, payload size: \(encoded.count) bytes", context: "BackupService")
+            return encoded
 
         case .wallet:
             let transfers = try TransferStorage.shared.getAll()
