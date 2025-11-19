@@ -497,6 +497,21 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    /// Total inbound Lightning capacity excluding LSP (Blocktank) channels
+    /// Used when geoblocked to show only non-Blocktank receiving capacity
+    var totalNonLspInboundLightningSats: UInt64? {
+        let nonLspChannels = lightningService.getNonLspChannels()
+        guard !nonLspChannels.isEmpty else {
+            return nil
+        }
+
+        var capacity: UInt64 = 0
+        for channel in nonLspChannels {
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
