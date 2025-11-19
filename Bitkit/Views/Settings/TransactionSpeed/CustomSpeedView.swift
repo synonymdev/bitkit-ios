@@ -5,7 +5,7 @@ struct CustomSpeedView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
-    @State private var feeRate: UInt32 = 1
+    @State private var feeRate: UInt32 = 0
 
     // Average transaction size for fee calculation
     private let avgTransactionSize: UInt32 = 256 // vBytes for typical transaction
@@ -68,6 +68,7 @@ struct CustomSpeedView: View {
                 settings.defaultTransactionSpeed = .custom(satsPerVByte: feeRate)
                 navigation.navigateBack()
             }
+            .accessibilityIdentifier("Continue")
             .padding(.top, 16)
         }
         .navigationBarHidden(true)

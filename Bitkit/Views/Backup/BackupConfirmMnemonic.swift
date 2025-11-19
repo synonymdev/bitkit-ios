@@ -28,6 +28,7 @@ struct BackupConfirmMnemonic: View {
                         CustomButton(title: word, size: .small, background: isPressed ? Color.white32 : nil) {
                             handleWordPress(word: word, index: index)
                         }
+                        .accessibilityIdentifier("Word-\(word)")
                     }
                 }
 
@@ -70,6 +71,7 @@ struct BackupConfirmMnemonic: View {
                             navigationPath.append(.reminder)
                         }
                     }
+                    .accessibilityIdentifier("ContinueConfirmMnemonic")
                 }
                 .padding(.top, 32)
             }
