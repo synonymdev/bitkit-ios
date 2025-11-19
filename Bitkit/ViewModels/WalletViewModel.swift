@@ -400,8 +400,7 @@ class WalletViewModel: ObservableObject {
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.
     /// So we need to handle all these cases here.
-    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
-        let isGeoblocked = appViewModel.isGeoBlocked ?? false
+    func send(bolt11: String, sats: UInt64? = nil, isGeoblocked: Bool = false) async throws -> PaymentHash {
         let hash = try await lightningService.send(bolt11: bolt11, sats: sats, isGeoblocked: isGeoblocked)
         let eventId = String(hash)
 
