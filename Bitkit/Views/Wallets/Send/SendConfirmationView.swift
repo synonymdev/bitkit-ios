@@ -278,7 +278,8 @@ struct SendConfirmationView: View {
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
                 // Perform the Lightning payment
-                try await wallet.send(bolt11: invoice.bolt11, sats: amount)
+                let isGeoblocked = app.isGeoBlocked ?? false
+                try await wallet.send(bolt11: invoice.bolt11, sats: amount, isGeoblocked: isGeoblocked)
                 Logger.info("Lightning payment successful: \(paymentHash)")
 
                 navigationPath.append(.success(paymentHash))

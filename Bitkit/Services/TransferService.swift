@@ -38,8 +38,8 @@ class TransferService {
         if isGeoblocked && type.isToSpending() && lspOrderId != nil {
             Logger.error("Cannot create LSP transfer when geoblocked", context: "TransferService")
             throw AppError(
-                title: "Transfer unavailable",
-                description: "Transfer to spending via Blocktank is not available in your region."
+                message: "Transfer unavailable",
+                debugMessage: "Transfer to spending via Blocktank is not available in your region."
             )
         }
 
