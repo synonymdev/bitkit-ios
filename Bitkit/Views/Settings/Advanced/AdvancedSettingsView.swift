@@ -95,15 +95,16 @@ struct AdvancedSettingsView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .alert(isPresented: $showingResetAlert) {
-            Alert(
-                title: Text(t("settings__adv__reset_title")),
-                message: Text(t("settings__adv__reset_desc")),
-                primaryButton: .destructive(Text(t("settings__adv__reset_confirm"))) {
-                    suggestionsManager.resetDismissed()
-                },
-                secondaryButton: .cancel()
-            )
+        .alert(t("settings__adv__reset_title"), isPresented: $showingResetAlert) {
+            Button(t("settings__adv__reset_confirm"), role: .destructive) {
+                suggestionsManager.resetDismissed()
+            }
+            .accessibilityIdentifier("DialogConfirm")
+
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+                .accessibilityIdentifier("DialogCancel")
+        } message: {
+            Text(t("settings__adv__reset_desc"))
         }
     }
 }
