@@ -68,7 +68,7 @@ struct MainSettings: View {
                                     iconName: "game-controller"
                                 )
                             }
-                            .accessibilityIdentifier("DevOptions")
+                            .accessibilityIdentifier("DevSettings")
                         }
 
                         Spacer()
@@ -93,6 +93,7 @@ struct MainSettings: View {
                                     )
                                 }
                             }
+                            .accessibilityIdentifier("DevOptions")
 
                         Spacer()
                     }
