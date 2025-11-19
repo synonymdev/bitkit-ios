@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AdvancedSettingsView: View {
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @State private var showingResetAlert = false
 
@@ -98,6 +99,7 @@ struct AdvancedSettingsView: View {
         .alert(t("settings__adv__reset_title"), isPresented: $showingResetAlert) {
             Button(t("settings__adv__reset_confirm"), role: .destructive) {
                 suggestionsManager.resetDismissed()
+                navigation.reset()
             }
             .accessibilityIdentifier("DialogConfirm")
 
