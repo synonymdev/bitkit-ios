@@ -37,6 +37,7 @@ struct Tag: View {
                         .frame(width: 16, height: 16)
                 }
                 .padding(.leading, 6) // Corresponds to icon paddingLeft
+                .accessibilityIdentifier("Tag-\(value)-delete")
             }
         }
         .padding(.horizontal, 12)
@@ -54,6 +55,7 @@ struct Tag: View {
             Button(action: onPress) {
                 tagContent
             }
+            .accessibilityIdentifier("Tag-\(value)")
             .buttonStyle(.plain) // Use plain button style to avoid default button appearance interfering
         } else {
             tagContent

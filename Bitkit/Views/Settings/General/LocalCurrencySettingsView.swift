@@ -25,18 +25,19 @@ struct LocalCurrencySettingsView: View {
     }
 
     private func currencyRow(_ rate: FxRate) -> some View {
-        Button(action: {
+        SettingsListLabel(
+            title: "\(rate.quote) (\(rate.currencySymbol))",
+            rightIcon: currency.selectedCurrency == rate.quote ? .checkmark : nil,
+            testIdentifier: "Currency-\(rate.quote)"
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
             currency.selectedCurrency = rate.quote
             Task {
                 await currency.refresh()
             }
-        }) {
-            SettingsListLabel(
-                title: "\(rate.quote) (\(rate.currencySymbol))",
-                rightIcon: currency.selectedCurrency == rate.quote ? .checkmark : nil
-            )
         }
-        .buttonStyle(PlainButtonStyle())
+        .accessibilityAddTraits(.isButton)
     }
 
     var body: some View {

@@ -9,8 +9,15 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
-        // Stop backup observers before wallet wipe to prevent race conditions
-        BackupService.shared.stopObservingBackups()
+        // Set wiping flag to prevent backups during wipe operations
+        BackupService.shared.setWiping(true)
+        defer {
+            BackupService.shared.setWiping(false)
+        }
+
+        // Stop backup observers and reset VSS client
+        await BackupService.shared.stopObservingBackups()
+        VssBackupClient.shared.reset()
 
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
