@@ -13,8 +13,6 @@ class AppViewModel: ObservableObject {
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
-    @Published var isGeoBlocked: Bool? = nil
-
     // Onboarding
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
@@ -91,11 +89,8 @@ class AppViewModel: ObservableObject {
     deinit {}
 
     func checkGeoStatus() async {
-        do {
-            isGeoBlocked = try await coreService.checkGeoStatus()
-        } catch {
-            Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
-        }
+        // Delegate to GeoService singleton for centralized geo-blocking management
+        await GeoService.shared.checkGeoStatus()
     }
 
     func wipe() async throws {
@@ -165,8 +160,7 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    let isGeoblocked = isGeoBlocked ?? false
-                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis, isGeoblocked: isGeoblocked) {
+                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
@@ -182,8 +176,7 @@ extension AppViewModel {
             }
 
             Logger.debug("Lightning: \(invoice)")
-            let isGeoblocked = isGeoBlocked ?? false
-            if lightningService.canSend(amountSats: invoice.amountSatoshis, isGeoblocked: isGeoblocked) {
+            if lightningService.canSend(amountSats: invoice.amountSatoshis) {
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
                 toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")

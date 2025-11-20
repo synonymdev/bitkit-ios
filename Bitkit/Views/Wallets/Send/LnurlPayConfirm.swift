@@ -285,8 +285,7 @@ struct LnurlPayConfirm: View {
 
         do {
             // Perform the Lightning payment
-            let isGeoblocked = app.isGeoBlocked ?? false
-            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats, isGeoblocked: isGeoblocked)
+            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentHash))
         } catch {

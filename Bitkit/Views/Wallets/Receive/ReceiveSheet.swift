@@ -53,8 +53,7 @@ struct ReceiveSheet: View {
                 if let paymentId = await wallet.paymentId(), !paymentId.isEmpty {
                     try? await CoreService.shared.activity.resetPreActivityMetadataTags(paymentId: paymentId)
                 }
-                let isGeoblocked = app.isGeoBlocked ?? false
-                try? await wallet.refreshBip21(forceRefreshBolt11: true, isGeoblocked: isGeoblocked)
+                try? await wallet.refreshBip21(forceRefreshBolt11: true)
             }
         }
     }

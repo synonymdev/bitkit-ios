@@ -133,8 +133,7 @@ struct ReceiveEdit: View {
             do {
                 wallet.invoiceAmountSats = amountSats
                 wallet.invoiceNote = note
-                let isGeoblocked = app.isGeoBlocked ?? false
-                try await wallet.refreshBip21(forceRefreshBolt11: true, isGeoblocked: isGeoblocked)
+                try await wallet.refreshBip21(forceRefreshBolt11: true)
 
                 // Check if CJIT flow should be shown
                 if needsAdditionalCjit() {
@@ -173,7 +172,7 @@ struct ReceiveEdit: View {
     }
 
     private func needsAdditionalCjit() -> Bool {
-        let isGeoBlocked = app.isGeoBlocked ?? false
+        let isGeoBlocked = GeoService.shared.isGeoBlocked
         let minimumAmount = blocktank.minCjitSats ?? 0
         // When geoblocked, only count non-LSP inbound capacity
         let inboundCapacity = isGeoBlocked
