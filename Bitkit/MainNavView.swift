@@ -13,6 +13,10 @@ struct MainNavView: View {
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
 
+    // Delay constants for clipboard processing
+    private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
+    private static let statePropagationDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
+
     var body: some View {
         NavigationStack(path: $navigation.path) {
             navigationContent
@@ -409,10 +413,10 @@ struct MainNavView: View {
         Task { @MainActor in
             do {
                 await wallet.waitForNodeToRun()
-                try await Task.sleep(nanoseconds: 500_000_000)
+                try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
                 try await app.handleScannedData(uri)
 
-                try await Task.sleep(nanoseconds: 500_000_000)
+                try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
