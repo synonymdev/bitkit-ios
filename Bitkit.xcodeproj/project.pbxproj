@@ -72,13 +72,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		317C819C2ECF174900116EBB /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Services/GeoService.swift,
-			);
-			target = 96FE1F7B2C2DE6AC006D0C8B /* BitkitUITests */;
-		};
 		96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -144,7 +137,7 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 317C819C2ECF174900116EBB /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
+		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
 		96A44F4A2CEF5F4B00FBACFF /* BitkitTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitTests; sourceTree = "<group>"; };
 		96A44F562CEF5F5400FBACFF /* BitkitUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitUITests; sourceTree = "<group>"; };
 		96A44F5C2CEF5F5800FBACFF /* BitkitNotification */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F5E2CEF5F5800FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BitkitNotification; sourceTree = "<group>"; };
