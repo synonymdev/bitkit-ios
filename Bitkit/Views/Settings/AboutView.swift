@@ -82,6 +82,7 @@ struct AboutView: View {
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .frame(maxHeight: 82)
+                        .accessibilityIdentifier("AboutLogo")
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 32)
