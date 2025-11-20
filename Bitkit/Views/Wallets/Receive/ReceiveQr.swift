@@ -42,8 +42,6 @@ struct ReceiveQr: View {
         }
     }
 
-    /// Check if there are usable channels for Lightning receive
-    /// When geoblocked, only count non-LSP channels
     private var hasUsableChannels: Bool {
         if GeoService.shared.isGeoBlocked {
             return wallet.hasNonLspChannels()
@@ -111,7 +109,6 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            // Check if geoblocked with only Blocktank channels
                             if GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels() {
                                 app.toast(
                                     type: .error,
