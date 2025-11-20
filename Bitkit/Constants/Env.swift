@@ -16,7 +16,7 @@ enum Env {
     #endif
     static let dustLimit = 547
 
-    #if GEO
+    #if CHECK_GEOBLOCK
         static let isGeoblockingEnabled = true
     #else
         static let isGeoblockingEnabled = ProcessInfo.processInfo.environment["GEO"] == "true"
