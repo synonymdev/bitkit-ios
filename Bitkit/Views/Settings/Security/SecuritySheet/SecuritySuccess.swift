@@ -49,6 +49,7 @@ struct SecuritySuccess: View {
                     Toggle("", isOn: $settings.requirePinForPayments)
                         .toggleStyle(SwitchToggleStyle(tint: .brandAccent))
                         .labelsHidden()
+                        .accessibilityIdentifier("ToggleBioForPayments")
                 }
                 .padding(.bottom, 32)
 

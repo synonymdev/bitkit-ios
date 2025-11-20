@@ -30,6 +30,7 @@ struct SecurityNoBiometrics: View {
                         settings.useBiometrics = false
                         navigationPath.append(.success)
                     }
+                    .accessibilityIdentifier("SkipButton")
 
                     // Phone Settings button
                     CustomButton(title: t("security__bio_phone_settings")) {
