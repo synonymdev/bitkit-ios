@@ -107,7 +107,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '(@onboarding|@onchain_1|@numberpad|@widgets|@boost|@receive|@settings)(?!.*@settings_10)' }
+          - { name: e2e, grep: '^(?!.*@settings_10)(@onboarding|@onchain_1|@numberpad|@widgets|@boost|@receive|@settings)' }
 
     name: e2e-tests - ${{ matrix.shard.name }}
 
@@ -200,7 +200,7 @@ jobs:
         continue-on-error: true
         id: test1
         working-directory: bitkit-e2e-tests
-        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           RECORD_VIDEO: true
           ATTEMPT: 1
