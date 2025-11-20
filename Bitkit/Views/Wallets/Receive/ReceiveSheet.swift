@@ -33,7 +33,6 @@ struct ReceiveSheet: View {
     @State private var navigationPath: [ReceiveRoute] = []
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
-    @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
         Sheet(id: .receive, data: config) {
