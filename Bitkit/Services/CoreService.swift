@@ -150,6 +150,7 @@ class ActivityService {
                         let preservedTransferTxId = existingOnchain?.transferTxId
                         let preservedFeeRate = existingOnchain?.feeRate ?? 1
                         let preservedAddress = existingOnchain?.address ?? "Loading..."
+                        let preservedDoesExist = existingOnchain?.doesExist ?? true
 
                         // Check if this transaction is a channel transfer (open or close)
                         if preservedChannelId == nil || !preservedIsTransfer {
@@ -211,6 +212,9 @@ class ActivityService {
                         let finalChannelId = preservedChannelId
                         let finalTransferTxId = preservedTransferTxId
 
+                        // If confirmed, set doesExist to true; otherwise preserve existing value
+                        let finalDoesExist = isConfirmed ? true : preservedDoesExist
+
                         let onchain = OnchainActivity(
                             id: payment.id,
                             txType: payment.direction == .outbound ? .sent : .received,
@@ -224,7 +228,7 @@ class ActivityService {
                             isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
                             boostTxIds: boostTxIds,
                             isTransfer: finalIsTransfer,
-                            doesExist: true,
+                            doesExist: finalDoesExist,
                             confirmTimestamp: confirmedTimestamp,
                             channelId: finalChannelId,
                             transferTxId: finalTransferTxId,
@@ -240,6 +244,11 @@ class ActivityService {
                             try upsertActivity(activity: .onchain(onchain))
                             print(payment)
                             addedCount += 1
+                        }
+
+                        // If a removed transaction confirms, mark its replacement transactions as removed
+                        if !preservedDoesExist && isConfirmed {
+                            try await self.markReplacementTransactionsAsRemoved(originalTxId: txid)
                         }
                     } else if case let .bolt11(hash, preimage, secret, description, bolt11) = payment.kind {
                         // Skip pending inbound payments, just means they created an invoice
@@ -295,6 +304,35 @@ class ActivityService {
 
             Logger.info("Synced LDK payments - Added: \(addedCount) - Updated: \(updatedCount)", context: "CoreService")
             self.activitiesChangedSubject.send()
+        }
+    }
+
+    /// Marks replacement transactions (with originalTxId in boostTxIds) as doesExist = false when original confirms
+    private func markReplacementTransactionsAsRemoved(originalTxId: String) async throws {
+        let allActivities = try getActivities(
+            filter: .onchain,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        )
+
+        for activity in allActivities {
+            guard case let .onchain(onchainActivity) = activity else { continue }
+
+            if onchainActivity.boostTxIds.contains(originalTxId) && onchainActivity.doesExist {
+                Logger.info(
+                    "Marking replacement transaction \(onchainActivity.txId) as doesExist = false (original \(originalTxId) confirmed)",
+                    context: "CoreService.markReplacementTransactionsAsRemoved"
+                )
+
+                var updatedActivity = onchainActivity
+                updatedActivity.doesExist = false
+                try updateActivity(activityId: onchainActivity.id, activity: .onchain(updatedActivity))
+            }
         }
     }
 
@@ -693,25 +731,25 @@ class ActivityService {
                     "Added original transaction \(onchainActivity.txId) to replaced transactions list", context: "CoreService.boostOnchainTransaction"
                 )
 
-                // For RBF, delete the original activity since it's been replaced
-                // The new transaction will be synced automatically from LDK
+                // For RBF, mark the old activity as boosted before marking it as replaced
+                onchainActivity.isBoosted = true
                 Logger.debug(
-                    "Attempting to delete original activity \(activityId) before RBF replacement", context: "CoreService.boostOnchainTransaction"
+                    "Marked original activity \(activityId) as boosted before RBF replacement",
+                    context: "CoreService.boostOnchainTransaction"
                 )
 
-                // Use the proper delete function that returns a Bool
-                let deleteResult = try deleteActivityById(activityId: activityId)
-                Logger.info("Delete result for original activity \(activityId): \(deleteResult)", context: "CoreService.boostOnchainTransaction")
+                // For RBF, mark the original activity as doesExist = false instead of deleting it
+                // This allows it to be displayed with the "removed" status
+                Logger.debug(
+                    "Marking original activity \(activityId) as doesExist = false (replaced by RBF)", context: "CoreService.boostOnchainTransaction"
+                )
 
-                // Double-check that the activity was deleted
-                let checkActivity = try getActivityById(activityId: activityId)
-                if checkActivity == nil {
-                    Logger.info("Confirmed: Original activity \(activityId) was successfully deleted", context: "CoreService.boostOnchainTransaction")
-                } else {
-                    Logger.error(
-                        "Warning: Original activity \(activityId) still exists after deletion attempt", context: "CoreService.boostOnchainTransaction"
-                    )
-                }
+                onchainActivity.doesExist = false
+                try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
+                Logger.info(
+                    "Successfully marked activity \(activityId) as doesExist = false (replaced by RBF)",
+                    context: "CoreService.boostOnchainTransaction"
+                )
 
                 self.activitiesChangedSubject.send()
             }

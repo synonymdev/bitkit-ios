@@ -134,6 +134,9 @@ struct ActivityItemView: View {
     private var statusAccessibilityIdentifier: String? {
         switch viewModel.activity {
         case let .onchain(activity):
+            if !activity.doesExist {
+                return "StatusRemoved"
+            }
             if activity.confirmed == true {
                 return "StatusConfirmed"
             }
@@ -225,7 +228,14 @@ struct ActivityItemView: View {
                         BodySSBText(t("wallet__activity_failed"), textColor: .purpleAccent)
                     }
                 case let .onchain(activity):
-                    if activity.confirmed == true {
+                    if !activity.doesExist {
+                        Image("x-mark")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.redAccent)
+                            .frame(width: 16, height: 16)
+                        BodySSBText(t("wallet__activity_removed"), textColor: .redAccent)
+                    } else if activity.confirmed == true {
                         Image("check-circle")
                             .foregroundColor(.greenAccent)
                             .frame(width: 16, height: 16)
