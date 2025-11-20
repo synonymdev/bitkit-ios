@@ -409,8 +409,10 @@ struct MainNavView: View {
         Task { @MainActor in
             do {
                 await wallet.waitForNodeToRun()
+                try await Task.sleep(nanoseconds: 500_000_000)
                 try await app.handleScannedData(uri)
 
+                try await Task.sleep(nanoseconds: 500_000_000)
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
