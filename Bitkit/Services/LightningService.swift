@@ -299,15 +299,15 @@ class LightningService {
 
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
-    /// - Parameter isGeoblocked: If true, only count capacity from non-LSP channels
     /// - Returns: True if we can send the amount
-    func canSend(amountSats: UInt64, isGeoblocked: Bool = false) -> Bool {
+    func canSend(amountSats: UInt64) -> Bool {
         guard let channels else {
             Logger.warn("Channels not available")
             return false
         }
 
         // When geoblocked, only count non-LSP channels
+        let isGeoblocked = GeoService.shared.isGeoBlocked
         let channelsToUse = isGeoblocked ? getNonLspChannels() : channels
 
         let totalNextOutboundHtlcLimitSats =
@@ -369,12 +369,13 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil, isGeoblocked: Bool = false) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
         // When geoblocked, verify we have external (non-LSP) peers
+        let isGeoblocked = GeoService.shared.isGeoBlocked
         if isGeoblocked && !hasExternalPeers() {
             Logger.error("Cannot send Lightning payment when geoblocked without external peers")
             throw AppError(

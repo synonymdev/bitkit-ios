@@ -45,7 +45,7 @@ struct ReceiveQr: View {
     /// Check if there are usable channels for Lightning receive
     /// When geoblocked, only count non-LSP channels
     private var hasUsableChannels: Bool {
-        if app.isGeoBlocked == true {
+        if GeoService.shared.isGeoBlocked {
             return wallet.hasNonLspChannels()
         } else {
             return wallet.channelCount != 0
@@ -73,7 +73,7 @@ struct ReceiveQr: View {
         // 1. No channels at all, OR
         // 2. Geoblocked with only Blocktank channels (treat as no usable channels)
         let hasNoUsableChannels = (wallet.channelCount == 0) ||
-            (app.isGeoBlocked == true && !wallet.hasNonLspChannels())
+            (GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels())
         return hasNoUsableChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
@@ -112,7 +112,7 @@ struct ReceiveQr: View {
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
                             // Check if geoblocked with only Blocktank channels
-                            if app.isGeoBlocked == true && !wallet.hasNonLspChannels() {
+                            if GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels() {
                                 app.toast(
                                     type: .error,
                                     title: "Instant Payments Unavailable",
@@ -329,8 +329,7 @@ struct ReceiveQr: View {
     func refreshBip21() async {
         guard wallet.nodeLifecycleState == .running else { return }
         do {
-            let isGeoblocked = app.isGeoBlocked ?? false
-            try await wallet.refreshBip21(isGeoblocked: isGeoblocked)
+            try await wallet.refreshBip21()
         } catch {
             app.toast(error)
         }

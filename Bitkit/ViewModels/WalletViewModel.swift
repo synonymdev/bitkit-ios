@@ -400,8 +400,8 @@ class WalletViewModel: ObservableObject {
     /// A LN payment can throw an error right away, be successful right away,
     /// or take a while to complete/fail because it's retrying different paths.
     /// So we need to handle all these cases here.
-    func send(bolt11: String, sats: UInt64? = nil, isGeoblocked: Bool = false) async throws -> PaymentHash {
-        let hash = try await lightningService.send(bolt11: bolt11, sats: sats, isGeoblocked: isGeoblocked)
+    func send(bolt11: String, sats: UInt64? = nil) async throws -> PaymentHash {
+        let hash = try await lightningService.send(bolt11: bolt11, sats: sats)
         let eventId = String(hash)
 
         return try await withCheckedThrowingContinuation { continuation in
@@ -518,7 +518,7 @@ class WalletViewModel: ObservableObject {
         return !lightningService.getNonLspChannels().isEmpty
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false, isGeoblocked: Bool = false) async throws {
+    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
         var tagsToMigrate: [String] = []
@@ -546,6 +546,7 @@ class WalletViewModel: ObservableObject {
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
         // When geoblocked, only create Lightning invoice if we have non-LSP channels
+        let isGeoblocked = GeoService.shared.isGeoBlocked
         let hasUsableChannels: Bool = if isGeoblocked {
             hasNonLspChannels()
         } else {
