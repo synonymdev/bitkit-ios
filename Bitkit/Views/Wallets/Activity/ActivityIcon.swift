@@ -9,6 +9,7 @@ struct ActivityIcon: View {
     let size: CGFloat
     let isBoosted: Bool
     let isTransfer: Bool
+    let doesExist: Bool
 
     init(activity: Activity, size: CGFloat = 32) {
         self.size = size
@@ -20,6 +21,7 @@ struct ActivityIcon: View {
             txType = ln.txType
             isBoosted = false
             isTransfer = false
+            doesExist = true
         case let .onchain(onchain):
             isLightning = false
             status = nil
@@ -27,6 +29,7 @@ struct ActivityIcon: View {
             txType = onchain.txType
             isBoosted = onchain.isBoosted
             isTransfer = onchain.isTransfer
+            doesExist = onchain.doesExist
         }
     }
 
@@ -55,6 +58,13 @@ struct ActivityIcon: View {
                         size: size
                     )
                 }
+            } else if !doesExist {
+                CircularIcon(
+                    icon: "x-mark",
+                    iconColor: .redAccent,
+                    backgroundColor: .red16,
+                    size: size
+                )
             } else if isBoosted && !(confirmed ?? false) {
                 CircularIcon(
                     icon: "timer-alt",
