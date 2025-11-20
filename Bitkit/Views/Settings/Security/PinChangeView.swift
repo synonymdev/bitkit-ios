@@ -113,9 +113,7 @@ struct PinChangeView: View {
     private func handlePinMismatch() {
         errorMessage = t("security__cp_try_again", comment: "Try again, this is not the same PIN")
         errorIdentifier = "WrongPIN"
-        step = .enterNewPin
-        newPin = ""
-        resetPinInput()
+        pinInput = ""
         Haptics.notify(.error)
     }
 
