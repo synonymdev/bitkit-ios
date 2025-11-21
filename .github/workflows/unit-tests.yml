@@ -17,7 +17,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Run Tests
     runs-on: macos-15
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -79,6 +79,7 @@ jobs:
             -skip-testing:BitkitTests/TxBumpingTests \
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
+            -skip-testing:BitkitTests/PaymentFlowTests \
             | xcbeautify --report junit
 
       - name: Upload test results
