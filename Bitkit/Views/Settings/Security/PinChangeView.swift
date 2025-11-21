@@ -14,6 +14,7 @@ struct PinChangeView: View {
     @State private var newPin: String = ""
     @State private var step: PinChangeStep = .verifyCurrentPin
     @State private var errorMessage: String = ""
+    @State private var errorIdentifier: String?
 
     enum PinChangeStep {
         case verifyCurrentPin
@@ -103,6 +104,7 @@ struct PinChangeView: View {
         } catch {
             Logger.error("Failed to change PIN: \(error)", context: "PinChangeView")
             errorMessage = t("security__cp_try_again", comment: "Try again, this is not the same PIN")
+            errorIdentifier = "WrongPIN"
             pinInput = ""
             Haptics.notify(.error)
         }
@@ -110,15 +112,15 @@ struct PinChangeView: View {
 
     private func handlePinMismatch() {
         errorMessage = t("security__cp_try_again", comment: "Try again, this is not the same PIN")
-        step = .enterNewPin
-        newPin = ""
-        resetPinInput()
+        errorIdentifier = "WrongPIN"
+        pinInput = ""
         Haptics.notify(.error)
     }
 
     private func resetPinInput() {
         pinInput = ""
         errorMessage = ""
+        errorIdentifier = nil
     }
 
     private func handleIncorrectCurrentPin() {
@@ -158,6 +160,7 @@ struct PinChangeView: View {
                 "security__pin_last_attempt",
                 comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
             )
+            errorIdentifier = "LastAttempt"
         } else {
             // Show remaining attempts
             errorMessage = t(
@@ -165,6 +168,7 @@ struct PinChangeView: View {
                 comment: "%d attempts remaining. Forgot your PIN?",
                 variables: ["attemptsRemaining": "\(remainingAttempts)"]
             )
+            errorIdentifier = "AttemptsRemaining"
         }
     }
 
@@ -230,6 +234,7 @@ struct PinChangeView: View {
                     .onTapGesture {
                         sheets.showSheet(.forgotPin)
                     }
+                    .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
             }
         }
     }
