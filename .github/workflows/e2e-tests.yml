@@ -160,27 +160,18 @@ jobs:
           docker ps
           docker compose version
 
-      - name: Setup regtest environment
+      - name: Reset regtest environment
+        working-directory: bitkit-e2e-tests
+        continue-on-error: true
+        run: |
+          cd docker && docker compose down -v -t 300
+
+      - name: Run regtest setup
         working-directory: bitkit-e2e-tests
         run: |
           cd docker
-
-          # Check if containers are already running and healthy
-          if docker compose ps -q | grep -q .; then
-            echo "🔍 Checking container health..."
-            if docker compose ps --services --filter "status=running" | grep -q .; then
-              echo "✅ Containers already running, skipping recreation"
-            else
-              echo "⚠️  Containers exist but not healthy, recreating..."
-              docker compose down -v -t 60
-              mkdir -p lnd && chmod 777 lnd
-              docker compose up -d
-            fi
-          else
-            echo "🚀 Starting fresh containers..."
-            mkdir -p lnd && chmod 777 lnd
-            docker compose up -d
-          fi
+          mkdir -p lnd && chmod 777 lnd
+          docker compose up -d
 
       - name: Wait for electrum server
         working-directory: bitkit-e2e-tests
