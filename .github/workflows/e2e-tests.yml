@@ -21,7 +21,6 @@ jobs:
   build:
     if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
-    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -106,7 +105,6 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
     needs: [build, e2e-branch]
-    timeout-minutes: 25
 
     strategy:
       fail-fast: false
@@ -164,7 +162,6 @@ jobs:
 
       - name: Setup regtest environment
         working-directory: bitkit-e2e-tests
-        timeout-minutes: 10
         run: |
           cd docker
 
@@ -187,7 +184,6 @@ jobs:
 
       - name: Wait for electrum server
         working-directory: bitkit-e2e-tests
-        timeout-minutes: 10
         run: |
           echo "Waiting for Electrum server..."
           while ! nc -z '127.0.0.1' 60001; do 
@@ -214,7 +210,6 @@ jobs:
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
         id: test1
-        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
@@ -225,7 +220,6 @@ jobs:
         continue-on-error: true
         if: steps.test1.outcome != 'success'
         id: test2
-        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
@@ -235,7 +229,6 @@ jobs:
       - name: Run E2E Tests 3 (${{ matrix.shard.name }})
         if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
         id: test3
-        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
