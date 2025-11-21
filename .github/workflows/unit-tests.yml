@@ -79,8 +79,7 @@ jobs:
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -enableCodeCoverage NO \
-            -parallel-testing-enabled YES \
-            -maximum-parallel-testing-workers 4 \
+            -parallel-testing-enabled NO \
             -skip-testing:BitkitTests/TxBumpingTests \
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
