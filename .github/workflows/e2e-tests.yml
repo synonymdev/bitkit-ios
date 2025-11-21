@@ -200,7 +200,8 @@ jobs:
         run: |
           echo "🔧 Shutting down all running iOS simulators..."
           xcrun simctl shutdown all || true
-          xcrun simctl erase all || true
+          echo "🔧 Erasing target simulator: iPhone 17..."
+          xcrun simctl erase "iPhone 17" || true
           echo "🔧 Disabling iOS Simulator notifications..."
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
