@@ -35,25 +35,18 @@ jobs:
           echo "Xcode Version:"
           xcodebuild -version
 
-      - name: Cache Swift Package Manager
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/Library/Caches/org.swift.swiftpm
-            ~/Library/org.swift.swiftpm
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
+      - name: Clean build environment
+        run: |
+          # Clean any existing build artifacts
+          rm -rf DerivedData
+          rm -rf ~/Library/Developer/Xcode/DerivedData
 
-      - name: Cache DerivedData
-        uses: actions/cache@v3
-        with:
-          path: |
-            DerivedData
-            ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h') }}
-          restore-keys: |
-            ${{ runner.os }}-deriveddata-
+          # Clean Swift Package Manager caches
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/org.swift.swiftpm
+
+          # Reset package caches
+          xcodebuild -resolvePackageDependencies -workspace Bitkit.xcodeproj/project.xcworkspace -scheme Bitkit
 
       - name: Build iOS app
         env:
