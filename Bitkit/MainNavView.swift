@@ -10,6 +10,13 @@ struct MainNavView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
+    @State private var showClipboardAlert = false
+    @State private var clipboardUri: String?
+
+    // Delay constants for clipboard processing
+    private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
+    private static let statePropagationDelayNanoseconds: UInt64 = 500_000_000 // 0.5 seconds
+
     var body: some View {
         NavigationStack(path: $navigation.path) {
             navigationContent
@@ -236,6 +243,19 @@ struct MainNavView: View {
                 }
             }
         }
+        .alert(
+            t("other__clipboard_redirect_title"),
+            isPresented: $showClipboardAlert
+        ) {
+            Button(t("common__ok")) {
+                processClipboardUri()
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {
+                clipboardUri = nil
+            }
+        } message: {
+            Text(t("other__clipboard_redirect_msg"))
+        }
     }
 
     // MARK: - Computed Properties for Better Organization
@@ -381,10 +401,22 @@ struct MainNavView: View {
                 return
             }
 
+            // Store the URI and show alert
+            clipboardUri = uri
+            showClipboardAlert = true
+        }
+    }
+
+    private func processClipboardUri() {
+        guard let uri = clipboardUri else { return }
+
+        Task { @MainActor in
             do {
                 await wallet.waitForNodeToRun()
+                try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
                 try await app.handleScannedData(uri)
 
+                try await Task.sleep(nanoseconds: Self.statePropagationDelayNanoseconds)
                 PaymentNavigationHelper.openPaymentSheet(
                     app: app,
                     currency: currency,
@@ -399,6 +431,9 @@ struct MainNavView: View {
                     description: t("other__qr_error_text")
                 )
             }
+
+            // Clear stored URI after processing
+            clipboardUri = nil
         }
     }
 }
