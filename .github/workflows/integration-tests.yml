@@ -96,6 +96,7 @@ jobs:
             -only-testing:BitkitTests/TxBumpingTests \
             -only-testing:BitkitTests/UtxoSelectionTests \
             -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/PaymentFlowTests \
             | xcbeautify --report junit
 
       - name: Upload test results
