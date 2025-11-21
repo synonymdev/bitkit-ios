@@ -21,6 +21,7 @@ jobs:
   build:
     if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -35,18 +36,25 @@ jobs:
           echo "Xcode Version:"
           xcodebuild -version
 
-      - name: Clean build environment
-        run: |
-          # Clean any existing build artifacts
-          rm -rf DerivedData
-          rm -rf ~/Library/Developer/Xcode/DerivedData
-          
-          # Clean Swift Package Manager caches
-          rm -rf ~/Library/Caches/org.swift.swiftpm
-          rm -rf ~/Library/org.swift.swiftpm
-          
-          # Reset package caches
-          xcodebuild -resolvePackageDependencies -workspace Bitkit.xcodeproj/project.xcworkspace -scheme Bitkit
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Cache DerivedData
+        uses: actions/cache@v3
+        with:
+          path: |
+            DerivedData
+            ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
 
       - name: Build iOS app
         env:
@@ -98,16 +106,16 @@ jobs:
     if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
     needs: [build, e2e-branch]
+    timeout-minutes: 25
 
     strategy:
       fail-fast: false
       matrix:
         shard:
-          # - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
-          # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
-          # - { name: settings, grep: "@settings" }
-          # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '^(?!.*@settings_10)(@onboarding|@onchain_1|@numberpad|@widgets|@boost|@receive|@settings|@security)' }
+          - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
+          - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
+          - { name: settings, grep: "@settings" }
+          - { name: security, grep: "@security" }
 
     name: e2e-tests - ${{ matrix.shard.name }}
 
