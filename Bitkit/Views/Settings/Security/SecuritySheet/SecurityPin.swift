@@ -6,6 +6,7 @@ struct SecurityPin: View {
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
     @State private var pinToCheck: String? = nil
+    @State private var errorIdentifier: String?
 
     private var navTitle: String {
         pinToCheck == nil
@@ -34,6 +35,7 @@ struct SecurityPin: View {
                 if !errorMessage.isEmpty {
                     BodySText(errorMessage, textColor: .brandAccent)
                         .padding(.bottom, 16)
+                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                 }
             }
             .padding(.horizontal, 32)
@@ -44,6 +46,7 @@ struct SecurityPin: View {
                         handlePinComplete(pin)
                     } else if pin.count == 1 {
                         errorMessage = ""
+                        errorIdentifier = nil
                     }
                 }
             }
@@ -69,11 +72,13 @@ struct SecurityPin: View {
                 } catch {
                     Logger.error("Failed to save PIN: \(error)", context: "ChoosePinView")
                     errorMessage = "Failed to save PIN. Please try again."
+                    errorIdentifier = "WrongPIN"
                     pinInput = ""
                 }
             } else {
                 // PINs don't match, show error and reset
                 errorMessage = t("security__pin_not_match")
+                errorIdentifier = "WrongPIN"
                 pinInput = ""
             }
         } else {
@@ -81,6 +86,7 @@ struct SecurityPin: View {
             pinToCheck = pin
             pinInput = ""
             errorMessage = ""
+            errorIdentifier = nil
         }
     }
 }
