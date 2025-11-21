@@ -40,6 +40,7 @@ struct DisablePinView: View {
                     }
                 )
             )
+            .accessibilityIdentifier("DisablePin")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
