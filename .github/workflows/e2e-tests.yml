@@ -112,10 +112,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
-          - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
-          - { name: settings, grep: "@settings" }
-          - { name: security, grep: "@security" }
+          - { name: e2e, grep: '^(?!.*@settings_10)(@onboarding|@onchain_1|@numberpad|@widgets|@boost|@receive|@settings|@security)' }
 
     name: e2e-tests - ${{ matrix.shard.name }}
 
