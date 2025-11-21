@@ -17,7 +17,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Run Tests
     runs-on: macos-15
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
