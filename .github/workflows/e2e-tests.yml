@@ -217,16 +217,18 @@ jobs:
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
         id: test1
+        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
-          RECORD_VIDEO: true
+          RECORD_VIDEO: false
           ATTEMPT: 1
 
       - name: Run E2E Tests 2 (${{ matrix.shard.name }})
         continue-on-error: true
         if: steps.test1.outcome != 'success'
         id: test2
+        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
@@ -236,6 +238,7 @@ jobs:
       - name: Run E2E Tests 3 (${{ matrix.shard.name }})
         if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
         id: test3
+        timeout-minutes: 10
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
