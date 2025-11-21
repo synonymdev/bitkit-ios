@@ -298,7 +298,7 @@ class LightningService {
     }
 
     /// Checks if we have the correct outbound capacity to send the amount
-    /// - Parameter amountSats
+    /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
     func canSend(amountSats: UInt64) -> Bool {
         guard let channels else {
@@ -306,11 +306,15 @@ class LightningService {
             return false
         }
 
+        // When geoblocked, only count non-LSP channels
+        let isGeoblocked = GeoService.shared.isGeoBlocked
+        let channelsToUse = isGeoblocked ? getNonLspChannels() : channels
+
         let totalNextOutboundHtlcLimitSats =
-            channels
+            channelsToUse
                 .filter(\.isUsable)
                 .map(\.nextOutboundHtlcLimitMsat)
-                .reduce(0, +) * 1000
+                .reduce(0, +) / 1000
 
         guard totalNextOutboundHtlcLimitSats > amountSats else {
             Logger.warn("Insufficient outbound capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)")
@@ -368,6 +372,16 @@ class LightningService {
     func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        // When geoblocked, verify we have external (non-LSP) peers
+        let isGeoblocked = GeoService.shared.isGeoBlocked
+        if isGeoblocked && !hasExternalPeers() {
+            Logger.error("Cannot send Lightning payment when geoblocked without external peers")
+            throw AppError(
+                message: "Lightning send unavailable",
+                debugMessage: "You need channels with non-Blocktank nodes to send Lightning payments."
+            )
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
@@ -546,6 +560,31 @@ extension LightningService {
     var peers: [PeerDetails]? { node?.listPeers() }
     var channels: [ChannelDetails]? { node?.listChannels() }
     var payments: [PaymentDetails]? { node?.listPayments() }
+
+    /// Returns LSP (Blocktank) peer node IDs
+    func getLspPeerNodeIds() -> [String] {
+        return Env.trustedLnPeers.map(\.nodeId)
+    }
+
+    /// Checks if there are connected peers other than LSP peers
+    /// Used for geoblocking to determine if Lightning operations can proceed
+    func hasExternalPeers() -> Bool {
+        guard let peers else { return false }
+        let lspNodeIds = Set(getLspPeerNodeIds())
+        return peers.contains { peer in
+            !lspNodeIds.contains(peer.nodeId)
+        }
+    }
+
+    /// Filters channels to exclude LSP channels
+    /// Used for geoblocking to only allow operations through non-Blocktank channels
+    func getNonLspChannels() -> [ChannelDetails] {
+        guard let channels else { return [] }
+        let lspNodeIds = Set(getLspPeerNodeIds())
+        return channels.filter { channel in
+            !lspNodeIds.contains(channel.counterpartyNodeId)
+        }
+    }
 }
 
 // MARK: Events

@@ -55,6 +55,7 @@ jobs:
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 17"
           OS_VERSION: "latest"
+          GEO: false
         run: |
           echo "=== Building iOS app ==="
           echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"

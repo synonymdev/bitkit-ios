@@ -13,8 +13,6 @@ class AppViewModel: ObservableObject {
     @Published var lnurlPayData: LnurlPayData?
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
-    @Published var isGeoBlocked: Bool? = nil
-
     // Onboarding
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
@@ -91,11 +89,8 @@ class AppViewModel: ObservableObject {
     deinit {}
 
     func checkGeoStatus() async {
-        do {
-            isGeoBlocked = try await coreService.checkGeoStatus()
-        } catch {
-            Logger.error("Failed to check geo status: \(error)", context: "GeoCheck")
-        }
+        // Delegate to GeoService singleton for centralized geo-blocking management
+        await GeoService.shared.checkGeoStatus()
     }
 
     func wipe() async throws {

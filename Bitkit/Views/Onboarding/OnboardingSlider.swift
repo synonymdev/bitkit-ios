@@ -77,7 +77,7 @@ struct OnboardingSlider: View {
                         imageName: "lightning",
                         title: t("onboarding__slide1_header"),
                         text: tTodo("Enjoy instant and cheap payments with friends, family, and merchants on the Lightning Network."),
-                        disclaimerText: app.isGeoBlocked == true ? t("onboarding__slide1_note") : nil,
+                        disclaimerText: GeoService.shared.isGeoBlocked ? t("onboarding__slide1_note") : nil,
                         accentColor: .purpleAccent
                     )
                     .tag(1)

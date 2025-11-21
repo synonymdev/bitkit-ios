@@ -7,7 +7,7 @@ struct FundingOptions: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var text: String {
-        if app.isGeoBlocked == true {
+        if GeoService.shared.isGeoBlocked {
             return t("lightning__funding__text_blocked")
         } else {
             return t("lightning__funding__text")
@@ -33,7 +33,7 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: wallet.totalOnchainSats == 0 || app.isGeoBlocked == true,
+                    isDisabled: wallet.totalOnchainSats == 0 || GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
                     if app.hasSeenTransferToSpendingIntro {
@@ -46,7 +46,7 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "qr",
                     title: t("lightning__funding__button2"),
-                    isDisabled: app.isGeoBlocked == true,
+                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundReceive"
                 ) {
                     navigation.reset()

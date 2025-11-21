@@ -32,6 +32,17 @@ class TransferService {
         fundingTxId: String? = nil,
         lspOrderId: String? = nil
     ) async throws -> String {
+        // When geoblocked, block transfers to spending that involve LSP (Blocktank)
+        // toSpending with lspOrderId means it's a Blocktank LSP channel order
+        let isGeoblocked = GeoService.shared.isGeoBlocked
+        if isGeoblocked && type.isToSpending() && lspOrderId != nil {
+            Logger.error("Cannot create LSP transfer when geoblocked", context: "TransferService")
+            throw AppError(
+                message: "Transfer unavailable",
+                debugMessage: "Transfer to spending via Blocktank is not available in your region."
+            )
+        }
+
         let id = UUID().uuidString
         let createdAt = UInt64(Date().timeIntervalSince1970)
 

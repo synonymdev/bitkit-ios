@@ -497,6 +497,27 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    /// Total inbound Lightning capacity excluding LSP (Blocktank) channels
+    /// Used when geoblocked to show only non-Blocktank receiving capacity
+    var totalNonLspInboundLightningSats: UInt64? {
+        let nonLspChannels = lightningService.getNonLspChannels()
+        guard !nonLspChannels.isEmpty else {
+            return nil
+        }
+
+        var capacity: UInt64 = 0
+        for channel in nonLspChannels {
+            capacity += channel.inboundCapacityMsat / 1000
+        }
+        return capacity
+    }
+
+    /// Check if there are non-LSP (non-Blocktank) channels available
+    /// Used for geoblocking to determine if Lightning operations can proceed
+    func hasNonLspChannels() -> Bool {
+        return !lightningService.getNonLspChannels().isEmpty
+    }
+
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
         // Get old payment ID and tags before refreshing (which may change payment ID)
         let oldPaymentId = await paymentId()
@@ -524,7 +545,15 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        if channels?.count ?? 0 > 0 {
+        // When geoblocked, only create Lightning invoice if we have non-LSP channels
+        let isGeoblocked = GeoService.shared.isGeoBlocked
+        let hasUsableChannels: Bool = if isGeoblocked {
+            hasNonLspChannels()
+        } else {
+            channels?.count ?? 0 > 0
+        }
+
+        if hasUsableChannels {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {
