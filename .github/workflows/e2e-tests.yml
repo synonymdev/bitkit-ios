@@ -164,7 +164,7 @@ jobs:
         run: |
           cd docker
           mkdir -p lnd && chmod 777 lnd
-          docker compose up -d
+          docker compose --verbose up --force-recreate -d
 
       - name: Wait for electrum server
         working-directory: bitkit-e2e-tests
