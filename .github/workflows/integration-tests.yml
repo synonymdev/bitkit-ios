@@ -1,23 +1,22 @@
-name: unit-tests
+name: integration-tests
 
 on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # Nightly at midnight UTC
   push:
     branches: [master]
-  pull_request:
-
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  
+
 jobs:
-    
+
   test:
-    if: github.event.pull_request.draft == false
-    name: Run Tests
+    name: Run Integration Tests
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repository
@@ -53,34 +52,62 @@ jobs:
 
       - name: Install dependencies
         run: |
-          echo "⏱️  Starting dependency resolution at $(date)"
           xcodebuild -resolvePackageDependencies | xcbeautify
-          echo "✅ Dependencies resolved at $(date)"
+
+      - name: Check for Docker
+        run: |
+          if ! command -v docker &> /dev/null; then
+            echo "⚠️  Docker not found. Integration tests require Docker for Bitcoin regtest environment."
+            echo "Please install Docker Desktop or Colima to run integration tests locally."
+            exit 0
+          fi
+          docker --version
+          docker info
+
+      - name: Start Docker regtest environment
+        working-directory: docker
+        timeout-minutes: 5
+        run: |
+          echo "🚀 Starting Bitcoin regtest environment..."
+          mkdir -p lnd && chmod 777 lnd
+          docker compose up -d
+
+      - name: Wait for Electrum server
+        timeout-minutes: 5
+        run: |
+          echo "⏳ Waiting for Electrum server to be ready..."
+          while ! nc -z '127.0.0.1' 60001; do
+            echo "Electrum server not ready, waiting..."
+            sleep 5
+          done
+          echo "✅ Electrum server is ready!"
 
       - name: Pre-start simulator
         run: |
-          echo "⏱️  Starting simulator at $(date)"
           xcrun simctl boot "iPhone 16" || true
-          echo "✅ Simulator started at $(date)"
 
-      - name: Run tests
+      - name: Run integration tests
         run: |
-          echo "⏱️  Starting tests at $(date)"
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
-            -skip-testing:BitkitTests/TxBumpingTests \
-            -skip-testing:BitkitTests/UtxoSelectionTests \
-            -skip-testing:BitkitTests/BlocktankTests \
-            -skip-testing:BitkitTests/PaymentFlowTests \
+            -only-testing:BitkitTests/TxBumpingTests \
+            -only-testing:BitkitTests/UtxoSelectionTests \
+            -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/PaymentFlowTests \
             | xcbeautify --report junit
-          echo "✅ Tests completed at $(date)"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: test-results
+          name: integration-test-results
           path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
+
+      - name: Cleanup Docker environment
+        if: always()
+        working-directory: docker
+        run: |
+          docker compose down -v || true
