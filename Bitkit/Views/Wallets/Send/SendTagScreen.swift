@@ -18,7 +18,9 @@ struct SendTagScreen: View {
 
             TagInputForm(
                 tagText: $newTagText,
-                isTextFieldFocused: $isTextFieldFocused
+                isTextFieldFocused: $isTextFieldFocused,
+                textFieldTestId: "TagInputSend",
+                buttonTestId: "SendTagsSubmit"
             ) { tag in
                 await addTag(tag)
             }

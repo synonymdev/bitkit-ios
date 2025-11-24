@@ -55,6 +55,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityIdentifier("Tab-\(tabItem.tab.description.lowercased())")
             }
         }
         .frame(maxWidth: .infinity)
