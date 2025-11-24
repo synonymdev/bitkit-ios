@@ -42,7 +42,9 @@ struct AddTagSheet: View {
                 TagInputForm(
                     tagText: $newTag,
                     isTextFieldFocused: $isTextFieldFocused,
-                    isLoading: isLoading
+                    isLoading: isLoading,
+                    textFieldTestId: "TagInput",
+                    buttonTestId: "ActivityTagsSubmit"
                 ) { tag in
                     await appendTagAndClose(tag)
                 }
