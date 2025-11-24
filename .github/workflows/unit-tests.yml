@@ -63,9 +63,9 @@ jobs:
           xcrun simctl boot "iPhone 16" || true
           echo "✅ Simulator started at $(date)"
 
-      - name: Run tests
+      - name: Run fast tests
         run: |
-          echo "⏱️  Starting tests at $(date)"
+          echo "⏱️  Starting fast tests at $(date)"
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
@@ -76,7 +76,23 @@ jobs:
             -skip-testing:BitkitTests/BlocktankTests \
             -skip-testing:BitkitTests/PaymentFlowTests \
             | xcbeautify --report junit
-          echo "✅ Tests completed at $(date)"
+          echo "✅ Fast tests completed at $(date)"
+
+      - name: Run integration tests (master/manual only)
+        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        run: |
+          echo "⏱️  Starting integration tests at $(date)"
+          set -o pipefail && xcodebuild test \
+            -scheme Bitkit \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -enableCodeCoverage NO \
+            -parallel-testing-enabled NO \
+            -only-testing:BitkitTests/TxBumpingTests \
+            -only-testing:BitkitTests/UtxoSelectionTests \
+            -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/PaymentFlowTests \
+            | xcbeautify --report junit
+          echo "✅ Integration tests completed at $(date)"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
