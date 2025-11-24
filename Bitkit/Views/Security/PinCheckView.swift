@@ -8,6 +8,7 @@ struct PinCheckView: View {
 
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
+    @State private var errorIdentifier: String?
     @EnvironmentObject private var settings: SettingsViewModel
     @Environment(\.dismiss) private var dismiss
 
@@ -17,6 +18,7 @@ struct PinCheckView: View {
         } else if pin.count == 1 {
             // Clear error message when user starts typing
             errorMessage = ""
+            errorIdentifier = nil
         }
     }
 
@@ -43,6 +45,7 @@ struct PinCheckView: View {
                 "security__pin_exceeded_attempts",
                 comment: "Too many incorrect attempts. Please try again later."
             )
+            errorIdentifier = "WrongPIN"
             return
         }
 
@@ -54,6 +57,7 @@ struct PinCheckView: View {
                 "security__pin_last_attempt",
                 comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
             )
+            errorIdentifier = "LastAttempt"
         } else {
             // Show remaining attempts
             errorMessage = t(
@@ -61,6 +65,7 @@ struct PinCheckView: View {
                 comment: "%d attempts remaining. Forgot your PIN?",
                 variables: ["attemptsRemaining": "\(remainingAttempts)"]
             )
+            errorIdentifier = "AttemptsRemaining"
         }
     }
 
@@ -76,6 +81,7 @@ struct PinCheckView: View {
             if !errorMessage.isEmpty {
                 CaptionText(errorMessage, textColor: .brandAccent)
                     .padding(.bottom, 16)
+                    .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
             }
 
             // PIN input component
