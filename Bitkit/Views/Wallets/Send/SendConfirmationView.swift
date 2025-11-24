@@ -97,7 +97,8 @@ struct SendConfirmationView: View {
                 },
                 onAddTag: {
                     navigationPath.append(.tag)
-                }
+                },
+                buttonTestId: "TagsAddSend"
             )
 
             Spacer()
