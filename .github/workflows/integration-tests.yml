@@ -1,11 +1,12 @@
 name: integration-tests
 
 on:
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'  # Nightly at midnight UTC
   push:
     branches: [master]
+  pull_request:
+    branches: [master]
+
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -14,6 +15,7 @@ concurrency:
 jobs:
 
   test:
+    if: github.event.pull_request.draft == false
     name: Run Integration Tests
     runs-on: macos-15
 
