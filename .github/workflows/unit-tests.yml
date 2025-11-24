@@ -79,7 +79,7 @@ jobs:
           echo "✅ Fast tests completed at $(date)"
 
       - name: Run integration tests (master/manual only)
-        if: github.ref == 'refs/heads/master' || github.event_name == 'workflow_dispatch'
+        if: github.base_ref == 'master' || github.event_name == 'workflow_dispatch'
         run: |
           echo "⏱️  Starting integration tests at $(date)"
           set -o pipefail && xcodebuild test \
