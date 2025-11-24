@@ -30,6 +30,7 @@ struct PinInput: View {
             }
             .background(Color.black)
         }
+        .accessibilityIdentifier("PinPad")
     }
 
     private func handleNumberPadInput(_ key: String) {
