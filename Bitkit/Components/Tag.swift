@@ -48,6 +48,8 @@ struct Tag: View {
         )
         .cornerRadius(8)
         .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("Tag-\(value)")
     }
 
     var body: some View {
@@ -55,7 +57,6 @@ struct Tag: View {
             Button(action: onPress) {
                 tagContent
             }
-            .accessibilityIdentifier("Tag-\(value)")
             .buttonStyle(.plain) // Use plain button style to avoid default button appearance interfering
         } else {
             tagContent
