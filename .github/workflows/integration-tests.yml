@@ -55,34 +55,6 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies | xcbeautify
 
-      - name: Check for Docker
-        run: |
-          if ! command -v docker &> /dev/null; then
-            echo "⚠️  Docker not found. Integration tests require Docker for Bitcoin regtest environment."
-            echo "Please install Docker Desktop or Colima to run integration tests locally."
-            exit 0
-          fi
-          docker --version
-          docker info
-
-      - name: Start Docker regtest environment
-        working-directory: docker
-        timeout-minutes: 5
-        run: |
-          echo "🚀 Starting Bitcoin regtest environment..."
-          mkdir -p lnd && chmod 777 lnd
-          docker compose up -d
-
-      - name: Wait for Electrum server
-        timeout-minutes: 5
-        run: |
-          echo "⏳ Waiting for Electrum server to be ready..."
-          while ! nc -z '127.0.0.1' 60001; do
-            echo "Electrum server not ready, waiting..."
-            sleep 5
-          done
-          echo "✅ Electrum server is ready!"
-
       - name: Pre-start simulator
         run: |
           xcrun simctl boot "iPhone 16" || true
@@ -106,9 +78,3 @@ jobs:
         with:
           name: integration-test-results
           path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult
-
-      - name: Cleanup Docker environment
-        if: always()
-        working-directory: docker
-        run: |
-          docker compose down -v || true
