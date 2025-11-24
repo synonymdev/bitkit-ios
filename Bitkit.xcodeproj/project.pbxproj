@@ -89,6 +89,7 @@
 				Models/LnPeer.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
+				Services/GeoService.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
 				Services/ServiceQueue.swift,
@@ -113,6 +114,7 @@
 				Models/ReceivedTxSheetDetails.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
+				Services/GeoService.swift,
 				Services/LightningService.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
@@ -591,7 +593,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG CHECK_GEOBLOCK $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 			};
 			name = Debug;
@@ -645,6 +647,7 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "CHECK_GEOBLOCK $(inherited)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 			};
 			name = Release;
