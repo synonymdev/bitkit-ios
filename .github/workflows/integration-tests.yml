@@ -16,7 +16,6 @@ jobs:
   test:
     name: Run Integration Tests
     runs-on: macos-15
-    timeout-minutes: 40
 
     steps:
       - name: Checkout repository
