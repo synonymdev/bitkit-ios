@@ -1,21 +1,22 @@
-name: unit-tests
+name: integration-tests
 
 on:
   push:
     branches: [master]
   pull_request:
+    branches: [master]
 
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-  
+
 jobs:
-    
+
   test:
     if: github.event.pull_request.draft == false
-    name: Run Tests
+    name: Run Integration Tests
     runs-on: macos-15
     timeout-minutes: 60
 
@@ -63,24 +64,24 @@ jobs:
           xcrun simctl boot "iPhone 16" || true
           echo "✅ Simulator started at $(date)"
 
-      - name: Run unit tests
+      - name: Run integration tests
         run: |
-          echo "⏱️  Starting unit tests at $(date)"
+          echo "⏱️  Starting integration tests at $(date)"
           set -o pipefail && xcodebuild test \
             -scheme Bitkit \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -enableCodeCoverage NO \
             -parallel-testing-enabled NO \
-            -skip-testing:BitkitTests/TxBumpingTests \
-            -skip-testing:BitkitTests/UtxoSelectionTests \
-            -skip-testing:BitkitTests/BlocktankTests \
-            -skip-testing:BitkitTests/PaymentFlowTests \
+            -only-testing:BitkitTests/TxBumpingTests \
+            -only-testing:BitkitTests/UtxoSelectionTests \
+            -only-testing:BitkitTests/BlocktankTests \
+            -only-testing:BitkitTests/PaymentFlowTests \
             | xcbeautify --report junit
-          echo "✅ Unit tests completed at $(date)"
+          echo "✅ Integration tests completed at $(date)"
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: test-results
+          name: integration-test-results
           path: ~/Library/Developer/Xcode/DerivedData/**/Logs/Test/*.xcresult

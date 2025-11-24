@@ -40,11 +40,11 @@ jobs:
           # Clean any existing build artifacts
           rm -rf DerivedData
           rm -rf ~/Library/Developer/Xcode/DerivedData
-          
+
           # Clean Swift Package Manager caches
           rm -rf ~/Library/Caches/org.swift.swiftpm
           rm -rf ~/Library/org.swift.swiftpm
-          
+
           # Reset package caches
           xcodebuild -resolvePackageDependencies -workspace Bitkit.xcodeproj/project.xcworkspace -scheme Bitkit
 
@@ -160,7 +160,6 @@ jobs:
       - name: Reset regtest environment
         working-directory: bitkit-e2e-tests
         continue-on-error: true
-        timeout-minutes: 10
         run: |
           cd docker && docker compose --verbose down -v -t 300
 
@@ -168,12 +167,11 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           cd docker
-          mkdir lnd && chmod 777 lnd
+          mkdir -p lnd && chmod 777 lnd
           docker compose --verbose up --force-recreate -d
 
       - name: Wait for electrum server
         working-directory: bitkit-e2e-tests
-        timeout-minutes: 10
         run: |
           echo "Waiting for Electrum server..."
           while ! nc -z '127.0.0.1' 60001; do 
@@ -192,7 +190,8 @@ jobs:
         run: |
           echo "🔧 Shutting down all running iOS simulators..."
           xcrun simctl shutdown all || true
-          xcrun simctl erase all || true
+          echo "🔧 Erasing target simulator: iPhone 17..."
+          xcrun simctl erase "iPhone 17" || true
           echo "🔧 Disabling iOS Simulator notifications..."
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
