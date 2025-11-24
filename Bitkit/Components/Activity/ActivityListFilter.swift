@@ -37,6 +37,7 @@ struct ActivityListFilter: View {
                     .onTapGesture {
                         showingTagSelector = true
                     }
+                    .accessibilityIdentifier("TagsPrompt")
                 Image("calendar")
                     .resizable()
                     .frame(width: 24, height: 24)
@@ -44,6 +45,7 @@ struct ActivityListFilter: View {
                     .onTapGesture {
                         showingDateRange = true
                     }
+                    .accessibilityIdentifier("DatePicker")
             }
         }
         .frame(width: .infinity, height: 48)
