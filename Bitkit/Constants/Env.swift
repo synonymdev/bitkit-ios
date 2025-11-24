@@ -16,6 +16,12 @@ enum Env {
     #endif
     static let dustLimit = 547
 
+    #if CHECK_GEOBLOCK
+        static let isGeoblockingEnabled = true
+    #else
+        static let isGeoblockingEnabled = ProcessInfo.processInfo.environment["GEO"] == "true"
+    #endif
+
     /// The current execution context of the app
     static var currentExecutionContext: ExecutionContext {
         return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
