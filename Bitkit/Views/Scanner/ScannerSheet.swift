@@ -12,6 +12,8 @@ struct ScannerSheet: View {
     @EnvironmentObject private var scanner: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @State private var isManualEntryPresented = false
+    @State private var manualEntry = ""
 
     let config: ScannerSheetItem
 
@@ -40,6 +42,19 @@ struct ScannerSheet: View {
                     ) {
                         await scanner.handlePaste(context: .main)
                     }
+
+                    if Env.isE2E {
+                        CustomButton(
+                            title: "Enter QRCode String",
+                            variant: .secondary,
+                            shouldExpand: true
+                        ) {
+                            manualEntry = ""
+                            isManualEntryPresented = true
+                        }
+                        .padding(.top, 12)
+                        .accessibilityIdentifier("ScanPrompt")
+                    }
                 }
             }
             .navigationBarHidden(false)
@@ -54,6 +69,28 @@ struct ScannerSheet: View {
                     sheets: sheets
                 )
             }
+            .sheet(isPresented: $isManualEntryPresented) {
+                ScannerManualEntryPrompt(
+                    text: $manualEntry,
+                    onSubmit: {
+                        Task {
+                            await handleManualEntrySubmit()
+                        }
+                    },
+                    onCancel: {
+                        isManualEntryPresented = false
+                    }
+                )
+                .presentationDetents([.fraction(0.35)])
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+
+    private func handleManualEntrySubmit() async {
+        await scanner.handleManualEntry(manualEntry, context: .main) {
+            isManualEntryPresented = false
+            manualEntry = ""
         }
     }
 }
