@@ -83,7 +83,6 @@ struct BackupSettings: View {
 
                         HStack(alignment: .center, spacing: 8) {
                             SettingsLabel(t("settings__backup__latest"))
-                                .padding(.top, 16)
 
                             if Env.isE2E, allSynced {
                                 Image("check")
@@ -93,6 +92,7 @@ struct BackupSettings: View {
                                     .accessibilityIdentifier("AllSynced")
                             }
                         }
+                        .padding(.top, 16)
 
                         ForEach(BackupCategory.allCases, id: \.self) { category in
                             let status = viewModel.getStatus(for: category)
