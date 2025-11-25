@@ -182,7 +182,6 @@ struct DateRangeSelectorSheet: View {
                         startDate = nil
                         endDate = nil
                         viewModel.clearDateRange()
-                        isPresented = false
                     }
                     .accessibilityIdentifier("CalendarClearButton")
 
