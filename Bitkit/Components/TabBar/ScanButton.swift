@@ -20,6 +20,7 @@ struct ScanButton: View {
                 .background(Circle().fill(background))
                 .foregroundColor(.gray1)
         }
+        .accessibilityIdentifier("Scan")
         .shadow(color: Color.gray2, radius: 0, x: 0, y: -1)
         .shadow(color: Color.black.opacity(0.25), radius: 25, x: 0, y: 20)
         .overlay(
