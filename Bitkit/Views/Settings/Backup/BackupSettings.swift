@@ -55,6 +55,13 @@ struct BackupSettings: View {
     @EnvironmentObject var sheets: SheetViewModel
     @StateObject private var viewModel = BackupViewModel()
 
+    private var allSynced: Bool {
+        BackupCategory.allCases.allSatisfy { category in
+            let status = viewModel.getStatus(for: category)
+            return !status.running && !status.isRequired
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__backup_title"))
@@ -74,8 +81,18 @@ struct BackupSettings: View {
                         }
                         .accessibilityIdentifier("ResetAndRestore")
 
-                        SettingsLabel(t("settings__backup__latest"))
-                            .padding(.top, 16)
+                        HStack(alignment: .center, spacing: 8) {
+                            SettingsLabel(t("settings__backup__latest"))
+                                .padding(.top, 16)
+
+                            if Env.isE2E, allSynced {
+                                Image("check")
+                                    .resizable()
+                                    .frame(width: 16, height: 16)
+                                    .foregroundColor(.greenAccent)
+                                    .accessibilityIdentifier("AllSynced")
+                            }
+                        }
 
                         ForEach(BackupCategory.allCases, id: \.self) { category in
                             let status = viewModel.getStatus(for: category)
