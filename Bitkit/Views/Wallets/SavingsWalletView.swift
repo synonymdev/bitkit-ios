@@ -25,7 +25,7 @@ struct SavingsWalletView: View {
             }
 
             if wallet.totalOnchainSats > 0 {
-                if !(app.isGeoBlocked ?? true) {
+                if !GeoService.shared.isGeoBlocked {
                     transferButton
                         .transition(.move(edge: .leading).combined(with: .opacity))
                         .padding(.top, 32)

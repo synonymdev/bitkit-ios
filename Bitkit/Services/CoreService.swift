@@ -1378,11 +1378,15 @@ class CoreService {
     }
 
     func checkGeoStatus() async throws -> Bool? {
-        try await ServiceQueue.background(.core) {
+        if !Env.isGeoblockingEnabled {
+            return false
+        }
+
+        return try await ServiceQueue.background(.core) {
             Logger.info("Checking geo status...", context: "GeoCheck")
             guard let url = URL(string: Env.geoCheckUrl) else {
                 Logger.error("Invalid geocheck URL: \(Env.geoCheckUrl)", context: "GeoCheck")
-                return nil
+                return nil as Bool?
             }
 
             let (_, response) = try await URLSession.shared.data(from: url)
@@ -1397,10 +1401,10 @@ class CoreService {
                     return true
                 default:
                     Logger.warn("Unexpected status code: \(httpResponse.statusCode)", context: "GeoCheck")
-                    return nil
+                    return nil as Bool?
                 }
             }
-            return nil
+            return nil as Bool?
         }
     }
 }

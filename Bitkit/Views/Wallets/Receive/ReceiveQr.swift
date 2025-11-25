@@ -42,9 +42,17 @@ struct ReceiveQr: View {
         }
     }
 
+    private var hasUsableChannels: Bool {
+        if GeoService.shared.isGeoBlocked {
+            return wallet.hasNonLspChannels()
+        } else {
+            return wallet.channelCount != 0
+        }
+    }
+
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        // Only show unified tab if there are channels
-        if wallet.channelCount != 0 {
+        // Only show unified tab if there are usable channels
+        if hasUsableChannels {
             return [
                 TabItem(.savings),
                 TabItem(.unified, activeColor: .white),
@@ -59,7 +67,12 @@ struct ReceiveQr: View {
     }
 
     var showingCjitOnboarding: Bool {
-        return wallet.channelCount == 0 && cjitInvoice == nil && selectedTab == .spending
+        // Show CJIT onboarding when:
+        // 1. No channels at all, OR
+        // 2. Geoblocked with only Blocktank channels (treat as no usable channels)
+        let hasNoUsableChannels = (wallet.channelCount == 0) ||
+            (GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels())
+        return hasNoUsableChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -75,7 +88,7 @@ struct ReceiveQr: View {
                 TabView(selection: $selectedTab) {
                     tabContent(for: .savings)
 
-                    if wallet.channelCount != 0 {
+                    if hasUsableChannels {
                         tabContent(for: .unified)
                     }
 
@@ -96,7 +109,15 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            navigationPath.append(.cjitAmount)
+                            if GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels() {
+                                app.toast(
+                                    type: .error,
+                                    title: "Instant Payments Unavailable",
+                                    description: "Bitkit does not provide Lightning services in your country, but you can still connect to other nodes."
+                                )
+                            } else {
+                                navigationPath.append(.cjitAmount)
+                            }
                         }
                     } else {
                         CustomButton(title: showDetails ? tTodo("QR Code") : tTodo("Show Details")) {
@@ -128,6 +149,7 @@ struct ReceiveQr: View {
             } catch {
                 app.toast(error)
             }
+            try? await app.checkGeoStatus()
         }
         .onChange(of: wallet.nodeLifecycleState) { newState in
             // They may open this view before node has started
@@ -142,7 +164,7 @@ struct ReceiveQr: View {
     @ViewBuilder
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
+            if showingCjitOnboarding {
                 cjitOnboarding
             } else if showDetails {
                 detailsContent(for: tab)

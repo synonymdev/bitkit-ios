@@ -91,7 +91,7 @@ struct SheetIntro: View {
                 ) {
                     onContinue()
                 }
-                .accessibilityIdentifier("\(baseTestID)-button-continue")
+                .accessibilityIdentifier("\(baseTestID)Continue")
             }
         } else {
             CustomButton(
@@ -99,7 +99,7 @@ struct SheetIntro: View {
             ) {
                 onContinue()
             }
-            .accessibilityIdentifier("\(baseTestID)-button-continue")
+            .accessibilityIdentifier("\(baseTestID)Continue")
         }
     }
 }
