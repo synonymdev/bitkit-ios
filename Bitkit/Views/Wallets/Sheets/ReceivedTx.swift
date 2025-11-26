@@ -51,8 +51,10 @@ struct ReceivedTx: View {
                 VStack(alignment: .leading, spacing: 0) {
                     SheetHeader(title: title)
                     MoneyStack(sats: Int(config.details.sats), showSymbol: true)
+                        .accessibilityIdentifier("ReceivedTransaction")
                     Spacer()
                     CustomButton(title: buttonText) { sheets.hideSheet() }
+                        .accessibilityIdentifier("ReceivedTransactionButton")
                 }
                 .padding(.horizontal, 16)
             }
