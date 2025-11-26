@@ -115,6 +115,9 @@ struct ActivityItemView: View {
             // Lightning transactions can never be boosted
             return true
         case let .onchain(activity):
+            if !activity.doesExist {
+                return true
+            }
             if activity.confirmed == true {
                 return true
             }

@@ -400,16 +400,16 @@ extension AppViewModel {
                     await MainActor.run {
                         toast(
                             type: .info,
-                            title: "Payment Confirmed",
-                            description: "Your received payment has been confirmed"
+                            title: t("wallet__toast_payment_confirmed_title"),
+                            description: t("wallet__toast_payment_confirmed_description")
                         )
                     }
                 } else {
                     await MainActor.run {
                         toast(
                             type: .info,
-                            title: "Transaction Confirmed",
-                            description: "Your transaction has been confirmed"
+                            title: t("wallet__toast_transaction_confirmed_title"),
+                            description: t("wallet__toast_transaction_confirmed_description")
                         )
                     }
                 }
@@ -421,23 +421,27 @@ extension AppViewModel {
                     await MainActor.run {
                         toast(
                             type: .info,
-                            title: "Received Transaction Replaced",
-                            description: "Your received transaction was replaced by a fee bump"
+                            title: t("wallet__toast_received_transaction_replaced_title"),
+                            description: t("wallet__toast_received_transaction_replaced_description")
                         )
                     }
                 } else {
                     await MainActor.run {
                         toast(
                             type: .info,
-                            title: "Transaction Replaced",
-                            description: "Your transaction was replaced by a fee bump"
+                            title: t("wallet__toast_transaction_replaced_title"),
+                            description: t("wallet__toast_transaction_replaced_description")
                         )
                     }
                 }
             }
         case let .onchainTransactionReorged(txid):
             Logger.warn("Transaction reorged: \(txid)")
-            toast(type: .warning, title: "Transaction Unconfirmed", description: "Transaction became unconfirmed due to blockchain reorganization")
+            toast(
+                type: .warning,
+                title: t("wallet__toast_transaction_unconfirmed_title"),
+                description: t("wallet__toast_transaction_unconfirmed_description")
+            )
         case let .onchainTransactionEvicted(txid):
             Task {
                 let wasReplaced = await CoreService.shared.activity.wasTransactionReplaced(txid: txid)
@@ -449,7 +453,11 @@ extension AppViewModel {
                     }
 
                     Logger.warn("Transaction removed from mempool: \(txid)")
-                    toast(type: .warning, title: "Transaction Removed", description: "Transaction was removed from mempool")
+                    toast(
+                        type: .warning,
+                        title: t("wallet__toast_transaction_removed_title"),
+                        description: t("wallet__toast_transaction_removed_description")
+                    )
                 }
             }
 
