@@ -233,4 +233,18 @@ class ScannerManager: ObservableObject {
             )
         }
     }
+
+    func handleManualEntry(
+        _ value: String,
+        context: ScannerContext,
+        onSuccess: @MainActor () -> Void
+    ) async {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        await handleScan(trimmed, context: context)
+        await MainActor.run {
+            onSuccess()
+        }
+    }
 }
