@@ -1,15 +1,29 @@
 import BitkitCore
+import Combine
 import Foundation
 import LDKNode
 import SwiftUI
 
 struct ActivityExplorerView: View {
-    let item: Activity
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
+    @State private var item: Activity
     @State private var txDetails: TransactionDetails?
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
+
+    init(item: Activity) {
+        _item = State(initialValue: item)
+    }
+
+    private var activityId: String {
+        switch item {
+        case let .lightning(activity):
+            return activity.id
+        case let .onchain(activity):
+            return activity.id
+        }
+    }
 
     private var onchain: OnchainActivity? {
         guard case let .onchain(activity) = item else { return nil }
@@ -54,6 +68,21 @@ struct ActivityExplorerView: View {
         let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds)
         await MainActor.run {
             boostTxDoesExist = doesExistMap
+        }
+    }
+
+    private func refreshActivity() async {
+        do {
+            if let updatedActivity = try await CoreService.shared.activity.getActivity(id: activityId) {
+                await MainActor.run {
+                    item = updatedActivity
+                }
+                if case let .onchain(onchainActivity) = updatedActivity, !onchainActivity.boostTxIds.isEmpty {
+                    await loadBoostTxDoesExist()
+                }
+            }
+        } catch {
+            Logger.error(error, context: "Failed to refresh activity \(activityId) in ActivityExplorerView")
         }
     }
 
@@ -216,6 +245,11 @@ struct ActivityExplorerView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .onReceive(CoreService.shared.activity.activitiesChangedPublisher) { _ in
+            Task {
+                await refreshActivity()
+            }
+        }
         .task {
             guard let onchain else { return }
             await loadTransactionDetails()

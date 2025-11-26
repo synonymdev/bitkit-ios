@@ -1,9 +1,11 @@
 import BitkitCore
+import Combine
 import SwiftUI
 
 @MainActor
 class ActivityItemViewModel: ObservableObject {
     private let coreService: CoreService = .shared
+    private var activitiesChangedCancellable: AnyCancellable?
 
     @Published private(set) var activity: Activity
     @Published private(set) var tags: [String] = []
@@ -19,6 +21,15 @@ class ActivityItemViewModel: ObservableObject {
                 return activity.id
             }
         }()
+
+        activitiesChangedCancellable = coreService.activity.activitiesChangedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.refreshActivity()
+                }
+            }
+
         Task {
             await loadTags()
         }
