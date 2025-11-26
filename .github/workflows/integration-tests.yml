@@ -55,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies | xcbeautify
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
 
       - name: Pre-start simulator
