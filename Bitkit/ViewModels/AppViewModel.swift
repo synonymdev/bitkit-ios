@@ -114,7 +114,14 @@ class AppViewModel: ObservableObject {
 // MARK: Toast notifications
 
 extension AppViewModel {
-    func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 4.0) {
+    func toast(
+        type: Toast.ToastType,
+        title: String,
+        description: String? = nil,
+        autoHide: Bool = true,
+        visibilityTime: Double = 4.0,
+        accessibilityIdentifier: String? = nil
+    ) {
         switch type {
         case .error:
             Haptics.notify(.error)
@@ -128,7 +135,14 @@ extension AppViewModel {
             Haptics.notify(.warning)
         }
 
-        let toast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
+        let toast = Toast(
+            type: type,
+            title: title,
+            description: description,
+            autoHide: autoHide,
+            visibilityTime: visibilityTime,
+            accessibilityIdentifier: accessibilityIdentifier
+        )
         ToastWindowManager.shared.showToast(toast)
     }
 
@@ -364,7 +378,12 @@ extension AppViewModel {
         case .paymentClaimable:
             break
         case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
-            break
+            toast(
+                type: .error,
+                title: t("wallet__toast_payment_failed_title"),
+                description: t("wallet__toast_payment_failed_description"),
+                accessibilityIdentifier: "PaymentFailedToast"
+            )
         case .paymentForwarded:
             break
 
@@ -401,7 +420,8 @@ extension AppViewModel {
                         toast(
                             type: .info,
                             title: t("wallet__toast_payment_confirmed_title"),
-                            description: t("wallet__toast_payment_confirmed_description")
+                            description: t("wallet__toast_payment_confirmed_description"),
+                            accessibilityIdentifier: "PaymentConfirmedToast"
                         )
                     }
                 } else {
@@ -409,7 +429,8 @@ extension AppViewModel {
                         toast(
                             type: .info,
                             title: t("wallet__toast_transaction_confirmed_title"),
-                            description: t("wallet__toast_transaction_confirmed_description")
+                            description: t("wallet__toast_transaction_confirmed_description"),
+                            accessibilityIdentifier: "TransactionConfirmedToast"
                         )
                     }
                 }
@@ -422,7 +443,8 @@ extension AppViewModel {
                         toast(
                             type: .info,
                             title: t("wallet__toast_received_transaction_replaced_title"),
-                            description: t("wallet__toast_received_transaction_replaced_description")
+                            description: t("wallet__toast_received_transaction_replaced_description"),
+                            accessibilityIdentifier: "ReceivedTransactionReplacedToast"
                         )
                     }
                 } else {
@@ -430,7 +452,8 @@ extension AppViewModel {
                         toast(
                             type: .info,
                             title: t("wallet__toast_transaction_replaced_title"),
-                            description: t("wallet__toast_transaction_replaced_description")
+                            description: t("wallet__toast_transaction_replaced_description"),
+                            accessibilityIdentifier: "TransactionReplacedToast"
                         )
                     }
                 }
@@ -440,7 +463,8 @@ extension AppViewModel {
             toast(
                 type: .warning,
                 title: t("wallet__toast_transaction_unconfirmed_title"),
-                description: t("wallet__toast_transaction_unconfirmed_description")
+                description: t("wallet__toast_transaction_unconfirmed_description"),
+                accessibilityIdentifier: "TransactionUnconfirmedToast"
             )
         case let .onchainTransactionEvicted(txid):
             Task {
@@ -456,7 +480,8 @@ extension AppViewModel {
                     toast(
                         type: .warning,
                         title: t("wallet__toast_transaction_removed_title"),
-                        description: t("wallet__toast_transaction_removed_description")
+                        description: t("wallet__toast_transaction_removed_description"),
+                        accessibilityIdentifier: "TransactionRemovedToast"
                     )
                 }
             }
