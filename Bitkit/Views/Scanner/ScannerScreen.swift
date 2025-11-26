@@ -7,6 +7,8 @@ struct ScannerScreen: View {
     @EnvironmentObject private var scanner: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @State private var isManualEntryPresented = false
+    @State private var manualEntry = ""
 
     private var scannerContext: ScannerContext {
         if navigation.path.contains(.electrumSettings) {
@@ -39,6 +41,19 @@ struct ScannerScreen: View {
             ) {
                 await scanner.handlePaste(context: scannerContext)
             }
+            .padding(.bottom, Env.isE2E ? 12 : 0)
+
+            if Env.isE2E {
+                CustomButton(
+                    title: "Enter QR Code String",
+                    variant: .secondary,
+                    shouldExpand: true
+                ) {
+                    manualEntry = ""
+                    isManualEntryPresented = true
+                }
+                .accessibilityIdentifier("ScanPrompt")
+            }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -51,6 +66,28 @@ struct ScannerScreen: View {
                 navigation: navigation,
                 sheets: sheets
             )
+        }
+        .sheet(isPresented: $isManualEntryPresented) {
+            ScannerManualEntryPrompt(
+                text: $manualEntry,
+                onSubmit: {
+                    Task {
+                        await handleManualEntrySubmit()
+                    }
+                },
+                onCancel: {
+                    isManualEntryPresented = false
+                }
+            )
+            .presentationDetents([.fraction(0.35)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func handleManualEntrySubmit() async {
+        await scanner.handleManualEntry(manualEntry, context: scannerContext) {
+            isManualEntryPresented = false
+            manualEntry = ""
         }
     }
 }

@@ -108,7 +108,7 @@ jobs:
           # - { name: onchain_boost_receive_widgets, grep: "@onchain|@boost|@receive|@widgets" }
           # - { name: settings, grep: "@settings" }
           # - { name: security, grep: "@security" }
-          - { name: e2e, grep: '^(?!.*@settings_10)(@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security)' }
+          - { name: e2e, grep: '@backup|@onboarding|@onchain_1|@onchain_2|@numberpad|@widgets|@boost|@receive|@settings|@security' }
 
     name: e2e-tests - ${{ matrix.shard.name }}
 
@@ -175,7 +175,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           echo "Waiting for Electrum server..."
-          while ! nc -z '127.0.0.1' 60001; do 
+          while ! nc -z '127.0.0.1' 60001; do
             echo "Electrum server not ready, waiting..."
             sleep 5
           done
@@ -183,7 +183,7 @@ jobs:
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
-        run: | 
+        run: |
           rm -rf artifacts/
           rm -rf /tmp/lock/
 
