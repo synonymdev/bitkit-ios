@@ -40,7 +40,6 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
-    private var syncTimer: Timer?
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -81,12 +80,6 @@ class WalletViewModel: ObservableObject {
         self.init(transferService: transferService)
     }
 
-    deinit {
-        Task { [weak self] in
-            await self?.stopPolling()
-        }
-    }
-
     func setWalletExistsState() throws {
         walletExists = try Keychain.exists(key: .bip39Mnemonic(index: 0))
     }
@@ -115,20 +108,47 @@ class WalletViewModel: ObservableObject {
                 rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl
             )
             try await lightningService.start(onEvent: { event in
-                // On every lightning event just sync UI
                 Task { @MainActor in
-                    self.syncState()
                     // Notify all event handlers
                     for handler in self.eventHandlers.values {
                         handler(event)
                     }
 
-                    // If payment received or new channel events, refresh BIP21 for instantly usable QR in receive view
+                    // Handle specific events for targeted UI updates
                     switch event {
                     case .paymentReceived, .channelReady, .channelClosed:
+                        self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
                             try? await self.refreshBip21()
+                        }
+
+                    // MARK: New Onchain Transaction Events
+
+                    case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced, .onchainTransactionReorged,
+                         .onchainTransactionEvicted:
+                        Task {
+                            await self.updateBalanceState()
+                        }
+
+                    // MARK: Sync Events
+
+                    case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+                        self.isSyncingWallet = true
+                        Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+                    case let .syncCompleted(syncType, syncedBlockHeight):
+                        self.isSyncingWallet = false
+                        Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+                        self.syncState()
+                        Task {
+                            await self.updateBalanceState()
+                        }
+
+                    // MARK: Balance Events
+
+                    case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+                        Task {
+                            await self.updateBalanceState()
                         }
                     default:
                         break
@@ -141,8 +161,6 @@ class WalletViewModel: ObservableObject {
         }
 
         nodeLifecycleState = .running
-
-        startPolling()
 
         syncState()
 
@@ -164,7 +182,6 @@ class WalletViewModel: ObservableObject {
 
     func stopLightningNode() async throws {
         nodeLifecycleState = .stopping
-        stopPolling()
         try await lightningService.stop()
         nodeLifecycleState = .stopped
         syncState()
@@ -447,22 +464,38 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
+    /// Sync all state (node status, channels, peers, balances)
+    /// Use this for initial load or after sync operations
     func syncState() {
+        syncNodeStatus()
+        syncChannelsAndPeers()
+        syncBalances()
+    }
+
+    /// Sync node status and ID only
+    private func syncNodeStatus() {
         nodeStatus = lightningService.status
         nodeId = lightningService.nodeId
-        balanceDetails = lightningService.balances
+    }
+
+    /// Sync channels and peers only
+    private func syncChannelsAndPeers() {
         peers = lightningService.peers
         channels = lightningService.channels
 
         if let channels {
             channelCount = channels.count
         }
+    }
+
+    /// Sync balance details only
+    private func syncBalances() {
+        balanceDetails = lightningService.balances
 
         if let balanceDetails {
             spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
         }
 
-        // Update balance state with pending transfers
         Task { @MainActor in
             await updateBalanceState()
         }
@@ -532,8 +565,7 @@ class WalletViewModel: ObservableObject {
             onchainAddress = try await lightningService.newAddress()
         } else {
             // Check if current address has been used
-            let addressInfo = try await AddressChecker.getAddressInfo(address: onchainAddress)
-            let hasTransactions = addressInfo.chain_stats.tx_count > 0 || addressInfo.mempool_stats.tx_count > 0
+            let hasTransactions = try await coreService.utility.isAddressUsed(address: onchainAddress)
 
             if hasTransactions {
                 // Address has been used, generate a new one
@@ -627,24 +659,6 @@ class WalletViewModel: ObservableObject {
         )
 
         try? await coreService.activity.addPreActivityMetadata(preActivityMetadata)
-    }
-
-    private func startPolling() {
-        stopPolling()
-
-        syncTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                guard let self else { return }
-                if self.nodeLifecycleState == .running {
-                    self.syncState()
-                }
-            }
-        }
-    }
-
-    private func stopPolling() {
-        syncTimer?.invalidate()
-        syncTimer = nil
     }
 
     /// Formats satoshi amount to Bitcoin decimal format for BIP21 URIs

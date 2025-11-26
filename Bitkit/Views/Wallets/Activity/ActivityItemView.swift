@@ -13,6 +13,7 @@ struct ActivityItemView: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @StateObject private var viewModel: ActivityItemViewModel
+    @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
 
     init(item: Activity) {
         self.item = item
@@ -114,8 +115,31 @@ struct ActivityItemView: View {
             // Lightning transactions can never be boosted
             return true
         case let .onchain(activity):
-            // Disable boost for onchain if transaction is confirmed or already boosted
-            return activity.confirmed == true || activity.isBoosted
+            if activity.confirmed == true {
+                return true
+            }
+            if activity.isBoosted && !activity.boostTxIds.isEmpty {
+                let hasCPFP = activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
+                if hasCPFP {
+                    return true
+                }
+
+                if activity.txType == .sent {
+                    let hasRBF = activity.boostTxIds.contains { boostTxDoesExist[$0] == false }
+                    return hasRBF
+                }
+            }
+
+            return false
+        }
+    }
+
+    private func loadBoostTxDoesExist() async {
+        guard case let .onchain(activity) = viewModel.activity else { return }
+
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: activity.boostTxIds)
+        await MainActor.run {
+            boostTxDoesExist = doesExistMap
         }
     }
 
@@ -194,9 +218,16 @@ struct ActivityItemView: View {
             }
         }
         .task {
+            // Load boostTxIds doesExist status to determine RBF vs CPFP
+            if case let .onchain(activity) = viewModel.activity,
+               !activity.boostTxIds.isEmpty
+            {
+                await loadBoostTxDoesExist()
+            }
             // Load channel if this is a transfer
-            guard isTransfer, let channelId = transferChannelId else { return }
-            await channelDetails.findChannel(channelId: channelId, wallet: wallet)
+            if isTransfer, let channelId = transferChannelId {
+                await channelDetails.findChannel(channelId: channelId, wallet: wallet)
+            }
         }
     }
 
