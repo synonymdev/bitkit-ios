@@ -66,18 +66,22 @@ struct FundManualSetupView: View {
                             CaptionMText(t("lightning__external_manual__node_id"))
                             TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
                                 .lineLimit(2 ... 2)
+                                .accessibilityIdentifier("NodeIdInput")
                         }
 
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__host"))
                             TextField("00.00.00.00", text: $host)
+                                .accessibilityIdentifier("HostInput")
                         }
 
                         // Port field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__port"))
                             TextField("9735", text: $port)
+                                .keyboardType(.numberPad)
+                                .accessibilityIdentifier("PortInput")
                         }
 
                         // Paste Node URI button
@@ -119,6 +123,7 @@ struct FundManualSetupView: View {
                         isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
                         destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
                     )
+                    .accessibilityIdentifier("ExternalContinue")
                 }
             }
         }
