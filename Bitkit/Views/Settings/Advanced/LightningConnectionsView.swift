@@ -25,6 +25,7 @@ struct LightningConnectionsView: View {
                             .frame(width: 24, height: 24)
                             .foregroundColor(.textPrimary)
                     }
+                    .accessibilityIdentifier("NavigationAction")
                 )
             )
             .padding(.bottom, 16)
