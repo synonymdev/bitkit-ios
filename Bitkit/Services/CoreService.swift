@@ -29,7 +29,7 @@ class ActivityService {
 
     func wasTransactionReplaced(txid: String) async -> Bool {
         // Check if the activity exists and is marked as replaced
-        if let onchain = try? getOnchainActivityByTxId(txid: txid),
+        if let onchain = try? await getOnchainActivityByTxId(txid: txid),
            !onchain.doesExist
         {
             return true
@@ -51,42 +51,22 @@ class ActivityService {
         do {
             // Check if this transaction's activity has boostTxIds (meaning it replaced other transactions)
             // If any of the replaced transactions have the same value, don't show the sheet
-            guard let onchain = try? getOnchainActivityByTxId(txid: txid),
+            guard let onchain = try? await getOnchainActivityByTxId(txid: txid),
                   !onchain.boostTxIds.isEmpty
             else {
                 return true
             }
 
             // This transaction replaced others - check if any have the same value
-            let twoMinutesAgo = UInt64(Date().timeIntervalSince1970) - 120
-            let activities = try getActivities(
-                filter: .onchain,
-                txType: nil,
-                tags: nil,
-                search: nil,
-                minDate: twoMinutesAgo,
-                maxDate: nil,
-                limit: 50,
-                sortDirection: nil
-            )
-
             for replacedTxid in onchain.boostTxIds {
-                if let replacedActivity = activities.first(where: { activity in
-                    if case let .onchain(existing) = activity {
-                        return existing.txId == replacedTxid
-                    }
-                    return false
-                }),
-                    case let .onchain(replaced) = replacedActivity
+                if let replaced = try? await getOnchainActivityByTxId(txid: replacedTxid),
+                   replaced.value == value
                 {
-                    // Check if the replaced transaction has the same value
-                    if replaced.value == value {
-                        Logger.info(
-                            "Skipping received sheet for replacement transaction \(txid) with same value as replaced transaction \(replacedTxid)",
-                            context: "CoreService.shouldShowReceivedSheet"
-                        )
-                        return false
-                    }
+                    Logger.info(
+                        "Skipping received sheet for replacement transaction \(txid) with same value as replaced transaction \(replacedTxid)",
+                        context: "CoreService.shouldShowReceivedSheet"
+                    )
+                    return false
                 }
             }
         } catch {
@@ -109,34 +89,12 @@ class ActivityService {
         return payment.direction == .inbound
     }
 
-    // MARK: - Activity Lookup
-
-    // TODO: Add id filter in bitkit-core
-    func getOnchainActivityByTxId(txid: String) throws -> OnchainActivity? {
-        let activities = try getActivities(
-            filter: .onchain,
-            txType: nil,
-            tags: nil,
-            search: nil,
-            minDate: nil,
-            maxDate: nil,
-            limit: nil,
-            sortDirection: nil
-        )
-        for activity in activities {
-            if case let .onchain(onchain) = activity, onchain.txId == txid {
-                return onchain
-            }
-        }
-        return nil
-    }
-
     /// Get doesExist status for boostTxIds to determine RBF vs CPFP. RBF transactions have doesExist = false (replaced), CPFP transactions have
     /// doesExist = true (child transactions).
     func getBoostTxDoesExist(boostTxIds: [String]) async -> [String: Bool] {
         var doesExistMap: [String: Bool] = [:]
         for boostTxId in boostTxIds {
-            if let boostActivity = try? getOnchainActivityByTxId(txid: boostTxId) {
+            if let boostActivity = try? await getOnchainActivityByTxId(txid: boostTxId) {
                 doesExistMap[boostTxId] = boostActivity.doesExist
             }
         }
@@ -348,7 +306,7 @@ class ActivityService {
     func handleOnchainTransactionReplaced(txid: String, conflicts: [String]) async throws {
         try await ServiceQueue.background(.core) {
             // Find the activity for the replaced transaction
-            let replacedActivity = try self.getOnchainActivityByTxId(txid: txid)
+            let replacedActivity = try await self.getOnchainActivityByTxId(txid: txid)
 
             if var existing = replacedActivity {
                 Logger.info(
@@ -371,7 +329,7 @@ class ActivityService {
             // For each replacement transaction, update its boostTxIds to include the replaced txid
             for conflictTxid in conflicts {
                 // Try to get the replacement activity, or process it if it doesn't exist
-                var replacementActivity = try? self.getOnchainActivityByTxId(txid: conflictTxid)
+                var replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
 
                 if replacementActivity == nil,
                    let payments = LightningService.shared.payments,
@@ -388,7 +346,7 @@ class ActivityService {
                     )
                     do {
                         try await self.processOnchainPayment(replacementPayment, transactionDetails: nil)
-                        replacementActivity = try? self.getOnchainActivityByTxId(txid: conflictTxid)
+                        replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
                     } catch {
                         Logger.error(
                             "Failed to process replacement transaction \(conflictTxid): \(error)",
@@ -419,7 +377,7 @@ class ActivityService {
 
     func handleOnchainTransactionReorged(txid: String) async throws {
         try await ServiceQueue.background(.core) {
-            guard var onchain = try self.getOnchainActivityByTxId(txid: txid) else {
+            guard var onchain = try await self.getOnchainActivityByTxId(txid: txid) else {
                 Logger.warn("Activity not found for reorged transaction \(txid)", context: "CoreService.handleOnchainTransactionReorged")
                 return
             }
@@ -434,7 +392,7 @@ class ActivityService {
 
     func handleOnchainTransactionEvicted(txid: String) async throws {
         try await ServiceQueue.background(.core) {
-            guard var onchain = try self.getOnchainActivityByTxId(txid: txid) else {
+            guard var onchain = try await self.getOnchainActivityByTxId(txid: txid) else {
                 Logger.warn("Activity not found for evicted transaction \(txid)", context: "CoreService.handleOnchainTransactionEvicted")
                 return
             }
@@ -781,6 +739,12 @@ class ActivityService {
     func getActivity(id: String) async throws -> Activity? {
         try await ServiceQueue.background(.core) {
             try getActivityById(activityId: id)
+        }
+    }
+
+    func getOnchainActivityByTxId(txid: String) async throws -> OnchainActivity? {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getActivityByTxId(txId: txid)
         }
     }
 
