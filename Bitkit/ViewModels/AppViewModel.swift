@@ -332,7 +332,6 @@ extension AppViewModel {
                     let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
                     if cjitOrder != nil {
                         let amount = channel.spendableBalanceSats
-                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         let now = UInt64(Date().timeIntervalSince1970)
 
                         let ln = LightningActivity(
@@ -368,6 +367,103 @@ extension AppViewModel {
             break
         case .paymentForwarded:
             break
+
+        // MARK: New Onchain Transaction Events
+
+        case let .onchainTransactionReceived(txid, details):
+            // Show notification for incoming transactions
+            if details.amountSats > 0 {
+                let sats = UInt64(abs(Int64(details.amountSats)))
+
+                Task {
+                    // Show sheet for new transactions or replacements with value changes
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+                    let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
+
+                    await MainActor.run {
+                        if !shouldShow {
+                            Logger.info(
+                                "Skipping received sheet for RBF replacement with same value: \(txid)",
+                                context: "AppViewModel"
+                            )
+                            return
+                        }
+
+                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
+                    }
+                }
+            }
+        case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+            Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
+            Task {
+                if await CoreService.shared.activity.isReceivedTransaction(txid: txid) {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: "Payment Confirmed",
+                            description: "Your received payment has been confirmed"
+                        )
+                    }
+                } else {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: "Transaction Confirmed",
+                            description: "Your transaction has been confirmed"
+                        )
+                    }
+                }
+            }
+        case let .onchainTransactionReplaced(txid, conflicts):
+            Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
+            Task {
+                if await CoreService.shared.activity.isReceivedTransaction(txid: txid) {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: "Received Transaction Replaced",
+                            description: "Your received transaction was replaced by a fee bump"
+                        )
+                    }
+                } else {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: "Transaction Replaced",
+                            description: "Your transaction was replaced by a fee bump"
+                        )
+                    }
+                }
+            }
+        case let .onchainTransactionReorged(txid):
+            Logger.warn("Transaction reorged: \(txid)")
+            toast(type: .warning, title: "Transaction Unconfirmed", description: "Transaction became unconfirmed due to blockchain reorganization")
+        case let .onchainTransactionEvicted(txid):
+            Task {
+                let wasReplaced = await CoreService.shared.activity.wasTransactionReplaced(txid: txid)
+
+                await MainActor.run {
+                    if wasReplaced {
+                        Logger.info("Transaction \(txid) was replaced, skipping evicted toast", context: "AppViewModel")
+                        return
+                    }
+
+                    Logger.warn("Transaction removed from mempool: \(txid)")
+                    toast(type: .warning, title: "Transaction Removed", description: "Transaction was removed from mempool")
+                }
+            }
+
+        // MARK: Sync Events
+
+        case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+            Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+        case let .syncCompleted(syncType, syncedBlockHeight):
+            Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+
+        // MARK: Balance Events
+
+        case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+            Logger.debug("Balance changed: onchain \(oldSpendableOnchain)->\(newSpendableOnchain) lightning \(oldLightning)->\(newLightning)")
         }
     }
 }

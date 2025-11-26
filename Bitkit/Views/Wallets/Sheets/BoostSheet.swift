@@ -381,10 +381,6 @@ struct BoostSheet: View {
             try await wallet.sync()
             Logger.debug("Wallet sync completed after boost", context: "BoostSheet.performBoost")
 
-            // Sync LDK node payments to process the new RBF transaction
-            try await activityList.syncLdkNodePayments()
-            Logger.debug("LDK node payments synced after boost", context: "BoostSheet.performBoost")
-
             // Refresh activity list state
             await activityList.syncState()
             Logger.debug("Activity list state synced after boost", context: "BoostSheet.performBoost")

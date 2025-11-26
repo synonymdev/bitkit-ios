@@ -1,5 +1,5 @@
 {
-  "originHash" : "afebf53471e2eb2f8c45a9c3fbd45b779930aea0b8a7bf2fd223d03d490867a3",
+  "originHash" : "986c104f099eeeb614245353ef0f880b2f062a10340e337e439d6f066790bffd",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
         "branch" : "master",
-        "revision" : "d2b12e1e5c1724f8a00facc6247009986408c9d9"
+        "revision" : "c16b360d45518474769803545a45920e6bcd1fed"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
         "branch" : "main",
-        "revision" : "508f038bfcda46b4bc621cd3df0bc08dcf592fa7"
+        "revision" : "90cab7b4839cc1108fafcfd95f5dadcdd0f8e745"
       }
     },
     {
