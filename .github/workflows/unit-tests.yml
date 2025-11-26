@@ -43,14 +43,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-spm-
 
-      - name: Cache DerivedData
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', 'Bitkit.xcodeproj/project.pbxproj', '**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-deriveddata-
-
       - name: Install dependencies
         run: |
           echo "⏱️  Starting dependency resolution at $(date)"
