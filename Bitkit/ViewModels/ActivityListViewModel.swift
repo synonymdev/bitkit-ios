@@ -43,6 +43,7 @@ class ActivityListViewModel: ObservableObject {
     private var dateRangeCancellable: AnyCancellable?
     private var tagsCancellable: AnyCancellable?
     private var tabCancellable: AnyCancellable?
+    private var activitiesChangedCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
     @Published private(set) var feeEstimates: FeeRates? = nil
@@ -109,6 +110,14 @@ class ActivityListViewModel: ObservableObject {
                         await self?.updateFilteredActivities()
                     }
                 }
+
+        activitiesChangedCancellable = coreService.activity.activitiesChangedPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.syncState()
+                }
+            }
 
         Task {
             await syncState()
