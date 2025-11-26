@@ -262,6 +262,22 @@ class LightningService {
         }
     }
 
+    func connectPeer(peer: LnPeer, persist: Bool = true) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        do {
+            try await ServiceQueue.background(.ldk) {
+                try node.connect(nodeId: peer.nodeId, address: peer.address, persist: persist)
+            }
+            Logger.info("Connected to peer: \(peer.nodeId)@\(peer.address)")
+        } catch {
+            Logger.error(error, context: "Failed to connect peer: \(peer.nodeId)@\(peer.address)")
+            throw error
+        }
+    }
+
     /// Temp fix for regtest where nodes might not agree on current fee rates
     private func setMaxDustHtlcExposureForCurrentChannels() throws {
         guard Env.network == .regtest else {
