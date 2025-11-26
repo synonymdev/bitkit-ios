@@ -96,6 +96,7 @@ struct LightningConnectionsView: View {
                                         }
                                     }
                                     .buttonStyle(PlainButtonStyle())
+                                    .accessibilityIdentifier("Channel")
                                 }
                             }
                             .padding(.bottom, 16)
@@ -134,6 +135,7 @@ struct LightningConnectionsView: View {
                                         }
                                         .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
                                     }
+                                    .accessibilityIdentifier("Channel")
                                 }
                             }
                         }
@@ -171,6 +173,7 @@ struct LightningConnectionsView: View {
                                         }
                                         .opacity(0.64)
                                     }
+                                    .accessibilityIdentifier("Channel")
                                 }
                             }
                             .padding(.bottom, 16)
