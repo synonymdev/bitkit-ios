@@ -144,12 +144,18 @@ class ActivityListViewModel: ObservableObject {
         do {
             // Get latest activities first as that's displayed on the home view
             let limitLatest: UInt32 = 3
-            latestActivities = try await coreService.activity.get(filter: .all, limit: limitLatest)
+            // Fetch extra to account for potential filtering of replaced transactions
+            let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3)
+            let filtered = await filterOutReplacedSentTransactions(latest)
+            latestActivities = Array(filtered.prefix(Int(limitLatest)))
 
             // Fetch all activities
             await updateFilteredActivities()
-            lightningActivities = try await coreService.activity.get(filter: .lightning)
-            onchainActivities = try await coreService.activity.get(filter: .onchain)
+
+            let lightningActivities = try await coreService.activity.get(filter: .lightning)
+
+            let onchain = try await coreService.activity.get(filter: .onchain)
+            onchainActivities = await filterOutReplacedSentTransactions(onchain)
 
             // Update available tags and fee estimates
             await updateAvailableTags()
@@ -198,8 +204,11 @@ class ActivityListViewModel: ObservableObject {
                 maxDate: maxDate
             )
 
+            // Filter out replaced sent transactions that appear in another transaction's boostTxIds
+            let filteredOutReplaced = await filterOutReplacedSentTransactions(baseFilteredActivities)
+
             // Apply tab filtering
-            filteredActivities = filterActivitiesByTab(baseFilteredActivities, selectedTab: selectedTab)
+            filteredActivities = filterActivitiesByTab(filteredOutReplaced, selectedTab: selectedTab)
 
             // Update grouped activities
             updateGroupedActivities()
@@ -446,6 +455,26 @@ extension ActivityListViewModel {
             groupedActivities = groupActivities(activities)
         } else {
             groupedActivities = []
+        }
+    }
+
+    /// Filter out replaced sent transactions that appear in another transaction's boostTxIds
+    private func filterOutReplacedSentTransactions(_ activities: [Activity]) async -> [Activity] {
+        // Get cached set of txIds that appear in boostTxIds
+        let txIdsInBoostTxIds = await coreService.activity.getTxIdsInBoostTxIds()
+
+        // Filter out activities that:
+        // 1. Are onchain
+        // 2. Have doesExist = false
+        // 3. Are sent transactions
+        // 4. Appear in another transaction's boostTxIds
+        return activities.filter { activity in
+            if case let .onchain(onchain) = activity {
+                if !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId) {
+                    return false
+                }
+            }
+            return true
         }
     }
 
