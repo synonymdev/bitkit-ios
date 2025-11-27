@@ -401,10 +401,6 @@ extension AppViewModel {
 
                     await MainActor.run {
                         if !shouldShow {
-                            Logger.info(
-                                "Skipping received sheet for RBF replacement with same value: \(txid)",
-                                context: "AppViewModel"
-                            )
                             return
                         }
 
