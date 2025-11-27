@@ -414,27 +414,6 @@ extension AppViewModel {
             }
         case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
             Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
-            Task {
-                if await CoreService.shared.activity.isReceivedTransaction(txid: txid) {
-                    await MainActor.run {
-                        toast(
-                            type: .info,
-                            title: t("wallet__toast_payment_confirmed_title"),
-                            description: t("wallet__toast_payment_confirmed_description"),
-                            accessibilityIdentifier: "PaymentConfirmedToast"
-                        )
-                    }
-                } else {
-                    await MainActor.run {
-                        toast(
-                            type: .info,
-                            title: t("wallet__toast_transaction_confirmed_title"),
-                            description: t("wallet__toast_transaction_confirmed_description"),
-                            accessibilityIdentifier: "TransactionConfirmedToast"
-                        )
-                    }
-                }
-            }
         case let .onchainTransactionReplaced(txid, conflicts):
             Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
             Task {

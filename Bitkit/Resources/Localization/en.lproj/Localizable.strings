@@ -968,10 +968,6 @@
 "wallet__toast_payment_success_description" = "Your instant payment was sent successfully.";
 "wallet__toast_payment_failed_title" = "Payment Failed";
 "wallet__toast_payment_failed_description" = "Your instant payment failed. Please try again.";
-"wallet__toast_payment_confirmed_title" = "Payment Confirmed";
-"wallet__toast_payment_confirmed_description" = "Your received payment has been confirmed";
-"wallet__toast_transaction_confirmed_title" = "Transaction Confirmed";
-"wallet__toast_transaction_confirmed_description" = "Your transaction has been confirmed";
 "wallet__toast_received_transaction_replaced_title" = "Received Transaction Replaced";
 "wallet__toast_received_transaction_replaced_description" = "Your received transaction was replaced by a fee bump";
 "wallet__toast_transaction_replaced_title" = "Transaction Replaced";
