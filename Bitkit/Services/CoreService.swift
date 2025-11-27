@@ -137,6 +137,15 @@ class ActivityService {
         return doesExistMap
     }
 
+    func isCpfpChildTransaction(txId: String) async -> Bool {
+        guard await getTxIdsInBoostTxIds().contains(txId),
+              let activity = try? await getOnchainActivityByTxId(txid: txId)
+        else {
+            return false
+        }
+        return activity.doesExist
+    }
+
     init(coreService: CoreService) {
         self.coreService = coreService
     }

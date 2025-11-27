@@ -14,6 +14,7 @@ struct ActivityItemView: View {
     @EnvironmentObject var channelDetails: ChannelDetailsViewModel
     @StateObject private var viewModel: ActivityItemViewModel
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
+    @State private var isCpfpChild: Bool = false
 
     init(item: Activity) {
         self.item = item
@@ -100,6 +101,10 @@ struct ActivityItemView: View {
                 : t("wallet__activity_transfer_savings_done")
         }
 
+        if isCpfpChild {
+            return t("wallet__activity_boost_fee")
+        }
+
         return isSent
             ? t("wallet__activity_bitcoin_sent")
             : t("wallet__activity_bitcoin_received")
@@ -112,9 +117,11 @@ struct ActivityItemView: View {
     private var shouldDisableBoostButton: Bool {
         switch viewModel.activity {
         case .lightning:
-            // Lightning transactions can never be boosted
             return true
         case let .onchain(activity):
+            if isCpfpChild {
+                return true
+            }
             if !activity.doesExist {
                 return true
             }
@@ -186,7 +193,7 @@ struct ActivityItemView: View {
                     HStack(alignment: .bottom) {
                         MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                         Spacer()
-                        ActivityIcon(activity: viewModel.activity, size: 48)
+                        ActivityIcon(activity: viewModel.activity, size: 48, isCpfpChild: isCpfpChild)
                     }
                     .padding(.bottom, 16)
 
@@ -221,6 +228,11 @@ struct ActivityItemView: View {
             }
         }
         .task {
+            // Check if this is a CPFP child transaction
+            if case let .onchain(activity) = viewModel.activity {
+                isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: activity.txId)
+            }
+
             // Load boostTxIds doesExist status to determine RBF vs CPFP
             if case let .onchain(activity) = viewModel.activity,
                !activity.boostTxIds.isEmpty

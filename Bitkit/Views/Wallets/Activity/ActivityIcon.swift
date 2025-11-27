@@ -10,9 +10,11 @@ struct ActivityIcon: View {
     let isBoosted: Bool
     let isTransfer: Bool
     let doesExist: Bool
+    let isCpfpChild: Bool
 
-    init(activity: Activity, size: CGFloat = 32) {
+    init(activity: Activity, size: CGFloat = 32, isCpfpChild: Bool = false) {
         self.size = size
+        self.isCpfpChild = isCpfpChild
         switch activity {
         case let .lightning(ln):
             isLightning = true
@@ -65,7 +67,7 @@ struct ActivityIcon: View {
                     backgroundColor: .red16,
                     size: size
                 )
-            } else if isBoosted && !(confirmed ?? false) {
+            } else if isCpfpChild || (isBoosted && !(confirmed ?? false)) {
                 CircularIcon(
                     icon: "timer-alt",
                     iconColor: .yellow,
