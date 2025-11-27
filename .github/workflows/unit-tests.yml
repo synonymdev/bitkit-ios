@@ -40,8 +40,6 @@ jobs:
             ~/Library/org.swift.swiftpm
             Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
 
       - name: Install dependencies
         run: |
@@ -54,6 +52,12 @@ jobs:
           echo "⏱️  Starting simulator at $(date)"
           xcrun simctl boot "iPhone 16" || true
           echo "✅ Simulator started at $(date)"
+
+      - name: Clean build
+        run: |
+          echo "⏱️  Cleaning build at $(date)"
+          xcodebuild clean -scheme Bitkit | xcbeautify
+          echo "✅ Build cleaned at $(date)"
 
       - name: Run unit tests
         run: |
