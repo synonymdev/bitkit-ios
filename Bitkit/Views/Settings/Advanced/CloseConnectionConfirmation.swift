@@ -38,6 +38,7 @@ struct CloseConnectionConfirmation: View {
                         await closeChannel()
                     }
                 }
+                .accessibilityIdentifier("CloseConnectionButton")
             }
         }
         .navigationBarHidden(true)

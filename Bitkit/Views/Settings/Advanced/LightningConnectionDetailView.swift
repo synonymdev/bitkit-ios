@@ -199,6 +199,7 @@ struct LightningConnectionDetailView: View {
                                     CustomButton(title: t("lightning__close_conn")) {
                                         navigation.navigate(Route.closeConnection(channel: openChannel))
                                     }
+                                    .accessibilityIdentifier("CloseConnection")
                                 }
                             }
                         }
