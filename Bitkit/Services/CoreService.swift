@@ -25,6 +25,42 @@ class ActivityService {
     /// Maximum address index to search when current address exists
     private static let maxAddressSearchIndex: UInt32 = 100_000
 
+    // MARK: - BoostTxIds Cache
+
+    // Cached set of transaction IDs that appear in boostTxIds (for filtering replaced transactions)
+    private var cachedTxIdsInBoostTxIds: Set<String> = []
+
+    /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
+    func getTxIdsInBoostTxIds() async -> Set<String> {
+        if cachedTxIdsInBoostTxIds.isEmpty {
+            await refreshBoostTxIdsCache()
+        }
+        return cachedTxIdsInBoostTxIds
+    }
+
+    private func updateBoostTxIdsCache(for activity: Activity) {
+        if case let .onchain(onchain) = activity {
+            cachedTxIdsInBoostTxIds.formUnion(onchain.boostTxIds)
+        }
+    }
+
+    private func refreshBoostTxIdsCache() async {
+        do {
+            let allOnchainActivities = try await get(filter: .onchain)
+            var txIds: Set<String> = []
+            for activity in allOnchainActivities {
+                if case let .onchain(onchain) = activity {
+                    txIds.formUnion(onchain.boostTxIds)
+                }
+            }
+            await MainActor.run {
+                self.cachedTxIdsInBoostTxIds = txIds
+            }
+        } catch {
+            Logger.error("Failed to refresh boostTxIds cache: \(error)", context: "ActivityService")
+        }
+    }
+
     // MARK: - Transaction Status Checks
 
     func wasTransactionReplaced(txid: String) async -> Bool {
@@ -125,6 +161,8 @@ class ActivityService {
                 _ = try deleteActivityById(activityId: id)
             }
 
+            // Clear cache since all activities are deleted
+            self.cachedTxIdsInBoostTxIds.removeAll()
             self.activitiesChangedSubject.send()
         }
     }
@@ -132,6 +170,7 @@ class ActivityService {
     func insert(_ activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try insertActivity(activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
         }
     }
@@ -139,6 +178,7 @@ class ActivityService {
     func upsertList(_ activities: [Activity]) async throws {
         try await ServiceQueue.background(.core) {
             try upsertActivities(activities: activities)
+            await self.refreshBoostTxIdsCache()
         }
     }
 
@@ -308,10 +348,7 @@ class ActivityService {
             // Find the activity for the replaced transaction
             let replacedActivity = try await self.getOnchainActivityByTxId(txid: txid)
 
-            let replacedTags: [String]
             if var existing = replacedActivity {
-                replacedTags = await (try? self.tags(forActivity: existing.id)) ?? []
-
                 Logger.info(
                     "Transaction \(txid) replaced by \(conflicts.count) conflict(s): \(conflicts.joined(separator: ", "))",
                     context: "CoreService.handleOnchainTransactionReplaced"
@@ -323,9 +360,8 @@ class ActivityService {
                 try await self.update(id: existing.id, activity: .onchain(existing))
                 Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
             } else {
-                replacedTags = []
                 Logger.info(
-                    "Activity not found for replaced transaction \(txid) - was deleted by initiated RBF, tags in pre-activity metadata",
+                    "Activity not found for replaced transaction \(txid) - will be created when transaction is processed",
                     context: "CoreService.handleOnchainTransactionReplaced"
                 )
             }
@@ -369,13 +405,16 @@ class ActivityService {
                     activity.updatedAt = UInt64(Date().timeIntervalSince1970)
                     try await self.update(id: activity.id, activity: .onchain(activity))
 
-                    // Apply tags from the replaced transaction
-                    if !replacedTags.isEmpty {
+                    // Move tags from the replaced transaction
+                    if let replacedActivity {
                         do {
-                            try await self.appendTags(toActivity: activity.id, replacedTags)
+                            let replacedTags = try await self.tags(forActivity: replacedActivity.id)
+                            if !replacedTags.isEmpty {
+                                try await self.appendTags(toActivity: activity.id, replacedTags)
+                            }
                         } catch {
                             Logger.error(
-                                "Failed to apply tags from replaced transaction \(txid) to replacement transaction \(conflictTxid): \(error)",
+                                "Failed to copy tags from replaced transaction \(txid) to replacement transaction \(conflictTxid): \(error)",
                                 context: "CoreService.handleOnchainTransactionReplaced"
                             )
                         }
@@ -792,6 +831,7 @@ class ActivityService {
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
         }
     }
@@ -799,12 +839,19 @@ class ActivityService {
     func upsert(_ activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try upsertActivity(activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
         }
     }
 
     func delete(id: String) async throws -> Bool {
         try await ServiceQueue.background(.core) {
+            // Rebuild cache if deleting an onchain activity with boostTxIds
+            let activity = try? getActivityById(activityId: id)
+            if let activity, case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty {
+                await self.refreshBoostTxIdsCache()
+            }
+
             let result = try deleteActivityById(activityId: id)
             self.activitiesChangedSubject.send()
             return result
@@ -951,35 +998,12 @@ class ActivityService {
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // Get tags from the old activity before deleting it
-                let oldTags = await (try? self.tags(forActivity: activityId)) ?? []
-
-                // Create pre-activity metadata for the replacement transaction with tags from the old activity
-                if !oldTags.isEmpty {
-                    let currentTime = UInt64(Date().timeIntervalSince1970)
-                    let preActivityMetadata = BitkitCore.PreActivityMetadata(
-                        paymentId: txid,
-                        tags: oldTags,
-                        paymentHash: nil,
-                        txId: txid,
-                        address: onchainActivity.address,
-                        isReceive: false,
-                        feeRate: UInt64(feeRate),
-                        isTransfer: onchainActivity.isTransfer,
-                        channelId: onchainActivity.channelId,
-                        createdAt: currentTime
-                    )
-                    try? await self.addPreActivityMetadata(preActivityMetadata)
-                    Logger.info(
-                        "Created pre-activity metadata with \(oldTags.count) tag(s) for RBF replacement transaction \(txid)",
-                        context: "CoreService.boostOnchainTransaction"
-                    )
-                }
-
-                // For RBF we initiated, delete the old activity
-                _ = try await self.delete(id: activityId)
+                // For RBF, mark the original activity as doesExist = false instead of deleting it
+                // This allows it to be displayed with the "removed" status
+                onchainActivity.doesExist = false
+                try await self.update(id: activityId, activity: .onchain(onchainActivity))
                 Logger.info(
-                    "Successfully deleted activity \(activityId) (replaced by RBF transaction \(txid))",
+                    "Successfully marked activity \(activityId) as doesExist = false (replaced by RBF)",
                     context: "CoreService.boostOnchainTransaction"
                 )
             }
