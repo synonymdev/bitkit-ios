@@ -1054,6 +1054,8 @@
 "wallet__activity_output" = "{count, plural, one {OUTPUT} other {OUTPUTS (#)}}";
 "wallet__activity_boosted_cpfp" = "BOOSTED TRANSACTION {num} (CPFP)";
 "wallet__activity_boosted_rbf" = "BOOSTED TRANSACTION {num} (RBF)";
+"wallet__activity_boost_fee" = "Boost Fee";
+"wallet__activity_boost_fee_description" = "Boosted incoming transaction";
 "wallet__activity_explorer" = "Open Block Explorer";
 "wallet__activity_successful" = "Successful";
 "wallet__activity_invoice_note" = "Invoice note";

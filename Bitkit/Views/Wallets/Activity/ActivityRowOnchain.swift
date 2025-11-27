@@ -5,12 +5,15 @@ private struct ActivityStatus: View {
     let txType: PaymentType
     let confirmed: Bool
     let isTransfer: Bool
+    let isCpfpChild: Bool
 
     var body: some View {
         if isTransfer {
             BodyMSBText(t("wallet__activity_transfer"))
         } else {
-            if txType == .sent {
+            if isCpfpChild {
+                BodyMSBText(t("wallet__activity_boost_fee"))
+            } else if txType == .sent {
                 BodyMSBText(t("wallet__activity_sent"))
             } else {
                 BodyMSBText(t("wallet__activity_received"))
@@ -22,6 +25,7 @@ private struct ActivityStatus: View {
 struct ActivityRowOnchain: View {
     let item: OnchainActivity
     let feeEstimates: FeeRates?
+    @State private var isCpfpChild: Bool = false
 
     private var amountPrefix: String {
         return item.txType == .sent ? "-" : "+"
@@ -53,6 +57,10 @@ struct ActivityRowOnchain: View {
             return t("wallet__activity_removed")
         }
 
+        if isCpfpChild {
+            return t("wallet__activity_boost_fee_description")
+        }
+
         if item.isTransfer {
             switch item.txType {
             case .sent:
@@ -75,16 +83,22 @@ struct ActivityRowOnchain: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            ActivityIcon(activity: .onchain(item), size: 40)
+            ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild)
 
             VStack(alignment: .leading, spacing: 2) {
-                ActivityStatus(txType: item.txType, confirmed: item.confirmed, isTransfer: item.isTransfer)
+                ActivityStatus(txType: item.txType, confirmed: item.confirmed, isTransfer: item.isTransfer, isCpfpChild: isCpfpChild)
+                    .lineLimit(1)
                 CaptionBText(description)
+                    .lineLimit(1)
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
 
             MoneyCell(sats: amount, prefix: amountPrefix)
+        }
+        .task {
+            isCpfpChild = await CoreService.shared.activity.isCpfpChildTransaction(txId: item.txId)
         }
     }
 }
