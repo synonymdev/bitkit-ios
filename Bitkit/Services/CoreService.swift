@@ -356,6 +356,7 @@ class ActivityService {
 
                 // Mark the replaced transaction as not existing
                 existing.doesExist = false
+                existing.isBoosted = false
                 existing.updatedAt = UInt64(Date().timeIntervalSince1970)
                 try await self.update(id: existing.id, activity: .onchain(existing))
                 Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
@@ -998,12 +999,11 @@ class ActivityService {
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // For RBF, mark the original activity as doesExist = false instead of deleting it
-                // This allows it to be displayed with the "removed" status
-                onchainActivity.doesExist = false
+                // For RBF, mark the original activity as boosted until the replacement comes
+                onchainActivity.isBoosted = true
                 try await self.update(id: activityId, activity: .onchain(onchainActivity))
                 Logger.info(
-                    "Successfully marked activity \(activityId) as doesExist = false (replaced by RBF)",
+                    "Successfully marked activity \(activityId) as replaced by fee",
                     context: "CoreService.boostOnchainTransaction"
                 )
             }
