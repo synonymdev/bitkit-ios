@@ -7,6 +7,7 @@ struct MoneyStack: View {
     var showSymbol: Bool = false
     var showEyeIcon: Bool = false
     var enableSwipeGesture: Bool = false
+    var testIdPrefix: String = "TotalBalance"
 
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -33,7 +34,7 @@ struct MoneyStack: View {
                         .combined(with: .scale(scale: 1.5, anchor: .topLeading))
                 )
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("TotalBalance-secondary")
+                .accessibilityIdentifier("\(testIdPrefix)-secondary")
 
                 HStack {
                     MoneyText(
@@ -59,7 +60,7 @@ struct MoneyStack: View {
                         .combined(with: .scale(scale: 0.5, anchor: .topLeading))
                 )
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("TotalBalance-primary")
+                .accessibilityIdentifier("\(testIdPrefix)-primary")
             } else {
                 MoneyText(
                     sats: sats,
@@ -76,7 +77,7 @@ struct MoneyStack: View {
                         .combined(with: .scale(scale: 1.5, anchor: .topLeading))
                 )
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("TotalBalance-secondary")
+                .accessibilityIdentifier("\(testIdPrefix)-secondary")
 
                 HStack {
                     MoneyText(
@@ -102,11 +103,11 @@ struct MoneyStack: View {
                         .combined(with: .scale(scale: 0.5, anchor: .topLeading))
                 )
                 .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("TotalBalance-primary")
+                .accessibilityIdentifier("\(testIdPrefix)-primary")
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("TotalBalance")
+        .accessibilityIdentifier(testIdPrefix)
         .contentShape(Rectangle())
         .onTapGesture {
             withAnimation(springAnimation) {
