@@ -21,6 +21,7 @@ struct WalletBalanceView: View {
                             .padding(.trailing, 4)
 
                         SubtitleText(btcComponents.value)
+                            .accessibilityIdentifier(type == .onchain ? "ActivitySavings" : "ActivitySpending")
 
                         if showTransferIcon {
                             Image("transfer")
@@ -38,6 +39,7 @@ struct WalletBalanceView: View {
                         SubtitleText(converted.symbol)
                             .frame(maxWidth: 12)
                         SubtitleText(converted.formatted)
+                            .accessibilityIdentifier(type == .onchain ? "ActivitySavings" : "ActivitySpending")
 
                         if showTransferIcon {
                             Image("transfer")
@@ -50,7 +52,6 @@ struct WalletBalanceView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier(type == .onchain ? "ActivitySavings" : "ActivitySpending")
     }
 }
 
