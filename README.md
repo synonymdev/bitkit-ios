@@ -128,9 +128,9 @@ Mention `@claude` in any PR comment, issue, or review to trigger Claude:
 @claude review
 
 Please focus on:
-- Kotlin idioms and best practices
-- Potential memory leaks
-- Thread safety in coroutines
+- SwiftUI idioms and best practices
+- @Observable patterns and memory management (retain cycles)
+- Thread safety with async/await and actors
 ```
 
 ## License
