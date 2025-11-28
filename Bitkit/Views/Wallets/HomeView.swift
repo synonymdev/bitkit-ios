@@ -22,7 +22,7 @@ struct HomeView: View {
                 .padding(.top, 16 + 48)
                 .padding(.horizontal, 16)
 
-                if !app.showHomeViewEmptyState {
+                if !app.showHomeViewEmptyState || wallet.totalBalanceSats > 0 {
                     VStack(spacing: 0) {
                         HStack(spacing: 0) {
                             NavigationLink(value: Route.savingsWallet) {
@@ -86,9 +86,9 @@ struct HomeView: View {
             }
         }
         .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
-        .onChange(of: wallet.totalBalanceSats) { _ in
-            if wallet.totalBalanceSats > 0 {
-                DispatchQueue.main.async {
+        .onChange(of: wallet.totalBalanceSats) { newValue in
+            if newValue > 0 && app.showHomeViewEmptyState {
+                withAnimation(.spring(response: 0.3)) {
                     app.showHomeViewEmptyState = false
                 }
             }
