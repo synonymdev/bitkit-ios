@@ -131,7 +131,11 @@ struct LightningConnectionDetailView: View {
                                         label: t("lightning__reserve_balance"),
                                         amount: channel.displayedUnspendablePunishmentReserve
                                     )
-                                    DetailRowWithAmount(label: t("lightning__total_size"), amount: channel.channelValueSats)
+                                    DetailRowWithAmount(
+                                        label: t("lightning__total_size"),
+                                        amount: channel.channelValueSats,
+                                        amountTestId: "TotalSize"
+                                    )
                                 }
 
                                 // FEES Section
@@ -148,7 +152,11 @@ struct LightningConnectionDetailView: View {
                                     CaptionMText(t("lightning__other"))
 
                                     VStack(spacing: 0) {
-                                        DetailRow(label: t("lightning__is_usable"), value: channel.isUsable ? t("common__yes") : t("common__no"))
+                                        DetailRow(
+                                            label: t("lightning__is_usable"),
+                                            value: channel.isUsable ? t("common__yes") : t("common__no"),
+                                            valueTestId: channel.isUsable ? "IsUsableYes" : "IsUsableNo"
+                                        )
 
                                         // TODO: Add channel opening date
                                         // if let formattedDate = formatDate(channel.fundingTxo) {
@@ -191,6 +199,7 @@ struct LightningConnectionDetailView: View {
                                     CustomButton(title: t("lightning__close_conn")) {
                                         navigation.navigate(Route.closeConnection(channel: openChannel))
                                     }
+                                    .accessibilityIdentifier("CloseConnection")
                                 }
                             }
                         }
@@ -327,7 +336,7 @@ struct LightningConnectionDetailView: View {
     }
 
     // Helper Views
-    private func DetailRow(label: String, value: String) -> some View {
+    private func DetailRow(label: String, value: String, valueTestId: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 HStack(alignment: .center, spacing: 0) {
@@ -338,6 +347,7 @@ struct LightningConnectionDetailView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(width: geometry.size.width * 0.6, alignment: .trailing)
+                        .accessibilityIdentifierIfPresent(valueTestId)
                 }
                 .frame(height: 50)
             }
@@ -347,7 +357,7 @@ struct LightningConnectionDetailView: View {
         .frame(height: 51)
     }
 
-    private func DetailRowWithAmount(label: String, amount: UInt64) -> some View {
+    private func DetailRowWithAmount(label: String, amount: UInt64, amountTestId: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in
                 HStack(alignment: .center, spacing: 0) {
@@ -356,6 +366,7 @@ struct LightningConnectionDetailView: View {
 
                     MoneyText(sats: Int(amount), size: .captionB, symbol: true)
                         .frame(width: geometry.size.width * 0.6, alignment: .trailing)
+                        .accessibilityIdentifierIfPresent(amountTestId)
                 }
                 .frame(height: 50)
             }
