@@ -71,7 +71,6 @@ struct AppScene: View {
             .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
             .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
-            .onChange(of: wallet.totalBalanceSats, perform: handleBalanceChange)
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .environmentObject(app)
             .environmentObject(navigation)
@@ -215,11 +214,6 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        wallet.addOnEvent(id: "activity-sync") { [weak activity] (_: Event) in
-            // TODO: this might not be the best for performace to sync all payments on every event. Could switch to habdling the specific event.
-            Task { try? await activity?.syncLdkNodePayments() }
-        }
-
         if wallet.isRestoringWallet {
             Task {
                 await BackupService.shared.performFullRestoreFromLatestBackup()
@@ -282,11 +276,6 @@ struct AppScene: View {
                 await BackupService.shared.stopObservingBackups()
             }
         }
-    }
-
-    private func handleBalanceChange(_: Int) {
-        // Anytime we receive a balance update, we should sync the payments to activity list
-        Task { try? await activity.syncLdkNodePayments() }
     }
 
     private func handleScenePhaseChange(_: ScenePhase) {

@@ -1,14 +1,29 @@
 import BitkitCore
+import Combine
 import Foundation
 import LDKNode
 import SwiftUI
 
 struct ActivityExplorerView: View {
-    let item: Activity
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
 
-    @State private var txDetails: TxDetails?
+    @State private var item: Activity
+    @State private var txDetails: TransactionDetails?
+    @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
+
+    init(item: Activity) {
+        _item = State(initialValue: item)
+    }
+
+    private var activityId: String {
+        switch item {
+        case let .lightning(activity):
+            return activity.id
+        case let .onchain(activity):
+            return activity.id
+        }
+    }
 
     private var onchain: OnchainActivity? {
         guard case let .onchain(activity) = item else { return nil }
@@ -37,13 +52,37 @@ struct ActivityExplorerView: View {
     private func loadTransactionDetails() async {
         guard let onchain else { return }
 
-        do {
-            let details = try await AddressChecker.getTransaction(txid: onchain.txId)
+        // Try to get transaction details from node
+        if let nodeDetails = LightningService.shared.getTransactionDetails(txid: onchain.txId) {
             await MainActor.run {
-                txDetails = details
+                txDetails = nodeDetails
+            }
+        } else {
+            Logger.warn("Transaction details not available from node for \(onchain.txId)")
+        }
+    }
+
+    private func loadBoostTxDoesExist() async {
+        guard let onchain else { return }
+
+        let doesExistMap = await CoreService.shared.activity.getBoostTxDoesExist(boostTxIds: onchain.boostTxIds)
+        await MainActor.run {
+            boostTxDoesExist = doesExistMap
+        }
+    }
+
+    private func refreshActivity() async {
+        do {
+            if let updatedActivity = try await CoreService.shared.activity.getActivity(id: activityId) {
+                await MainActor.run {
+                    item = updatedActivity
+                }
+                if case let .onchain(onchainActivity) = updatedActivity, !onchainActivity.boostTxIds.isEmpty {
+                    await loadBoostTxDoesExist()
+                }
             }
         } catch {
-            Logger.warn("Failed to load transaction details: \(error)")
+            Logger.error(error, context: "Failed to refresh activity \(activityId) in ActivityExplorerView")
         }
     }
 
@@ -125,12 +164,12 @@ struct ActivityExplorerView: View {
                 )
 
                 if let txDetails {
-                    CaptionMText(tPlural("wallet__activity_input", arguments: ["count": txDetails.vin.count]))
+                    CaptionMText(tPlural("wallet__activity_input", arguments: ["count": txDetails.inputs.count]))
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(txDetails.vin.enumerated()), id: \.offset) { _, input in
-                            let txId = input.txid ?? ""
-                            let vout = input.vout ?? 0
+                        ForEach(Array(txDetails.inputs.enumerated()), id: \.offset) { _, input in
+                            let txId = input.txid
+                            let vout = Int(input.vout)
                             BodySSBText("\(txId):\(vout)")
                                 .lineLimit(1)
                                 .truncationMode(.middle)
@@ -140,11 +179,11 @@ struct ActivityExplorerView: View {
                     Divider()
                         .padding(.vertical, 16)
 
-                    CaptionMText(tPlural("wallet__activity_output", arguments: ["count": txDetails.vout.count]))
+                    CaptionMText(tPlural("wallet__activity_output", arguments: ["count": txDetails.outputs.count]))
                         .padding(.bottom, 8)
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(txDetails.vout.indices, id: \.self) { i in
-                            BodySSBText(txDetails.vout[i].scriptpubkey_address ?? "")
+                        ForEach(txDetails.outputs.indices, id: \.self) { i in
+                            BodySSBText(txDetails.outputs[i].scriptpubkeyAddress ?? "")
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
@@ -156,14 +195,17 @@ struct ActivityExplorerView: View {
                     Divider()
                         .padding(.bottom, 16)
                     ForEach(Array(onchain.boostTxIds.enumerated()), id: \.offset) { index, boostTxId in
-                        let key = onchain.txType == .received
-                            ? "wallet__activity_boosted_cpfp"
-                            : "wallet__activity_boosted_rbf"
+                        // Determine if this is RBF (doesExist = false, replaced) or CPFP (doesExist = true, child transaction)
+                        let boostTxDoesExistValue = boostTxDoesExist[boostTxId] ?? true
+                        let isRBF = !boostTxDoesExistValue
+                        let key = isRBF
+                            ? "wallet__activity_boosted_rbf"
+                            : "wallet__activity_boosted_cpfp"
 
                         InfoSection(
                             title: t(key, variables: ["num": String(index + 1)]),
                             content: boostTxId,
-                            testId: onchain.txType == .received ? "CPFPBoosted" : "RBFBoosted"
+                            testId: isRBF ? "RBFBoosted" : "CPFPBoosted"
                         )
                     }
                 }
@@ -203,9 +245,16 @@ struct ActivityExplorerView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .onReceive(CoreService.shared.activity.activitiesChangedPublisher) { _ in
+            Task {
+                await refreshActivity()
+            }
+        }
         .task {
-            if onchain != nil {
-                await loadTransactionDetails()
+            guard let onchain else { return }
+            await loadTransactionDetails()
+            if !onchain.boostTxIds.isEmpty {
+                await loadBoostTxDoesExist()
             }
         }
     }

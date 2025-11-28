@@ -48,6 +48,7 @@ struct ToastView: View {
         )
         .cornerRadius(8)
         .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .accessibilityIdentifierIfPresent(toast.accessibilityIdentifier)
     }
 
     private var accentColor: Color {
@@ -68,7 +69,8 @@ struct ToastView: View {
             title: "Hey toast",
             description: "This is a toast message",
             autoHide: true,
-            visibilityTime: 4.0
+            visibilityTime: 4.0,
+            accessibilityIdentifier: nil
         ), onDismiss: {}
     )
     .preferredColorScheme(.dark)

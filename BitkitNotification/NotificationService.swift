@@ -221,6 +221,41 @@ class NotificationService: UNNotificationServiceExtension {
             }
         case .paymentForwarded:
             break
+
+        // MARK: New Onchain Transaction Events
+
+        case let .onchainTransactionReceived(txid, details):
+            // Show notification for incoming onchain transactions
+            if details.amountSats > 0 {
+                let sats = UInt64(abs(Int64(details.amountSats)))
+                bestAttemptContent?.title = "Payment Received"
+                bestAttemptContent?.body = "₿ \(sats) (unconfirmed)"
+                ReceivedTxSheetDetails(type: .onchain, sats: sats).save() // Save for UI to pick up
+                deliver()
+            }
+        case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+            // Transaction confirmed - could show notification if it was previously unconfirmed
+            if details.amountSats > 0 {
+                let sats = UInt64(abs(Int64(details.amountSats)))
+                bestAttemptContent?.title = "Payment Confirmed"
+                bestAttemptContent?.body = "₿ \(sats) confirmed at block \(blockHeight)"
+                deliver()
+            }
+        case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
+            // These events are less critical for notifications, but could be logged
+            os_log("🔔 Onchain transaction state changed: %{public}@", log: notificationLogger, type: .error, String(describing: event))
+
+        // MARK: Sync Events
+
+        case .syncProgress, .syncCompleted:
+            // Sync events are not critical for notifications
+            break
+
+        // MARK: Balance Events
+
+        case .balanceChanged:
+            // Balance changes are handled by other events, not critical for notifications
+            break
         }
     }
 

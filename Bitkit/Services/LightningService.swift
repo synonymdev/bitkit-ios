@@ -561,6 +561,26 @@ extension LightningService {
     var channels: [ChannelDetails]? { node?.listChannels() }
     var payments: [PaymentDetails]? { node?.listPayments() }
 
+    /// Get transaction details from the node for a given transaction ID
+    /// Returns nil if the transaction is not found in the wallet
+    func getTransactionDetails(txid: String) -> TransactionDetails? {
+        return node?.getTransactionDetails(txid: txid)
+    }
+
+    /// Get balance for a specific address in satoshis
+    /// - Parameter address: The Bitcoin address to check
+    /// - Returns: The current balance in satoshis
+    /// - Throws: AppError if node is not setup
+    func getAddressBalance(address: String) async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.getAddressBalance(addressStr: address)
+        }
+    }
+
     /// Returns LSP (Blocktank) peer node IDs
     func getLspPeerNodeIds() -> [String] {
         return Env.trustedLnPeers.map(\.nodeId)
@@ -608,28 +628,58 @@ extension LightningService {
 
                 onEvent?(event)
 
-                // TODO: actual event handler
                 switch event {
                 case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
+                    Task {
+                        let hash = paymentId ?? paymentHash
+                        do {
+                            try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
+                        } catch {
+                            Logger.error("Failed to handle payment success for \(hash): \(error)", context: "LightningService")
+                        }
+                    }
                 case let .paymentFailed(paymentId, paymentHash, reason):
                     Logger.info(
                         "❌ Payment failed: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash ?? "") reason: \(reason.debugDescription)"
                     )
+                    Task {
+                        if let hash = paymentId ?? paymentHash {
+                            do {
+                                try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
+                            } catch {
+                                Logger.error("Failed to handle payment failure for \(hash): \(error)", context: "LightningService")
+                            }
+                        } else {
+                            Logger.warn("No paymentId or paymentHash available for failed payment", context: "LightningService")
+                        }
+                    }
                 case let .paymentReceived(paymentId, paymentHash, amountMsat, feePaidMsat):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
+                    Task {
+                        let hash = paymentId ?? paymentHash
+                        do {
+                            try await CoreService.shared.activity.handlePaymentEvent(paymentHash: hash)
+                        } catch {
+                            Logger.error("Failed to handle payment received for \(hash): \(error)", context: "LightningService")
+                        }
+                    }
                 case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, claimDeadline, customRecords):
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
+                // Payment claimable doesn't need activity update - it's still pending
+                // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
                 case let .channelPending(channelId, userChannelId, formerTemporaryChannelId, counterpartyNodeId, fundingTxo):
                     Logger.info(
                         "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
                     )
+                    await refreshChannelCache()
                 case let .channelReady(channelId, userChannelId, counterpartyNodeId):
                     Logger.info(
                         "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")"
                     )
+                    await refreshChannelCache()
                 case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
                     let reasonString = reason.map { String(describing: $0) } ?? ""
                     Logger.info(
@@ -654,9 +704,76 @@ extension LightningService {
                     }
                 case .paymentForwarded:
                     break
-                }
 
-                await refreshChannelCache()
+                // MARK: New Onchain Transaction Events
+
+                case let .onchainTransactionReceived(txid, details):
+                    Logger.info("📥 Onchain transaction received: txid=\(txid) amountSats=\(details.amountSats)")
+                    Task {
+                        do {
+                            try await CoreService.shared.activity.handleOnchainTransactionReceived(txid: txid, details: details)
+                        } catch {
+                            Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
+                        }
+                    }
+                case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+                    Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
+                    Task {
+                        do {
+                            try await CoreService.shared.activity.handleOnchainTransactionConfirmed(
+                                txid: txid,
+                                details: details
+                            )
+                        } catch {
+                            Logger.error("Failed to handle transaction confirmed for \(txid): \(error)", context: "LightningService")
+                        }
+                    }
+                case let .onchainTransactionReplaced(txid, conflicts):
+                    Logger.info("🔄 Onchain transaction replaced (RBF): txid=\(txid) by \(conflicts.count) conflict(s)")
+                    Task {
+                        do {
+                            try await CoreService.shared.activity.handleOnchainTransactionReplaced(txid: txid, conflicts: conflicts)
+                        } catch {
+                            Logger.error("Failed to handle transaction replaced for \(txid): \(error)", context: "LightningService")
+                        }
+                    }
+                case let .onchainTransactionReorged(txid):
+                    Logger.warn("⚠️ Onchain transaction reorged (unconfirmed): txid=\(txid)")
+                    Task {
+                        do {
+                            try await CoreService.shared.activity.handleOnchainTransactionReorged(txid: txid)
+                        } catch {
+                            Logger.error("Failed to handle transaction reorged for \(txid): \(error)", context: "LightningService")
+                        }
+                    }
+                case let .onchainTransactionEvicted(txid):
+                    Logger.warn("🗑️ Onchain transaction removed from mempool: txid=\(txid)")
+                    Task {
+                        do {
+                            try await CoreService.shared.activity.handleOnchainTransactionEvicted(txid: txid)
+                        } catch {
+                            Logger.error("Failed to handle transaction evicted for \(txid): \(error)", context: "LightningService")
+                        }
+                    }
+
+                // MARK: Sync Events
+
+                case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+                    Logger
+                        .debug(
+                            "🔄 Sync progress: type=\(syncType) progress=\(progressPercent)% current=\(currentBlockHeight) target=\(targetBlockHeight)"
+                        )
+                case let .syncCompleted(syncType, syncedBlockHeight):
+                    Logger.info("✅ Sync completed: type=\(syncType) height=\(syncedBlockHeight)")
+                    // Send sync status update - PassthroughSubject is thread-safe
+                    syncStatusChangedSubject.send(UInt64(Date().timeIntervalSince1970))
+
+                // MARK: Balance Events
+
+                case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+                    Logger
+                        .info("💰 Balance changed: onchain=\(oldSpendableOnchain)->\(newSpendableOnchain) lightning=\(oldLightning)->\(newLightning)")
+                }
             }
         }
     }

@@ -20,15 +20,131 @@ class ActivityService {
         metadataChangedSubject.eraseToAnyPublisher()
     }
 
-    // Maximum address index to search when current address exists
-    // This provides a reasonable upper bound for address derivation search
+    // MARK: - Constants
+
+    /// Maximum address index to search when current address exists
     private static let maxAddressSearchIndex: UInt32 = 100_000
 
-    // Track replacement transactions (RBF): newTxId -> parent/original txIds
-    private static var replacementTransactions: [String: [String]] = [:]
+    // MARK: - BoostTxIds Cache
 
-    // Track replaced transactions that should be ignored during sync
-    private static var replacedTransactions: Set<String> = []
+    // Cached set of transaction IDs that appear in boostTxIds (for filtering replaced transactions)
+    private var cachedTxIdsInBoostTxIds: Set<String> = []
+
+    /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)
+    func getTxIdsInBoostTxIds() async -> Set<String> {
+        if cachedTxIdsInBoostTxIds.isEmpty {
+            await refreshBoostTxIdsCache()
+        }
+        return cachedTxIdsInBoostTxIds
+    }
+
+    private func updateBoostTxIdsCache(for activity: Activity) {
+        if case let .onchain(onchain) = activity {
+            cachedTxIdsInBoostTxIds.formUnion(onchain.boostTxIds)
+        }
+    }
+
+    private func refreshBoostTxIdsCache() async {
+        do {
+            let allOnchainActivities = try await get(filter: .onchain)
+            var txIds: Set<String> = []
+            for activity in allOnchainActivities {
+                if case let .onchain(onchain) = activity {
+                    txIds.formUnion(onchain.boostTxIds)
+                }
+            }
+            await MainActor.run {
+                self.cachedTxIdsInBoostTxIds = txIds
+            }
+        } catch {
+            Logger.error("Failed to refresh boostTxIds cache: \(error)", context: "ActivityService")
+        }
+    }
+
+    // MARK: - Transaction Status Checks
+
+    func wasTransactionReplaced(txid: String) async -> Bool {
+        // Check if the activity exists and is marked as replaced
+        if let onchain = try? await getOnchainActivityByTxId(txid: txid),
+           !onchain.doesExist
+        {
+            return true
+        }
+
+        return false
+    }
+
+    func shouldShowReceivedSheet(txid: String, value: UInt64) async -> Bool {
+        if value == 0 {
+            return false
+        }
+
+        // Don't show sheet for channel closure transactions
+        if await findClosedChannelForTransaction(txid: txid, transactionDetails: nil) != nil {
+            return false
+        }
+
+        do {
+            // Check if this transaction's activity has boostTxIds (meaning it replaced other transactions)
+            // If any of the replaced transactions have the same value, don't show the sheet
+            guard let onchain = try? await getOnchainActivityByTxId(txid: txid),
+                  !onchain.boostTxIds.isEmpty
+            else {
+                return true
+            }
+
+            // This transaction replaced others - check if any have the same value
+            for replacedTxid in onchain.boostTxIds {
+                if let replaced = try? await getOnchainActivityByTxId(txid: replacedTxid),
+                   replaced.value == value
+                {
+                    Logger.info(
+                        "Skipping received sheet for replacement transaction \(txid) with same value as replaced transaction \(replacedTxid)",
+                        context: "CoreService.shouldShowReceivedSheet"
+                    )
+                    return false
+                }
+            }
+        } catch {
+            Logger.error("Failed to check existing activities for replacement: \(error)", context: "CoreService.shouldShowReceivedSheet")
+        }
+
+        return true
+    }
+
+    func isReceivedTransaction(txid: String) async -> Bool {
+        guard let payments = LightningService.shared.payments,
+              let payment = payments.first(where: { payment in
+                  if case let .onchain(paymentTxid, _) = payment.kind {
+                      return paymentTxid == txid
+                  }
+                  return false
+              })
+        else { return false }
+
+        return payment.direction == .inbound
+    }
+
+    /// Get doesExist status for boostTxIds to determine RBF vs CPFP. RBF transactions have doesExist = false (replaced), CPFP transactions have
+    /// doesExist = true (child transactions).
+    func getBoostTxDoesExist(boostTxIds: [String]) async -> [String: Bool] {
+        var doesExistMap: [String: Bool] = [:]
+        for boostTxId in boostTxIds {
+            if let boostActivity = try? await getOnchainActivityByTxId(txid: boostTxId) {
+                doesExistMap[boostTxId] = boostActivity.doesExist
+            }
+        }
+        return doesExistMap
+    }
+
+    func isCpfpChildTransaction(txId: String) async -> Bool {
+        guard await getTxIdsInBoostTxIds().contains(txId),
+              let activity = try? await getOnchainActivityByTxId(txid: txId)
+        else {
+            return false
+        }
+        return activity.doesExist
+    }
 
     init(coreService: CoreService) {
         self.coreService = coreService
@@ -54,6 +170,8 @@ class ActivityService {
                 _ = try deleteActivityById(activityId: id)
             }
 
+            // Clear cache since all activities are deleted
+            self.cachedTxIdsInBoostTxIds.removeAll()
             self.activitiesChangedSubject.send()
         }
     }
@@ -61,6 +179,7 @@ class ActivityService {
     func insert(_ activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try insertActivity(activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
         }
     }
@@ -68,6 +187,7 @@ class ActivityService {
     func upsertList(_ activities: [Activity]) async throws {
         try await ServiceQueue.background(.core) {
             try upsertActivities(activities: activities)
+            await self.refreshBoostTxIdsCache()
         }
     }
 
@@ -89,6 +209,333 @@ class ActivityService {
         }
     }
 
+    // MARK: - Payment Processing
+
+    private func processOnchainPayment(
+        _ payment: PaymentDetails,
+        transactionDetails: TransactionDetails? = nil
+    ) async throws {
+        guard case let .onchain(txid, _) = payment.kind else { return }
+
+        let paymentTimestamp = payment.latestUpdateTimestamp
+        let existingActivity = try getActivityById(activityId: payment.id)
+
+        // Skip if existing activity has newer timestamp to avoid overwriting local data
+        if let existingActivity, case let .onchain(existing) = existingActivity {
+            let existingUpdatedAt = existing.updatedAt ?? 0
+            if existingUpdatedAt > paymentTimestamp {
+                return
+            }
+        }
+
+        // Determine confirmation status from payment's txStatus
+        let value = payment.amountSats ?? 0
+
+        // Determine confirmation status from payment's txStatus
+        // Ensure confirmTimestamp is at least equal to paymentTimestamp when confirmed
+        // This handles cases where payment.latestUpdateTimestamp is more recent than blockTimestamp
+        let (isConfirmed, confirmedTimestamp): (Bool, UInt64?) =
+            if case let .onchain(_, txStatus) = payment.kind,
+            case let .confirmed(_, _, blockTimestamp) = txStatus {
+                (true, max(blockTimestamp, paymentTimestamp))
+            } else {
+                (false, nil)
+            }
+
+        // Extract existing activity data
+        let existingOnchain: OnchainActivity? = {
+            if let existingActivity, case let .onchain(existing) = existingActivity {
+                return existing
+            }
+            return nil
+        }()
+
+        let isBoosted = existingOnchain?.isBoosted ?? false
+        let boostTxIds = existingOnchain?.boostTxIds ?? []
+        var isTransfer = existingOnchain?.isTransfer ?? false
+        var channelId = existingOnchain?.channelId
+        let transferTxId = existingOnchain?.transferTxId
+        let feeRate = existingOnchain?.feeRate ?? 1
+        let preservedAddress = existingOnchain?.address ?? "Loading..."
+        let doesExist = existingOnchain?.doesExist ?? true
+
+        // Check if this transaction is a channel transfer
+        if channelId == nil || !isTransfer {
+            let foundChannelId = await findChannelForTransaction(
+                txid: txid,
+                direction: payment.direction,
+                transactionDetails: transactionDetails
+            )
+            if let foundChannelId {
+                channelId = foundChannelId
+                isTransfer = true
+            }
+        }
+
+        // Find receiving address for inbound transactions
+        var address = preservedAddress
+        if payment.direction == .inbound {
+            do {
+                if let foundAddress = try await findReceivingAddress(
+                    for: txid,
+                    value: value,
+                    transactionDetails: transactionDetails
+                ) {
+                    address = foundAddress
+                }
+            } catch {
+                Logger.error("Failed to find address for txid \(txid): \(error)", context: "CoreService.processOnchainPayment")
+            }
+        }
+
+        // Build and save the activity
+        let finalDoesExist = isConfirmed ? true : doesExist
+
+        let onchain = OnchainActivity(
+            id: payment.id,
+            txType: payment.direction == .outbound ? .sent : .received,
+            txId: txid,
+            value: value,
+            fee: (payment.feePaidMsat ?? 0) / 1000,
+            feeRate: feeRate,
+            address: address,
+            confirmed: isConfirmed,
+            timestamp: paymentTimestamp,
+            isBoosted: isBoosted,
+            boostTxIds: boostTxIds,
+            isTransfer: isTransfer,
+            doesExist: finalDoesExist,
+            confirmTimestamp: confirmedTimestamp,
+            channelId: channelId,
+            transferTxId: transferTxId,
+            createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
+            updatedAt: paymentTimestamp
+        )
+
+        if existingActivity != nil {
+            try await update(id: payment.id, activity: .onchain(onchain))
+        } else {
+            try await upsert(.onchain(onchain))
+        }
+    }
+
+    // MARK: - Onchain Event Handlers
+
+    private func processOnchainTransaction(txid: String, details: TransactionDetails, context: String) async throws {
+        guard let payments = LightningService.shared.payments else {
+            Logger.warn("No payments available for transaction \(txid)", context: context)
+            return
+        }
+
+        guard let payment = payments.first(where: { payment in
+            if case let .onchain(paymentTxid, _) = payment.kind {
+                return paymentTxid == txid
+            }
+            return false
+        }) else {
+            Logger.warn("Payment not found for transaction \(txid) - LDK should have updated payment store before emitting event", context: context)
+            return
+        }
+
+        try await processOnchainPayment(payment, transactionDetails: details)
+    }
+
+    func handleOnchainTransactionReceived(txid: String, details: TransactionDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try await self.processOnchainTransaction(txid: txid, details: details, context: "CoreService.handleOnchainTransactionReceived")
+        }
+    }
+
+    func handleOnchainTransactionConfirmed(txid: String, details: TransactionDetails) async throws {
+        try await ServiceQueue.background(.core) {
+            try await self.processOnchainTransaction(txid: txid, details: details, context: "CoreService.handleOnchainTransactionConfirmed")
+        }
+    }
+
+    func handleOnchainTransactionReplaced(txid: String, conflicts: [String]) async throws {
+        try await ServiceQueue.background(.core) {
+            // Find the activity for the replaced transaction
+            let replacedActivity = try await self.getOnchainActivityByTxId(txid: txid)
+
+            if var existing = replacedActivity {
+                Logger.info(
+                    "Transaction \(txid) replaced by \(conflicts.count) conflict(s): \(conflicts.joined(separator: ", "))",
+                    context: "CoreService.handleOnchainTransactionReplaced"
+                )
+
+                // Mark the replaced transaction as not existing
+                existing.doesExist = false
+                existing.isBoosted = false
+                existing.updatedAt = UInt64(Date().timeIntervalSince1970)
+                try await self.update(id: existing.id, activity: .onchain(existing))
+                Logger.info("Marked transaction \(txid) as replaced", context: "CoreService.handleOnchainTransactionReplaced")
+            } else {
+                Logger.info(
+                    "Activity not found for replaced transaction \(txid) - will be created when transaction is processed",
+                    context: "CoreService.handleOnchainTransactionReplaced"
+                )
+            }
+
+            // For each replacement transaction, update its boostTxIds to include the replaced txid
+            for conflictTxid in conflicts {
+                // Try to get the replacement activity, or process it if it doesn't exist
+                var replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
+
+                if replacementActivity == nil,
+                   let payments = LightningService.shared.payments,
+                   let replacementPayment = payments.first(where: { payment in
+                       if case let .onchain(paymentTxid, _) = payment.kind {
+                           return paymentTxid == conflictTxid
+                       }
+                       return false
+                   })
+                {
+                    Logger.info(
+                        "Processing replacement transaction \(conflictTxid) that was already in payments list",
+                        context: "CoreService.handleOnchainTransactionReplaced"
+                    )
+                    do {
+                        try await self.processOnchainPayment(replacementPayment, transactionDetails: nil)
+                        replacementActivity = try? await self.getOnchainActivityByTxId(txid: conflictTxid)
+                    } catch {
+                        Logger.error(
+                            "Failed to process replacement transaction \(conflictTxid): \(error)",
+                            context: "CoreService.handleOnchainTransactionReplaced"
+                        )
+                        continue
+                    }
+                }
+
+                // Update the replacement transaction's boostTxIds to include the replaced txid
+                if var activity = replacementActivity,
+                   !activity.boostTxIds.contains(txid)
+                {
+                    activity.boostTxIds.append(txid)
+                    activity.isBoosted = true
+                    activity.updatedAt = UInt64(Date().timeIntervalSince1970)
+                    try await self.update(id: activity.id, activity: .onchain(activity))
+
+                    // Move tags from the replaced transaction
+                    if let replacedActivity {
+                        do {
+                            let replacedTags = try await self.tags(forActivity: replacedActivity.id)
+                            if !replacedTags.isEmpty {
+                                try await self.appendTags(toActivity: activity.id, replacedTags)
+                            }
+                        } catch {
+                            Logger.error(
+                                "Failed to copy tags from replaced transaction \(txid) to replacement transaction \(conflictTxid): \(error)",
+                                context: "CoreService.handleOnchainTransactionReplaced"
+                            )
+                        }
+                    }
+
+                    Logger.info(
+                        "Updated replacement transaction \(conflictTxid) with boostTxId \(txid)",
+                        context: "CoreService.handleOnchainTransactionReplaced"
+                    )
+                }
+            }
+
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    func handleOnchainTransactionReorged(txid: String) async throws {
+        try await ServiceQueue.background(.core) {
+            guard var onchain = try await self.getOnchainActivityByTxId(txid: txid) else {
+                Logger.warn("Activity not found for reorged transaction \(txid)", context: "CoreService.handleOnchainTransactionReorged")
+                return
+            }
+
+            onchain.confirmed = false
+            onchain.confirmTimestamp = nil
+            onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
+
+            try await self.update(id: onchain.id, activity: .onchain(onchain))
+        }
+    }
+
+    func handleOnchainTransactionEvicted(txid: String) async throws {
+        try await ServiceQueue.background(.core) {
+            guard var onchain = try await self.getOnchainActivityByTxId(txid: txid) else {
+                Logger.warn("Activity not found for evicted transaction \(txid)", context: "CoreService.handleOnchainTransactionEvicted")
+                return
+            }
+
+            onchain.doesExist = false
+            onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
+
+            try await self.update(id: onchain.id, activity: .onchain(onchain))
+        }
+    }
+
+    // MARK: - Lightning Event Handlers
+
+    /// Handle a single payment event by processing the specific payment
+    func handlePaymentEvent(paymentHash: String) async throws {
+        try await ServiceQueue.background(.core) {
+            guard let payments = LightningService.shared.payments else {
+                Logger.warn("No payments available for hash \(paymentHash)", context: "CoreService.handlePaymentEvent")
+                return
+            }
+
+            if let payment = payments.first(where: { $0.id == paymentHash }) {
+                try await self.processLightningPayment(payment)
+            } else {
+                Logger.info("Payment not found for hash \(paymentHash) - syncing all payments", context: "CoreService.handlePaymentEvent")
+                try await self.syncLdkNodePayments(payments)
+            }
+        }
+    }
+
+    private func processLightningPayment(_ payment: PaymentDetails) async throws {
+        guard case let .bolt11(hash, preimage, secret, description, bolt11) = payment.kind else { return }
+
+        // Skip pending inbound payments - just means they created an invoice
+        guard !(payment.status == .pending && payment.direction == .inbound) else { return }
+
+        let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
+        let existingActivity = try getActivityById(activityId: payment.id)
+
+        // Skip if existing activity has newer timestamp to avoid overwriting local data
+        if let existingActivity, case let .lightning(existing) = existingActivity {
+            let existingUpdatedAt = existing.updatedAt ?? 0
+            if existingUpdatedAt > paymentTimestamp {
+                return
+            }
+        }
+
+        let state: BitkitCore.PaymentState = switch payment.status {
+        case .failed: .failed
+        case .pending: .pending
+        case .succeeded: .succeeded
+        }
+
+        let ln = LightningActivity(
+            id: payment.id,
+            txType: payment.direction == .outbound ? .sent : .received,
+            status: state,
+            value: UInt64(payment.amountSats ?? 0),
+            fee: (payment.feePaidMsat ?? 0) / 1000,
+            invoice: bolt11 ?? "No invoice",
+            message: description ?? "",
+            timestamp: paymentTimestamp,
+            preimage: preimage,
+            createdAt: paymentTimestamp,
+            updatedAt: paymentTimestamp
+        )
+
+        if existingActivity != nil {
+            try await update(id: payment.id, activity: .lightning(ln))
+        } else {
+            try await upsert(.lightning(ln))
+        }
+    }
+
+    /// Sync all LDK node payments to activities
+    /// Use for initial wallet load, manual refresh, or after operations that create new payments.
+    /// Events handle individual payment updates, so this should not be called on every event.
     func syncLdkNodePayments(_ payments: [PaymentDetails]) async throws {
         try await ServiceQueue.background(.core) {
             var addedCount = 0
@@ -106,195 +553,37 @@ class ActivityService {
                         .succeeded
                     }
 
-                    if case let .onchain(txid, txStatus) = payment.kind {
-                        // Check if this transaction was replaced by RBF and should be ignored
-                        if ActivityService.replacedTransactions.contains(txid) {
-                            Logger.debug("Ignoring replaced transaction \(txid) during sync", context: "CoreService.syncLdkNodePayments")
-                            continue
-                        }
-
-                        let paymentTimestamp = payment.latestUpdateTimestamp
-
-                        let existingActivity = try getActivityById(activityId: payment.id)
-
-                        // Check if existing activity has newer updatedAt timestamp - skip update to avoid overwriting newer local data
-                        if let existingActivity, case let .onchain(existing) = existingActivity {
-                            let existingUpdatedAt = existing.updatedAt ?? 0
-                            if existingUpdatedAt > paymentTimestamp {
-                                continue
+                    if case let .onchain(txid, _) = payment.kind {
+                        do {
+                            let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                            try await self.processOnchainPayment(payment, transactionDetails: nil)
+                            if hadExistingActivity {
+                                updatedCount += 1
+                            } else {
+                                addedCount += 1
                             }
+                        } catch {
+                            Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
+                            latestCaughtError = error
                         }
-
-                        var isConfirmed = false
-                        var confirmedTimestamp: UInt64?
-                        if case let .confirmed(blockHash, height, blockTimestamp) = txStatus {
-                            isConfirmed = true
-                            confirmedTimestamp = blockTimestamp
-                        }
-
-                        // Ensure confirmTimestamp is at least equal to paymentTimestamp when confirmed
-                        if isConfirmed && confirmedTimestamp != nil && confirmedTimestamp! < paymentTimestamp {
-                            confirmedTimestamp = paymentTimestamp
-                        }
-
-                        let existingOnchain: OnchainActivity? = {
-                            if let existingActivity, case let .onchain(existing) = existingActivity {
-                                return existing
+                    } else if case .bolt11 = payment.kind {
+                        do {
+                            let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                            try await self.processLightningPayment(payment)
+                            if hadExistingActivity {
+                                updatedCount += 1
+                            } else {
+                                addedCount += 1
                             }
-                            return nil
-                        }()
-                        let preservedIsBoosted = existingOnchain?.isBoosted ?? false
-                        let preservedBoostTxIds = existingOnchain?.boostTxIds ?? []
-                        var preservedIsTransfer = existingOnchain?.isTransfer ?? false
-                        var preservedChannelId = existingOnchain?.channelId
-                        let preservedTransferTxId = existingOnchain?.transferTxId
-                        let preservedFeeRate = existingOnchain?.feeRate ?? 1
-                        let preservedAddress = existingOnchain?.address ?? "Loading..."
-                        let preservedDoesExist = existingOnchain?.doesExist ?? true
-
-                        // Check if this transaction is a channel transfer (open or close)
-                        if preservedChannelId == nil || !preservedIsTransfer {
-                            let channelId = await self.findChannelForTransaction(txid: txid, direction: payment.direction)
-
-                            if let channelId {
-                                preservedChannelId = channelId
-                                preservedIsTransfer = true
-                            }
-                        }
-
-                        // Check if this is a replacement transaction (RBF) that should be marked as boosted
-                        let isReplacementTransaction = ActivityService.replacementTransactions.keys.contains(txid)
-                        let shouldMarkAsBoosted = preservedIsBoosted || isReplacementTransaction
-
-                        // Capture tracked parents for replacement transactions (RBF) before removing from tracking
-                        let trackedParents: [String] = {
-                            if isReplacementTransaction {
-                                return ActivityService.replacementTransactions[txid] ?? []
-                            }
-                            return []
-                        }()
-
-                        // Use tracked parents when this is a replacement; otherwise keep preserved
-                        let boostTxIds = isReplacementTransaction ? trackedParents : preservedBoostTxIds
-
-                        if isReplacementTransaction {
-                            Logger.debug("Found replacement transaction \(txid), marking as boosted", context: "CoreService.syncLdkNodePayments")
-                            // Remove from tracking map since we've processed it
-                            ActivityService.replacementTransactions.removeValue(forKey: txid)
-
-                            // Also clean up any old replaced transactions that might be lingering
-                            // This helps prevent the replacedTransactions set from growing indefinitely
-                            if ActivityService.replacedTransactions.count > 10 {
-                                Logger.debug("Cleaning up old replaced transactions", context: "CoreService.syncLdkNodePayments")
-                                ActivityService.replacedTransactions.removeAll()
-                            }
-                        }
-
-                        guard let value = payment.amountSats, value > 0 else {
-                            Logger.warn("Ignoring payment with missing value, probably additional boosted tx")
-                            return
-                        }
-
-                        // Find the address for the transaction
-                        // Outbound txs have address set in bitkit-core automatically from the pre-activity metadata
-                        var address: String? = nil
-                        if payment.direction == .inbound {
-                            do {
-                                address = try await self.findReceivingAddress(for: txid, value: value)
-                            } catch {
-                                Logger.warn("Failed to find address for txid \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
-                            }
-                        }
-
-                        let finalAddress = address ?? preservedAddress
-                        let finalFeeRate = preservedFeeRate
-                        let finalIsTransfer = preservedIsTransfer
-                        let finalChannelId = preservedChannelId
-                        let finalTransferTxId = preservedTransferTxId
-
-                        // If confirmed, set doesExist to true; otherwise preserve existing value
-                        let finalDoesExist = isConfirmed ? true : preservedDoesExist
-
-                        let onchain = OnchainActivity(
-                            id: payment.id,
-                            txType: payment.direction == .outbound ? .sent : .received,
-                            txId: txid,
-                            value: value,
-                            fee: (payment.feePaidMsat ?? 0) / 1000,
-                            feeRate: finalFeeRate,
-                            address: finalAddress,
-                            confirmed: isConfirmed,
-                            timestamp: paymentTimestamp,
-                            isBoosted: shouldMarkAsBoosted, // Mark as boosted if it's a replacement transaction
-                            boostTxIds: boostTxIds,
-                            isTransfer: finalIsTransfer,
-                            doesExist: finalDoesExist,
-                            confirmTimestamp: confirmedTimestamp,
-                            channelId: finalChannelId,
-                            transferTxId: finalTransferTxId,
-                            createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
-                            updatedAt: paymentTimestamp
-                        )
-
-                        if existingActivity != nil {
-                            try updateActivity(activityId: payment.id, activity: .onchain(onchain))
-                            print(payment)
-                            updatedCount += 1
-                        } else {
-                            try upsertActivity(activity: .onchain(onchain))
-                            print(payment)
-                            addedCount += 1
-                        }
-
-                        // If a removed transaction confirms, mark its replacement transactions as removed
-                        if !preservedDoesExist && isConfirmed {
-                            try await self.markReplacementTransactionsAsRemoved(originalTxId: txid)
-                        }
-                    } else if case let .bolt11(hash, preimage, secret, description, bolt11) = payment.kind {
-                        // Skip pending inbound payments, just means they created an invoice
-                        guard !(payment.status == .pending && payment.direction == .inbound) else { continue }
-
-                        let paymentTimestamp = UInt64(payment.latestUpdateTimestamp)
-
-                        // Get existing activity early to check updatedAt before processing
-                        let existingActivity = try getActivityById(activityId: payment.id)
-
-                        // Check if existing activity has newer updatedAt timestamp - skip update to avoid overwriting newer local data
-                        if let existingActivity, case let .lightning(existing) = existingActivity {
-                            let existingUpdatedAt = existing.updatedAt ?? 0
-                            if existingUpdatedAt > paymentTimestamp {
-                                continue
-                            }
-                        }
-
-                        let ln = LightningActivity(
-                            id: payment.id,
-                            txType: payment.direction == .outbound ? .sent : .received,
-                            status: state,
-                            value: UInt64(payment.amountSats ?? 0),
-                            fee: (payment.feePaidMsat ?? 0) / 1000,
-                            invoice: bolt11 ?? "No invoice",
-                            message: description ?? "",
-                            timestamp: paymentTimestamp,
-                            preimage: preimage,
-                            createdAt: paymentTimestamp,
-                            updatedAt: paymentTimestamp
-                        )
-
-                        if existingActivity != nil {
-                            try updateActivity(activityId: payment.id, activity: .lightning(ln))
-                            updatedCount += 1
-                        } else {
-                            try upsertActivity(activity: .lightning(ln))
-                            addedCount += 1
+                        } catch {
+                            Logger.error("Error processing lightning payment \(payment.id): \(error)", context: "CoreService.syncLdkNodePayments")
+                            latestCaughtError = error
                         }
                     }
                 } catch {
                     Logger.error("Error syncing LDK payment: \(error)", context: "CoreService")
                     latestCaughtError = error
                 }
-
-                // case spontaneous(hash: PaymentHash, preimage: PaymentPreimage?)
             }
 
             // If any of the inserts failed, we want to throw the error up
@@ -308,40 +597,13 @@ class ActivityService {
     }
 
     /// Marks replacement transactions (with originalTxId in boostTxIds) as doesExist = false when original confirms
-    private func markReplacementTransactionsAsRemoved(originalTxId: String) async throws {
-        let allActivities = try getActivities(
-            filter: .onchain,
-            txType: nil,
-            tags: nil,
-            search: nil,
-            minDate: nil,
-            maxDate: nil,
-            limit: nil,
-            sortDirection: nil
-        )
-
-        for activity in allActivities {
-            guard case let .onchain(onchainActivity) = activity else { continue }
-
-            if onchainActivity.boostTxIds.contains(originalTxId) && onchainActivity.doesExist {
-                Logger.info(
-                    "Marking replacement transaction \(onchainActivity.txId) as doesExist = false (original \(originalTxId) confirmed)",
-                    context: "CoreService.markReplacementTransactionsAsRemoved"
-                )
-
-                var updatedActivity = onchainActivity
-                updatedActivity.doesExist = false
-                try updateActivity(activityId: onchainActivity.id, activity: .onchain(updatedActivity))
-            }
-        }
-    }
-
     /// Finds the channel ID associated with a transaction based on its direction
-    private func findChannelForTransaction(txid: String, direction: PaymentDirection) async -> String? {
+    private func findChannelForTransaction(txid: String, direction: PaymentDirection, transactionDetails: TransactionDetails? = nil) async -> String?
+    {
         switch direction {
         case .inbound:
             // Check if this transaction is a channel close by checking if it spends a closed channel's funding UTXO
-            return await findClosedChannelForTransaction(txid: txid)
+            return await findClosedChannelForTransaction(txid: txid, transactionDetails: transactionDetails)
         case .outbound:
             // Check if this transaction is a channel open by checking if it's the funding transaction for an open channel
             return await findOpenChannelForTransaction(txid: txid)
@@ -349,16 +611,21 @@ class ActivityService {
     }
 
     /// Check if a transaction spends a closed channel's funding UTXO
-    private func findClosedChannelForTransaction(txid: String) async -> String? {
+    private func findClosedChannelForTransaction(txid: String, transactionDetails: TransactionDetails? = nil) async -> String? {
         do {
             let closedChannels = try await getAllClosedChannels(sortDirection: .desc)
             guard !closedChannels.isEmpty else { return nil }
 
-            let txDetails = try await AddressChecker.getTransaction(txid: txid)
+            // Use provided transaction details if available, otherwise try node
+            guard let details = transactionDetails ?? LightningService.shared.getTransactionDetails(txid: txid) else {
+                Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findClosedChannelForTransaction")
+                return nil
+            }
 
             // Check if any input spends a closed channel's funding UTXO
-            for input in txDetails.vin {
-                guard let inputTxid = input.txid, let inputVout = input.vout else { continue }
+            for input in details.inputs {
+                let inputTxid = input.txid
+                let inputVout = Int(input.vout)
 
                 if let matchingChannel = closedChannels.first(where: { channel in
                     channel.fundingTxoTxid == inputTxid && channel.fundingTxoIndex == UInt32(inputVout)
@@ -419,9 +686,9 @@ class ActivityService {
     }
 
     /// Check pre-activity metadata for addresses in the transaction
-    private func findAddressInPreActivityMetadata(txDetails: TxDetails, value: UInt64) async -> String? {
-        for output in txDetails.vout {
-            guard let address = output.scriptpubkey_address else { continue }
+    private func findAddressInPreActivityMetadata(details: TransactionDetails, value: UInt64) async -> String? {
+        for output in details.outputs {
+            guard let address = output.scriptpubkeyAddress else { continue }
             if let metadata = try? await getPreActivityMetadata(searchKey: address, searchByAddress: true),
                metadata.isReceive
             {
@@ -433,15 +700,20 @@ class ActivityService {
     }
 
     /// Find the receiving address for an onchain transaction
-    private func findReceivingAddress(for txid: String, value: UInt64) async throws -> String? {
-        let txDetails = try await AddressChecker.getTransaction(txid: txid)
+    private func findReceivingAddress(for txid: String, value: UInt64, transactionDetails: TransactionDetails? = nil) async throws -> String? {
+        // Use provided transaction details if available, otherwise try node
+        guard let details = transactionDetails ?? LightningService.shared.getTransactionDetails(txid: txid) else {
+            Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findReceivingAddress")
+            return nil
+        }
+
         let batchSize: UInt32 = 20
         let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
 
         // Check if an address matches any transaction output
         func matchesTransaction(_ address: String) -> Bool {
-            txDetails.vout.contains { output in
-                output.scriptpubkey_address == address
+            details.outputs.contains { output in
+                output.scriptpubkeyAddress == address
             }
         }
 
@@ -449,9 +721,9 @@ class ActivityService {
         func findMatch(in addresses: [String]) -> String? {
             // Try exact value match first
             for address in addresses {
-                for output in txDetails.vout {
-                    if output.scriptpubkey_address == address,
-                       output.value == Int64(value)
+                for output in details.outputs {
+                    if output.scriptpubkeyAddress == address,
+                       output.value == value
                     {
                         return address
                     }
@@ -467,7 +739,7 @@ class ActivityService {
         }
 
         // First, check pre-activity metadata for addresses in the transaction
-        if let address = await findAddressInPreActivityMetadata(txDetails: txDetails, value: value) {
+        if let address = await findAddressInPreActivityMetadata(details: details, value: value) {
             return address
         }
 
@@ -527,12 +799,18 @@ class ActivityService {
         }
 
         // Fallback: return first output address
-        return txDetails.vout.first?.scriptpubkey_address
+        return details.outputs.first?.scriptpubkeyAddress
     }
 
     func getActivity(id: String) async throws -> Activity? {
         try await ServiceQueue.background(.core) {
             try getActivityById(activityId: id)
+        }
+    }
+
+    func getOnchainActivityByTxId(txid: String) async throws -> OnchainActivity? {
+        try await ServiceQueue.background(.core) {
+            try BitkitCore.getActivityByTxId(txId: txid)
         }
     }
 
@@ -563,12 +841,27 @@ class ActivityService {
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
+            self.activitiesChangedSubject.send()
+        }
+    }
+
+    func upsert(_ activity: Activity) async throws {
+        try await ServiceQueue.background(.core) {
+            try upsertActivity(activity: activity)
+            self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
         }
     }
 
     func delete(id: String) async throws -> Bool {
         try await ServiceQueue.background(.core) {
+            // Rebuild cache if deleting an onchain activity with boostTxIds
+            let activity = try? getActivityById(activityId: id)
+            if let activity, case let .onchain(onchain) = activity, !onchain.boostTxIds.isEmpty {
+                await self.refreshBoostTxIdsCache()
+            }
+
             let result = try deleteActivityById(activityId: id)
             self.activitiesChangedSubject.send()
             return result
@@ -701,9 +994,8 @@ class ActivityService {
                 // For CPFP, mark the original activity as boosted (parent transaction still exists)
                 onchainActivity.isBoosted = true
                 onchainActivity.boostTxIds.append(txid)
-                try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
+                try await self.update(id: activityId, activity: .onchain(onchainActivity))
                 Logger.info("Successfully marked activity \(activityId) as boosted via CPFP", context: "CoreService.boostOnchainTransaction")
-                self.activitiesChangedSubject.send()
             } else {
                 Logger.info("Executing RBF boost for outgoing transaction", context: "CoreService.boostOnchainTransaction")
                 Logger.debug("Original transaction ID: \(onchainActivity.txId)", context: "CoreService.boostOnchainTransaction")
@@ -716,42 +1008,13 @@ class ActivityService {
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // Track the replacement transaction with its full parent chain
-                // Include existing boostTxIds (from previous boosts) plus the current txId being replaced
-                let boostedParentsTxIds = onchainActivity.boostTxIds + [onchainActivity.txId]
-                ActivityService.replacementTransactions[txid] = boostedParentsTxIds
-                Logger.debug(
-                    "Added replacement transaction \(txid) to tracking list with boosted parents txids: \(boostedParentsTxIds)",
-                    context: "CoreService.boostOnchainTransaction"
-                )
-
-                // Track the original transaction ID so we can ignore it during sync
-                ActivityService.replacedTransactions.insert(onchainActivity.txId)
-                Logger.debug(
-                    "Added original transaction \(onchainActivity.txId) to replaced transactions list", context: "CoreService.boostOnchainTransaction"
-                )
-
-                // For RBF, mark the old activity as boosted before marking it as replaced
+                // For RBF, mark the original activity as boosted until the replacement comes
                 onchainActivity.isBoosted = true
-                Logger.debug(
-                    "Marked original activity \(activityId) as boosted before RBF replacement",
-                    context: "CoreService.boostOnchainTransaction"
-                )
-
-                // For RBF, mark the original activity as doesExist = false instead of deleting it
-                // This allows it to be displayed with the "removed" status
-                Logger.debug(
-                    "Marking original activity \(activityId) as doesExist = false (replaced by RBF)", context: "CoreService.boostOnchainTransaction"
-                )
-
-                onchainActivity.doesExist = false
-                try updateActivity(activityId: activityId, activity: .onchain(onchainActivity))
+                try await self.update(id: activityId, activity: .onchain(onchainActivity))
                 Logger.info(
-                    "Successfully marked activity \(activityId) as doesExist = false (replaced by RBF)",
+                    "Successfully marked activity \(activityId) as replaced by fee",
                     context: "CoreService.boostOnchainTransaction"
                 )
-
-                self.activitiesChangedSubject.send()
             }
 
             return txid
@@ -1293,21 +1556,23 @@ class UtilityService {
         }
     }
 
-    /// Get balance for a specific address in satoshis using AddressChecker utility
+    /// Check if an address has been used (has any transactions)
+    /// - Parameter address: The Bitcoin address to check
+    /// - Returns: true if the address has been used, false otherwise
+    func isAddressUsed(address: String) async throws -> Bool {
+        return try await ServiceQueue.background(.core) {
+            try BitkitCore.isAddressUsed(address: address)
+        }
+    }
+
+    /// Get balance for a specific address in satoshis
     /// - Parameter address: The Bitcoin address to check
     /// - Returns: The current balance in satoshis
     func getAddressBalance(address: String) async throws -> UInt64 {
-        let addressInfo = try await AddressChecker.getAddressInfo(address: address)
-
-        // Calculate current balance: received - spent
-        let received = UInt64(addressInfo.chain_stats.funded_txo_sum)
-        let spent = UInt64(addressInfo.chain_stats.spent_txo_sum)
-
-        // Handle potential underflow
-        return received >= spent ? received - spent : 0
+        return try await LightningService.shared.getAddressBalance(address: address)
     }
 
-    /// Get balances for multiple addresses using AddressChecker utility
+    /// Get balances for multiple addresses
     /// - Parameter addresses: Array of Bitcoin addresses to check
     /// - Returns: Dictionary mapping addresses to their balances in satoshis
     func getMultipleAddressBalances(addresses: [String]) async throws -> [String: UInt64] {

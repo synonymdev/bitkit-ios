@@ -10,4 +10,5 @@ struct Toast: Equatable {
     let description: String?
     let autoHide: Bool
     let visibilityTime: Double
+    let accessibilityIdentifier: String?
 }
