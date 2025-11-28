@@ -45,10 +45,36 @@ struct NodeStateView: View {
                 channelsSection
                 balanceSection
             }
+            .refreshable {
+                await refreshNodeState()
+            }
         }
         .navigationBarHidden(true)
         // .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+    }
+
+    private func refreshNodeState() async {
+        wallet.syncState()
+
+        // If node is in an error state or stopped, retry starting it
+        if case .errorStarting = wallet.nodeLifecycleState {
+            do {
+                try await wallet.start()
+            } catch {
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
+        } else if wallet.nodeLifecycleState == .stopped {
+            do {
+                try await wallet.start()
+            } catch {
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
+        }
     }
 
     var statusSection: some View {

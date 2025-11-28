@@ -4,27 +4,63 @@ struct AppStatusView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var app: AppViewModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__status__title"))
                 .padding(.bottom, 16)
 
-            VStack(spacing: 16) {
-                internetStatusRow
-                bitcoinNodeStatusRow
-                nodeStatusRow
-                channelsStatusRow
-                backupStatusRow
+            ScrollView {
+                VStack(spacing: 16) {
+                    internetStatusRow
+                    bitcoinNodeStatusRow
+                    nodeStatusRow
+                    channelsStatusRow
+                    backupStatusRow
+                }
             }
-
-            Spacer()
+            .refreshable {
+                await refreshAppStatus()
+            }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .onAppear {
             wallet.syncState()
+        }
+    }
+
+    private func refreshAppStatus() async {
+        wallet.syncState()
+
+        if wallet.nodeLifecycleState == .running {
+            do {
+                try await wallet.sync()
+            } catch {
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
+        }
+
+        if case .errorStarting = wallet.nodeLifecycleState {
+            do {
+                try await wallet.start()
+            } catch {
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
+        } else if wallet.nodeLifecycleState == .stopped {
+            do {
+                try await wallet.start()
+            } catch {
+                await MainActor.run {
+                    app.toast(error)
+                }
+            }
         }
     }
 
