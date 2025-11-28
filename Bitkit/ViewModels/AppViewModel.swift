@@ -114,7 +114,14 @@ class AppViewModel: ObservableObject {
 // MARK: Toast notifications
 
 extension AppViewModel {
-    func toast(type: Toast.ToastType, title: String, description: String? = nil, autoHide: Bool = true, visibilityTime: Double = 4.0) {
+    func toast(
+        type: Toast.ToastType,
+        title: String,
+        description: String? = nil,
+        autoHide: Bool = true,
+        visibilityTime: Double = 4.0,
+        accessibilityIdentifier: String? = nil
+    ) {
         switch type {
         case .error:
             Haptics.notify(.error)
@@ -128,7 +135,14 @@ extension AppViewModel {
             Haptics.notify(.warning)
         }
 
-        let toast = Toast(type: type, title: title, description: description, autoHide: autoHide, visibilityTime: visibilityTime)
+        let toast = Toast(
+            type: type,
+            title: title,
+            description: description,
+            autoHide: autoHide,
+            visibilityTime: visibilityTime,
+            accessibilityIdentifier: accessibilityIdentifier
+        )
         ToastWindowManager.shared.showToast(toast)
     }
 
@@ -332,7 +346,6 @@ extension AppViewModel {
                     let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
                     if cjitOrder != nil {
                         let amount = channel.spendableBalanceSats
-                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         let now = UInt64(Date().timeIntervalSince1970)
 
                         let ln = LightningActivity(
@@ -365,9 +378,100 @@ extension AppViewModel {
         case .paymentClaimable:
             break
         case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
-            break
+            toast(
+                type: .error,
+                title: t("wallet__toast_payment_failed_title"),
+                description: t("wallet__toast_payment_failed_description"),
+                accessibilityIdentifier: "PaymentFailedToast"
+            )
         case .paymentForwarded:
             break
+
+        // MARK: New Onchain Transaction Events
+
+        case let .onchainTransactionReceived(txid, details):
+            // Show notification for incoming transactions
+            if details.amountSats > 0 {
+                let sats = UInt64(abs(Int64(details.amountSats)))
+
+                Task {
+                    // Show sheet for new transactions or replacements with value changes
+                    try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+                    let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
+
+                    await MainActor.run {
+                        if !shouldShow {
+                            return
+                        }
+
+                        sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
+                    }
+                }
+            }
+        case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+            Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
+        case let .onchainTransactionReplaced(txid, conflicts):
+            Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
+            Task {
+                if await CoreService.shared.activity.isReceivedTransaction(txid: txid) {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: t("wallet__toast_received_transaction_replaced_title"),
+                            description: t("wallet__toast_received_transaction_replaced_description"),
+                            accessibilityIdentifier: "ReceivedTransactionReplacedToast"
+                        )
+                    }
+                } else {
+                    await MainActor.run {
+                        toast(
+                            type: .info,
+                            title: t("wallet__toast_transaction_replaced_title"),
+                            description: t("wallet__toast_transaction_replaced_description"),
+                            accessibilityIdentifier: "TransactionReplacedToast"
+                        )
+                    }
+                }
+            }
+        case let .onchainTransactionReorged(txid):
+            Logger.warn("Transaction reorged: \(txid)")
+            toast(
+                type: .warning,
+                title: t("wallet__toast_transaction_unconfirmed_title"),
+                description: t("wallet__toast_transaction_unconfirmed_description"),
+                accessibilityIdentifier: "TransactionUnconfirmedToast"
+            )
+        case let .onchainTransactionEvicted(txid):
+            Task {
+                let wasReplaced = await CoreService.shared.activity.wasTransactionReplaced(txid: txid)
+
+                await MainActor.run {
+                    if wasReplaced {
+                        Logger.info("Transaction \(txid) was replaced, skipping evicted toast", context: "AppViewModel")
+                        return
+                    }
+
+                    Logger.warn("Transaction removed from mempool: \(txid)")
+                    toast(
+                        type: .warning,
+                        title: t("wallet__toast_transaction_removed_title"),
+                        description: t("wallet__toast_transaction_removed_description"),
+                        accessibilityIdentifier: "TransactionRemovedToast"
+                    )
+                }
+            }
+
+        // MARK: Sync Events
+
+        case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+            Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+        case let .syncCompleted(syncType, syncedBlockHeight):
+            Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
+
+        // MARK: Balance Events
+
+        case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+            Logger.debug("Balance changed: onchain \(oldSpendableOnchain)->\(newSpendableOnchain) lightning \(oldLightning)->\(newLightning)")
         }
     }
 }

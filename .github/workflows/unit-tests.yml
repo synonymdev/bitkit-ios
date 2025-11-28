@@ -40,21 +40,11 @@ jobs:
             ~/Library/org.swift.swiftpm
             Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          restore-keys: |
-            ${{ runner.os }}-spm-
-
-      - name: Cache DerivedData
-        uses: actions/cache@v4
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-deriveddata-${{ hashFiles('**/*.swift', '**/*.m', '**/*.h', 'Bitkit.xcodeproj/project.pbxproj') }}
-          restore-keys: |
-            ${{ runner.os }}-deriveddata-
 
       - name: Install dependencies
         run: |
           echo "⏱️  Starting dependency resolution at $(date)"
-          xcodebuild -resolvePackageDependencies | xcbeautify
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
 
       - name: Pre-start simulator
@@ -62,6 +52,12 @@ jobs:
           echo "⏱️  Starting simulator at $(date)"
           xcrun simctl boot "iPhone 16" || true
           echo "✅ Simulator started at $(date)"
+
+      - name: Clean build
+        run: |
+          echo "⏱️  Cleaning build at $(date)"
+          xcodebuild clean -scheme Bitkit | xcbeautify
+          echo "✅ Build cleaned at $(date)"
 
       - name: Run unit tests
         run: |

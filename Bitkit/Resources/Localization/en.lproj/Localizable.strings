@@ -968,6 +968,14 @@
 "wallet__toast_payment_success_description" = "Your instant payment was sent successfully.";
 "wallet__toast_payment_failed_title" = "Payment Failed";
 "wallet__toast_payment_failed_description" = "Your instant payment failed. Please try again.";
+"wallet__toast_received_transaction_replaced_title" = "Received Transaction Replaced";
+"wallet__toast_received_transaction_replaced_description" = "Your received transaction was replaced by a fee bump";
+"wallet__toast_transaction_replaced_title" = "Transaction Replaced";
+"wallet__toast_transaction_replaced_description" = "Your transaction was replaced by a fee bump";
+"wallet__toast_transaction_unconfirmed_title" = "Transaction Unconfirmed";
+"wallet__toast_transaction_unconfirmed_description" = "Transaction became unconfirmed due to blockchain reorganization";
+"wallet__toast_transaction_removed_title" = "Transaction Removed";
+"wallet__toast_transaction_removed_description" = "Transaction was removed from mempool";
 "wallet__selection_title" = "Coin Selection";
 "wallet__selection_auto" = "Auto";
 "wallet__selection_total_required" = "Total required";
@@ -1046,6 +1054,8 @@
 "wallet__activity_output" = "{count, plural, one {OUTPUT} other {OUTPUTS (#)}}";
 "wallet__activity_boosted_cpfp" = "BOOSTED TRANSACTION {num} (CPFP)";
 "wallet__activity_boosted_rbf" = "BOOSTED TRANSACTION {num} (RBF)";
+"wallet__activity_boost_fee" = "Boost Fee";
+"wallet__activity_boost_fee_description" = "Boosted incoming transaction";
 "wallet__activity_explorer" = "Open Block Explorer";
 "wallet__activity_successful" = "Successful";
 "wallet__activity_invoice_note" = "Invoice note";
