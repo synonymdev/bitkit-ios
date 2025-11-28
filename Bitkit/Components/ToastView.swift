@@ -1,54 +1,89 @@
 import SwiftUI
-import UIKit
 
 struct ToastView: View {
     let toast: Toast
     let onDismiss: () -> Void
+    let onDragStart: () -> Void
+    let onDragEnd: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var hasPausedAutoHide = false
+    private let dismissThreshold: CGFloat = 50
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    BodyMSBText(toast.title, textColor: accentColor)
-                    if let description = toast.description {
-                        CaptionText(description, textColor: .textPrimary)
-                    }
-                }
-                Spacer()
-                if !toast.autoHide {
-                    Button(action: onDismiss) {
-                        Image("x-mark")
-                            .foregroundColor(.white.opacity(0.6))
-                    }
-                }
+        VStack(alignment: .leading, spacing: 2) {
+            BodyMSBText(toast.title, textColor: accentColor)
+
+            if let description = toast.description {
+                CaptionText(description, textColor: .textPrimary)
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            ZStack {
-                // Colored background
-                accentColor.opacity(0.7)
-
-                // Black gradient overlay
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color.black.opacity(0.6),
-                        Color.black,
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-        )
+        .padding(16)
+        .background(accentColor.opacity(0.32))
         .background(.ultraThinMaterial)
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(accentColor, lineWidth: 2)
-        )
-        .cornerRadius(8)
-        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
+        .cornerRadius(16)
+        .shadow(color: .black.opacity(0.4), radius: 10, x: 0, y: 25)
         .accessibilityIdentifierIfPresent(toast.accessibilityIdentifier)
+        .overlay(alignment: .topTrailing) {
+            if !toast.autoHide {
+                Button(action: onDismiss) {
+                    Image("x-mark")
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                        .foregroundColor(.textSecondary)
+                }
+                .accessibilityLabel("Dismiss toast")
+                .padding(16)
+                .contentShape(Rectangle())
+            }
+        }
+        .offset(y: dragOffset)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    // Allow both upward and downward drag, but limit downward drag
+                    let translation = value.translation.height
+                    if translation < 0 {
+                        // Upward drag - allow freely
+                        dragOffset = translation
+                    } else {
+                        // Downward drag - apply resistance
+                        dragOffset = translation * 0.08
+                    }
+
+                    // Pause auto-hide when drag starts (only once)
+                    if abs(translation) > 5 && !hasPausedAutoHide {
+                        hasPausedAutoHide = true
+                        onDragStart()
+                    }
+                }
+                .onEnded { value in
+                    // Resume auto-hide when drag ends (if we paused it)
+                    if hasPausedAutoHide {
+                        hasPausedAutoHide = false
+                        onDragEnd()
+                    }
+
+                    // Dismiss if swiped up enough, otherwise snap back
+                    if value.translation.height < -dismissThreshold {
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            dragOffset = -200
+                        }
+
+                        // Dismiss after animation
+                        Task { @MainActor in
+                            try? await Task.sleep(nanoseconds: UInt64(0.3 * 1_000_000_000))
+                            onDismiss()
+                        }
+                    } else {
+                        // Snap back to original position
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
     }
 
     private var accentColor: Color {
@@ -71,7 +106,10 @@ struct ToastView: View {
             autoHide: true,
             visibilityTime: 4.0,
             accessibilityIdentifier: nil
-        ), onDismiss: {}
+        ),
+        onDismiss: {},
+        onDragStart: {},
+        onDragEnd: {}
     )
     .preferredColorScheme(.dark)
 }
