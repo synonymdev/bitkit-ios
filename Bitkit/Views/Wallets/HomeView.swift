@@ -26,11 +26,7 @@ struct HomeView: View {
                     VStack(spacing: 0) {
                         HStack(spacing: 0) {
                             NavigationLink(value: Route.savingsWallet) {
-                                WalletBalanceView(
-                                    type: .onchain,
-                                    sats: UInt64(wallet.totalOnchainSats),
-                                    showTransferIcon: wallet.balanceInTransferToSavings > 0
-                                )
+                                WalletBalanceView(type: .onchain, sats: UInt64(wallet.totalOnchainSats))
                             }
 
                             Divider()
@@ -40,11 +36,7 @@ struct HomeView: View {
                                 .padding(.leading, 16)
 
                             NavigationLink(value: Route.spendingWallet) {
-                                WalletBalanceView(
-                                    type: .lightning,
-                                    sats: UInt64(wallet.totalLightningSats),
-                                    showTransferIcon: wallet.balanceInTransferToSpending > 0
-                                )
+                                WalletBalanceView(type: .lightning, sats: UInt64(wallet.totalLightningSats))
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
