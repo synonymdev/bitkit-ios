@@ -4,16 +4,19 @@
 # Xcode
 Bitkit.xcodeproj/project.xcworkspace/xcuserdata/
 Bitkit.xcodeproj/xcuserdata/
+build
 
 # Node
 scripts/node_modules/
 
-# Transaction
+# Transifex
 tx
 
 # Sweetpad
 buildServer.json
 
+# IntelliJ IDEs
+.idea
+
 # VSCode
 .vscode/
-
