@@ -104,13 +104,15 @@ class ScannerManager: ObservableObject {
                 app?.toast(
                     type: .success,
                     title: t("settings__es__server_updated_title"),
-                    description: t("settings__es__server_updated_message", variables: ["host": result.host, "port": result.port])
+                    description: t("settings__es__server_updated_message", variables: ["host": result.host, "port": result.port]),
+                    accessibilityIdentifier: "ElectrumUpdatedToast"
                 )
             } else {
                 app?.toast(
                     type: .warning,
                     title: t("settings__es__error_peer"),
-                    description: result.errorMessage ?? t("settings__es__server_error_description")
+                    description: result.errorMessage ?? t("settings__es__server_error_description"),
+                    accessibilityIdentifier: "ElectrumErrorToast"
                 )
             }
         } else {
