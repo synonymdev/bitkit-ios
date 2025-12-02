@@ -8,6 +8,7 @@ struct MoneyStack: View {
     var showEyeIcon: Bool = false
     var enableSwipeGesture: Bool = false
 
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
@@ -109,10 +110,29 @@ struct MoneyStack: View {
         .accessibilityIdentifier("TotalBalance")
         .contentShape(Rectangle())
         .onTapGesture {
+            let previousDisplay = currency.primaryDisplay
+
             withAnimation(springAnimation) {
                 currency.togglePrimaryDisplay()
             }
             Haptics.play(.medium)
+
+            // Show toast on first switch
+            if !settings.ignoresSwitchUnitToast {
+                let newDisplay = currency.primaryDisplay
+                let toUnitText = getUnitText(for: newDisplay)
+                let fromUnitText = getUnitText(for: previousDisplay)
+
+                app.toast(
+                    type: .info,
+                    title: t("wallet__balance_unit_switched_title", variables: ["unit": toUnitText]),
+                    description: t("wallet__balance_unit_switched_message", variables: ["unit": fromUnitText]),
+                    visibilityTime: 5.0,
+                    accessibilityIdentifier: "BalanceUnitSwitchedToast"
+                )
+
+                settings.ignoresSwitchUnitToast = true
+            }
         }
         .animation(springAnimation, value: currency.primaryDisplay)
         .conditionalGesture(enableSwipeGesture) {
@@ -123,10 +143,24 @@ struct MoneyStack: View {
 
                     // Only trigger if horizontal swipe is more significant than vertical
                     if abs(horizontalAmount) > abs(verticalAmount) {
+                        let wasHidden = settings.hideBalance
                         withAnimation(springAnimation) {
                             settings.hideBalance.toggle()
                         }
                         Haptics.play(.medium)
+
+                        // Show toast on first hide (when balance becomes hidden)
+                        if !wasHidden && settings.hideBalance && !settings.ignoresHideBalanceToast {
+                            app.toast(
+                                type: .info,
+                                title: t("wallet__balance_hidden_title"),
+                                description: t("wallet__balance_hidden_message"),
+                                visibilityTime: 5.0,
+                                accessibilityIdentifier: "BalanceHiddenToast"
+                            )
+
+                            settings.ignoresHideBalanceToast = true
+                        }
                     }
                 }
         }
@@ -157,6 +191,15 @@ private extension MoneyStack {
             settings.hideBalance = false
         }
         Haptics.play(.medium)
+    }
+
+    func getUnitText(for display: PrimaryDisplay) -> String {
+        switch display {
+        case .bitcoin:
+            return t("settings__general__unit_bitcoin")
+        case .fiat:
+            return currency.selectedCurrency
+        }
     }
 }
 
