@@ -133,13 +133,15 @@ struct ElectrumSettingsScreen: View {
             app.toast(
                 type: .success,
                 title: t("settings__es__server_updated_title"),
-                description: t("settings__es__server_updated_message", variables: ["host": host, "port": port])
+                description: t("settings__es__server_updated_message", variables: ["host": host, "port": port]),
+                accessibilityIdentifier: "ElectrumUpdatedToast"
             )
         } else {
             app.toast(
                 type: .warning,
                 title: t("settings__es__error_peer"),
-                description: errorMessage ?? t("settings__es__server_error_description")
+                description: errorMessage ?? t("settings__es__server_error_description"),
+                accessibilityIdentifier: "ElectrumErrorToast"
             )
         }
     }

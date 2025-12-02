@@ -91,13 +91,15 @@ struct RgsSettingsScreen: View {
             app.toast(
                 type: .success,
                 title: t("settings__rgs__update_success_title"),
-                description: t("settings__rgs__update_success_description")
+                description: t("settings__rgs__update_success_description"),
+                accessibilityIdentifier: "RgsUpdatedToast"
             )
         } else {
             app.toast(
                 type: .warning,
                 title: tTodo("settings__rgs__error_peer"),
-                description: errorMessage ?? tTodo("settings__rgs__server_error_description")
+                description: errorMessage ?? tTodo("settings__rgs__server_error_description"),
+                accessibilityIdentifier: "RgsErrorToast"
             )
         }
     }
