@@ -21,7 +21,7 @@ struct NotificationsSheet: View {
                 continueText: t("settings__notifications__intro__button"),
                 cancelText: t("common__later"),
                 accentColor: .blueAccent,
-                testID: "NotificationsSheet",
+                testID: "BackgroundPayments",
                 onCancel: onLater,
                 onContinue: onEnable
             )
