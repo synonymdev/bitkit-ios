@@ -364,11 +364,21 @@ extension AppViewModel {
 
                         try await CoreService.shared.activity.insert(.lightning(ln))
                     } else {
-                        toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
+                        toast(
+                            type: .lightning,
+                            title: t("lightning__channel_opened_title"),
+                            description: t("lightning__channel_opened_msg"),
+                            visibilityTime: 5.0
+                        )
                     }
                 }
             } else {
-                toast(type: .lightning, title: t("lightning__channel_opened_title"), description: t("lightning__channel_opened_msg"))
+                toast(
+                    type: .lightning,
+                    title: t("lightning__channel_opened_title"),
+                    description: t("lightning__channel_opened_msg"),
+                    visibilityTime: 5.0
+                )
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break

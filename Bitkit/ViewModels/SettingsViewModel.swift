@@ -97,6 +97,8 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
     @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false // TODO: remove this
+    @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
+    @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
     // PIN Management
     @Published internal(set) var pinEnabled: Bool = false
