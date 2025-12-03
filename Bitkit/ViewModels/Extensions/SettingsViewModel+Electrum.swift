@@ -32,35 +32,59 @@ extension SettingsViewModel {
             return (success: false, host: host, port: port, errorMessage: validationError)
         }
 
-        // Update current server config immediately after validation
-        electrumCurrentServer = ElectrumServer(
+        // Create server config (don't save yet - only save after successful connection)
+        let serverConfig = ElectrumServer(
             host: host,
             portString: port,
             protocolType: electrumSelectedProtocol
         )
 
         do {
-            // Save the configuration to settings
-            electrumConfigService.saveServerConfig(electrumCurrentServer)
-
             // Restart the Lightning node with the new Electrum server
             let currentRgsUrl = rgsConfigService.getCurrentServerUrl()
             try await lightningService.restart(
-                electrumServerUrl: electrumCurrentServer.url,
+                electrumServerUrl: serverConfig.fullUrl,
                 rgsServerUrl: currentRgsUrl.isEmpty ? nil : currentRgsUrl
             )
 
+            // Wait a bit for the connection to establish and verify it's actually working
+            try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+            // Verify the node is actually running and connected
+            guard let status = lightningService.status, status.isRunning else {
+                electrumIsLoading = false
+                Logger.error("Electrum connection failed: Node is not running after restart")
+
+                // Reload form and connection status from actual current server (node may have fallen back to previous server)
+                let actualServer = electrumConfigService.getCurrentServer()
+                updateForm(with: actualServer)
+                electrumCurrentServer = actualServer
+                // Check if node is actually running with the previous server
+                electrumIsConnected = lightningService.status?.isRunning == true
+
+                return (success: false, host: host, port: port, errorMessage: t("settings__es__server_error_description"))
+            }
+
+            // Only save the configuration after successful connection validation
+            electrumConfigService.saveServerConfig(serverConfig)
+            electrumCurrentServer = serverConfig
             electrumIsConnected = true
             electrumIsLoading = false
 
-            Logger.info("Successfully connected to Electrum server: \(electrumCurrentServer.url)")
+            Logger.info("Successfully connected to Electrum server: \(serverConfig.fullUrl)")
 
             return (success: true, host: host, port: port, errorMessage: nil)
         } catch {
-            electrumIsConnected = false
             electrumIsLoading = false
 
             Logger.error(error, context: "Failed to connect to Electrum server")
+
+            // Reload form and connection status from actual current server (node may have fallen back to previous server)
+            let actualServer = electrumConfigService.getCurrentServer()
+            updateForm(with: actualServer)
+            electrumCurrentServer = actualServer
+            // Check if node is actually running with the previous server
+            electrumIsConnected = lightningService.status?.isRunning == true
 
             return (success: false, host: host, port: port, errorMessage: nil)
         }
@@ -151,6 +175,20 @@ extension SettingsViewModel {
     }
 
     private func parseElectrumScanData(_ data: String) -> ElectrumServer? {
+        // Handle URLs with tcp:// or ssl:// prefix
+        if data.hasPrefix("tcp://") || data.hasPrefix("ssl://") {
+            let protocolType: ElectrumProtocol = data.hasPrefix("ssl://") ? .ssl : .tcp
+            let urlWithoutProtocol = String(data.dropFirst(6)) // Remove "ssl://" or "tcp://"
+            let components = urlWithoutProtocol.split(separator: ":")
+
+            guard components.count >= 2 else { return nil }
+
+            let host = String(components[0])
+            let port = String(components[1])
+
+            return ElectrumServer(host: host, portString: port, protocolType: protocolType)
+        }
+
         // Handle plain format: host:port or host:port:s (Umbrel format)
         if !data.hasPrefix("http://") && !data.hasPrefix("https://") {
             let parts = data.split(separator: ":")

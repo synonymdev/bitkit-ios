@@ -69,17 +69,18 @@ enum Env {
 
     static var electrumServerUrl: String {
         if isE2E {
-            return "127.0.0.1:60001"
+            return "tcp://127.0.0.1:60001"
         }
+
         switch network {
-        case .regtest:
-            return "34.65.252.32:18483"
         case .bitcoin:
-            return "35.187.18.233:18484"
-        case .testnet:
-            fatalError("Testnet network not implemented")
+            return "ssl://35.187.18.233:8900"
         case .signet:
             fatalError("Signet network not implemented")
+        case .testnet:
+            return "ssl://electrum.blockstream.info:60002"
+        case .regtest:
+            return "tcp://34.65.252.32:18483"
         }
     }
 
