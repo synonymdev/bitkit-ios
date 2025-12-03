@@ -344,9 +344,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             }
         }
 
-        let electrumServer = electrumConfigService.getCurrentServer()
-        let protocolPrefix = electrumServer.protocolType == .ssl ? "ssl://" : "tcp://"
-        let electrumServerUrl = "\(protocolPrefix)\(electrumServer.url)"
+        let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
         if !electrumServerUrl.isEmpty { dict["electrumServer"] = electrumServerUrl }
 
         let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
@@ -377,7 +375,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         if urlString.hasPrefix("tcp://") || urlString.hasPrefix("ssl://") {
-            let withoutProtocol = urlString.replacingOccurrences(of: "tcp://", with: "").replacingOccurrences(of: "ssl://", with: "")
+            let withoutProtocol = String(urlString.dropFirst(6)) // Remove "ssl://" or "tcp://"
             let parts = withoutProtocol.split(separator: ":")
             guard parts.count >= 2 else { return nil }
 

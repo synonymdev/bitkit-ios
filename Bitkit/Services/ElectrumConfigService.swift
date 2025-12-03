@@ -28,7 +28,14 @@ class ElectrumConfigService {
     /// Gets the default server parsed from Env.electrumServerUrl
     func getDefaultServer() -> ElectrumServer {
         let defaultServerUrl = Env.electrumServerUrl
-        let components = defaultServerUrl.split(separator: ":")
+
+        guard defaultServerUrl.hasPrefix("tcp://") || defaultServerUrl.hasPrefix("ssl://") else {
+            fatalError("Invalid default Electrum server URL format: \(defaultServerUrl). Expected tcp:// or ssl:// prefix.")
+        }
+
+        let protocolType: ElectrumProtocol = defaultServerUrl.hasPrefix("ssl://") ? .ssl : .tcp
+        let urlWithoutProtocol = String(defaultServerUrl.dropFirst(6)) // Remove "ssl://" or "tcp://"
+        let components = urlWithoutProtocol.split(separator: ":")
 
         guard components.count >= 2 else {
             fatalError("Invalid default Electrum server URL: \(defaultServerUrl)")
@@ -36,7 +43,6 @@ class ElectrumConfigService {
 
         let host = String(components[0])
         let port = String(components[1])
-        let protocolType = getProtocolForPort(port)
 
         return ElectrumServer(host: host, portString: port, protocolType: protocolType)
     }
@@ -45,7 +51,7 @@ class ElectrumConfigService {
     func saveServerConfig(_ server: ElectrumServer) {
         do {
             electrumServerData = try JSONEncoder().encode(server)
-            Logger.info("Saved Electrum server config: \(server.url) (\(server.protocolType.rawValue))")
+            Logger.info("Saved Electrum server config: \(server.fullUrl)")
         } catch {
             Logger.error(error, context: "Failed to encode Electrum server config")
         }

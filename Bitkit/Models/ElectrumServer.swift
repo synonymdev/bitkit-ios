@@ -14,6 +14,12 @@ struct ElectrumServer: Equatable, Codable {
         return "\(host):\(port)"
     }
 
+    /// Returns the full URL with protocol prefix (tcp:// or ssl://)
+    var fullUrl: String {
+        let protocolPrefix = protocolType == .ssl ? "ssl://" : "tcp://"
+        return "\(protocolPrefix)\(host):\(port)"
+    }
+
     var portString: String {
         return String(port)
     }

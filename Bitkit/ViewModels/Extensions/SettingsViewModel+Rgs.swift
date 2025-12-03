@@ -26,7 +26,7 @@ extension SettingsViewModel {
             rgsConfigService.saveServerUrl(url)
 
             // Restart the Lightning node with the new RGS server
-            let currentElectrumUrl = electrumConfigService.getCurrentServer().url
+            let currentElectrumUrl = electrumConfigService.getCurrentServer().fullUrl
             try await lightningService.restart(electrumServerUrl: currentElectrumUrl, rgsServerUrl: url.isEmpty ? nil : url)
 
             rgsIsLoading = false

@@ -119,10 +119,52 @@ class LightningService {
         }
 
         // Restart the node with the current configuration
-        try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
-        try await start()
+        do {
+            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: electrumServerUrl, rgsServerUrl: rgsServerUrl)
+            try await start()
+            Logger.info("Node restarted successfully")
+        } catch {
+            Logger.warn("Failed ldk-node config change, attempting recovery…")
+            // Attempt to restart with previous config
+            // If recovery fails, log it but still throw the original error
+            do {
+                try await restartWithPreviousConfig()
+            } catch {
+                Logger.error("Recovery attempt also failed: \(error)")
+            }
+            // Always re-throw the original error that caused the restart failure
+            throw error
+        }
+    }
 
-        Logger.info("Node restarted successfully")
+    /// Restarts the node with the previous stored configuration (recovery method)
+    /// This is called when a config change fails to restore the node to a working state
+    private func restartWithPreviousConfig() async throws {
+        Logger.debug("Stopping node for recovery attempt")
+
+        // Stop the current node if it exists
+        if node != nil {
+            do {
+                try await stop()
+            } catch {
+                Logger.error("Failed to stop node during recovery: \(error)")
+                // Clear the node reference anyway
+                node = nil
+                try? StateLocker.unlock(.lightning)
+            }
+        }
+
+        Logger.debug("Starting node with previous config for recovery")
+
+        do {
+            // Restart with nil URLs to use stored/default configuration
+            try await setup(walletIndex: currentWalletIndex, electrumServerUrl: nil, rgsServerUrl: nil)
+            try await start()
+            Logger.debug("Successfully started node with previous config")
+        } catch {
+            Logger.error("Failed starting node with previous config: \(error)")
+            throw error
+        }
     }
 
     /// Pass onEvent when being used in the background to listen for payments, channels, closes, etc
