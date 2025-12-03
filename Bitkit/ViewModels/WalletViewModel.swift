@@ -100,7 +100,7 @@ class WalletViewModel: ObservableObject {
 
         syncState()
         do {
-            let electrumServerUrl = electrumConfigService.getCurrentServer().url
+            let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
             let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
             try await lightningService.setup(
                 walletIndex: walletIndex,
@@ -472,10 +472,19 @@ class WalletViewModel: ObservableObject {
         syncBalances()
     }
 
-    /// Sync node status and ID only
+    /// Sync node status, ID and lifecycle state
     private func syncNodeStatus() {
         nodeStatus = lightningService.status
         nodeId = lightningService.nodeId
+
+        // Sync lifecycle state based on service status
+        if let status = lightningService.status {
+            if status.isRunning && nodeLifecycleState != .running {
+                nodeLifecycleState = .running
+            } else if !status.isRunning && nodeLifecycleState == .running {
+                nodeLifecycleState = .stopped
+            }
+        }
     }
 
     /// Sync channels and peers only

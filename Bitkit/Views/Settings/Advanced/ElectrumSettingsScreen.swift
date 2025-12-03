@@ -4,6 +4,7 @@ struct ElectrumSettingsScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     @FocusState private var isTextFieldFocused: Bool
 
@@ -100,12 +101,17 @@ struct ElectrumSettingsScreen: View {
                             }
                             .accessibilityIdentifier("ConnectToHost")
                         }
-                        .buttonBottomPadding(isFocused: isTextFieldFocused)
+                        .bottomSafeAreaPadding()
                     }
                     .frame(minHeight: geometry.size.height)
-                    .bottomSafeAreaPadding()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isTextFieldFocused = false
+                    }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -117,6 +123,8 @@ struct ElectrumSettingsScreen: View {
     private func onConnect() {
         Task {
             let result = await settings.connectToElectrumServer()
+            // Sync wallet state to update node lifecycle state for app status
+            wallet.syncState()
             showToast(result.success, result.host, result.port, result.errorMessage)
         }
     }
@@ -124,6 +132,8 @@ struct ElectrumSettingsScreen: View {
     private func onReset() {
         Task {
             let result = await settings.resetElectrumToDefault()
+            // Sync wallet state to update node lifecycle state for app status
+            wallet.syncState()
             showToast(result.success, result.host, result.port, result.errorMessage)
         }
     }
