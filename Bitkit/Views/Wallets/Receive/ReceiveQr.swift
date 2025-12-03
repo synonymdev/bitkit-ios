@@ -110,11 +110,7 @@ struct ReceiveQr: View {
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
                             if GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels() {
-                                app.toast(
-                                    type: .error,
-                                    title: "Instant Payments Unavailable",
-                                    description: "Bitkit does not provide Lightning services in your country, but you can still connect to other nodes."
-                                )
+                                navigationPath.append(.cjitGeoBlocked)
                             } else {
                                 navigationPath.append(.cjitAmount)
                             }
@@ -149,7 +145,7 @@ struct ReceiveQr: View {
             } catch {
                 app.toast(error)
             }
-            try? await app.checkGeoStatus()
+            await app.checkGeoStatus()
         }
         .onChange(of: wallet.nodeLifecycleState) { newState in
             // They may open this view before node has started
@@ -164,7 +160,7 @@ struct ReceiveQr: View {
     @ViewBuilder
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
-            if showingCjitOnboarding {
+            if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
                 cjitOnboarding
             } else if showDetails {
                 detailsContent(for: tab)
