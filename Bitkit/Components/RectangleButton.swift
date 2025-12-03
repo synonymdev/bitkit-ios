@@ -73,6 +73,6 @@ struct RectangleButton: View {
     }
 
     private var backgroundColor: Color {
-        return isPressed ? .gray5 : .gray6
+        return isPressed && !isDisabled ? .gray5 : .gray6
     }
 }

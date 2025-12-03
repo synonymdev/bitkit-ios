@@ -8,24 +8,18 @@ struct IncomingTransfer: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image("transfer")
+        HStack(spacing: 0) {
+            Image("arrow-up-down")
                 .resizable()
                 .frame(width: 16, height: 16)
-                .foregroundColor(.white64)
+                .foregroundColor(.textSecondary)
+                .padding(.trailing, 3)
 
-            CaptionBText(
-                t("wallet__details_transfer_subtitle"),
-                textColor: .white64
-            )
+            CaptionBText(t("wallet__details_transfer_subtitle"))
 
             if let converted = currency.convert(sats: amount) {
                 let formattedAmount = formatAmount(converted)
-                CaptionBText(
-                    formattedAmount,
-                    textColor: .white64,
-                    accentColor: .white64
-                )
+                CaptionBText(formattedAmount)
             }
         }
     }
