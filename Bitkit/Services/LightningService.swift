@@ -46,6 +46,7 @@ class LightningService {
             trustedPeersNoReserve: Env.trustedLnPeers.map(\.nodeId),
             perChannelReserveSats: 1
         )
+        config.includeUntrustedPendingInSpendable = true
 
         let builder = Builder.fromConfig(config: config)
 
@@ -69,8 +70,6 @@ class LightningService {
         // Configure gossip source from current settings
         configureGossipSource(builder: builder, rgsServerUrl: rgsServerUrl)
 
-        builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
-
         Logger.debug("Building node...")
         let storeId = try await VssStoreIdProvider.shared.getVssStoreId(walletIndex: walletIndex)
 
@@ -79,9 +78,13 @@ class LightningService {
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
+        // Create NodeEntropy from mnemonic
+        let nodeEntropy = NodeEntropy.fromBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
+
         try await ServiceQueue.background(.ldk) {
             if !lnurlAuthServerUrl.isEmpty {
                 self.node = try builder.buildWithVssStore(
+                    nodeEntropy: nodeEntropy,
                     vssUrl: vssUrl,
                     storeId: storeId,
                     lnurlAuthServerUrl: lnurlAuthServerUrl,
@@ -89,6 +92,7 @@ class LightningService {
                 )
             } else {
                 self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                    nodeEntropy: nodeEntropy,
                     vssUrl: vssUrl,
                     storeId: storeId,
                     fixedHeaders: [:]
@@ -411,7 +415,7 @@ class LightningService {
         }
     }
 
-    func send(bolt11: String, sats: UInt64? = nil, params: SendingParameters? = nil) async throws -> PaymentHash {
+    func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
@@ -432,10 +436,10 @@ class LightningService {
             return try await ServiceQueue.background(.ldk) {
                 if let sats {
                     try node.bolt11Payment().sendUsingAmount(
-                        invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, sendingParameters: params
+                        invoice: .fromStr(invoiceStr: bolt11), amountMsat: sats * 1000, routeParameters: params
                     )
                 } else {
-                    try node.bolt11Payment().send(invoice: .fromStr(invoiceStr: bolt11), sendingParameters: params)
+                    try node.bolt11Payment().send(invoice: .fromStr(invoiceStr: bolt11), routeParameters: params)
                 }
             }
         } catch {
@@ -717,9 +721,9 @@ extension LightningService {
                         "⏳ Channel pending: channelId: \(channelId) userChannelId: \(userChannelId) formerTemporaryChannelId: \(formerTemporaryChannelId) counterpartyNodeId: \(counterpartyNodeId) fundingTxo: \(fundingTxo)"
                     )
                     await refreshChannelCache()
-                case let .channelReady(channelId, userChannelId, counterpartyNodeId):
+                case let .channelReady(channelId, userChannelId, counterpartyNodeId, fundingTxo):
                     Logger.info(
-                        "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?")"
+                        "👐 Channel ready: channelId: \(channelId) userChannelId: \(userChannelId) counterpartyNodeId: \(counterpartyNodeId ?? "?") fundingTxo: \(fundingTxo != nil ? "\(fundingTxo!.txid):\(fundingTxo!.vout)" : "nil")"
                     )
                     await refreshChannelCache()
                 case let .channelClosed(channelId, userChannelId, counterpartyNodeId, reason):
@@ -815,6 +819,20 @@ extension LightningService {
                 case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
                     Logger
                         .info("💰 Balance changed: onchain=\(oldSpendableOnchain)->\(newSpendableOnchain) lightning=\(oldLightning)->\(newLightning)")
+
+                // MARK: Splice Events
+
+                case let .splicePending(channelId, userChannelId, counterpartyNodeId, newFundingTxo):
+                    Logger
+                        .info(
+                            "🔀 Splice pending: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) newFundingTxo=\(newFundingTxo)"
+                        )
+                    await refreshChannelCache()
+                case let .spliceFailed(channelId, userChannelId, counterpartyNodeId, abandonedFundingTxo):
+                    Logger
+                        .warn(
+                            "❌ Splice failed: channelId=\(channelId) userChannelId=\(userChannelId) counterpartyNodeId=\(counterpartyNodeId) abandonedFundingTxo=\(abandonedFundingTxo != nil ? "\(abandonedFundingTxo!.txid):\(abandonedFundingTxo!.vout)" : "nil")"
+                        )
                 }
             }
         }
