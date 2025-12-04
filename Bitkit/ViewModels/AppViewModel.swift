@@ -340,7 +340,7 @@ extension AppViewModel {
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
-        case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _):
+        case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
                 Task {
                     let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
@@ -470,6 +470,11 @@ extension AppViewModel {
                     )
                 }
             }
+
+        // MARK: Splice Events
+
+        case .splicePending, .spliceFailed:
+            break
 
         // MARK: Sync Events
 
