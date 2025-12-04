@@ -8,6 +8,7 @@ struct FundManualAmountView: View {
     let lnPeer: LnPeer
 
     @StateObject private var amountViewModel = AmountInputViewModel()
+    @State private var didAttemptPeerConnection = false
 
     var amountSats: UInt64 {
         amountViewModel.amountSats
@@ -61,6 +62,9 @@ struct FundManualAmountView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task {
+            await connectToPeerIfNeeded()
+        }
     }
 
     private var numberPadButtons: some View {
@@ -80,6 +84,24 @@ struct FundManualAmountView: View {
 
             NumberPadActionButton(text: t("common__max")) {
                 amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats), currency: currency)
+            }
+        }
+    }
+
+    private func connectToPeerIfNeeded() async {
+        guard !didAttemptPeerConnection else { return }
+        didAttemptPeerConnection = true
+
+        do {
+            try await wallet.connectPeer(lnPeer)
+        } catch {
+            Logger.error("Failed to connect to peer \(lnPeer.nodeId): \(error)", context: "FundManualAmountView")
+            await MainActor.run {
+                app.toast(
+                    type: .error,
+                    title: t("lightning__error_add_title"),
+                    description: t("lightning__error_add")
+                )
             }
         }
     }

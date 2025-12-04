@@ -79,11 +79,11 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
                         .padding(.bottom, 44)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true)
+                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
                         .padding(.bottom, 44)
                     onchainView(invoice)
                 }
