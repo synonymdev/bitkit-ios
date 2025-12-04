@@ -46,6 +46,7 @@ class LightningService {
             trustedPeersNoReserve: Env.trustedLnPeers.map(\.nodeId),
             perChannelReserveSats: 1
         )
+        config.includeUntrustedPendingInSpendable = true
 
         let builder = Builder.fromConfig(config: config)
 
