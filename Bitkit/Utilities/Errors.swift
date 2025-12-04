@@ -122,16 +122,13 @@ struct AppError: LocalizedError {
 
     private init(ldkBuildError: BuildError) {
         switch ldkBuildError as BuildError {
+        case let .InvalidSystemTime(message: ldkMessage):
+            message = "Invalid system time"
+            debugMessage = ldkMessage
         case let .InvalidChannelMonitor(message: ldkMessage):
             message = "Invalid channel monitor"
             debugMessage = ldkMessage
-        case let .InvalidSeedBytes(message: ldkMessage):
-            message = "Invalid seed bytes"
-            debugMessage = ldkMessage
-        case let .InvalidSeedFile(message: ldkMessage):
-            message = "Invalid seed file"
-            debugMessage = ldkMessage
-        case let .InvalidSystemTime(message: ldkMessage):
+        case let .InvalidListeningAddresses(message: ldkMessage):
             message = "Invalid system time"
             debugMessage = ldkMessage
         case let .InvalidListeningAddresses(message: ldkMessage):
@@ -164,6 +161,12 @@ struct AppError: LocalizedError {
         case let .NetworkMismatch(message: ldkMessage):
             message = ldkMessage
             debugMessage = nil
+        case let .RuntimeSetupFailed(message: ldkMessage):
+            message = "Runtime setup failed"
+            debugMessage = ldkMessage
+        case let .AsyncPaymentsConfigMismatch(message: ldkMessage):
+            message = "Async payments config mismatch"
+            debugMessage = ldkMessage
         }
     }
 
@@ -197,6 +200,9 @@ struct AppError: LocalizedError {
             //            message = "Failed to send payment. \(ldkMessage)"
             message = ldkMessage
             debugMessage = ldkMessage
+        case let .InvalidCustomTlvs(message: ldkMessage):
+            message = "Invalid custom TLVs"
+            debugMessage = ldkMessage
         case let .ProbeSendingFailed(message: ldkMessage):
             message = "Failed to send probe"
             debugMessage = ldkMessage
@@ -208,6 +214,9 @@ struct AppError: LocalizedError {
             debugMessage = ldkMessage
         case let .ChannelClosingFailed(message: ldkMessage):
             message = "Failed to close channel"
+            debugMessage = ldkMessage
+        case let .ChannelSplicingFailed(message: ldkMessage):
+            message = "Failed to splice channel"
             debugMessage = ldkMessage
         case let .ChannelConfigUpdateFailed(message: ldkMessage):
             message = "Failed to update channel config"
@@ -244,6 +253,9 @@ struct AppError: LocalizedError {
             debugMessage = ldkMessage
         case let .LiquidityRequestFailed(message: ldkMessage):
             message = "Failed to request liquidity"
+            debugMessage = ldkMessage
+        case let .UriParameterParsingFailed(message: ldkMessage):
+            message = "Failed to parse URI parameters"
             debugMessage = ldkMessage
         case let .InvalidAddress(message: ldkMessage):
             message = "Invalid address"
@@ -308,8 +320,11 @@ struct AppError: LocalizedError {
         case let .LiquidityFeeTooHigh(message: ldkMessage):
             message = "Liquidity fee too high"
             debugMessage = ldkMessage
-        case let .UriParameterParsingFailed(message: ldkMessage):
-            message = "Uri parameter parsing failed"
+        case let .InvalidBlindedPaths(message: ldkMessage):
+            message = "Invalid blinded paths"
+            debugMessage = ldkMessage
+        case let .AsyncPaymentServicesDisabled(message: ldkMessage):
+            message = "Async payment services disabled"
             debugMessage = ldkMessage
         case let .InvalidUri(message: ldkMessage):
             message = "Invalid URI"

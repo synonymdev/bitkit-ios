@@ -177,7 +177,7 @@ class NotificationService: UNNotificationServiceExtension {
             bestAttemptContent?.title = "Spending Balance Ready"
             bestAttemptContent?.body = "Pending"
         // Don't deliver, give a chance for channelReady event to update the content if it's a turbo channel
-        case let .channelReady(channelId, _, _):
+        case let .channelReady(channelId, _, _, _):
             if notificationType == .cjitPaymentArrived {
                 bestAttemptContent?.title = "Payment Received"
                 bestAttemptContent?.body = "Your funds arrived in your spending balance"
@@ -255,6 +255,11 @@ class NotificationService: UNNotificationServiceExtension {
 
         case .balanceChanged:
             // Balance changes are handled by other events, not critical for notifications
+            break
+
+        // MARK: Splice Events
+
+        case .splicePending, .spliceFailed:
             break
         }
     }
