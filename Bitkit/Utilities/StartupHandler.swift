@@ -10,7 +10,7 @@ class StartupHandler {
     ///  - walletIndex: wallet index, defaults to zero for first entry
     ///  - Returns: The generated mnemonic
     static func createNewWallet(bip39Passphrase: String?, walletIndex: Int = 0) throws -> String {
-        let mnemonic = generateEntropyMnemonic()
+        let mnemonic = generateEntropyMnemonic(wordCount: .words12)
 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
         if let bip39Passphrase {
