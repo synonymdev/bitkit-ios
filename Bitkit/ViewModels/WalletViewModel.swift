@@ -464,6 +464,11 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
+    func connectPeer(_ peer: LnPeer) async throws {
+        try await lightningService.connectPeer(peer: peer)
+        syncState()
+    }
+
     /// Sync all state (node status, channels, peers, balances)
     /// Use this for initial load or after sync operations
     func syncState() {

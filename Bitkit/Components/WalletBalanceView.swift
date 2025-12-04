@@ -3,6 +3,7 @@ import SwiftUI
 struct WalletBalanceView: View {
     let type: WalletType
     let sats: UInt64
+    var amountTestIdentifier: String?
 
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -20,6 +21,7 @@ struct WalletBalanceView: View {
                             .padding(.trailing, 4)
 
                         SubtitleText(btcComponents.value)
+                            .accessibilityIdentifierIfPresent(amountTestIdentifier)
                     }
                 } else {
                     HStack(spacing: 4) {
@@ -30,12 +32,12 @@ struct WalletBalanceView: View {
                         SubtitleText(converted.symbol)
                             .frame(maxWidth: 12)
                         SubtitleText(converted.formatted)
+                            .accessibilityIdentifierIfPresent(amountTestIdentifier)
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier(type == .onchain ? "ActivitySavings" : "ActivitySpending")
     }
 }
 

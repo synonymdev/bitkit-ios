@@ -14,7 +14,8 @@ struct SpendingWalletView: View {
                 sats: wallet.totalLightningSats,
                 showSymbol: true,
                 showEyeIcon: false,
-                enableSwipeGesture: true
+                enableSwipeGesture: true,
+                testIdPrefix: "TotalBalance"
             )
             .padding(.top)
 

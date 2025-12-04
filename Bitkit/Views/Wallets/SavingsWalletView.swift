@@ -14,7 +14,8 @@ struct SavingsWalletView: View {
                 sats: wallet.totalOnchainSats,
                 showSymbol: true,
                 showEyeIcon: false,
-                enableSwipeGesture: true
+                enableSwipeGesture: true,
+                testIdPrefix: "TotalBalance"
             )
             .padding(.top)
 

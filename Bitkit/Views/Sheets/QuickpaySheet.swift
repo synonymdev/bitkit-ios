@@ -21,7 +21,7 @@ struct QuickpaySheet: View {
                 continueText: t("common__learn_more"),
                 cancelText: t("common__later"),
                 accentColor: .greenAccent,
-                testID: "QuickpaySheet",
+                testID: "QuickpayIntro",
                 onCancel: onLater,
                 onContinue: onLearnMore
             )
