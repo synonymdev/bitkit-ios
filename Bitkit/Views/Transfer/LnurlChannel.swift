@@ -167,10 +167,24 @@ struct LnurlChannel: View {
                 self.channelInfo = channelInfo
                 isLoadingChannelInfo = false
             }
+
+            await connectToPeerIfNeeded(channelInfo: channelInfo)
         } catch {
             await MainActor.run {
                 isLoadingChannelInfo = false
             }
+        }
+    }
+
+    private func connectToPeerIfNeeded(channelInfo: LnurlChannelData) async {
+        guard let peer = try? LnPeer(connection: channelInfo.uri) else {
+            return
+        }
+
+        do {
+            try await wallet.connectPeer(peer)
+        } catch {
+            Logger.error(error, context: "Failed to connect LNURL peer")
         }
     }
 }
