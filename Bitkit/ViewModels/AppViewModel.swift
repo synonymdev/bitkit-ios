@@ -249,9 +249,13 @@ extension AppViewModel {
             return
         }
 
+        var normalizedData = data
+        normalizedData.minSendable = max(1, normalizedData.minSendable / 1000)
+        normalizedData.maxSendable = max(normalizedData.minSendable, normalizedData.maxSendable / 1000)
+
         // Check if user has enough lightning balance to pay the minimum amount
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < data.minSendable {
+        if lightningBalance < normalizedData.minSendable {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
@@ -261,7 +265,7 @@ extension AppViewModel {
         }
 
         selectedWalletToPayFrom = .lightning
-        lnurlPayData = data
+        lnurlPayData = normalizedData
     }
 
     private func handleLnurlWithdraw(_ data: LnurlWithdrawData) {
@@ -368,7 +372,8 @@ extension AppViewModel {
                             type: .lightning,
                             title: t("lightning__channel_opened_title"),
                             description: t("lightning__channel_opened_msg"),
-                            visibilityTime: 5.0
+                            visibilityTime: 5.0,
+                            accessibilityIdentifier: "SpendingBalanceReadyToast"
                         )
                     }
                 }
@@ -377,7 +382,8 @@ extension AppViewModel {
                     type: .lightning,
                     title: t("lightning__channel_opened_title"),
                     description: t("lightning__channel_opened_msg"),
-                    visibilityTime: 5.0
+                    visibilityTime: 5.0,
+                    accessibilityIdentifier: "SpendingBalanceReadyToast"
                 )
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
