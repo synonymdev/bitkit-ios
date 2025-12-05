@@ -102,7 +102,6 @@ struct SpendingAdvancedView: View {
                 blocktankInfo: blocktank.info
             )
 
-            amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             updateFeeEstimate()
         }
         .onChange(of: lspBalance) { _ in

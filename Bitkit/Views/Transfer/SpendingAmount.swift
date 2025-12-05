@@ -10,6 +10,7 @@ struct SpendingAmount: View {
 
     @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
+    @State private var availableAmount: UInt64?
     @State private var maxTransferAmount: UInt64?
 
     private var amountSats: UInt64 {
@@ -17,8 +18,7 @@ struct SpendingAmount: View {
     }
 
     private var isValidAmount: Bool {
-        guard amountSats > 0 else { return false }
-        guard let max = maxTransferAmount, max > 0 else { return false }
+        guard let max = maxTransferAmount else { return false }
         return amountSats <= max
     }
 
@@ -39,8 +39,8 @@ struct SpendingAmount: View {
             Spacer()
 
             HStack(alignment: .bottom) {
-                if let max = maxTransferAmount {
-                    AvailableAmount(label: t("wallet__send_available"), amount: Int(max))
+                if let available = availableAmount {
+                    AvailableAmount(label: t("wallet__send_available"), amount: Int(available))
                 } else {
                     HStack(spacing: 4) {
                         CaptionMText(t("wallet__send_available"))
@@ -123,6 +123,7 @@ struct SpendingAmount: View {
     private func calculateMaxTransferAmount() async {
         guard let info = blocktank.info else {
             await MainActor.run {
+                availableAmount = 0
                 maxTransferAmount = 0
             }
             return
@@ -137,6 +138,7 @@ struct SpendingAmount: View {
             guard let feeRates = try await coreService.blocktank.fees(refresh: true) else {
                 await MainActor.run {
                     let balance = UInt64(wallet.spendableOnchainBalanceSats)
+                    availableAmount = balance
                     let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
                     maxTransferAmount = min(values.maxClientBalance, balance)
                 }
@@ -144,28 +146,30 @@ struct SpendingAmount: View {
             }
             let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
 
-            let availableAmount = try await wallet.calculateMaxSendableAmount(
+            let calculatedAvailableAmount = try await wallet.calculateMaxSendableAmount(
                 address: address,
                 satsPerVByte: fastFeeRate
             )
 
-            let values = transfer.calculateTransferValues(clientBalanceSat: availableAmount, blocktankInfo: info)
+            let values = transfer.calculateTransferValues(clientBalanceSat: calculatedAvailableAmount, blocktankInfo: info)
 
             let feeEstimate = try await blocktank.estimateOrderFee(
-                clientBalance: availableAmount,
+                clientBalance: calculatedAvailableAmount,
                 lspBalance: values.maxLspBalance
             )
 
-            let feeMaximum = UInt64(max(0, Int64(availableAmount) - Int64(feeEstimate.feeSat)))
+            let feeMaximum = UInt64(max(0, Int64(calculatedAvailableAmount) - Int64(feeEstimate.feeSat)))
             let result = min(values.maxClientBalance, feeMaximum)
 
             await MainActor.run {
+                availableAmount = calculatedAvailableAmount
                 maxTransferAmount = result
             }
         } catch {
             Logger.error("Failed to calculate max transfer amount: \(error)")
             await MainActor.run {
                 let balance = UInt64(wallet.spendableOnchainBalanceSats)
+                availableAmount = balance
                 let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
                 maxTransferAmount = min(values.maxClientBalance, balance)
             }
