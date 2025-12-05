@@ -122,6 +122,7 @@ struct LnurlChannel: View {
                         await onConnect()
                     }
                 }
+                .accessibilityIdentifier("ConnectButton")
             }
         }
         .navigationBarHidden(true)
