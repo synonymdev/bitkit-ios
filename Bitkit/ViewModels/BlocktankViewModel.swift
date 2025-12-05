@@ -209,13 +209,12 @@ class BlocktankViewModel: ObservableObject {
         )
     }
 
+    /// Calculates default LSP balance for CJIT channels using bitkit-core
     private func getDefaultLspBalance(clientBalance: UInt64) async throws -> UInt64 {
         if info == nil {
             try await refreshInfo()
         }
-        let maxLspBalance = info?.options.maxChannelSizeSat ?? 0
 
-        // Get current rates
         guard let rates = currencyService.loadCachedRates(),
               let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
         else {
@@ -223,30 +222,14 @@ class BlocktankViewModel: ObservableObject {
             throw CustomServiceError.currencyRateUnavailable
         }
 
-        // Calculate thresholds in sats
-        let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
-        let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
-        let defaultLspBalance = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
+        let satsPerEur = currencyService.convertFiatToSats(fiatValue: 1, rate: eurRate)
+        let params = DefaultLspBalanceParams(
+            clientBalanceSat: clientBalance,
+            maxChannelSizeSat: info?.options.maxChannelSizeSat ?? 0,
+            satsPerEur: satsPerEur
+        )
 
-        Logger.debug("getDefaultLspBalance - clientBalance: \(clientBalance)")
-        Logger.debug("getDefaultLspBalance - maxLspBalance: \(maxLspBalance)")
-        Logger.debug("getDefaultLspBalance - defaultLspBalance: \(defaultLspBalance)")
-
-        // Safely calculate lspBalance to avoid arithmetic overflow
-        var lspBalance: UInt64 = 0
-        if defaultLspBalance > clientBalance {
-            lspBalance = defaultLspBalance - clientBalance
-        }
-
-        if clientBalance > threshold1 {
-            lspBalance = clientBalance
-        }
-
-        if clientBalance > threshold2 {
-            lspBalance = maxLspBalance
-        }
-
-        return min(lspBalance, maxLspBalance)
+        return BitkitCore.getDefaultLspBalance(params: params)
     }
 
     func refreshMinCjitSats() async throws {

@@ -10,20 +10,16 @@ struct SpendingAmount: View {
 
     @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var isLoading = false
-    @State private var maxSendableAmount: UInt64?
-    @State private var maxTransferAmount: UInt64 = 0
+    @State private var availableAmount: UInt64?
+    @State private var maxTransferAmount: UInt64?
 
-    var amountSats: UInt64 {
+    private var amountSats: UInt64 {
         amountViewModel.amountSats
     }
 
-    // Calculate the maximum amount that can be transferred
-    private var availableAmount: UInt64 {
-        return maxSendableAmount ?? UInt64(wallet.spendableOnchainBalanceSats)
-    }
-
-    private var transferValues: TransferValues {
-        transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
+    private var isValidAmount: Bool {
+        guard let max = maxTransferAmount else { return false }
+        return amountSats <= max
     }
 
     var body: some View {
@@ -43,7 +39,15 @@ struct SpendingAmount: View {
             Spacer()
 
             HStack(alignment: .bottom) {
-                AvailableAmount(label: t("wallet__send_available"), amount: Int(availableAmount))
+                if let available = availableAmount {
+                    AvailableAmount(label: t("wallet__send_available"), amount: Int(available))
+                } else {
+                    HStack(spacing: 4) {
+                        CaptionMText(t("wallet__send_available"))
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    }
+                }
 
                 Spacer()
 
@@ -60,17 +64,19 @@ struct SpendingAmount: View {
                 amountViewModel.handleNumberPadInput(key, currency: currency)
             }
 
-            CustomButton(title: t("common__continue"), isLoading: isLoading) {
-                Task {
-                    await onContinue()
-                }
+            CustomButton(
+                title: t("common__continue"),
+                isDisabled: !isValidAmount,
+                isLoading: isLoading
+            ) {
+                await onContinue()
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .task {
-            await calculateMaxSendableAmount()
+        .task(id: blocktank.info?.options.maxChannelSizeSat) {
+            await calculateMaxTransferAmount()
         }
     }
 
@@ -86,93 +92,86 @@ struct SpendingAmount: View {
             }
 
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
+                guard let max = maxTransferAmount else { return }
                 let quarter = UInt64(wallet.spendableOnchainBalanceSats) / 4
-                let amount = min(quarter, maxTransferAmount)
-                amountViewModel.updateFromSats(amount, currency: currency)
+                amountViewModel.updateFromSats(min(quarter, max), currency: currency)
             }
 
             NumberPadActionButton(text: t("common__max")) {
-                amountViewModel.updateFromSats(maxTransferAmount, currency: currency)
+                guard let max = maxTransferAmount else { return }
+                amountViewModel.updateFromSats(max, currency: currency)
             }
         }
     }
 
     private func onContinue() async {
-        // TODO: check that we have enough onchain balance to cover the fee, see react native code
-
         isLoading = true
+        defer { isLoading = false }
 
         do {
-            let transferValues = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
-            let lspBalance = max(transferValues.defaultLspBalance, transferValues.minLspBalance)
+            let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
+            let lspBalance = max(values.defaultLspBalance, values.minLspBalance)
             let order = try await blocktank.createOrder(clientBalance: amountSats, lspBalance: lspBalance)
-
-            isLoading = false
 
             transfer.onOrderCreated(order: order)
             navigation.navigate(.spendingConfirm(order: order))
         } catch {
             app.toast(error)
-            isLoading = false
         }
     }
 
-    private func calculateMaxSendableAmount() async {
+    private func calculateMaxTransferAmount() async {
+        guard let info = blocktank.info else {
+            await MainActor.run {
+                availableAmount = 0
+                maxTransferAmount = 0
+            }
+            return
+        }
+
         let coreService = CoreService.shared
         let lightningService = LightningService.shared
 
         do {
             let address = try await lightningService.newAddress()
 
-            if let feeRates = try await coreService.blocktank.fees(refresh: true) {
-                let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
-
-                let maxAmount = try await wallet.calculateMaxSendableAmount(
-                    address: address,
-                    satsPerVByte: fastFeeRate
-                )
-
+            guard let feeRates = try await coreService.blocktank.fees(refresh: true) else {
                 await MainActor.run {
-                    maxSendableAmount = maxAmount
+                    let balance = UInt64(wallet.spendableOnchainBalanceSats)
+                    availableAmount = balance
+                    let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
+                    maxTransferAmount = min(values.maxClientBalance, balance)
                 }
-
-                // Now calculate the max transfer amount using blocktank.estimateOrderFee
-                await calculateMaxTransferAmount(availableAmount: maxAmount)
+                return
             }
-        } catch {
-            Logger.error("Failed to calculate max sendable amount: \(error)")
-            await MainActor.run {
-                // Fall back to total balance if calculation fails
-                maxSendableAmount = UInt64(wallet.spendableOnchainBalanceSats)
-                maxTransferAmount = 0
-            }
-        }
-    }
+            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
 
-    private func calculateMaxTransferAmount(availableAmount: UInt64) async {
-        do {
-            let transferValues = transfer.calculateTransferValues(clientBalanceSat: availableAmount, blocktankInfo: blocktank.info)
-
-            let feeEstimate = try await blocktank.estimateOrderFee(
-                clientBalance: availableAmount,
-                lspBalance: transferValues.maxLspBalance
+            let calculatedAvailableAmount = try await wallet.calculateMaxSendableAmount(
+                address: address,
+                satsPerVByte: fastFeeRate
             )
 
-            let feeMaximum = UInt64(max(0, Int64(availableAmount - feeEstimate.feeSat)))
+            let values = transfer.calculateTransferValues(clientBalanceSat: calculatedAvailableAmount, blocktankInfo: info)
 
-            // Maximum is the minimum of max client balance and fee maximum
-            let result = min(transferValues.maxClientBalance, feeMaximum)
+            let feeEstimate = try await blocktank.estimateOrderFee(
+                clientBalance: calculatedAvailableAmount,
+                lspBalance: values.maxLspBalance
+            )
+
+            let feeMaximum = UInt64(max(0, Int64(calculatedAvailableAmount) - Int64(feeEstimate.feeSat)))
+            let result = min(values.maxClientBalance, feeMaximum)
 
             await MainActor.run {
+                availableAmount = calculatedAvailableAmount
                 maxTransferAmount = result
             }
-
         } catch {
             Logger.error("Failed to calculate max transfer amount: \(error)")
             await MainActor.run {
-                // Fall back to a simplified calculation
-                let transferValues = transfer.calculateTransferValues(clientBalanceSat: availableAmount, blocktankInfo: blocktank.info)
-                maxTransferAmount = min(transferValues.maxClientBalance, availableAmount)
+                let balance = UInt64(wallet.spendableOnchainBalanceSats)
+                availableAmount = balance
+                let values = transfer.calculateTransferValues(clientBalanceSat: balance, blocktankInfo: info)
+                maxTransferAmount = min(values.maxClientBalance, balance)
             }
         }
     }
