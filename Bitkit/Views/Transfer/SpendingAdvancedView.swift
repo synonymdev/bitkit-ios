@@ -8,20 +8,21 @@ struct SpendingAdvancedView: View {
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var transfer: TransferViewModel
-    @EnvironmentObject var wallet: WalletViewModel
     @Environment(\.dismiss) var dismiss
 
     @StateObject private var amountViewModel = AmountInputViewModel()
     @State private var feeEstimate: UInt64?
+    @State private var isLoading = false
+    @State private var feeEstimateTask: Task<Void, Never>?
 
     var lspBalance: UInt64 {
         amountViewModel.amountSats
     }
 
     private var isValid: Bool {
-        let isAboveMin = lspBalance >= transfer.transferValues.minLspBalance
-        let isBelowMax = lspBalance <= transfer.transferValues.maxLspBalance
-        return isAboveMin && isBelowMax
+        let values = transfer.transferValues
+        guard lspBalance > 0, values.maxLspBalance > 0 else { return false }
+        return lspBalance >= values.minLspBalance && lspBalance <= values.maxLspBalance
     }
 
     var body: some View {
@@ -73,15 +74,17 @@ struct SpendingAdvancedView: View {
 
                 CustomButton(
                     title: t("common__continue"),
-                    isDisabled: !isValid
+                    isDisabled: !isValid,
+                    isLoading: isLoading
                 ) {
+                    isLoading = true
+                    defer { isLoading = false }
+
                     do {
-                        // Create a new order with the specified receiving capacity
                         let newOrder = try await blocktank.createOrder(
                             clientBalance: order.clientBalanceSat,
                             lspBalance: lspBalance
                         )
-
                         transfer.onAdvancedOrderCreated(order: newOrder)
                         dismiss()
                     } catch {
@@ -102,7 +105,11 @@ struct SpendingAdvancedView: View {
             updateFeeEstimate()
         }
         .onChange(of: lspBalance) { _ in
-            updateFeeEstimate()
+            if isValid {
+                updateFeeEstimate()
+            } else {
+                feeEstimate = nil
+            }
         }
     }
 
@@ -129,17 +136,22 @@ struct SpendingAdvancedView: View {
     private func updateFeeEstimate() {
         guard lspBalance > 0 else { return }
 
-        Task {
+        feeEstimateTask?.cancel()
+        feeEstimate = nil
+
+        feeEstimateTask = Task {
             do {
-                feeEstimate = nil
                 let estimate = try await blocktank.estimateOrderFee(
                     clientBalance: order.clientBalanceSat,
                     lspBalance: lspBalance
                 )
-                feeEstimate = estimate.feeSat
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    feeEstimate = estimate.feeSat
+                }
             } catch {
-                feeEstimate = nil
-                Logger.error("Failed to estimate fee: \(error.localizedDescription)")
+                guard !Task.isCancelled else { return }
+                Logger.debug("Fee estimation failed: \(error.localizedDescription)")
             }
         }
     }
@@ -150,7 +162,6 @@ struct SpendingAdvancedView: View {
         SpendingAdvancedView(
             order: IBtOrder.mock(lspBalanceSat: 100_000, clientBalanceSat: 50000)
         )
-        .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(BlocktankViewModel())
