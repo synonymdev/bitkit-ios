@@ -294,89 +294,50 @@ class TransferViewModel: ObservableObject {
         selectedChannelIds = []
     }
 
-    // MARK: - Balance Calculation Functions
+    // MARK: - Balance Calculation
 
-    func getDefaultLspBalance(clientBalanceSat: UInt64, maxLspBalance: UInt64) -> UInt64 {
-        // Get current rates
+    /// Calculates channel liquidity options using bitkit-core
+    func calculateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) -> TransferValues {
+        guard let blocktankInfo else {
+            return TransferValues()
+        }
+
         guard let rates = currencyService.loadCachedRates(),
               let eurRate = currencyService.getCurrentRate(for: "EUR", from: rates)
         else {
-            Logger.error("Failed to get rates for getDefaultLspBalance", context: "TransferViewModel")
-            return 0
+            Logger.error("Failed to get rates for calculateTransferValues", context: "TransferViewModel")
+            return TransferValues()
         }
 
-        // Calculate thresholds in sats
-        let threshold1 = currencyService.convertFiatToSats(fiatValue: 225, rate: eurRate)
-        let threshold2 = currencyService.convertFiatToSats(fiatValue: 495, rate: eurRate)
-        let defaultLspBalanceSats = currencyService.convertFiatToSats(fiatValue: 450, rate: eurRate)
+        let satsPerEur = currencyService.convertFiatToSats(fiatValue: 1, rate: eurRate)
+        let existingChannelsTotalSat = totalBtChannelsValueSats(blocktankInfo: blocktankInfo)
 
-        var lspBalance = Int64(defaultLspBalanceSats) - Int64(clientBalanceSat)
+        let params = ChannelLiquidityParams(
+            clientBalanceSat: clientBalanceSat,
+            existingChannelsTotalSat: existingChannelsTotalSat,
+            minChannelSizeSat: blocktankInfo.options.minChannelSizeSat,
+            maxChannelSizeSat: blocktankInfo.options.maxChannelSizeSat,
+            satsPerEur: satsPerEur
+        )
 
-        // Ensure non-negative result
-        if lspBalance < 0 {
-            lspBalance = 0
-        }
+        let options = BitkitCore.calculateChannelLiquidityOptions(params: params)
 
-        if clientBalanceSat > threshold1 {
-            lspBalance = Int64(clientBalanceSat)
-        }
-
-        if clientBalanceSat > threshold2 {
-            lspBalance = Int64(maxLspBalance)
-        }
-
-        return min(UInt64(lspBalance), maxLspBalance)
-    }
-
-    func getMinLspBalance(clientBalance: UInt64, minChannelSize: UInt64) -> UInt64 {
-        // LSP balance must be at least 2.5% of the channel size for LDK to accept (reserve balance)
-        let ldkMinimum = UInt64(Double(clientBalance) * 0.025)
-        // Channel size must be at least minChannelSize
-        let lspMinimum = clientBalance < minChannelSize ? minChannelSize - clientBalance : 0
-
-        return max(ldkMinimum, lspMinimum)
-    }
-
-    func getMaxClientBalance(maxChannelSize: UInt64) -> UInt64 {
-        // Remote balance must be at least 2.5% of the channel size for LDK to accept (reserve balance)
-        let minRemoteBalance = UInt64(Double(maxChannelSize) * 0.025)
-        return maxChannelSize - minRemoteBalance
+        return TransferValues(
+            defaultLspBalance: options.defaultLspBalanceSat,
+            minLspBalance: options.minLspBalanceSat,
+            maxLspBalance: options.maxLspBalanceSat,
+            maxClientBalance: options.maxClientBalanceSat
+        )
     }
 
     func updateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) {
         transferValues = calculateTransferValues(clientBalanceSat: clientBalanceSat, blocktankInfo: blocktankInfo)
     }
 
-    func calculateTransferValues(clientBalanceSat: UInt64, blocktankInfo: IBtInfo?) -> TransferValues {
-        guard let blocktankInfo else {
-            return TransferValues()
-        }
-
-        // Calculate the total value of existing Blocktank channels
-        let channelsSize = totalBtChannelsValueSats(blocktankInfo: blocktankInfo)
-
-        let minChannelSizeSat = UInt64(blocktankInfo.options.minChannelSizeSat)
-        let maxChannelSizeSat = UInt64(blocktankInfo.options.maxChannelSizeSat)
-
-        // Because LSP limits constantly change depending on network fees
-        // Add a 2% buffer to avoid fluctuations while making the order
-        let maxChannelSize1 = UInt64(Double(maxChannelSizeSat) * 0.98)
-
-        // The maximum channel size the user can open including existing channels
-        let maxChannelSize2 = maxChannelSize1 > channelsSize ? maxChannelSize1 - channelsSize : 0
-        let maxChannelSize = min(maxChannelSize1, maxChannelSize2)
-
-        let minLspBalance = getMinLspBalance(clientBalance: clientBalanceSat, minChannelSize: minChannelSizeSat)
-        let maxLspBalance = maxChannelSize > clientBalanceSat ? maxChannelSize - clientBalanceSat : 0
-        let defaultLspBalance = getDefaultLspBalance(clientBalanceSat: clientBalanceSat, maxLspBalance: maxLspBalance)
-        let maxClientBalance = getMaxClientBalance(maxChannelSize: maxChannelSize)
-
-        return TransferValues(
-            defaultLspBalance: defaultLspBalance,
-            minLspBalance: minLspBalance,
-            maxLspBalance: maxLspBalance,
-            maxClientBalance: maxClientBalance
-        )
+    /// Calculates max client balance accounting for LDK reserve requirement
+    func getMaxClientBalance(maxChannelSize: UInt64) -> UInt64 {
+        let minRemoteBalance = UInt64(Double(maxChannelSize) * 0.025)
+        return maxChannelSize - minRemoteBalance
     }
 
     // MARK: - Manual Channel Opening
