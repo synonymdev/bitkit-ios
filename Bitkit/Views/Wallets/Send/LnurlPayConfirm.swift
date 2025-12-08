@@ -82,7 +82,7 @@ struct LnurlPayConfirm: View {
 
                     Divider()
 
-                    if let commentAllowed = app.lnurlPayData?.commentAllowed {
+                    if let commentAllowed = app.lnurlPayData?.commentAllowed, commentAllowed > 0 {
                         VStack(alignment: .leading) {
                             CaptionMText(t("wallet__lnurl_pay_confirm__comment"))
                                 .padding(.bottom, 8)
