@@ -7,6 +7,7 @@ struct NumberPadTextField: View {
 
     var showConversion: Bool = true
     var isFocused: Bool = true
+    var testIdentifier: String?
 
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
 
@@ -86,6 +87,7 @@ struct NumberPadTextField: View {
                 + Text(viewModel.getPlaceholder(currency: currency))
                 .foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
+                .accessibilityIdentifierIfPresent(testIdentifier)
         }
     }
 }

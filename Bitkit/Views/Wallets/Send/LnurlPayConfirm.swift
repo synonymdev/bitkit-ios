@@ -85,7 +85,8 @@ struct LnurlPayConfirm: View {
                             TextField(
                                 t("wallet__lnurl_pay_confirm__comment_placeholder"),
                                 text: $comment,
-                                axis: .vertical
+                                axis: .vertical,
+                                testIdentifier: "CommentInput"
                             )
                             .lineLimit(3 ... 3)
                             .onChange(of: comment) { newValue in

@@ -27,7 +27,7 @@ struct LnurlPayAmount: View {
             SheetHeader(title: t("wallet__lnurl_p_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel)
+                NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
                     .onTapGesture {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
                     }
@@ -71,6 +71,7 @@ struct LnurlPayAmount: View {
                 CustomButton(title: t("common__continue"), isDisabled: !isValid) {
                     onContinue()
                 }
+                .accessibilityIdentifier("ContinueAmount")
             }
         }
         .navigationBarHidden(true)
@@ -90,7 +91,8 @@ struct LnurlPayAmount: View {
         if amount < minSendable {
             app.toast(
                 type: .error, title: t("wallet__lnurl_pay__error_min__title"),
-                description: t("wallet__lnurl_pay__error_min__description", variables: ["amount": "\(minSendable)"])
+                description: t("wallet__lnurl_pay__error_min__description", variables: ["amount": "\(minSendable)"]),
+                accessibilityIdentifier: "LnurlPayAmountTooLowToast"
             )
             return
         }
