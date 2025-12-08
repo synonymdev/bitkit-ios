@@ -16,6 +16,7 @@ struct LnurlPayConfirm: View {
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
+    @FocusState private var isCommentFocused: Bool
 
     private var biometryTypeName: String {
         switch Env.biometryType {
@@ -43,8 +44,12 @@ struct LnurlPayConfirm: View {
             SheetHeader(title: t("wallet__lnurl_p_title"), showBackButton: true)
 
             VStack(alignment: .leading) {
-                MoneyStack(sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable), showSymbol: true)
-                    .padding(.bottom, 32)
+                MoneyStack(
+                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable),
+                    showSymbol: true,
+                    testIdPrefix: "ReviewAmount"
+                )
+                .padding(.bottom, 32)
 
                 VStack(spacing: 0) {
                     VStack(alignment: .leading) {
@@ -86,8 +91,11 @@ struct LnurlPayConfirm: View {
                                 t("wallet__lnurl_pay_confirm__comment_placeholder"),
                                 text: $comment,
                                 axis: .vertical,
-                                testIdentifier: "CommentInput"
+                                testIdentifier: "CommentInput",
+                                submitLabel: .done
                             )
+                            .focused($isCommentFocused)
+                            .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
                             .lineLimit(3 ... 3)
                             .onChange(of: comment) { newValue in
                                 let maxLength = Int(commentAllowed)
