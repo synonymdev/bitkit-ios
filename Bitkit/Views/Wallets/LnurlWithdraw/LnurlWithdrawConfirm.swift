@@ -22,7 +22,7 @@ struct LnurlWithdrawConfirm: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
-            MoneyStack(sats: Int(amount), showSymbol: true)
+            MoneyStack(sats: Int(amount), showSymbol: true, testIdPrefix: "WithdrawAmount")
                 .padding(.top, 16)
                 .padding(.bottom, 42)
 
@@ -42,6 +42,7 @@ struct LnurlWithdrawConfirm: View {
             CustomButton(title: t("wallet__lnurl_w_button"), isLoading: isLoading) {
                 performWithdraw()
             }
+            .accessibilityIdentifier("WithdrawConfirmButton")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
