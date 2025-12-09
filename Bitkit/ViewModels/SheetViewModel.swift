@@ -38,6 +38,7 @@ class SheetViewModel: ObservableObject {
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
                 guard let self else { return }
+                Logger.debug("Showing sheet \(id.rawValue) after delay", context: "SheetViewModel")
                 activeSheetConfiguration = SheetConfiguration(id: id, data: data)
                 playHaptics(for: id)
 
@@ -48,6 +49,7 @@ class SheetViewModel: ObservableObject {
             }
         } else {
             // If no sheet is open, show the new sheet immediately
+            Logger.debug("Showing sheet \(id.rawValue)", context: "SheetViewModel")
             activeSheetConfiguration = SheetConfiguration(id: id, data: data)
             playHaptics(for: id)
 
@@ -58,13 +60,33 @@ class SheetViewModel: ObservableObject {
         }
     }
 
-    func hideSheet() {
+    func hideSheet(reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        if let config = activeSheetConfiguration {
+            let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
+            let reasonText = " reason: \(reason ?? fallback)"
+            Logger.debug("Hiding sheet \(config.id.rawValue)\(reasonText)", context: "SheetViewModel")
+        } else {
+            let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
+            let reasonText = " reason: \(reason ?? fallback)"
+            Logger.debug("hideSheet called with no active sheet\(reasonText)", context: "SheetViewModel")
+        }
         activeSheetConfiguration = nil
 
         // Notify timed sheet manager
         Task { @MainActor in
             TimedSheetManager.shared.onSheetDismissed()
         }
+    }
+
+    func hideSheetIfActive(_ id: SheetID, reason: String? = nil, file: String = #file, function: String = #function, line: Int = #line) {
+        guard activeSheetConfiguration?.id == id else {
+            let fallback = "\(URL(fileURLWithPath: file).lastPathComponent):\(line) \(function)"
+            let reasonText = " reason: \(reason ?? fallback)"
+            let activeId = activeSheetConfiguration?.id.rawValue ?? "none"
+            Logger.debug("hideSheetIfActive skipped for \(id.rawValue) (active: \(activeId))\(reasonText)", context: "SheetViewModel")
+            return
+        }
+        hideSheet(reason: reason, file: file, function: function, line: line)
     }
 
     var isAnySheetOpen: Bool {

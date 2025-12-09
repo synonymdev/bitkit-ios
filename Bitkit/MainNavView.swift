@@ -116,7 +116,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.scannerSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
             }
         ) {
             config in ScannerSheet(config: config)
