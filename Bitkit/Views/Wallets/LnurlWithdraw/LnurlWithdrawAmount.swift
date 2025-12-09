@@ -67,11 +67,17 @@ struct LnurlWithdrawAmount: View {
                 CustomButton(title: t("common__continue"), isDisabled: !isValid) {
                     onContinue()
                 }
+                .accessibilityIdentifier("ContinueAmount")
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .onAppear {
+            if amountViewModel.amountSats == 0 {
+                amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
+            }
+        }
     }
 
     private func onContinue() {
