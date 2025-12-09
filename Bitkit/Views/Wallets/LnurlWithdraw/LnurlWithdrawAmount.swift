@@ -4,7 +4,7 @@ struct LnurlWithdrawAmount: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [LnurlWithdrawRoute]
+    let onContinue: () -> Void
 
     @StateObject private var amountViewModel = AmountInputViewModel()
 
@@ -65,7 +65,7 @@ struct LnurlWithdrawAmount: View {
                 }
 
                 CustomButton(title: t("common__continue"), isDisabled: !isValid) {
-                    onContinue()
+                    handleContinue()
                 }
                 .accessibilityIdentifier("ContinueAmount")
             }
@@ -80,7 +80,7 @@ struct LnurlWithdrawAmount: View {
         }
     }
 
-    private func onContinue() {
+    private func handleContinue() {
         // If minimum is above the amount the user entered, automatically set amount to that minimum
         if amount < minAmount {
             amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
@@ -88,6 +88,6 @@ struct LnurlWithdrawAmount: View {
 
         wallet.lnurlWithdrawAmount = amount
 
-        navigationPath.append(.confirm)
+        onContinue()
     }
 }

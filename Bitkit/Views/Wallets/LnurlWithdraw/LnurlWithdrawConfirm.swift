@@ -5,7 +5,7 @@ struct LnurlWithdrawConfirm: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [LnurlWithdrawRoute]
+    let onFailure: (UInt64) -> Void
     @State private var isLoading = false
 
     var amount: UInt64 {
@@ -83,7 +83,7 @@ struct LnurlWithdrawConfirm: View {
 
             } catch {
                 await MainActor.run {
-                    navigationPath.append(.failure(amount: amount))
+                    onFailure(amount)
                     isLoading = false
                 }
             }

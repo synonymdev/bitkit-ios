@@ -4,7 +4,6 @@ struct LnurlWithdrawFailure: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
-    @Binding var navigationPath: [LnurlWithdrawRoute]
     let amount: UInt64
 
     // TODO: add localized strings
