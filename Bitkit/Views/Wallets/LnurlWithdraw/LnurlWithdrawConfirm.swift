@@ -78,7 +78,8 @@ struct LnurlWithdrawConfirm: View {
                         description: t("other__lnurl_withdr_success_msg")
                     )
                     isLoading = false
-                    sheets.hideSheet()
+                    sheets.hideSheetIfActive(.send, reason: "LNURL withdraw completed")
+                    sheets.hideSheetIfActive(.lnurlWithdraw, reason: "LNURL withdraw completed")
                 }
 
             } catch {
