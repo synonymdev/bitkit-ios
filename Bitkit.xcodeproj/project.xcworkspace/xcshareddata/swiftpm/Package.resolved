@@ -1,5 +1,5 @@
 {
-  "originHash" : "986c104f099eeeb614245353ef0f880b2f062a10340e337e439d6f066790bffd",
+  "originHash" : "afebf53471e2eb2f8c45a9c3fbd45b779930aea0b8a7bf2fd223d03d490867a3",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/lightningdevkit/ldk-swift/",
       "state" : {
-        "revision" : "e3fa435166527b1089787fd4ab0ce398849fb916",
-        "version" : "0.0.123"
+        "revision" : "b36f37fc216ae83eb8fdc625ae3c85ea4158a7d6",
+        "version" : "0.0.125"
       }
     },
     {
@@ -70,7 +70,7 @@
       "location" : "https://github.com/synonymdev/vss-rust-client-ffi",
       "state" : {
         "branch" : "master",
-        "revision" : "420518936ef94d38b51442171e43efdf3117dc43"
+        "revision" : "3d80852e6439c0b2034765e513e4620bb10b3f14"
       }
     },
     {
