@@ -11,7 +11,7 @@ struct LnurlWithdrawConfirm: View {
     var amount: UInt64 {
         // Fixed amount
         if app.lnurlWithdrawData!.maxWithdrawable == app.lnurlWithdrawData!.minWithdrawable {
-            return app.lnurlWithdrawData!.maxWithdrawable / 1000
+            return app.lnurlWithdrawData!.maxWithdrawable
         }
 
         // For variable amount, use the amount from the previous screen

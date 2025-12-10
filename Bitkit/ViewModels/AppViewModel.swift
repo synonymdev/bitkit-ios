@@ -275,8 +275,11 @@ extension AppViewModel {
             return
         }
 
+        let minMsats = data.minWithdrawable ?? 1000
+        let maxMsats = data.maxWithdrawable
+
         // Check if minWithdrawable > maxWithdrawable
-        if (data.minWithdrawable ?? 1000) > data.maxWithdrawable {
+        if minMsats > maxMsats {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -285,9 +288,15 @@ extension AppViewModel {
             return
         }
 
+        var normalizedData = data
+        let minSats = max<UInt64>(1, minMsats / 1000)
+        let maxSats = max(minSats, maxMsats / 1000)
+        normalizedData.minWithdrawable = minSats
+        normalizedData.maxWithdrawable = maxSats
+
         // Check if we have enough receiving capacity
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < (data.minWithdrawable ?? 1000) / 1000 {
+        if lightningBalance < minSats {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -296,7 +305,7 @@ extension AppViewModel {
             return
         }
 
-        lnurlWithdrawData = data
+        lnurlWithdrawData = normalizedData
     }
 
     private func handleLnurlChannel(_ data: LnurlChannelData) {

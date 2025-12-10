@@ -9,11 +9,11 @@ struct LnurlWithdrawAmount: View {
     @StateObject private var amountViewModel = AmountInputViewModel()
 
     var minAmount: Int {
-        Int((app.lnurlWithdrawData!.minWithdrawable ?? 1000) / 1000)
+        Int(app.lnurlWithdrawData!.minWithdrawable ?? 1)
     }
 
     var maxAmount: Int {
-        Int((app.lnurlWithdrawData!.maxWithdrawable) / 1000)
+        Int(app.lnurlWithdrawData!.maxWithdrawable)
     }
 
     var amount: UInt64 {
