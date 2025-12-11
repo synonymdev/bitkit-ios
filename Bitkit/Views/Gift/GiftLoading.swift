@@ -111,11 +111,15 @@ struct GiftLoading: View {
                 timestamp: nowTimestamp,
                 preimage: nil,
                 createdAt: nowTimestamp,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
 
             // Add to activity list
             try await CoreService.shared.activity.insert(.lightning(lightningActivity))
+
+            // Mark the activity as seen before showing the sheet
+            await CoreService.shared.activity.markActivityAsSeen(id: lightningActivity.id)
 
             // Trigger haptic feedback
             Haptics.notify(.success)
