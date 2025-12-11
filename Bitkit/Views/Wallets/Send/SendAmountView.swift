@@ -20,6 +20,13 @@ struct SendAmountView: View {
         app.scannedOnchainInvoice != nil && app.scannedLightningInvoice != nil
     }
 
+    private var assetButtonTestIdentifier: String {
+        if canSwitchWallet {
+            return "switch"
+        }
+        return app.selectedWalletToPayFrom == .lightning ? "spending" : "savings"
+    }
+
     /// The amount to display in the available balance section
     /// For onchain transactions, this shows the max sendable amount (balance minus fees)
     /// For lightning transactions, this shows the max sendable lightning amount minus routing fees
@@ -92,6 +99,7 @@ struct SendAmountView: View {
                             app.selectedWalletToPayFrom.toggle()
                         }
                     }
+                    .accessibilityIdentifier("AssetButton-\(assetButtonTestIdentifier)")
 
                     NumberPadActionButton(
                         text: currency.primaryDisplay == .bitcoin ? "Bitcoin" : currency.selectedCurrency,
