@@ -250,8 +250,8 @@ extension AppViewModel {
         }
 
         var normalizedData = data
-        normalizedData.minSendable = max(1, normalizedData.minSendable / 1000)
-        normalizedData.maxSendable = max(normalizedData.minSendable, normalizedData.maxSendable / 1000)
+        normalizedData.minSendable = max(1, normalizedData.minSendable / Env.msatsPerSat)
+        normalizedData.maxSendable = max(normalizedData.minSendable, normalizedData.maxSendable / Env.msatsPerSat)
 
         // Check if user has enough lightning balance to pay the minimum amount
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
@@ -275,7 +275,7 @@ extension AppViewModel {
             return
         }
 
-        let minMsats = data.minWithdrawable ?? 1000
+        let minMsats = data.minWithdrawable ?? Env.msatsPerSat
         let maxMsats = data.maxWithdrawable
 
         // Check if minWithdrawable > maxWithdrawable
@@ -289,8 +289,8 @@ extension AppViewModel {
         }
 
         var normalizedData = data
-        let minSats = max<UInt64>(1, minMsats / 1000)
-        let maxSats = max(minSats, maxMsats / 1000)
+        let minSats = max<UInt64>(1, minMsats / Env.msatsPerSat)
+        let maxSats = max(minSats, maxMsats / Env.msatsPerSat)
         normalizedData.minWithdrawable = minSats
         normalizedData.maxWithdrawable = maxSats
 
