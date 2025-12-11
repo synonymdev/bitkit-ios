@@ -5,8 +5,17 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @Binding var navigationPath: [SendRoute]
-    @State private var text = ""
     @FocusState private var isTextEditorFocused: Bool
+
+    private var manualEntryBinding: Binding<String> {
+        Binding(
+            get: { app.manualEntryInput },
+            set: { newValue in
+                app.manualEntryInput = newValue
+                Task { await app.validateManualEntryInput(newValue) }
+            }
+        )
+    }
 
     var body: some View {
         VStack {
@@ -16,12 +25,12 @@ struct SendEnterManuallyView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             ZStack(alignment: .topLeading) {
-                if text.isEmpty {
+                if app.manualEntryInput.isEmpty {
                     TitleText(t("wallet__send_address_placeholder"), textColor: .textSecondary)
                         .padding(20)
                 }
 
-                TextEditor(text: $text)
+                TextEditor(text: manualEntryBinding)
                     .focused($isTextEditorFocused)
                     .padding(EdgeInsets(top: -10, leading: -5, bottom: -5, trailing: -5))
                     .padding(20)
@@ -31,8 +40,8 @@ struct SendEnterManuallyView: View {
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
                     .submitLabel(.done)
-                    .dismissKeyboardOnReturn(text: $text, isFocused: $isTextEditorFocused)
-                    .accessibilityValue(text)
+                    .dismissKeyboardOnReturn(text: manualEntryBinding, isFocused: $isTextEditorFocused)
+                    .accessibilityValue(app.manualEntryInput)
                     .accessibilityIdentifier("RecipientInput")
             }
             .background(Color.white06)
@@ -40,7 +49,7 @@ struct SendEnterManuallyView: View {
 
             Spacer(minLength: 16)
 
-            CustomButton(title: "Continue", isDisabled: text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+            CustomButton(title: "Continue", isDisabled: !app.isManualEntryInputValid) {
                 await handleContinue()
             }
             .buttonBottomPadding(isFocused: isTextEditorFocused)
@@ -56,7 +65,9 @@ struct SendEnterManuallyView: View {
     }
 
     func handleContinue() async {
-        let uri = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let uri = app.manualEntryInput.filter { !$0.isWhitespace }
+
+        guard !uri.isEmpty, app.isManualEntryInputValid else { return }
 
         do {
             try await app.handleScannedData(uri)
