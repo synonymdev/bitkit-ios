@@ -44,7 +44,8 @@ final class ActivityTests: XCTestCase {
                 timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -91,7 +92,8 @@ final class ActivityTests: XCTestCase {
                 channelId: nil,
                 transferTxId: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -128,7 +130,8 @@ final class ActivityTests: XCTestCase {
                 timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -165,7 +168,8 @@ final class ActivityTests: XCTestCase {
                     timestamp: timestamp,
                     preimage: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
             Activity.lightning(
@@ -180,7 +184,8 @@ final class ActivityTests: XCTestCase {
                     timestamp: timestamp,
                     preimage: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
         ]
@@ -221,7 +226,8 @@ final class ActivityTests: XCTestCase {
                     timestamp: timestamp,
                     preimage: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
             Activity.onchain(
@@ -243,7 +249,8 @@ final class ActivityTests: XCTestCase {
                     channelId: nil,
                     transferTxId: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
         ]
@@ -297,7 +304,8 @@ final class ActivityTests: XCTestCase {
                 timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -316,7 +324,8 @@ final class ActivityTests: XCTestCase {
                 timestamp: timestamp,
                 preimage: "preimage123",
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -352,7 +361,8 @@ final class ActivityTests: XCTestCase {
                 timestamp: timestamp,
                 preimage: nil,
                 createdAt: nil,
-                updatedAt: nil
+                updatedAt: nil,
+                seenAt: nil
             )
         )
 
@@ -388,7 +398,8 @@ final class ActivityTests: XCTestCase {
                     timestamp: timestamp,
                     preimage: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
             Activity.onchain(
@@ -410,7 +421,8 @@ final class ActivityTests: XCTestCase {
                     channelId: nil,
                     transferTxId: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
             Activity.lightning(
@@ -425,7 +437,8 @@ final class ActivityTests: XCTestCase {
                     timestamp: timestamp,
                     preimage: nil,
                     createdAt: nil,
-                    updatedAt: nil
+                    updatedAt: nil,
+                    seenAt: nil
                 )
             ),
         ]
