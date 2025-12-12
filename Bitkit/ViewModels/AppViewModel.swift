@@ -336,7 +336,18 @@ extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
         case let .paymentReceived(paymentId, paymentHash, amountMsat, customRecords):
-            sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+            Task {
+                if let paymentId {
+                    if await CoreService.shared.activity.isActivitySeen(id: paymentId) {
+                        return
+                    }
+                    await CoreService.shared.activity.markActivityAsSeen(id: paymentId)
+                }
+
+                await MainActor.run {
+                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+                }
+            }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
             // Only relevant for channels to external nodes
             break
@@ -359,7 +370,8 @@ extension AppViewModel {
                             timestamp: now,
                             preimage: nil,
                             createdAt: now,
-                            updatedAt: nil
+                            updatedAt: nil,
+                            seenAt: nil
                         )
 
                         try await CoreService.shared.activity.insert(.lightning(ln))
@@ -407,13 +419,17 @@ extension AppViewModel {
                 Task {
                     // Show sheet for new transactions or replacements with value changes
                     try? await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+
+                    if await CoreService.shared.activity.isOnchainActivitySeen(txid: txid) {
+                        return
+                    }
+
                     let shouldShow = await CoreService.shared.activity.shouldShowReceivedSheet(txid: txid, value: sats)
+                    guard shouldShow else { return }
+
+                    await CoreService.shared.activity.markOnchainActivityAsSeen(txid: txid)
 
                     await MainActor.run {
-                        if !shouldShow {
-                            return
-                        }
-
                         sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .onchain, sats: sats))
                     }
                 }

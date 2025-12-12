@@ -9,7 +9,7 @@ struct ActivityExplorerView: View {
     @EnvironmentObject var currency: CurrencyViewModel
 
     @State private var item: Activity
-    @State private var txDetails: TransactionDetails?
+    @State private var txDetails: BitkitCore.TransactionDetails?
     @State private var boostTxDoesExist: [String: Bool] = [:] // Maps boostTxId -> doesExist
 
     init(item: Activity) {
@@ -52,13 +52,13 @@ struct ActivityExplorerView: View {
     private func loadTransactionDetails() async {
         guard let onchain else { return }
 
-        // Try to get transaction details from node
-        if let nodeDetails = LightningService.shared.getTransactionDetails(txid: onchain.txId) {
+        do {
+            let details = try await CoreService.shared.activity.getTransactionDetails(txid: onchain.txId)
             await MainActor.run {
-                txDetails = nodeDetails
+                txDetails = details
             }
-        } else {
-            Logger.warn("Transaction details not available from node for \(onchain.txId)")
+        } catch {
+            Logger.error("Failed to load transaction details for \(onchain.txId): \(error)", context: "ActivityExplorerView")
         }
     }
 
@@ -277,7 +277,8 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                         createdAt: nil,
-                        updatedAt: nil
+                        updatedAt: nil,
+                        seenAt: nil
                     )
                 )
             )
@@ -303,7 +304,8 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         channelId: nil,
                         transferTxId: nil,
                         createdAt: nil,
-                        updatedAt: nil
+                        updatedAt: nil,
+                        seenAt: nil
                     )
                 )
             )

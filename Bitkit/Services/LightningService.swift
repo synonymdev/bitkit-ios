@@ -78,13 +78,12 @@ class LightningService {
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
-        // Create NodeEntropy from mnemonic
-        let nodeEntropy = NodeEntropy.fromBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
+        // Set entropy from mnemonic on builder
+        builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {
             if !lnurlAuthServerUrl.isEmpty {
                 self.node = try builder.buildWithVssStore(
-                    nodeEntropy: nodeEntropy,
                     vssUrl: vssUrl,
                     storeId: storeId,
                     lnurlAuthServerUrl: lnurlAuthServerUrl,
@@ -92,7 +91,6 @@ class LightningService {
                 )
             } else {
                 self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                    nodeEntropy: nodeEntropy,
                     vssUrl: vssUrl,
                     storeId: storeId,
                     fixedHeaders: [:]
@@ -622,12 +620,6 @@ extension LightningService {
     var peers: [PeerDetails]? { node?.listPeers() }
     var channels: [ChannelDetails]? { node?.listChannels() }
     var payments: [PaymentDetails]? { node?.listPayments() }
-
-    /// Get transaction details from the node for a given transaction ID
-    /// Returns nil if the transaction is not found in the wallet
-    func getTransactionDetails(txid: String) -> TransactionDetails? {
-        return node?.getTransactionDetails(txid: txid)
-    }
 
     /// Get balance for a specific address in satoshis
     /// - Parameter address: The Bitcoin address to check
