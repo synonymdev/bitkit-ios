@@ -65,7 +65,7 @@ struct SendEnterManuallyView: View {
     }
 
     func handleContinue() async {
-        let uri = app.manualEntryInput.filter { !$0.isWhitespace }
+        let uri = app.normalizeManualEntry(app.manualEntryInput)
 
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
 

@@ -337,6 +337,10 @@ extension AppViewModel {
 // MARK: Manual entry validation
 
 extension AppViewModel {
+    func normalizeManualEntry(_ value: String) -> String {
+        value.filter { !$0.isWhitespace }
+    }
+
     func resetManualEntryInput() {
         manualEntryValidationSequence &+= 1
         manualEntryInput = ""
@@ -347,7 +351,7 @@ extension AppViewModel {
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
 
-        let normalized = rawValue.filter { !$0.isWhitespace }
+        let normalized = normalizeManualEntry(rawValue)
 
         guard !normalized.isEmpty else {
             isManualEntryInputValid = false
