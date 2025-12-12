@@ -421,12 +421,10 @@ struct SendConfirmationView: View {
     @ViewBuilder
     func onchainView(_ invoice: OnChainInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(t("wallet__send_to"))
-                BodySSBText(invoice.address.ellipsis(maxLength: 20))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            editableInvoiceSection(
+                title: t("wallet__send_to"),
+                value: invoice.address
+            )
             .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -487,14 +485,12 @@ struct SendConfirmationView: View {
     }
 
     @ViewBuilder
-    func lightningView(_: LightningInvoice) -> some View {
+    func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(t("wallet__send_invoice"))
-                BodySSBText(app.scannedLightningInvoice?.bolt11.ellipsis(maxLength: 20) ?? "")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            editableInvoiceSection(
+                title: t("wallet__send_invoice"),
+                value: invoice.bolt11
+            )
             .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -562,6 +558,34 @@ struct SendConfirmationView: View {
 
                 Divider()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func editableInvoiceSection(title: String, value: String) -> some View {
+        Button {
+            navigateToManual(with: value)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionMText(title)
+                BodySSBText(value.ellipsis(maxLength: 20))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("ReviewUri")
+    }
+
+    private func navigateToManual(with value: String) {
+        guard !value.isEmpty else { return }
+        app.manualEntryInput = value
+        Task { await app.validateManualEntryInput(value) }
+
+        if let manualIndex = navigationPath.firstIndex(of: .manual) {
+            navigationPath = Array(navigationPath.prefix(manualIndex + 1))
+        } else {
+            navigationPath = [.manual]
         }
     }
 
