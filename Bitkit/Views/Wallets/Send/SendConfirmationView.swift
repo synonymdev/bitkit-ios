@@ -602,6 +602,11 @@ struct SendConfirmationView: View {
     private func navigateToAmount() {
         if let amountIndex = navigationPath.lastIndex(of: .amount) {
             navigationPath = Array(navigationPath.prefix(amountIndex + 1))
+        } else {
+            if let confirmIndex = navigationPath.lastIndex(of: .confirm) {
+                navigationPath = Array(navigationPath.prefix(confirmIndex))
+            }
+            navigationPath.append(.amount)
         }
     }
 
