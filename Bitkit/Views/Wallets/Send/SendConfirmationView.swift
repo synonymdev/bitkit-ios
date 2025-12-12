@@ -79,12 +79,22 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
-                        .padding(.bottom, 44)
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
+                    .padding(.bottom, 44)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
-                        .padding(.bottom, 44)
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
+                    .padding(.bottom, 44)
                     onchainView(invoice)
                 }
             }
@@ -586,6 +596,12 @@ struct SendConfirmationView: View {
             navigationPath = Array(navigationPath.prefix(manualIndex + 1))
         } else {
             navigationPath = [.manual]
+        }
+    }
+
+    private func navigateToAmount() {
+        if let amountIndex = navigationPath.lastIndex(of: .amount) {
+            navigationPath = Array(navigationPath.prefix(amountIndex + 1))
         }
     }
 

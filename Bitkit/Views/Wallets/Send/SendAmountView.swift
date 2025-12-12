@@ -127,9 +127,11 @@ struct SendAmountView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .onAppear {
-            if let invoice = app.scannedOnchainInvoice {
+            if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
                 // Set the amount to the scanned onchain invoice amount if it exists
                 amountViewModel.updateFromSats(invoice.amountSatoshis, currency: currency)
+            } else if let existingAmount = wallet.sendAmountSats, existingAmount > 0 {
+                amountViewModel.updateFromSats(existingAmount, currency: currency)
             }
 
             // Calculate max sendable amount for onchain transactions
