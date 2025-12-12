@@ -175,13 +175,18 @@ struct LnurlHelper {
         params: LnurlChannelData,
         nodeId: String
     ) async throws {
-        let queryItems = [
-            URLQueryItem(name: "k1", value: params.k1),
-            URLQueryItem(name: "remoteid", value: nodeId),
-            URLQueryItem(name: "private", value: "1"), // Private channel
-        ]
+        let callbackUrlString = try createChannelRequestUrl(
+            k1: params.k1,
+            callback: params.callback,
+            localNodeId: nodeId,
+            isPrivate: true,
+            cancel: false
+        )
 
-        let callbackURL = try buildUrl(baseUrl: params.callback, queryItems: queryItems)
+        guard let callbackURL = URL(string: callbackUrlString) else {
+            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid callback URL"])
+        }
+
         let responseString = try await makeHttpGetRequest(url: callbackURL)
         let channelResponse = try parseJsonResponse(responseString, as: LnurlChannelResponse.self)
 

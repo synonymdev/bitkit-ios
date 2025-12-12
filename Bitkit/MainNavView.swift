@@ -83,7 +83,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.lnurlWithdraw, reason: "LNURL withdraw sheet dismissed")
             }
         ) {
             config in LnurlWithdrawSheet(config: config)
@@ -116,7 +116,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.scannerSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.scanner, reason: "Scanner sheet dismissed")
             }
         ) {
             config in ScannerSheet(config: config)
@@ -141,7 +141,7 @@ struct MainNavView: View {
         .sheet(
             item: $sheets.sendSheetItem,
             onDismiss: {
-                sheets.hideSheet()
+                sheets.hideSheetIfActive(.send, reason: "Send sheet dismissed")
             }
         ) {
             config in SendSheet(config: config)

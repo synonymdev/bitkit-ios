@@ -43,11 +43,15 @@ struct LnurlWithdrawSheet: View {
     private func viewForRoute(_ route: LnurlWithdrawRoute) -> some View {
         switch route {
         case .amount:
-            LnurlWithdrawAmount(navigationPath: $navigationPath)
+            LnurlWithdrawAmount {
+                navigationPath.append(.confirm)
+            }
         case .confirm:
-            LnurlWithdrawConfirm(navigationPath: $navigationPath)
+            LnurlWithdrawConfirm { amount in
+                navigationPath.append(.failure(amount: amount))
+            }
         case let .failure(amount):
-            LnurlWithdrawFailure(navigationPath: $navigationPath, amount: amount)
+            LnurlWithdrawFailure(amount: amount)
         }
     }
 }

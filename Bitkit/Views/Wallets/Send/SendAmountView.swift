@@ -50,7 +50,7 @@ struct SendAmountView: View {
             SheetHeader(title: t("wallet__send_amount"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel)
+                NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
                     .onTapGesture {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
                     }

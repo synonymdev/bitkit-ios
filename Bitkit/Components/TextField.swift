@@ -6,6 +6,7 @@ struct TextField: View {
     let font: Font
     let axis: Axis
     let testIdentifier: String?
+    let submitLabel: SubmitLabel
     @Binding var text: String
 
     init(
@@ -14,13 +15,15 @@ struct TextField: View {
         backgroundColor: Color = .white10,
         font: Font = .custom(Fonts.semiBold, size: 15),
         axis: Axis = .horizontal,
-        testIdentifier: String? = nil
+        testIdentifier: String? = nil,
+        submitLabel: SubmitLabel = .return
     ) {
         self.placeholder = placeholder
         self.backgroundColor = backgroundColor
         self.font = font
         self.axis = axis
         self.testIdentifier = testIdentifier
+        self.submitLabel = submitLabel
         _text = text
     }
 
@@ -35,6 +38,7 @@ struct TextField: View {
             SwiftUI.TextField("", text: $text, axis: axis)
                 .accentColor(.brandAccent)
                 .font(font)
+                .submitLabel(submitLabel)
                 .accessibilityIdentifierIfPresent(testIdentifier)
         }
         .padding()

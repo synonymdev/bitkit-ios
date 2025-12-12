@@ -15,6 +15,7 @@ enum Env {
         static let isE2E = ProcessInfo.processInfo.environment["E2E"] == "true"
     #endif
     static let dustLimit = 547
+    static let msatsPerSat: UInt64 = 1000
 
     #if CHECK_GEOBLOCK
         static let isGeoblockingEnabled = true
