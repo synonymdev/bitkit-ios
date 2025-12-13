@@ -35,7 +35,9 @@ enum AppReset {
         }
 
         // Wipe logs
-        try wipeLogs()
+        if Env.network == .regtest {
+            try wipeLogs()
+        }
 
         // Recreate the entire app state tree to guarantee clean defaults for all @StateObject VMs.
         // Avoid showing splash during when app is reset

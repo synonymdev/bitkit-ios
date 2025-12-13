@@ -241,11 +241,6 @@ class ActivityService {
 
     func removeAll() async throws {
         try await ServiceQueue.background(.core) {
-            // Only allow removing on regtest for now
-            guard Env.network == .regtest else {
-                throw AppError(message: "Regtest only", debugMessage: nil)
-            }
-
             // Get all activities and delete them one by one
             let activities = try getActivities(
                 filter: .all, txType: nil, tags: nil, search: nil, minDate: nil, maxDate: nil, limit: nil, sortDirection: nil

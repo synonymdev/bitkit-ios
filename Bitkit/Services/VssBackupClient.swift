@@ -52,6 +52,36 @@ class VssBackupClient {
         }
     }
 
+    func list(prefix: String? = nil) async throws -> [VssItem] {
+        try await awaitSetup()
+
+        Logger.debug("VSS 'list' call with prefix: \(prefix ?? "nil")", context: "VssBackupClient")
+
+        do {
+            let items = try await vssList(prefix: prefix)
+            Logger.debug("VSS 'list' success - found \(items.count) item(s) with prefix: \(prefix ?? "nil")", context: "VssBackupClient")
+            return items
+        } catch {
+            Logger.debug("VSS 'list' error with prefix: \(prefix ?? "nil") - \(error)", context: "VssBackupClient")
+            throw error
+        }
+    }
+
+    func listKeys(prefix: String? = nil) async throws -> [KeyVersion] {
+        try await awaitSetup()
+
+        Logger.debug("VSS 'listKeys' call with prefix: \(prefix ?? "nil")", context: "VssBackupClient")
+
+        do {
+            let keys = try await vssListKeys(prefix: prefix)
+            Logger.debug("VSS 'listKeys' success - found \(keys.count) key(s)", context: "VssBackupClient")
+            return keys
+        } catch {
+            Logger.debug("VSS 'listKeys' error: \(error)", context: "VssBackupClient")
+            throw error
+        }
+    }
+
     func putObject(key: String, data: Data) async throws -> VssItem {
         try await awaitSetup()
 
@@ -82,6 +112,57 @@ class VssBackupClient {
             return item
         } catch {
             Logger.debug("VSS 'getObject' error for '\(key)': \(error)", context: "VssBackupClient")
+            throw error
+        }
+    }
+
+    func deleteObject(key: String) async throws -> Bool {
+        try await awaitSetup()
+
+        Logger.debug("VSS 'deleteObject' call for '\(key)'", context: "VssBackupClient")
+
+        do {
+            let wasDeleted = try await vssDelete(key: key)
+            if wasDeleted {
+                Logger.debug("VSS 'deleteObject' success for '\(key)' - key was found and deleted", context: "VssBackupClient")
+            } else {
+                Logger.debug("VSS 'deleteObject' success for '\(key)' - key did not exist", context: "VssBackupClient")
+            }
+            return wasDeleted
+        } catch {
+            Logger.debug("VSS 'deleteObject' error for '\(key)': \(error)", context: "VssBackupClient")
+            throw error
+        }
+    }
+
+    func deleteAllKeys() async throws {
+        try await awaitSetup()
+
+        Logger.debug("VSS 'deleteAllKeys' call", context: "VssBackupClient")
+
+        do {
+            let keys = try await vssListKeys(prefix: nil)
+            for keyVersion in keys {
+                try await vssDelete(key: keyVersion.key)
+            }
+            Logger.debug("VSS 'deleteAllKeys' success", context: "VssBackupClient")
+        } catch {
+            Logger.debug("VSS 'deleteAllKeys' error: \(error)", context: "VssBackupClient")
+            throw error
+        }
+    }
+
+    func deobfuscateKey(key: String) async throws -> String {
+        try await awaitSetup()
+
+        Logger.debug("VSS 'deobfuscateKey' call for '\(key)'", context: "VssBackupClient")
+
+        do {
+            let deobfuscatedKey = try await vssDeobfuscateKey(storageKey: key)
+            Logger.debug("VSS 'deobfuscateKey' success for '\(key)' - deobfuscated key: '\(deobfuscatedKey)'", context: "VssBackupClient")
+            return deobfuscatedKey
+        } catch {
+            Logger.debug("VSS 'deobfuscateKey' error for '\(key)': \(error)", context: "VssBackupClient")
             throw error
         }
     }

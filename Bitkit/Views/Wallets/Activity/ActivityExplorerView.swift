@@ -41,12 +41,7 @@ struct ActivityExplorerView: View {
     }
 
     private func getBlockExplorerUrl(txId: String) -> URL? {
-        let baseUrl =
-            switch Env.network {
-            case .testnet: "https://mempool.space/testnet"
-            case .bitcoin, .regtest, .signet: "https://mempool.space"
-            }
-        return URL(string: "\(baseUrl)/tx/\(txId)")
+        return URL(string: "\(Env.blockExplorerUrl)/tx/\(txId)")
     }
 
     private func loadTransactionDetails() async {

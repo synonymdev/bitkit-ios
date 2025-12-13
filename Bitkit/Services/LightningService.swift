@@ -41,9 +41,11 @@ class LightningService {
 
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
 
-        config.trustedPeers0conf = Env.trustedLnPeers.map(\.nodeId)
+        let trustedPeersIds = Env.trustedLnPeers.map(\.nodeId)
+
+        config.trustedPeers0conf = trustedPeersIds
         config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: Env.trustedLnPeers.map(\.nodeId),
+            trustedPeersNoReserve: trustedPeersIds,
             perChannelReserveSats: 1
         )
         config.includeUntrustedPendingInSpendable = true
@@ -82,6 +84,8 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {
+            // self.node = try builder.buildWithFsStore()
+
             if !lnurlAuthServerUrl.isEmpty {
                 self.node = try builder.buildWithVssStore(
                     vssUrl: vssUrl,
@@ -220,6 +224,25 @@ class LightningService {
         }
         self.node = nil
 
+        // // Stop the node using completion handler to ensure cleanup happens in blocking context
+        // // The Tokio runtime must be dropped in a blocking context, not from within an async Task
+        // // Using the completion handler version ensures the node reference is cleared in the blocking DispatchQueue context
+        // try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+        //     ServiceQueue.background(.ldk) {
+        //         try node.stop()
+        //         // Clear the node reference within the blocking DispatchQueue context
+        //         // This ensures the Tokio runtime cleanup happens in a blocking context
+        //         self.node = nil
+        //     } completion: { result in
+        //         switch result {
+        //         case .success:
+        //             continuation.resume()
+        //         case let .failure(error):
+        //             continuation.resume(throwing: error)
+        //         }
+        //     }
+        // }
+
         await MainActor.run {
             channelCache.removeAll()
         }
@@ -228,9 +251,9 @@ class LightningService {
     }
 
     func wipeStorage(walletIndex: Int) async throws {
-        guard node == nil else {
-            throw AppError(serviceError: .nodeNotSetup)
-        }
+        // guard node == nil else {
+        //     throw AppError(serviceError: .nodeNotSetup)
+        // }
 
         let directory = Env.ldkStorage(walletIndex: walletIndex)
         guard FileManager.default.fileExists(atPath: directory.path) else {
@@ -458,6 +481,7 @@ class LightningService {
             }
         } catch {
             dumpLdkLogs()
+            dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
         }
     }
@@ -569,6 +593,286 @@ class LightningService {
         } catch {
             Logger.error(error, context: "failed to load ldk log file: \(logFilePath)")
         }
+    }
+
+    /// Dumps network graph information when RouteNotFound errors occur
+    /// This helps debug routing issues by showing available channels, peers, and RGS network graph info
+    private func dumpNetworkGraphInfo(bolt11: String) {
+        // Use print() directly for immediate console visibility
+        print("\n\n🔴🔴🔴 ROUTE NOT FOUND - NETWORK GRAPH DUMP 🔴🔴🔴\n")
+
+        guard let node else {
+            print("❌ Node not available for network graph dump")
+            Logger.error("Node not available for network graph dump")
+            return
+        }
+
+        // Extract destination node ID from invoice
+        do {
+            let invoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            print("📄 Invoice Info:")
+            print("  - Payment Hash: \(invoice.paymentHash())")
+            print("  - Invoice: \(String(bolt11))")
+        } catch {
+            print("❌ Failed to parse bolt11 invoice: \(error)")
+            Logger.error("Failed to parse bolt11 invoice: \(error)")
+        }
+
+        // Dump our node ID
+        print("\n🆔 Our Node Info:")
+        let ourNodeId = node.nodeId()
+        print("  - Node ID: \(ourNodeId)")
+
+        // Dump our channels
+        print("\n🔗 Our Channels:")
+        let channels = node.listChannels()
+        print("  Total channels: \(channels.count)")
+
+        var totalOutboundCapacityMsat: UInt64 = 0
+        var totalInboundCapacityMsat: UInt64 = 0
+        var usableChannels = 0
+        var announcedChannels = 0
+
+        for (index, channel) in channels.enumerated() {
+            totalOutboundCapacityMsat += channel.outboundCapacityMsat
+            totalInboundCapacityMsat += channel.inboundCapacityMsat
+            if channel.isUsable { usableChannels += 1 }
+            if channel.isAnnounced { announcedChannels += 1 }
+
+            print("  Channel \(index + 1):")
+            print("    - Channel ID: \(channel.channelId)")
+            print("    - Counterparty Node ID: \(channel.counterpartyNodeId)")
+            print("    - Ready: \(channel.isChannelReady), Usable: \(channel.isUsable), Announced: \(channel.isAnnounced)")
+            print("    - Outbound: \(channel.outboundCapacityMsat) msat, Inbound: \(channel.inboundCapacityMsat) msat")
+        }
+
+        print("\n  Channel Summary:")
+        print("    - Usable channels: \(usableChannels)/\(channels.count)")
+        print("    - Announced channels: \(announcedChannels)/\(channels.count)")
+        print("    - Total Outbound Capacity: \(totalOutboundCapacityMsat) msat")
+        print("    - Total Inbound Capacity: \(totalInboundCapacityMsat) msat")
+
+        // Dump our peers
+        print("\n👥 Our Peers:")
+        let peers = node.listPeers()
+        print("  Total peers: \(peers.count)")
+
+        var connectedPeers = 0
+        for (index, peer) in peers.enumerated() {
+            if peer.isConnected { connectedPeers += 1 }
+            print("  Peer \(index + 1): \(peer.nodeId.prefix(20))... @ \(peer.address)")
+            print("    - Connected: \(peer.isConnected), Persisted: \(peer.isPersisted)")
+        }
+
+        // Dump RGS configuration and sync status
+        print("\n📡 RGS Configuration:")
+        let rgsUrl = Env.ldkRgsServerUrl ?? "Not configured"
+        print("  - RGS Server URL: \(rgsUrl)")
+
+        // Get node status for RGS sync timestamp
+        let nodeStatus = node.status()
+        if let rgsTimestamp = nodeStatus.latestRgsSnapshotTimestamp {
+            let date = Date(timeIntervalSince1970: TimeInterval(rgsTimestamp))
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .medium
+            formatter.timeZone = TimeZone.current
+            let timeAgo = Date().timeIntervalSince(date)
+            let hoursAgo = Int(timeAgo / 3600)
+            let minutesAgo = Int((timeAgo.truncatingRemainder(dividingBy: 3600)) / 60)
+
+            print("  - Last RGS Snapshot: \(formatter.string(from: date))")
+            if hoursAgo > 0 {
+                print("  - Time since last update: \(hoursAgo)h \(minutesAgo)m ago")
+            } else {
+                print("  - Time since last update: \(minutesAgo)m ago")
+            }
+            print("  - Timestamp: \(rgsTimestamp)")
+        } else {
+            print("  - Last RGS Snapshot: Never synced")
+            print("  - ⚠️  Network graph may be empty or stale!")
+        }
+
+        // Dump RGS network graph data
+        print("\n🌐 RGS Network Graph Data:")
+        let networkGraph = node.networkGraph()
+
+        // List all nodes in the network graph
+        let allNodes = networkGraph.listNodes()
+        print("  Total nodes in network graph: \(allNodes.count)")
+
+        // Check for our Blocktank nodes in the graph
+        let blocktankNodeIds: [(alias: String, nodeId: NodeId)] = [
+            ("Blocktank-LND1", "039b8b4dd1d88c2c5db374290cda397a8f5d79f312d6ea5d5bfdfc7c6ff363eae3"),
+            ("Blocktank-LND3", "03816141f1dce7782ec32b66a300783b1d436b19777e7c686ed00115bd4b88ff4b"),
+            ("Blocktank-LND4", "02a371038863605300d0b3fc9de0cf5ccb57728b7f8906535709a831b16e311187"),
+        ]
+
+        print("\n  🔍 Checking for Blocktank nodes in network graph:")
+        var foundBlocktankNodes = 0
+        for (alias, blocktankNodeId) in blocktankNodeIds {
+            if allNodes.contains(where: { $0 == blocktankNodeId }) {
+                foundBlocktankNodes += 1
+                if let nodeInfo = networkGraph.node(nodeId: blocktankNodeId) {
+                    print("    ✅ \(alias): \(blocktankNodeId)")
+                    print("       - Found in graph: YES")
+                    print("       - Channels in graph: \(nodeInfo.channels.count)")
+                    if nodeInfo.announcementInfo != nil {
+                        print("       - Has announcement info: YES")
+                    } else {
+                        print("       - Has announcement info: NO")
+                    }
+                } else {
+                    print("    ⚠️  \(alias): \(blocktankNodeId)")
+                    print("       - Found in graph: YES (but info not available)")
+                }
+            } else {
+                print("    ❌ \(alias): \(blocktankNodeId)")
+                print("       - Found in graph: NO")
+            }
+        }
+        print("  Summary: \(foundBlocktankNodes)/\(blocktankNodeIds.count) Blocktank nodes found in network graph")
+
+        // Show first 20 nodes with details (to avoid huge dumps)
+        let nodesToShow = min(20, allNodes.count)
+        print("\n  Showing first \(nodesToShow) nodes with details:")
+        for (index, nodeId) in allNodes.prefix(nodesToShow).enumerated() {
+            if let nodeInfo = networkGraph.node(nodeId: nodeId) {
+                print("    Node \(index + 1): \(nodeId)")
+                print("      - Channels: \(nodeInfo.channels.count)")
+                if let announcement = nodeInfo.announcementInfo {
+                    print("      - Has announcement info")
+                } else {
+                    print("      - No announcement info")
+                }
+            } else {
+                print("    Node \(index + 1): \(nodeId) (info not available)")
+            }
+        }
+        if allNodes.count > nodesToShow {
+            print("    ... and \(allNodes.count - nodesToShow) more nodes")
+        }
+
+        // List all channels in the network graph
+        let allChannels = networkGraph.listChannels()
+        print("\n  Total channels in network graph: \(allChannels.count)")
+
+        // Show first 20 channels with details (to avoid huge dumps)
+        let channelsToShow = min(20, allChannels.count)
+        print("  Showing first \(channelsToShow) channels with details:")
+        for (index, shortChannelId) in allChannels.prefix(channelsToShow).enumerated() {
+            if let channelInfo = networkGraph.channel(shortChannelId: shortChannelId) {
+                print("    Channel \(index + 1): SCID \(shortChannelId)")
+                print("      - Node One: \(channelInfo.nodeOne)")
+                print("      - Node Two: \(channelInfo.nodeTwo)")
+                if let capacity = channelInfo.capacitySats {
+                    print("      - Capacity: \(capacity) sats")
+                } else {
+                    print("      - Capacity: Unknown")
+                }
+                print("      - Updates: oneToTwo=\(channelInfo.oneToTwo != nil), twoToOne=\(channelInfo.twoToOne != nil)")
+            } else {
+                print("    Channel \(index + 1): SCID \(shortChannelId) (info not available)")
+            }
+        }
+        if allChannels.count > channelsToShow {
+            print("    ... and \(allChannels.count - channelsToShow) more channels")
+        }
+
+        // Network graph summary
+        print("\n  💡 Network graph summary:")
+        print("     - Total nodes: \(allNodes.count)")
+        print("     - Total channels: \(allChannels.count)")
+
+        print("\n🔴🔴🔴 END NETWORK GRAPH DUMP 🔴🔴🔴\n\n")
+    }
+
+    func logNetworkGraphInfo() async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let nodeStatus = node.status()
+        let networkGraph = node.networkGraph()
+        let allNodes = networkGraph.listNodes()
+        let lastRgsSync = nodeStatus.latestRgsSnapshotTimestamp
+
+        var lastRgsSyncString = "Never"
+        if let lastRgsSync {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+            lastRgsSyncString = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(lastRgsSync)))
+        }
+
+        return "Nodes: \(allNodes.count), Last Synced: \(lastRgsSyncString)"
+    }
+
+    /// Logs all nodes in the network graph to a file
+    /// Returns the file path where the nodes were written
+    func logAllNodesToFile() async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let networkGraph = node.networkGraph()
+        let allNodes = networkGraph.listNodes()
+
+        // Generate file path - save to Documents directory for easy access via Files app
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+        let timestamp = dateFormatter.string(from: Date())
+
+        // Use Documents directory which is accessible via Files app
+        let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let contextPrefix = Env.currentExecutionContext.filenamePrefix
+        let fileName = "network_graph_nodes_\(contextPrefix)_\(timestamp).txt"
+        let fileURL = documentsDirectory.appendingPathComponent(fileName)
+
+        // Create Documents directory if it doesn't exist (should always exist, but just in case)
+        if !FileManager.default.fileExists(atPath: documentsDirectory.path) {
+            try FileManager.default.createDirectory(at: documentsDirectory, withIntermediateDirectories: true)
+        }
+
+        // Build content
+        var content = "Network Graph Nodes Export\n"
+        content += "Generated: \(Date())\n"
+        content += "Total Nodes: \(allNodes.count)\n"
+        content += "========================================\n\n"
+
+        // Write all nodes with details
+        for (index, nodeId) in allNodes.enumerated() {
+            content += "Node \(index + 1): \(nodeId)\n"
+
+            if let nodeInfo = networkGraph.node(nodeId: nodeId) {
+                content += "  Channels: \(nodeInfo.channels.count)\n"
+
+                if nodeInfo.announcementInfo != nil {
+                    content += "  Has announcement info: YES\n"
+                } else {
+                    content += "  Has announcement info: NO\n"
+                }
+
+                // List channel IDs
+                if !nodeInfo.channels.isEmpty {
+                    content += "  Channel IDs:\n"
+                    for channelId in nodeInfo.channels {
+                        content += "    - \(channelId)\n"
+                    }
+                }
+            } else {
+                content += "  Info: Not available\n"
+            }
+
+            content += "\n"
+        }
+
+        // Write to file
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        Logger.info("Logged \(allNodes.count) nodes to file: \(fileURL.path)")
+        return fileURL.path
     }
 
     // MARK: Logging helpers
