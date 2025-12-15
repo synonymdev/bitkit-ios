@@ -1,0 +1,1 @@
+// Subscription model placeholder - to be completed
