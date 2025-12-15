@@ -411,35 +411,6 @@ public enum PaykitPaymentError: LocalizedError {
     }
 }
 
-// MARK: - Receipt Store
 
-/// Simple in-memory receipt store.
-/// TODO: Implement persistent storage
-final class PaykitReceiptStore {
-    private var receipts: [String: PaykitReceipt] = [:]
-    private let queue = DispatchQueue(label: "PaykitReceiptStore", attributes: .concurrent)
-    
-    func store(_ receipt: PaykitReceipt) {
-        queue.async(flags: .barrier) {
-            self.receipts[receipt.id] = receipt
-        }
-    }
-    
-    func get(id: String) -> PaykitReceipt? {
-        queue.sync {
-            receipts[id]
-        }
-    }
-    
-    func getAll() -> [PaykitReceipt] {
-        queue.sync {
-            Array(receipts.values).sorted { $0.timestamp > $1.timestamp }
-        }
-    }
-    
-    func clear() {
-        queue.async(flags: .barrier) {
-            self.receipts.removeAll()
-        }
-    }
-}
+// MARK: - Receipt Store
+// Note: PaykitReceiptStore is now in PaykitReceiptStore.swift with persistent storage
