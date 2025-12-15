@@ -8,6 +8,7 @@ struct MoneyStack: View {
     var showEyeIcon: Bool = false
     var enableSwipeGesture: Bool = false
     var testIdPrefix: String = "TotalBalance"
+    var onTap: (() -> Void)?
 
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
@@ -111,6 +112,11 @@ struct MoneyStack: View {
         .accessibilityIdentifier(testIdPrefix)
         .contentShape(Rectangle())
         .onTapGesture {
+            if let onTap {
+                onTap()
+                return
+            }
+
             let previousDisplay = currency.primaryDisplay
 
             withAnimation(springAnimation) {
