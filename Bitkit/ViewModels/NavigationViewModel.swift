@@ -92,6 +92,19 @@ enum Route: Hashable {
     case blocktankRegtest
     case orders
     case logs
+    
+    // Paykit routes
+    case paykitDashboard
+    case paykitContacts
+    case paykitContactDiscovery
+    case paykitReceipts
+    case paykitReceiptDetail(PaymentReceipt)
+    case paykitSubscriptions
+    case paykitAutoPay
+    case paykitPaymentRequests
+    case paykitNoisePayment
+    case paykitPrivateEndpoints
+    case paykitRotationSettings
 }
 
 @MainActor

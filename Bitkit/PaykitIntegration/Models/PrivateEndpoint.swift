@@ -2,10 +2,12 @@
 //  PrivateEndpoint.swift
 //  Bitkit
 //
-//  PrivateEndpoint model placeholder - to be completed in next phase
+//  PrivateEndpoint model for private payment endpoints
 //
 
 import Foundation
+import PaykitMobile
 
-// TODO: Implement PrivateEndpoint model based on demo app
-// See: paykit-rs-master/paykit-mobile/ios-demo/PaykitDemo/PaykitDemo/PaykitDemo/Storage/PrivateEndpointStorage.swift
+/// A private endpoint offer (uses PaykitMobile.PrivateEndpointOffer)
+/// This is a type alias for clarity
+public typealias PrivateEndpointOffer = PaykitMobile.PrivateEndpointOffer

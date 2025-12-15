@@ -23,7 +23,7 @@ public enum PaymentDirection: String, Codable {
 }
 
 /// A payment receipt (local model, different from PaykitMobile.Receipt)
-public struct PaymentReceipt: Identifiable, Codable, Equatable {
+public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
     public let id: String
     public let direction: PaymentDirection
     public let counterpartyKey: String
@@ -121,6 +121,13 @@ extension PaymentReceipt {
     
     var displayName: String {
         counterpartyName ?? abbreviatedCounterparty
+    }
+    
+    var formattedAmount: String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        let sign = direction == .sent ? "-" : "+"
+        return "\(sign)\(formatter.string(from: NSNumber(value: amountSats)) ?? "\(amountSats)") sats"
     }
     
     static func fromFFI(
