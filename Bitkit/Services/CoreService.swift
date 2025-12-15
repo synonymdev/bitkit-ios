@@ -53,8 +53,9 @@ class ActivityService {
                     txIds.formUnion(onchain.boostTxIds)
                 }
             }
+            let finalTxIds = txIds
             await MainActor.run {
-                self.cachedTxIdsInBoostTxIds = txIds
+                self.cachedTxIdsInBoostTxIds = finalTxIds
             }
         } catch {
             Logger.error("Failed to refresh boostTxIds cache: \(error)", context: "ActivityService")
