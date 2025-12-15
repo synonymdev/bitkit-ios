@@ -95,7 +95,7 @@ struct SendConfirmationView: View {
                         sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
                         showSymbol: true,
                         testIdPrefix: "ReviewAmount",
-                        onTap: canEditAmount ? navigateToAmount : {}
+                        onTap: navigateToAmount
                     )
                     .padding(.bottom, 44)
                     lightningView(invoice)
