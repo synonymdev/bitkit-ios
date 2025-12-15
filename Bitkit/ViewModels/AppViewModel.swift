@@ -292,7 +292,7 @@ extension AppViewModel {
         }
 
         var normalizedData = data
-        let minSats = max<UInt64>(1, minMsats / Env.msatsPerSat)
+        let minSats = max(1, minMsats / Env.msatsPerSat)
         let maxSats = max(minSats, maxMsats / Env.msatsPerSat)
         normalizedData.minWithdrawable = minSats
         normalizedData.maxWithdrawable = maxSats
