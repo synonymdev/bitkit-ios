@@ -1,1 +1,11 @@
-// PaymentRequest model placeholder - to be completed
+//
+//  PaymentRequest.swift
+//  Bitkit
+//
+//  PaymentRequest model placeholder - to be completed in next phase
+//
+
+import Foundation
+
+// TODO: Implement PaymentRequest model based on demo app
+// See: paykit-rs-master/paykit-mobile/ios-demo/PaykitDemo/PaykitDemo/PaykitDemo/Storage/PaymentRequestStorage.swift
