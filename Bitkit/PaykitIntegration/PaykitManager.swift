@@ -18,7 +18,7 @@ public final class PaykitManager {
     
     // MARK: - Properties
     
-    private var client: PaykitClient?
+    public private(set) var client: PaykitClient?
     private var bitcoinExecutor: BitkitBitcoinExecutor?
     private var lightningExecutor: BitkitLightningExecutor?
     

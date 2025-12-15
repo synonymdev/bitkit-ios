@@ -1707,8 +1707,8 @@ class UtilityService {
 
 // MARK: - Core Service requires shared init for both activity and blocktank services
 
-class CoreService {
-    static let shared = CoreService()
+public class CoreService {
+    public static let shared = CoreService()
     private let walletIndex: Int
 
     lazy var activity: ActivityService = .init(coreService: self)

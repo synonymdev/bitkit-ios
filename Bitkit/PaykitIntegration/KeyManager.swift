@@ -99,7 +99,7 @@ public final class PaykitKeyManager {
         let deviceIdValue = self.deviceId
         let epochValue = epoch ?? currentEpoch
         
-        return try Bitkit.deriveX25519Keypair(
+        return try deriveX25519Keypair(
             ed25519SecretHex: secretHex,
             deviceId: deviceIdValue,
             epoch: epochValue

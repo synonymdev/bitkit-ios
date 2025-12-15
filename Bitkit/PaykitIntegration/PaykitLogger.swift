@@ -137,12 +137,13 @@ public final class PaykitLogger {
         
         let fullMessage = "[\(level.prefix)] \(message)\(contextString)"
         
-        let osLogType: OSLogType = switch level {
-        case .debug: .debug
-        case .info: .info
-        case .warning: .default
-        case .error: .error
-        case .none: .default
+        let osLogType: OSLogType
+        switch level {
+        case .debug: osLogType = .debug
+        case .info: osLogType = .info
+        case .warning: osLogType = .default
+        case .error: osLogType = .error
+        case .none: osLogType = .default
         }
         
         os_log("%{public}@", log: OSLog(subsystem: subsystem, category: category), type: osLogType, fullMessage)

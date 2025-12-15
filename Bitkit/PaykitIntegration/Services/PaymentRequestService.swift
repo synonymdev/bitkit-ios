@@ -23,7 +23,7 @@ public enum AutopayEvaluationResult {
 /// Result of payment request processing
 public enum PaymentRequestProcessingResult {
     case autoPaid(paymentResult: PaymentExecutionResult)
-    case needsApproval(request: PaymentRequest)
+    case needsApproval(request: BitkitPaymentRequest)
     case denied(reason: String)
     case error(Error)
 }
@@ -93,7 +93,7 @@ public class PaymentRequestService {
                         
                         completion(.success(.autoPaid(paymentResult: paymentResult)))
                     } catch {
-                        Logger.error("PaymentRequestService: Failed to execute payment", error: error, context: "PaymentRequestService")
+                        Logger.error("PaymentRequestService: Failed to execute payment: \(error)", context: "PaymentRequestService")
                         completion(.success(.error(error)))
                     }
                     
@@ -106,7 +106,7 @@ public class PaymentRequestService {
                     completion(.success(.needsApproval(request: request)))
                 }
             } catch {
-                Logger.error("PaymentRequestService: Failed to handle request", error: error, context: "PaymentRequestService")
+                Logger.error("PaymentRequestService: Failed to handle request: \(error)", context: "PaymentRequestService")
                 completion(.failure(error))
             }
         }
@@ -127,7 +127,7 @@ public class PaymentRequestService {
     
     /// Execute a payment request
     public func executePayment(
-        request: PaymentRequest,
+        request: BitkitPaymentRequest,
         endpoint: String,
         metadataJson: String?
     ) async throws -> PaymentExecutionResult {
@@ -143,7 +143,7 @@ public class PaymentRequestService {
     // MARK: - Private Helpers
     
     /// Fetch payment request details from storage
-    private func fetchPaymentRequest(requestId: String, fromPubkey: String) async throws -> PaymentRequest {
+    private func fetchPaymentRequest(requestId: String, fromPubkey: String) async throws -> BitkitPaymentRequest {
         guard let request = paymentRequestStorage.getRequest(id: requestId) else {
             throw PaymentRequestError.notFound(requestId)
         }
@@ -157,7 +157,7 @@ public class PaymentRequestService {
     }
     
     /// Resolve payment endpoint from request
-    private func resolveEndpoint(for request: PaymentRequest) async throws -> String {
+    private func resolveEndpoint(for request: BitkitPaymentRequest) async throws -> String {
         // Try to discover payment methods for the sender
         let paymentMethods = try await directoryService.discoverPaymentMethods(for: request.fromPubkey)
         

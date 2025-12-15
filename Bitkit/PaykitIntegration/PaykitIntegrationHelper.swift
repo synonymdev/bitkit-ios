@@ -67,7 +67,7 @@ public enum PaykitIntegrationHelper {
     public static func payLightning(
         invoice: String,
         amountSats: UInt64?
-    ) async throws -> LightningPaymentResult {
+    ) async throws -> LightningPaymentResultFfi {
         guard isReady else {
             throw PaykitError.notInitialized
         }
@@ -93,7 +93,7 @@ public enum PaykitIntegrationHelper {
         address: String,
         amountSats: UInt64,
         feeRate: Double?
-    ) async throws -> BitcoinTxResult {
+    ) async throws -> BitcoinTxResultFfi {
         guard isReady else {
             throw PaykitError.notInitialized
         }

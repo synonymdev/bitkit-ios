@@ -10,7 +10,7 @@ import SwiftUI
 
 @MainActor
 class SubscriptionsViewModel: ObservableObject {
-    @Published var subscriptions: [Subscription] = []
+    @Published var subscriptions: [BitkitSubscription] = []
     @Published var isLoading = false
     @Published var showingAddSubscription = false
     
@@ -28,33 +28,32 @@ class SubscriptionsViewModel: ObservableObject {
         isLoading = false
     }
     
-    func addSubscription(_ subscription: Subscription) throws {
+    func addSubscription(_ subscription: BitkitSubscription) throws {
         try subscriptionStorage.saveSubscription(subscription)
         loadSubscriptions()
     }
     
-    func updateSubscription(_ subscription: Subscription) throws {
+    func updateSubscription(_ subscription: BitkitSubscription) throws {
         try subscriptionStorage.saveSubscription(subscription)
         loadSubscriptions()
     }
     
-    func deleteSubscription(_ subscription: Subscription) throws {
+    func deleteSubscription(_ subscription: BitkitSubscription) throws {
         try subscriptionStorage.deleteSubscription(id: subscription.id)
         loadSubscriptions()
     }
     
-    func toggleActive(_ subscription: Subscription) throws {
+    func toggleActive(_ subscription: BitkitSubscription) throws {
         try subscriptionStorage.toggleActive(id: subscription.id)
         loadSubscriptions()
     }
     
-    func recordPayment(_ subscription: Subscription) throws {
+    func recordPayment(_ subscription: BitkitSubscription) throws {
         try subscriptionStorage.recordPayment(subscriptionId: subscription.id)
         loadSubscriptions()
     }
     
-    var activeSubscriptions: [Subscription] {
+    var activeSubscriptions: [BitkitSubscription] {
         subscriptionStorage.activeSubscriptions()
     }
 }
-

@@ -8,7 +8,7 @@
 import Foundation
 
 /// A payment contact (recipient)
-struct Contact: Identifiable, Codable, Equatable {
+public struct Contact: Identifiable, Codable, Equatable {
     /// Unique identifier (derived from public key)
     let id: String
     /// Public key in z-base32 format

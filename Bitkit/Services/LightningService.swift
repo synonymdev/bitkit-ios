@@ -5,8 +5,8 @@ import LDKNode
 
 // TODO: catch all errors and pass a readable error message to the UI
 
-class LightningService {
-    private var node: Node?
+public class LightningService {
+    var node: Node?
     var currentWalletIndex: Int = 0
     private var currentLogFilePath: String?
 
@@ -18,7 +18,7 @@ class LightningService {
         syncStatusChangedSubject.eraseToAnyPublisher()
     }
 
-    static var shared = LightningService()
+    public static var shared = LightningService()
 
     private init() {}
 

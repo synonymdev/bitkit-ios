@@ -14,7 +14,7 @@ public class SubscriptionStorage {
     private let identityName: String
     
     // In-memory cache
-    private var subscriptionsCache: [Subscription]?
+    private var subscriptionsCache: [BitkitSubscription]?
     
     private var storageKey: String {
         "paykit.subscriptions.\(identityName)"
@@ -27,7 +27,7 @@ public class SubscriptionStorage {
     
     // MARK: - CRUD Operations
     
-    public func listSubscriptions() -> [Subscription] {
+    public func listSubscriptions() -> [BitkitSubscription] {
         if let cached = subscriptionsCache {
             return cached
         }
@@ -36,7 +36,7 @@ public class SubscriptionStorage {
             guard let data = try keychain.retrieve(key: storageKey) else {
                 return []
             }
-            let subscriptions = try JSONDecoder().decode([Subscription].self, from: data)
+            let subscriptions = try JSONDecoder().decode([BitkitSubscription].self, from: data)
             subscriptionsCache = subscriptions
             return subscriptions
         } catch {
@@ -45,11 +45,11 @@ public class SubscriptionStorage {
         }
     }
     
-    public func getSubscription(id: String) -> Subscription? {
+    public func getSubscription(id: String) -> BitkitSubscription? {
         return listSubscriptions().first { $0.id == id }
     }
     
-    public func saveSubscription(_ subscription: Subscription) throws {
+    public func saveSubscription(_ subscription: BitkitSubscription) throws {
         var subscriptions = listSubscriptions()
         
         if let index = subscriptions.firstIndex(where: { $0.id == subscription.id }) {
@@ -81,7 +81,7 @@ public class SubscriptionStorage {
         try persistSubscriptions(subscriptions)
     }
     
-    public func activeSubscriptions() -> [Subscription] {
+    public func activeSubscriptions() -> [BitkitSubscription] {
         listSubscriptions().filter { $0.isActive }
     }
     
@@ -91,10 +91,9 @@ public class SubscriptionStorage {
     
     // MARK: - Private
     
-    private func persistSubscriptions(_ subscriptions: [Subscription]) throws {
+    private func persistSubscriptions(_ subscriptions: [BitkitSubscription]) throws {
         let data = try JSONEncoder().encode(subscriptions)
         try keychain.store(key: storageKey, data: data)
         subscriptionsCache = subscriptions
     }
 }
-

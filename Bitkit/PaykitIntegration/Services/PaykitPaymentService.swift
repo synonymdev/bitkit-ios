@@ -55,9 +55,9 @@ public final class PaykitPaymentService {
         
         switch paymentType {
         case .lightning:
-            return [.lightning(invoice: recipient)]
+            return [PaymentMethod(methodId: "lightning", endpoint: recipient)]
         case .onchain:
-            return [.onchain(address: recipient)]
+            return [PaymentMethod(methodId: "onchain", endpoint: recipient)]
         case .paykit:
             // Query Paykit directory for recipient's payment methods
             let directoryService = DirectoryService.shared

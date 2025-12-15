@@ -15,7 +15,7 @@ public class PaymentRequestStorage {
     private let maxRequestsToKeep = 200  // Limit stored requests
     
     // In-memory cache
-    private var requestsCache: [PaymentRequest]?
+    private var requestsCache: [BitkitPaymentRequest]?
     
     private var requestsKey: String {
         "paykit.payment_requests.\(identityName)"
@@ -29,7 +29,7 @@ public class PaymentRequestStorage {
     // MARK: - CRUD Operations
     
     /// Get all requests (newest first)
-    public func listRequests() -> [PaymentRequest] {
+    public func listRequests() -> [BitkitPaymentRequest] {
         if let cached = requestsCache {
             return cached
         }
@@ -38,7 +38,7 @@ public class PaymentRequestStorage {
             guard let data = try keychain.retrieve(key: requestsKey) else {
                 return []
             }
-            var requests = try JSONDecoder().decode([PaymentRequest].self, from: data)
+            var requests = try JSONDecoder().decode([BitkitPaymentRequest].self, from: data)
             // Sort by date, newest first
             requests.sort { $0.createdAt > $1.createdAt }
             requestsCache = requests
@@ -50,32 +50,32 @@ public class PaymentRequestStorage {
     }
     
     /// Get pending requests only
-    public func pendingRequests() -> [PaymentRequest] {
+    public func pendingRequests() -> [BitkitPaymentRequest] {
         return listRequests().filter { $0.status == .pending }
     }
     
     /// Get requests filtered by status
-    public func listRequests(status: PaymentRequestStatus) -> [PaymentRequest] {
+    public func listRequests(status: PaymentRequestStatus) -> [BitkitPaymentRequest] {
         return listRequests().filter { $0.status == status }
     }
     
     /// Get requests filtered by direction
-    public func listRequests(direction: RequestDirection) -> [PaymentRequest] {
+    public func listRequests(direction: RequestDirection) -> [BitkitPaymentRequest] {
         return listRequests().filter { $0.direction == direction }
     }
     
     /// Get recent requests (limited count)
-    public func recentRequests(limit: Int = 10) -> [PaymentRequest] {
+    public func recentRequests(limit: Int = 10) -> [BitkitPaymentRequest] {
         return Array(listRequests().prefix(limit))
     }
     
     /// Get a specific request
-    public func getRequest(id: String) -> PaymentRequest? {
+    public func getRequest(id: String) -> BitkitPaymentRequest? {
         return listRequests().first { $0.id == id }
     }
     
     /// Add a new request
-    public func addRequest(_ request: PaymentRequest) throws {
+    public func addRequest(_ request: BitkitPaymentRequest) throws {
         var requests = listRequests()
         
         // Add new request at the beginning (newest first)
@@ -90,7 +90,7 @@ public class PaymentRequestStorage {
     }
     
     /// Update an existing request
-    public func updateRequest(_ request: PaymentRequest) throws {
+    public func updateRequest(_ request: BitkitPaymentRequest) throws {
         var requests = listRequests()
         
         guard let index = requests.firstIndex(where: { $0.id == request.id }) else {
@@ -164,10 +164,9 @@ public class PaymentRequestStorage {
     
     // MARK: - Private
     
-    private func persistRequests(_ requests: [PaymentRequest]) throws {
+    private func persistRequests(_ requests: [BitkitPaymentRequest]) throws {
         let data = try JSONEncoder().encode(requests)
         try keychain.store(key: requestsKey, data: data)
         requestsCache = requests
     }
 }
-

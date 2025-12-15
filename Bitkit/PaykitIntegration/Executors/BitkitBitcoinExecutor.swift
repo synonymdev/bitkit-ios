@@ -1,18 +1,18 @@
 // BitkitBitcoinExecutor.swift
 // Bitkit iOS - Paykit Integration
 //
-// Implements BitcoinExecutorFFI to connect Bitkit's wallet to Paykit.
+// Implements BitcoinExecutorFfi to connect Bitkit's wallet to Paykit.
 
 import Foundation
 import LDKNode
 
 // MARK: - BitkitBitcoinExecutor
 
-/// Bitkit implementation of BitcoinExecutorFFI.
+/// Bitkit implementation of BitcoinExecutorFfi.
 ///
 /// Bridges Bitkit's LightningService (which handles onchain) to Paykit's executor interface.
 /// All methods are called synchronously from the Rust FFI layer.
-public final class BitkitBitcoinExecutor {
+public final class BitkitBitcoinExecutor: BitcoinExecutorFfi {
     
     // MARK: - Properties
     
@@ -21,26 +21,18 @@ public final class BitkitBitcoinExecutor {
     
     // MARK: - Initialization
     
-    public init(lightningService: LightningService = .shared) {
+    public init(lightningService: LightningService = LightningService.shared) {
         self.lightningService = lightningService
     }
     
-    // MARK: - BitcoinExecutorFFI Implementation
+    // MARK: - BitcoinExecutorFfi Implementation
     
     /// Send Bitcoin to an address.
-    ///
-    /// Bridges async LightningService.send() to sync FFI call.
-    ///
-    /// - Parameters:
-    ///   - address: Destination Bitcoin address
-    ///   - amountSats: Amount to send in satoshis
-    ///   - feeRate: Optional fee rate in sat/vB
-    /// - Returns: Transaction result with txid and fee details
     public func sendToAddress(
         address: String,
         amountSats: UInt64,
         feeRate: Double?
-    ) throws -> BitcoinTxResult {
+    ) throws -> BitcoinTxResultFfi {
         let semaphore = DispatchSemaphore(value: 0)
         var result: Result<Txid, Error>?
         
@@ -65,7 +57,7 @@ public final class BitkitBitcoinExecutor {
         let waitResult = semaphore.wait(timeout: .now() + timeout)
         
         if waitResult == .timedOut {
-            throw PaykitError.timeout
+            throw PaykitMobileError.Internal(message: "Transaction timeout")
         }
         
         switch result {
@@ -73,7 +65,7 @@ public final class BitkitBitcoinExecutor {
             // Estimate fee based on typical transaction size (250 vbytes)
             let estimatedFee = UInt64(250 * (feeRate ?? 1.0))
             
-            return BitcoinTxResult(
+            return BitcoinTxResultFfi(
                 txid: txid.description,
                 rawTx: nil,
                 vout: 0,
@@ -83,34 +75,29 @@ public final class BitkitBitcoinExecutor {
                 confirmations: 0
             )
         case .failure(let error):
-            throw PaykitError.paymentFailed(error.localizedDescription)
+            throw PaykitMobileError.Internal(message: error.localizedDescription)
         case .none:
-            throw PaykitError.unknown("No result returned")
+            throw PaykitMobileError.Internal(message: "No result returned")
         }
     }
     
     /// Estimate the fee for a transaction.
-    ///
-    /// - Parameters:
-    ///   - address: Destination address
-    ///   - amountSats: Amount to send
-    ///   - targetBlocks: Confirmation target
-    /// - Returns: Estimated fee in satoshis
     public func estimateFee(
         address: String,
         amountSats: UInt64,
         targetBlocks: UInt32
     ) throws -> UInt64 {
         // Use LDK node's fee estimation if available
-        if let node = lightningService.node {
+        if lightningService.node != nil {
             // Typical P2WPKH transaction is ~140 vbytes
             let txSize: UInt64 = 140
             
             // Get recommended fee rate based on target
-            let feeRate: UInt64 = switch targetBlocks {
-            case 1: 10      // High priority: 10 sat/vB
-            case 2...6: 5   // Medium priority: 5 sat/vB
-            default: 2      // Low priority: 2 sat/vB
+            let feeRate: UInt64
+            switch targetBlocks {
+            case 1: feeRate = 10      // High priority: 10 sat/vB
+            case 2...6: feeRate = 5   // Medium priority: 5 sat/vB
+            default: feeRate = 2      // Low priority: 2 sat/vB
             }
             
             return txSize * feeRate
@@ -118,19 +105,17 @@ public final class BitkitBitcoinExecutor {
         
         // Fallback estimation
         let baseFee: UInt64 = 250
-        let feeMultiplier: UInt64 = switch targetBlocks {
-        case 1: 3
-        case 2...3: 2
-        default: 1
+        let feeMultiplier: UInt64
+        switch targetBlocks {
+        case 1: feeMultiplier = 3
+        case 2...3: feeMultiplier = 2
+        default: feeMultiplier = 1
         }
         return baseFee * feeMultiplier
     }
     
     /// Get transaction details by txid.
-    ///
-    /// - Parameter txid: Transaction ID (hex-encoded)
-    /// - Returns: Transaction details if found
-    public func getTransaction(txid: String) throws -> BitcoinTxResult? {
+    public func getTransaction(txid: String) throws -> BitcoinTxResultFfi? {
         // Search through on-chain payments for matching transaction
         guard let payments = lightningService.payments else {
             return nil
@@ -151,12 +136,6 @@ public final class BitkitBitcoinExecutor {
     }
     
     /// Verify a transaction matches expected address and amount.
-    ///
-    /// - Parameters:
-    ///   - txid: Transaction ID
-    ///   - address: Expected destination address
-    ///   - amountSats: Expected amount
-    /// - Returns: true if transaction matches expectations
     public func verifyTransaction(
         txid: String,
         address: String,
@@ -170,36 +149,5 @@ public final class BitkitBitcoinExecutor {
         
         // Verify the txid matches
         return tx.txid == txid
-    }
-}
-
-// MARK: - Bitcoin Transaction Result
-
-/// Result of a Bitcoin transaction for Paykit FFI.
-public struct BitcoinTxResult {
-    public let txid: String
-    public let rawTx: String?
-    public let vout: UInt32
-    public let feeSats: UInt64
-    public let feeRate: Double
-    public let blockHeight: UInt64?
-    public let confirmations: UInt64
-    
-    public init(
-        txid: String,
-        rawTx: String?,
-        vout: UInt32,
-        feeSats: UInt64,
-        feeRate: Double,
-        blockHeight: UInt64?,
-        confirmations: UInt64
-    ) {
-        self.txid = txid
-        self.rawTx = rawTx
-        self.vout = vout
-        self.feeSats = feeSats
-        self.feeRate = feeRate
-        self.blockHeight = blockHeight
-        self.confirmations = confirmations
     }
 }

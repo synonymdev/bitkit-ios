@@ -7,13 +7,13 @@
 
 import Foundation
 
-enum SpendingPeriod: String, Codable, CaseIterable {
+public enum SpendingPeriod: String, Codable, CaseIterable {
     case hourly = "Hourly"
     case daily = "Daily"
     case weekly = "Weekly"
     case monthly = "Monthly"
     
-    var seconds: Int64 {
+    public var seconds: Int64 {
         switch self {
         case .hourly: return 3600
         case .daily: return 86400
@@ -23,36 +23,36 @@ enum SpendingPeriod: String, Codable, CaseIterable {
     }
 }
 
-struct PeerSpendingLimit: Identifiable, Codable {
-    let id: String
-    let peerPubkey: String
-    let peerName: String
-    var limit: Int64
-    var used: Int64
-    let period: SpendingPeriod
-    let periodStart: Date
+public struct PeerSpendingLimit: Identifiable, Codable {
+    public let id: String
+    public let peerPubkey: String
+    public let peerName: String
+    public var limit: Int64
+    public var used: Int64
+    public let period: SpendingPeriod
+    public let periodStart: Date
     
-    var remaining: Int64 { max(0, limit - used) }
-    var percentUsed: Double { guard limit > 0 else { return 0 }; return Double(used) / Double(limit) }
-    var isExhausted: Bool { used >= limit }
+    public var remaining: Int64 { max(0, limit - used) }
+    public var percentUsed: Double { guard limit > 0 else { return 0 }; return Double(used) / Double(limit) }
+    public var isExhausted: Bool { used >= limit }
     
-    mutating func reset() { used = 0 }
-    func shouldReset(now: Date = Date()) -> Bool {
+    public mutating func reset() { used = 0 }
+    public func shouldReset(now: Date = Date()) -> Bool {
         let elapsed = now.timeIntervalSince(periodStart)
         return elapsed >= Double(period.seconds)
     }
 }
 
-struct AutoPayRule: Identifiable, Codable {
-    let id: String
-    var name: String
-    var description: String
-    var isEnabled: Bool
-    var maxAmount: Int64?
-    var methodFilter: String?
-    var peerFilter: String?
+public struct AutoPayRule: Identifiable, Codable {
+    public let id: String
+    public var name: String
+    public var description: String
+    public var isEnabled: Bool
+    public var maxAmount: Int64?
+    public var methodFilter: String?
+    public var peerFilter: String?
     
-    func matches(peerPubkey: String, amount: Int64, methodId: String) -> Bool {
+    public func matches(peerPubkey: String, amount: Int64, methodId: String) -> Bool {
         if let max = maxAmount, amount > max { return false }
         if let method = methodFilter, method != methodId { return false }
         if let peer = peerFilter, peer != peerPubkey { return false }
@@ -60,27 +60,27 @@ struct AutoPayRule: Identifiable, Codable {
     }
 }
 
-struct RecentAutoPayment: Identifiable, Codable {
-    let id: String
-    let peerPubkey: String
-    let peerName: String
-    let amount: Int64
-    let description: String
-    let timestamp: Date
-    let status: PaymentExecutionStatus
-    let ruleId: String?
+public struct RecentAutoPayment: Identifiable, Codable {
+    public let id: String
+    public let peerPubkey: String
+    public let peerName: String
+    public let amount: Int64
+    public let description: String
+    public let timestamp: Date
+    public let status: PaymentExecutionStatus
+    public let ruleId: String?
     
-    var formattedAmount: String { "\(amount) sats" }
-    var formattedTime: String {
+    public var formattedAmount: String { "\(amount) sats" }
+    public var formattedTime: String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: timestamp, relativeTo: Date())
     }
 }
 
-enum PaymentExecutionStatus: String, Codable {
+public enum PaymentExecutionStatus: String, Codable {
     case pending, processing, completed, failed
-    var color: String {
+    public var color: String {
         switch self {
         case .pending: return "yellow"
         case .processing: return "blue"
@@ -90,14 +90,14 @@ enum PaymentExecutionStatus: String, Codable {
     }
 }
 
-struct AutoPaySettings: Codable {
-    var isEnabled: Bool
-    var globalDailyLimit: Int64
-    var requireBiometricAbove: Int64?
-    var notifyOnAutoPay: Bool
-    var notifyOnLimitReached: Bool
+public struct AutoPaySettings: Codable {
+    public var isEnabled: Bool
+    public var globalDailyLimit: Int64
+    public var requireBiometricAbove: Int64?
+    public var notifyOnAutoPay: Bool
+    public var notifyOnLimitReached: Bool
     
-    static var defaults: AutoPaySettings {
+    public static var defaults: AutoPaySettings {
         AutoPaySettings(
             isEnabled: false,
             globalDailyLimit: 100000,
@@ -108,23 +108,23 @@ struct AutoPaySettings: Codable {
     }
 }
 
-struct SpendingSummary: Codable {
-    let period: SpendingPeriod
-    let periodStart: Date
-    let periodEnd: Date
-    let totalSpent: Int64
-    let totalLimit: Int64
-    let paymentCount: Int
-    let topPeers: [PeerSpending]
+public struct SpendingSummary: Codable {
+    public let period: SpendingPeriod
+    public let periodStart: Date
+    public let periodEnd: Date
+    public let totalSpent: Int64
+    public let totalLimit: Int64
+    public let paymentCount: Int
+    public let topPeers: [PeerSpending]
     
-    var percentUsed: Double { guard totalLimit > 0 else { return 0 }; return Double(totalSpent) / Double(totalLimit) }
-    var remaining: Int64 { max(0, totalLimit - totalSpent) }
+    public var percentUsed: Double { guard totalLimit > 0 else { return 0 }; return Double(totalSpent) / Double(totalLimit) }
+    public var remaining: Int64 { max(0, totalLimit - totalSpent) }
 }
 
-struct PeerSpending: Codable, Identifiable {
-    var id: String { peerPubkey }
-    let peerPubkey: String
-    let peerName: String
-    let amount: Int64
-    let count: Int
+public struct PeerSpending: Codable, Identifiable {
+    public var id: String { peerPubkey }
+    public let peerPubkey: String
+    public let peerName: String
+    public let amount: Int64
+    public let count: Int
 }
