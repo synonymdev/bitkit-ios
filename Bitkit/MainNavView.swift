@@ -1,4 +1,5 @@
 import SwiftUI
+import PaykitMobile
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
@@ -225,6 +226,13 @@ struct MainNavView: View {
             Task {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
+                // Check if this is a Paykit payment request
+                if url.scheme == "paykit" || (url.scheme == "bitkit" && url.host == "payment-request") {
+                    await handlePaymentRequestDeepLink(url: url, app: app, sheets: sheets)
+                    return
+                }
+
+                // Handle other deep links (Bitcoin, Lightning, etc.)
                 do {
                     try await app.handleScannedData(url.absoluteString)
                     PaymentNavigationHelper.openPaymentSheet(
@@ -447,6 +455,134 @@ struct MainNavView: View {
 
             // Clear stored URI after processing
             clipboardUri = nil
+        }
+    }
+    
+    /// Handle payment request deep links
+    /// Format: paykit://payment-request?requestId=xxx&from=yyy
+    /// or: bitkit://payment-request?requestId=xxx&from=yyy
+    private func handlePaymentRequestDeepLink(url: URL, app: AppViewModel, sheets: SheetViewModel) async {
+        guard PaykitIntegrationHelper.isReady else {
+            app.toast(
+                type: .error,
+                title: "Paykit Not Ready",
+                description: "Please wait for Paykit to initialize"
+            )
+            return
+        }
+        
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else {
+            Logger.error("Invalid payment request URL format", context: "MainNavView")
+            app.toast(
+                type: .error,
+                title: "Invalid Request",
+                description: "Payment request URL format is invalid"
+            )
+            return
+        }
+        
+        let requestId = queryItems.first(where: { $0.name == "requestId" })?.value
+        let fromPubkey = queryItems.first(where: { $0.name == "from" })?.value
+        
+        guard let requestId = requestId, let fromPubkey = fromPubkey else {
+            Logger.error("Missing requestId or fromPubkey in payment request URL", context: "MainNavView")
+            app.toast(
+                type: .error,
+                title: "Invalid Request",
+                description: "Payment request URL is missing required parameters"
+            )
+            return
+        }
+        
+        // Get PaykitManager client
+        guard let paykitClient = PaykitManager.shared.client else {
+            app.toast(
+                type: .error,
+                title: "Paykit Not Initialized",
+                description: "Please restart the app"
+            )
+            return
+        }
+        
+        // Create PaymentRequestService
+        let autoPayViewModel = AutoPayViewModel()
+        let paymentRequestService = PaymentRequestService(
+            paykitClient: paykitClient,
+            autopayEvaluator: autoPayViewModel
+        )
+        
+        // Handle the payment request
+        paymentRequestService.handleIncomingRequest(
+            requestId: requestId,
+            fromPubkey: fromPubkey
+        ) { result in
+            Task { @MainActor in
+                switch result {
+                case .success(let processingResult):
+                    switch processingResult {
+                    case .autoPaid(let paymentResult):
+                        app.toast(
+                            type: .success,
+                            title: "Payment Completed",
+                            description: "Payment was automatically approved and executed"
+                        )
+                        // Navigate to receipt if available
+                        if let receiptId = paymentResult.receiptId {
+                            let receipt = PaymentReceipt(
+                                id: receiptId,
+                                direction: .received,
+                                counterpartyKey: fromPubkey,
+                                counterpartyName: nil,
+                                amountSats: paymentResult.amountSats,
+                                status: .completed,
+                                paymentMethod: paymentResult.methodId,
+                                createdAt: Date(),
+                                completedAt: Date(timeIntervalSince1970: TimeInterval(paymentResult.executedAt / 1000)),
+                                memo: nil,
+                                txId: paymentResult.executionDataJson,
+                                proof: nil,
+                                proofVerified: false,
+                                proofVerifiedAt: nil
+                            )
+                            navigation.path.append(Route.paykitReceiptDetail(receipt))
+                        }
+                        
+                    case .needsApproval(let request):
+                        // Show manual approval UI
+                        app.toast(
+                            type: .info,
+                            title: "Payment Request",
+                            description: "Review the payment request"
+                        )
+                        // Navigate to payment requests view
+                        navigation.path.append(Route.paykitPaymentRequests)
+                        
+                    case .denied(let reason):
+                        app.toast(
+                            type: .warning,
+                            title: "Payment Denied",
+                            description: reason
+                        )
+                        
+                    case .error(let error):
+                        Logger.error("Payment request processing error", error: error, context: "MainNavView")
+                        app.toast(
+                            type: .error,
+                            title: "Payment Error",
+                            description: error.localizedDescription
+                        )
+                    }
+                    
+                case .failure(let error):
+                    Logger.error("Failed to process payment request", error: error, context: "MainNavView")
+                    app.toast(
+                        type: .error,
+                        title: "Request Failed",
+                        description: error.localizedDescription
+                    )
+                }
+            }
         }
     }
 }

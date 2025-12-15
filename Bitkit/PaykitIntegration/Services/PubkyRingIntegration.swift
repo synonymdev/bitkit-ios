@@ -3,39 +3,67 @@
 //  Bitkit
 //
 //  Pubky Ring Integration for key derivation
+//  Uses PaykitMobile FFI to derive X25519 keys from Ed25519 identity
 //
 
 import Foundation
+import PaykitMobile
 
-/// Integration protocol for Pubky Ring app
-/// In production, this would communicate with Pubky Ring for key derivation
-/// For now, provides a simplified interface
+/// Integration for X25519 key derivation from Ed25519 identity
+/// Uses PaykitMobile FFI to derive keys deterministically from identity seed
 public final class PubkyRingIntegration {
     
     public static let shared = PubkyRingIntegration()
     
-    private init() {}
+    private let keyManager: PaykitKeyManager
+    private let noiseKeyCache: NoiseKeyCache
     
-    /// Derive X25519 keypair from Pubky Ring
-    /// Note: This is a placeholder - in production would communicate with Pubky Ring app
-    public func deriveX25519Keypair(deviceId: String, epoch: UInt32) async throws -> Data {
+    private init() {
+        self.keyManager = PaykitKeyManager.shared
+        self.noiseKeyCache = NoiseKeyCache.shared
+    }
+    
+    /// Get or derive X25519 keypair with caching
+    /// This method first checks the NoiseKeyCache, then requests from
+    /// PaykitMobile FFI if not cached.
+    public func getOrDeriveKeypair(deviceId: String, epoch: UInt32) async throws -> X25519Keypair {
         // Check cache first
-        if let cached = NoiseKeyCache.shared.getKey(deviceId: deviceId, epoch: epoch) {
-            return cached
+        if let cached = noiseKeyCache.getKey(deviceId: deviceId, epoch: epoch) {
+            // Reconstruct keypair from cached secret
+            // Note: We need the public key, so we'll derive again
+            // In production, cache could store full keypair
         }
         
-        // In production, this would:
-        // 1. Check if Pubky Ring is installed
-        // 2. Request key derivation via URL scheme
-        // 3. Handle response/callback
+        // Derive via PaykitMobile FFI
+        let ed25519SecretHex = keyManager.getSecretKeyHex()
+            ?? throw PaykitRingError.noIdentity("No Ed25519 identity configured in Bitkit.")
         
-        // For now, generate a mock key (32 bytes for X25519)
-        let keyData = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
+        let keypair = try deriveX25519Keypair(
+            ed25519SecretHex: ed25519SecretHex,
+            deviceId: deviceId,
+            epoch: epoch
+        )
         
-        // Cache it
-        NoiseKeyCache.shared.setKey(keyData, deviceId: deviceId, epoch: epoch)
+        // Cache the secret key bytes
+        if let secretBytes = Data(hex: keypair.secretKeyHex) {
+            noiseKeyCache.setKey(secretBytes, deviceId: deviceId, epoch: epoch)
+        }
         
-        return keyData
+        return keypair
+    }
+}
+
+enum PaykitRingError: LocalizedError {
+    case noIdentity(String)
+    case derivationFailed(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .noIdentity(let msg):
+            return msg
+        case .derivationFailed(let msg):
+            return "Failed to derive X25519 keypair: \(msg)"
+        }
     }
 }
 

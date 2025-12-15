@@ -59,9 +59,10 @@ public final class PaykitPaymentService {
         case .onchain:
             return [.onchain(address: recipient)]
         case .paykit:
-            // TODO: Query Paykit for recipient's payment methods
-            // For now, return detected methods
-            return [.lightning(invoice: recipient)]
+            // Query Paykit directory for recipient's payment methods
+            let directoryService = DirectoryService.shared
+            let pubkey = extractPubkeyFromUri(recipient)
+            return try await directoryService.fetchPaymentMethods(for: pubkey)
         case .unknown:
             throw PaykitPaymentError.invalidRecipient(recipient)
         }
@@ -115,8 +116,7 @@ public final class PaykitPaymentService {
             }
             return try await payOnchain(address: recipient, amountSats: amount, feeRate: feeRate)
         case .paykit:
-            // TODO: Implement Paykit URI payment
-            throw PaykitPaymentError.unsupportedPaymentType
+            return try await payPaykitUri(uri: recipient, amountSats: amountSats)
         case .unknown:
             throw PaykitPaymentError.invalidRecipient(recipient)
         }
@@ -269,6 +269,77 @@ public final class PaykitPaymentService {
                 error: mapError(error)
             )
         }
+    }
+    
+    /// Execute a Paykit URI payment.
+    ///
+    /// - Parameters:
+    ///   - uri: The Paykit URI (e.g., "paykit:pubkey" or "pip:pubkey")
+    ///   - amountSats: Amount in satoshis
+    /// - Returns: Payment result
+    private func payPaykitUri(uri: String, amountSats: UInt64?) async throws -> PaykitPaymentResult {
+        Logger.info("Executing Paykit URI payment: \(uri)", context: "PaykitPaymentService")
+        
+        let pubkey = extractPubkeyFromUri(uri)
+        let directoryService = DirectoryService.shared
+        
+        // Discover payment methods for the recipient
+        let methods = try await directoryService.fetchPaymentMethods(for: pubkey)
+        guard let firstMethod = methods.first else {
+            throw PaykitPaymentError.invalidRecipient("No payment methods found for \(pubkey)")
+        }
+        
+        // Execute payment using the first available method
+        guard let client = manager.client else {
+            throw PaykitPaymentError.notInitialized
+        }
+        
+        let amount = amountSats ?? 0
+        let result = try client.executePayment(
+            methodId: firstMethod.methodId,
+            endpoint: firstMethod.endpoint,
+            amountSats: amount,
+            metadataJson: nil
+        )
+        
+        let receipt = PaykitReceipt(
+            id: UUID().uuidString,
+            type: .lightning, // Assume Lightning for Paykit payments
+            recipient: pubkey,
+            amountSats: amount,
+            feeSats: 0, // Fee not available from PaykitMobile
+            paymentHash: result.executionId,
+            preimage: nil,
+            txid: result.executionId,
+            timestamp: Date(),
+            status: .succeeded
+        )
+        
+        if autoStoreReceipts {
+            receiptStore.store(receipt)
+        }
+        
+        return PaykitPaymentResult(
+            success: true,
+            receipt: receipt,
+            error: nil
+        )
+    }
+    
+    /// Extract pubkey from Paykit URI.
+    private func extractPubkeyFromUri(_ uri: String) -> String {
+        // Remove scheme prefix (paykit: or pip:)
+        let cleaned = uri
+            .replacingOccurrences(of: "paykit:", with: "")
+            .replacingOccurrences(of: "pip:", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        
+        // If it's a full URL, extract the pubkey from the path
+        if let url = URL(string: cleaned), let host = url.host {
+            return host
+        }
+        
+        return cleaned
     }
     
     // MARK: - Receipt Management

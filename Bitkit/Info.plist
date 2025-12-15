@@ -8,6 +8,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>bitkit</string>
+				<string>paykit</string>
 				<string>bitcoin</string>
 				<string>BITCOIN</string>
 				<string>lightning</string>
