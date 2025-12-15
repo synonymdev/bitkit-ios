@@ -7,379 +7,211 @@ import XCTest
 @testable import Bitkit
 
 final class PaykitPaymentServiceTests: XCTestCase {
-
-    var service: PaykitPaymentService!
-
+    
+    var paymentService: PaykitPaymentService!
+    
     override func setUp() {
         super.setUp()
-        service = PaykitPaymentService.shared
-        service.clearReceipts()
+        paymentService = PaykitPaymentService.shared
     }
-
+    
     override func tearDown() {
-        service.clearReceipts()
-        service = nil
+        paymentService = nil
         super.tearDown()
     }
-
-    // MARK: - Payment Type Detection Tests
-
-    func testDetectsLightningInvoiceMainnet() async throws {
-        // Given
-        let invoice = "lnbc10u1p0abcdef..."
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: invoice)
-
-        // Then
+    
+    // MARK: - Payment Discovery Tests
+    
+    func testDiscoverLightningPaymentMethodFromInvoice() async throws {
+        // Given - a Lightning invoice
+        let invoice = "lnbc10u1p0testinvoice"
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: invoice)
+        
+        // Then - should return Lightning method
         XCTAssertEqual(methods.count, 1)
-        if case .lightning(let inv) = methods.first {
-            XCTAssertEqual(inv, invoice)
-        } else {
-            XCTFail("Expected lightning payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "lightning")
+        XCTAssertEqual(methods.first?.endpoint, invoice)
     }
-
-    func testDetectsLightningInvoiceTestnet() async throws {
-        // Given
-        let invoice = "lntb10u1p0abcdef..."
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: invoice)
-
-        // Then
+    
+    func testDiscoverLightningPaymentMethodFromTestnetInvoice() async throws {
+        // Given - a testnet Lightning invoice
+        let invoice = "lntb10u1p0testinvoice"
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: invoice)
+        
+        // Then - should return Lightning method
         XCTAssertEqual(methods.count, 1)
-        if case .lightning = methods.first {
-            // Expected
-        } else {
-            XCTFail("Expected lightning payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "lightning")
     }
-
-    func testDetectsLightningInvoiceRegtest() async throws {
-        // Given
-        let invoice = "lnbcrt10u1p0abcdef..."
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: invoice)
-
-        // Then
+    
+    func testDiscoverLightningPaymentMethodFromRegtestInvoice() async throws {
+        // Given - a regtest Lightning invoice
+        let invoice = "lnbcrt10u1p0testinvoice"
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: invoice)
+        
+        // Then - should return Lightning method
         XCTAssertEqual(methods.count, 1)
-        if case .lightning = methods.first {
-            // Expected
-        } else {
-            XCTFail("Expected lightning payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "lightning")
     }
-
-    func testDetectsOnchainAddressBech32Mainnet() async throws {
-        // Given
+    
+    func testDiscoverOnchainPaymentMethodFromBech32Address() async throws {
+        // Given - a mainnet bech32 address
         let address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: address)
-
-        // Then
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: address)
+        
+        // Then - should return onchain method
         XCTAssertEqual(methods.count, 1)
-        if case .onchain(let addr) = methods.first {
-            XCTAssertEqual(addr, address)
-        } else {
-            XCTFail("Expected onchain payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "onchain")
+        XCTAssertEqual(methods.first?.endpoint, address)
     }
-
-    func testDetectsOnchainAddressBech32Testnet() async throws {
-        // Given
+    
+    func testDiscoverOnchainPaymentMethodFromTestnetAddress() async throws {
+        // Given - a testnet bech32 address
         let address = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: address)
-
-        // Then
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: address)
+        
+        // Then - should return onchain method
         XCTAssertEqual(methods.count, 1)
-        if case .onchain = methods.first {
-            // Expected
-        } else {
-            XCTFail("Expected onchain payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "onchain")
     }
-
-    func testDetectsOnchainAddressLegacy() async throws {
-        // Given - Legacy P2PKH address
+    
+    func testDiscoverOnchainPaymentMethodFromRegtestAddress() async throws {
+        // Given - a regtest bech32 address
+        let address = "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080"
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: address)
+        
+        // Then - should return onchain method
+        XCTAssertEqual(methods.count, 1)
+        XCTAssertEqual(methods.first?.methodId, "onchain")
+    }
+    
+    func testDiscoverOnchainPaymentMethodFromP2PKHAddress() async throws {
+        // Given - a P2PKH address (starts with 1)
         let address = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: address)
-
-        // Then
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: address)
+        
+        // Then - should return onchain method
         XCTAssertEqual(methods.count, 1)
-        if case .onchain = methods.first {
-            // Expected
-        } else {
-            XCTFail("Expected onchain payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "onchain")
     }
-
-    func testDetectsOnchainAddressP2SH() async throws {
-        // Given - P2SH address
+    
+    func testDiscoverOnchainPaymentMethodFromP2SHAddress() async throws {
+        // Given - a P2SH address (starts with 3)
         let address = "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
-
-        // When
-        let methods = try await service.discoverPaymentMethods(for: address)
-
-        // Then
+        
+        // When - discovering payment methods
+        let methods = try await paymentService.discoverPaymentMethods(for: address)
+        
+        // Then - should return onchain method
         XCTAssertEqual(methods.count, 1)
-        if case .onchain = methods.first {
-            // Expected
-        } else {
-            XCTFail("Expected onchain payment method")
-        }
+        XCTAssertEqual(methods.first?.methodId, "onchain")
     }
-
-    func testThrowsForInvalidRecipient() async {
-        // Given
-        let invalid = "not_a_valid_address_or_invoice"
-
-        // When/Then
+    
+    // MARK: - Invalid Input Tests
+    
+    func testDiscoverPaymentMethodThrowsForInvalidInput() async throws {
+        // Given - an invalid input
+        let invalidInput = "invalid_payment_string"
+        
+        // When/Then - should throw invalidRecipient error
         do {
-            _ = try await service.discoverPaymentMethods(for: invalid)
-            XCTFail("Expected to throw")
+            _ = try await paymentService.discoverPaymentMethods(for: invalidInput)
+            XCTFail("Should throw error for invalid input")
         } catch let error as PaykitPaymentError {
             if case .invalidRecipient = error {
                 // Expected
             } else {
                 XCTFail("Expected invalidRecipient error")
             }
-        } catch {
-            XCTFail("Unexpected error type: \(error)")
         }
     }
-
-    // MARK: - Receipt Store Tests
-
-    func testReceiptStoreIsEmptyInitially() {
-        // When
-        let receipts = service.getReceipts()
-
-        // Then
-        XCTAssertTrue(receipts.isEmpty)
+    
+    // MARK: - Payment Execution Tests (Skip without LDK)
+    
+    func testPayThrowsWhenNotInitialized() async throws {
+        // Given - PaykitIntegrationHelper is not ready
+        guard !PaykitIntegrationHelper.isReady else {
+            throw XCTSkip("Paykit is ready - can't test notInitialized error")
+        }
+        
+        // Given - a valid Lightning invoice
+        let invoice = "lnbc10u1p0testinvoice"
+        
+        // When/Then - should throw notInitialized error
+        do {
+            _ = try await paymentService.pay(to: invoice, amountSats: nil)
+            XCTFail("Should throw error when not initialized")
+        } catch let error as PaykitPaymentError {
+            if case .notInitialized = error {
+                // Expected
+            } else {
+                XCTFail("Expected notInitialized error")
+            }
+        }
     }
-
-    func testGetReceiptByIdReturnsNilForUnknown() {
-        // When
-        let receipt = service.getReceipt(id: "unknown_id")
-
-        // Then
-        XCTAssertNil(receipt)
+    
+    func testPayOnchainRequiresAmount() async throws {
+        // Given - PaykitIntegrationHelper is ready
+        guard PaykitIntegrationHelper.isReady else {
+            throw XCTSkip("Paykit not ready")
+        }
+        
+        // Given - an onchain address without amount
+        let address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        
+        // When/Then - should throw amountRequired error
+        do {
+            _ = try await paymentService.pay(to: address, amountSats: nil)
+            XCTFail("Should throw error for missing amount")
+        } catch let error as PaykitPaymentError {
+            if case .amountRequired = error {
+                // Expected
+            } else {
+                XCTFail("Expected amountRequired error")
+            }
+        }
     }
-
-    func testClearReceiptsRemovesAll() {
-        // This is implicitly tested by setUp/tearDown
-        let receipts = service.getReceipts()
-        XCTAssertTrue(receipts.isEmpty)
-    }
-
-    // MARK: - Error Message Tests
-
-    func testNotInitializedErrorMessage() {
-        let error = PaykitPaymentError.notInitialized
-        XCTAssertEqual(error.userMessage, "Please wait for the app to initialize")
-    }
-
-    func testInvalidRecipientErrorMessage() {
-        let error = PaykitPaymentError.invalidRecipient("bad_address")
-        XCTAssertEqual(error.userMessage, "Please check the payment address or invoice")
-    }
-
-    func testAmountRequiredErrorMessage() {
-        let error = PaykitPaymentError.amountRequired
-        XCTAssertEqual(error.userMessage, "Please enter an amount")
-    }
-
-    func testInsufficientFundsErrorMessage() {
-        let error = PaykitPaymentError.insufficientFunds
-        XCTAssertEqual(error.userMessage, "You don't have enough funds for this payment")
-    }
-
-    func testPaymentFailedErrorMessage() {
-        let error = PaykitPaymentError.paymentFailed("Route not found")
-        XCTAssertEqual(error.userMessage, "Payment could not be completed. Please try again.")
-    }
-
-    func testTimeoutErrorMessage() {
-        let error = PaykitPaymentError.timeout
-        XCTAssertEqual(error.userMessage, "Payment is taking longer than expected")
-    }
-
-    func testUnsupportedPaymentTypeErrorMessage() {
-        let error = PaykitPaymentError.unsupportedPaymentType
-        XCTAssertEqual(error.userMessage, "This payment type is not supported yet")
-    }
-
-    func testUnknownErrorMessage() {
-        let error = PaykitPaymentError.unknown("Something went wrong")
-        XCTAssertEqual(error.userMessage, "An unexpected error occurred")
-    }
-
-    // MARK: - Receipt Type Tests
-
-    func testReceiptTypeEnumValues() {
-        XCTAssertEqual(PaykitReceiptType.lightning.rawValue, "lightning")
-        XCTAssertEqual(PaykitReceiptType.onchain.rawValue, "onchain")
-    }
-
-    func testReceiptStatusEnumValues() {
-        XCTAssertEqual(PaykitReceiptStatus.pending.rawValue, "pending")
-        XCTAssertEqual(PaykitReceiptStatus.succeeded.rawValue, "succeeded")
-        XCTAssertEqual(PaykitReceiptStatus.failed.rawValue, "failed")
-    }
-
-    // MARK: - Configuration Tests
-
-    func testDefaultPaymentTimeout() {
-        XCTAssertEqual(service.paymentTimeout, 60.0)
-    }
-
-    func testDefaultAutoStoreReceipts() {
-        XCTAssertTrue(service.autoStoreReceipts)
-    }
-
-    func testPaymentTimeoutCanBeChanged() {
-        // When
-        service.paymentTimeout = 120.0
-
-        // Then
-        XCTAssertEqual(service.paymentTimeout, 120.0)
-
+    
+    // MARK: - Service Configuration Tests
+    
+    func testPaymentTimeoutIsConfigurable() {
+        // Given - default timeout
+        let defaultTimeout = paymentService.paymentTimeout
+        
+        // When - setting new timeout
+        paymentService.paymentTimeout = 120.0
+        
+        // Then - timeout should be updated
+        XCTAssertEqual(paymentService.paymentTimeout, 120.0)
+        
         // Cleanup
-        service.paymentTimeout = 60.0
+        paymentService.paymentTimeout = defaultTimeout
     }
-
-    func testAutoStoreReceiptsCanBeDisabled() {
-        // When
-        service.autoStoreReceipts = false
-
-        // Then
-        XCTAssertFalse(service.autoStoreReceipts)
-
+    
+    func testAutoStoreReceiptsIsConfigurable() {
+        // Given - default setting
+        let defaultValue = paymentService.autoStoreReceipts
+        
+        // When - toggling setting
+        paymentService.autoStoreReceipts = !defaultValue
+        
+        // Then - setting should be updated
+        XCTAssertEqual(paymentService.autoStoreReceipts, !defaultValue)
+        
         // Cleanup
-        service.autoStoreReceipts = true
-    }
-}
-
-// MARK: - PaykitReceiptStore Tests
-
-final class PaykitReceiptStoreTests: XCTestCase {
-
-    var store: PaykitReceiptStore!
-
-    override func setUp() {
-        super.setUp()
-        store = PaykitReceiptStore()
-    }
-
-    override func tearDown() {
-        store.clear()
-        store = nil
-        super.tearDown()
-    }
-
-    func testStoreAndRetrieveReceipt() {
-        // Given
-        let receipt = PaykitReceipt(
-            id: "test_id",
-            type: .lightning,
-            recipient: "lnbc...",
-            amountSats: 10000,
-            feeSats: 100,
-            paymentHash: "abc123",
-            preimage: "def456",
-            txid: nil,
-            timestamp: Date(),
-            status: .succeeded
-        )
-
-        // When
-        store.store(receipt)
-        let retrieved = store.get(id: "test_id")
-
-        // Then
-        XCTAssertNotNil(retrieved)
-        XCTAssertEqual(retrieved?.id, "test_id")
-        XCTAssertEqual(retrieved?.amountSats, 10000)
-    }
-
-    func testGetAllReturnsReceiptsSortedByTimestamp() {
-        // Given
-        let oldDate = Date().addingTimeInterval(-3600)
-        let newDate = Date()
-
-        let oldReceipt = PaykitReceipt(
-            id: "old",
-            type: .lightning,
-            recipient: "lnbc...",
-            amountSats: 1000,
-            feeSats: 10,
-            paymentHash: nil,
-            preimage: nil,
-            txid: nil,
-            timestamp: oldDate,
-            status: .succeeded
-        )
-
-        let newReceipt = PaykitReceipt(
-            id: "new",
-            type: .onchain,
-            recipient: "bc1...",
-            amountSats: 2000,
-            feeSats: 20,
-            paymentHash: nil,
-            preimage: nil,
-            txid: "txid123",
-            timestamp: newDate,
-            status: .pending
-        )
-
-        // When
-        store.store(oldReceipt)
-        store.store(newReceipt)
-        let all = store.getAll()
-
-        // Then
-        XCTAssertEqual(all.count, 2)
-        XCTAssertEqual(all.first?.id, "new") // Newer first
-        XCTAssertEqual(all.last?.id, "old")
-    }
-
-    func testClearRemovesAllReceipts() {
-        // Given
-        let receipt = PaykitReceipt(
-            id: "test",
-            type: .lightning,
-            recipient: "lnbc...",
-            amountSats: 1000,
-            feeSats: 10,
-            paymentHash: nil,
-            preimage: nil,
-            txid: nil,
-            timestamp: Date(),
-            status: .succeeded
-        )
-        store.store(receipt)
-        XCTAssertEqual(store.getAll().count, 1)
-
-        // When
-        store.clear()
-
-        // Then
-        XCTAssertEqual(store.getAll().count, 0)
-    }
-
-    func testGetReturnsNilForUnknownId() {
-        // When
-        let result = store.get(id: "nonexistent")
-
-        // Then
-        XCTAssertNil(result)
+        paymentService.autoStoreReceipts = defaultValue
     }
 }

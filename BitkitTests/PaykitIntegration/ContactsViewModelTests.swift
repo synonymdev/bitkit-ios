@@ -6,45 +6,41 @@
 import XCTest
 @testable import Bitkit
 
+@MainActor
 final class ContactsViewModelTests: XCTestCase {
 
     var viewModel: ContactsViewModel!
 
     override func setUp() {
         super.setUp()
-        viewModel = ContactsViewModel()
-        // Clear any existing contacts
-        viewModel.clearContacts()
+        viewModel = ContactsViewModel(identityName: "test_\(UUID().uuidString)")
     }
 
     override func tearDown() {
-        viewModel.clearContacts()
         viewModel = nil
         super.tearDown()
     }
 
     // MARK: - Load Contacts Tests
 
-    func testLoadContactsStartsEmpty() async {
+    func testLoadContactsStartsEmpty() {
         // When
-        await viewModel.loadContacts()
+        viewModel.loadContacts()
 
         // Then
         XCTAssertTrue(viewModel.contacts.isEmpty)
     }
 
-    func testLoadContactsAfterAdd() async {
+    func testLoadContactsAfterAdd() throws {
         // Given
         let contact = Contact(
-            pubkey: "pk:alice",
-            name: "Alice",
-            avatarUrl: nil,
-            supportedMethods: ["lightning"]
+            publicKeyZ32: "pk:alice123",
+            name: "Alice"
         )
 
         // When
-        await viewModel.addContact(contact)
-        await viewModel.loadContacts()
+        try viewModel.addContact(contact)
+        viewModel.loadContacts()
 
         // Then
         XCTAssertEqual(viewModel.contacts.count, 1)
@@ -53,48 +49,47 @@ final class ContactsViewModelTests: XCTestCase {
 
     // MARK: - Add Contact Tests
 
-    func testAddContactUpdatesState() async {
+    func testAddContactUpdatesState() throws {
         // Given
         let contact = Contact(
-            pubkey: "pk:bob",
-            name: "Bob",
-            supportedMethods: ["lightning", "onchain"]
+            publicKeyZ32: "pk:bob456",
+            name: "Bob"
         )
 
         // When
-        await viewModel.addContact(contact)
+        try viewModel.addContact(contact)
 
         // Then
         XCTAssertEqual(viewModel.contacts.count, 1)
     }
 
-    func testAddMultipleContacts() async {
+    func testAddMultipleContacts() throws {
         // Given
         let contacts = [
-            Contact(pubkey: "pk:alice", name: "Alice", supportedMethods: []),
-            Contact(pubkey: "pk:bob", name: "Bob", supportedMethods: []),
-            Contact(pubkey: "pk:charlie", name: "Charlie", supportedMethods: [])
+            Contact(publicKeyZ32: "pk:alice", name: "Alice"),
+            Contact(publicKeyZ32: "pk:bob", name: "Bob"),
+            Contact(publicKeyZ32: "pk:charlie", name: "Charlie")
         ]
 
         // When
         for contact in contacts {
-            await viewModel.addContact(contact)
+            try viewModel.addContact(contact)
         }
 
         // Then
         XCTAssertEqual(viewModel.contacts.count, 3)
     }
 
-    // MARK: - Remove Contact Tests
+    // MARK: - Delete Contact Tests
 
-    func testRemoveContactDeletesFromState() async {
+    func testDeleteContactRemovesFromState() throws {
         // Given
-        let contact = Contact(pubkey: "pk:toremove", name: "Remove Me", supportedMethods: [])
-        await viewModel.addContact(contact)
+        let contact = Contact(publicKeyZ32: "pk:toremove", name: "Remove Me")
+        try viewModel.addContact(contact)
         XCTAssertEqual(viewModel.contacts.count, 1)
 
         // When
-        await viewModel.removeContact(pubkey: "pk:toremove")
+        try viewModel.deleteContact(contact)
 
         // Then
         XCTAssertTrue(viewModel.contacts.isEmpty)
@@ -102,100 +97,103 @@ final class ContactsViewModelTests: XCTestCase {
 
     // MARK: - Search Tests
 
-    func testSearchContactsFiltersByName() async {
+    func testSearchContactsFiltersByName() throws {
         // Given
         let contacts = [
-            Contact(pubkey: "pk:alice", name: "Alice", supportedMethods: []),
-            Contact(pubkey: "pk:bob", name: "Bob", supportedMethods: []),
-            Contact(pubkey: "pk:charlie", name: "Charlie", supportedMethods: [])
+            Contact(publicKeyZ32: "pk:alice", name: "Alice"),
+            Contact(publicKeyZ32: "pk:bob", name: "Bob"),
+            Contact(publicKeyZ32: "pk:charlie", name: "Charlie")
         ]
         for contact in contacts {
-            await viewModel.addContact(contact)
+            try viewModel.addContact(contact)
         }
 
         // When
-        viewModel.searchContacts(query: "ali")
+        viewModel.searchQuery = "ali"
+        viewModel.searchContacts()
 
         // Then
-        XCTAssertEqual(viewModel.filteredContacts.count, 1)
-        XCTAssertEqual(viewModel.filteredContacts.first?.name, "Alice")
+        XCTAssertEqual(viewModel.contacts.count, 1)
+        XCTAssertEqual(viewModel.contacts.first?.name, "Alice")
     }
 
-    func testSearchContactsEmptyQueryShowsAll() async {
+    func testSearchContactsEmptyQueryShowsAll() throws {
         // Given
         let contacts = [
-            Contact(pubkey: "pk:alice", name: "Alice", supportedMethods: []),
-            Contact(pubkey: "pk:bob", name: "Bob", supportedMethods: [])
+            Contact(publicKeyZ32: "pk:alice", name: "Alice"),
+            Contact(publicKeyZ32: "pk:bob", name: "Bob")
         ]
         for contact in contacts {
-            await viewModel.addContact(contact)
+            try viewModel.addContact(contact)
         }
 
         // When
-        viewModel.searchContacts(query: "")
+        viewModel.searchQuery = ""
+        viewModel.searchContacts()
 
         // Then
-        XCTAssertEqual(viewModel.filteredContacts.count, 2)
+        XCTAssertEqual(viewModel.contacts.count, 2)
     }
 
-    func testSearchContactsIsCaseInsensitive() async {
+    func testSearchContactsIsCaseInsensitive() throws {
         // Given
-        let contact = Contact(pubkey: "pk:alice", name: "Alice", supportedMethods: [])
-        await viewModel.addContact(contact)
+        let contact = Contact(publicKeyZ32: "pk:alice", name: "Alice")
+        try viewModel.addContact(contact)
 
         // When
-        viewModel.searchContacts(query: "ALICE")
+        viewModel.searchQuery = "ALICE"
+        viewModel.searchContacts()
 
         // Then
-        XCTAssertEqual(viewModel.filteredContacts.count, 1)
+        XCTAssertEqual(viewModel.contacts.count, 1)
     }
 
     // MARK: - Contact Discovery Tests
 
-    func testDiscoverContactsReturnsDiscovered() async {
+    func testDiscoverContactsSetsLoadingState() async {
         // Given
-        let userPubkey = "pk:user"
+        let directoryService = DirectoryService.shared
+        XCTAssertFalse(viewModel.isLoading)
 
         // When
-        await viewModel.discoverContacts(userPubkey: userPubkey)
+        await viewModel.discoverContacts(directoryService: directoryService)
 
-        // Then - discoveredContacts may be empty if no follows
-        XCTAssertNotNil(viewModel.discoveredContacts)
+        // Then - discoveredContacts may be empty but loading should complete
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertTrue(viewModel.showingDiscoveryResults)
     }
 
-    func testAddDiscoveredContactConvertsAndSaves() async {
+    // MARK: - Import Discovered Tests
+
+    func testImportDiscoveredSavesContacts() throws {
         // Given
-        let discovered = DiscoveredContact(
-            pubkey: "pk:discovered",
-            name: "Discovered User",
-            avatarUrl: "https://example.com/avatar.png",
-            supportedMethods: ["lightning"]
-        )
+        let discovered = [
+            Contact(publicKeyZ32: "pk:discovered1", name: "Discovered 1"),
+            Contact(publicKeyZ32: "pk:discovered2", name: "Discovered 2")
+        ]
 
         // When
-        await viewModel.addDiscoveredContact(discovered)
+        viewModel.importDiscovered(discovered)
+
+        // Then
+        XCTAssertEqual(viewModel.contacts.count, 2)
+    }
+
+    // MARK: - Update Contact Tests
+
+    func testUpdateContactModifiesExisting() throws {
+        // Given
+        let contact = Contact(publicKeyZ32: "pk:alice", name: "Alice")
+        try viewModel.addContact(contact)
+
+        // When
+        var updatedContact = contact
+        updatedContact.name = "Alice Updated"
+        updatedContact.notes = "Some notes"
+        try viewModel.updateContact(updatedContact)
 
         // Then
         XCTAssertEqual(viewModel.contacts.count, 1)
-        XCTAssertEqual(viewModel.contacts.first?.name, "Discovered User")
-    }
-
-    // MARK: - Sync Tests
-
-    func testSyncContactRefreshesData() async {
-        // Given
-        let contact = Contact(
-            pubkey: "pk:tosync",
-            name: "Sync Me",
-            supportedMethods: ["lightning"]
-        )
-        await viewModel.addContact(contact)
-
-        // When
-        await viewModel.syncContact(contact)
-
-        // Then - contact should still exist, possibly with updated methods
-        XCTAssertEqual(viewModel.contacts.count, 1)
+        XCTAssertEqual(viewModel.contacts.first?.name, "Alice Updated")
     }
 }
-

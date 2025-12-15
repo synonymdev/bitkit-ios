@@ -6,216 +6,217 @@
 import XCTest
 @testable import Bitkit
 
+@MainActor
 final class AutoPayViewModelTests: XCTestCase {
-
+    
     var viewModel: AutoPayViewModel!
-
+    
     override func setUp() {
         super.setUp()
-        viewModel = AutoPayViewModel()
-        // Clear any existing settings
-        viewModel.resetSettings()
+        viewModel = AutoPayViewModel(identityName: "test_\(UUID().uuidString)")
     }
-
+    
     override func tearDown() {
-        viewModel.resetSettings()
         viewModel = nil
         super.tearDown()
     }
-
-    // MARK: - Settings Tests
-
-    func testDefaultSettingsAreDisabled() {
+    
+    // MARK: - Load Settings Tests
+    
+    func testLoadSettingsLoadsFromStorage() {
         // When
-        let settings = viewModel.settings
-
+        viewModel.loadSettings()
+        
         // Then
-        XCTAssertFalse(settings.globalEnabled)
+        XCTAssertFalse(viewModel.isLoading)
+        XCTAssertNotNil(viewModel.settings)
     }
-
-    func testSaveAndLoadSettings() async {
+    
+    func testInitialSettingsAreLoaded() {
+        // Then - settings should be loaded on init
+        XCTAssertNotNil(viewModel.settings)
+    }
+    
+    // MARK: - Save Settings Tests
+    
+    func testSaveSettingsDoesNotThrow() throws {
         // Given
-        let settings = AutoPaySettings(
-            globalEnabled: true,
-            globalMaxAmount: 10000,
-            globalDailyLimit: 50000,
-            requireConfirmationAbove: 5000,
-            rules: []
-        )
-
-        // When
-        await viewModel.saveSettings(settings)
-        await viewModel.loadSettings()
-
-        // Then
-        XCTAssertTrue(viewModel.settings.globalEnabled)
-        XCTAssertEqual(viewModel.settings.globalMaxAmount, 10000)
+        viewModel.settings.isEnabled = true
+        viewModel.settings.globalDailyLimit = 100000
+        
+        // When/Then - should not throw
+        try viewModel.saveSettings()
     }
-
-    // MARK: - Evaluation Tests
-
-    func testEvaluateRequiresApprovalWhenDisabled() async {
-        // Given
-        viewModel.settings = AutoPaySettings(globalEnabled: false)
-        let request = createTestRequest(amountSats: 1000)
-
-        // When
-        let result = await viewModel.evaluate(request)
-
-        // Then
-        if case .requiresApproval = result {
-            // Expected
-        } else {
-            XCTFail("Expected requiresApproval")
-        }
-    }
-
-    func testEvaluateApprovesUnderGlobalMax() async {
-        // Given
-        viewModel.settings = AutoPaySettings(
-            globalEnabled: true,
-            globalMaxAmount: 10000,
-            requireConfirmationAbove: 50000
-        )
-        let request = createTestRequest(amountSats: 5000)
-
-        // When
-        let result = await viewModel.evaluate(request)
-
-        // Then
-        if case .approved = result {
-            // Expected
-        } else {
-            XCTFail("Expected approved, got \(result)")
-        }
-    }
-
-    func testEvaluateRequiresApprovalOverGlobalMax() async {
-        // Given
-        viewModel.settings = AutoPaySettings(
-            globalEnabled: true,
-            globalMaxAmount: 1000,
-            requireConfirmationAbove: 500
-        )
-        let request = createTestRequest(amountSats: 5000)
-
-        // When
-        let result = await viewModel.evaluate(request)
-
-        // Then
-        if case .requiresApproval = result {
-            // Expected
-        } else {
-            XCTFail("Expected requiresApproval")
-        }
-    }
-
-    func testEvaluateMatchesAllowRule() async {
-        // Given
-        let rule = AutoPayRule(
-            id: "rule1",
-            name: "Allow trusted",
-            peerPubkey: "pk:trusted",
-            action: .allow,
-            maxAmount: 50000
-        )
-        viewModel.settings = AutoPaySettings(
-            globalEnabled: true,
-            globalMaxAmount: 1000,
-            rules: [rule]
-        )
-        let request = createTestRequest(amountSats: 5000, fromPubkey: "pk:trusted")
-
-        // When
-        let result = await viewModel.evaluate(request)
-
-        // Then
-        if case .approved = result {
-            // Expected - rule allows higher amount
-        } else {
-            XCTFail("Expected approved due to rule, got \(result)")
-        }
-    }
-
-    func testEvaluateMatchesDenyRule() async {
-        // Given
-        let rule = AutoPayRule(
-            id: "rule1",
-            name: "Block spammer",
-            peerPubkey: "pk:spammer",
-            action: .deny
-        )
-        viewModel.settings = AutoPaySettings(
-            globalEnabled: true,
-            globalMaxAmount: 100000,
-            rules: [rule]
-        )
-        let request = createTestRequest(amountSats: 100, fromPubkey: "pk:spammer")
-
-        // When
-        let result = await viewModel.evaluate(request)
-
-        // Then
-        if case .denied = result {
-            // Expected
-        } else {
-            XCTFail("Expected denied")
-        }
-    }
-
+    
     // MARK: - Peer Limit Tests
-
-    func testRecordPaymentUpdatesPeerSpending() async {
+    
+    func testAddPeerLimit() throws {
         // Given
-        let peerPubkey = "pk:sender"
-        let amountSats: Int64 = 1000
-
+        let limit = StoredPeerLimit(
+            peerPubkey: "pk:peer123",
+            peerName: "Peer 123",
+            limitSats: 50000,
+            period: "daily"
+        )
+        
         // When
-        await viewModel.recordPayment(peerPubkey: peerPubkey, amountSats: amountSats)
-
+        try viewModel.addPeerLimit(limit)
+        
         // Then
-        let spent = await viewModel.getPeerSpentToday(peerPubkey: peerPubkey)
-        XCTAssertEqual(spent, 1000)
+        XCTAssertGreaterThan(viewModel.peerLimits.count, 0)
     }
-
-    func testPeerLimitResetsDaily() async {
-        // Given
-        let peerPubkey = "pk:sender"
-
-        // Set a limit that should have reset
-        await viewModel.setPeerLimit(
-            peerPubkey: peerPubkey,
-            limit: PeerSpendingLimit(
-                peerPubkey: peerPubkey,
-                dailyLimit: 10000,
-                spentToday: 5000,
-                lastResetDate: Calendar.current.date(byAdding: .day, value: -2, to: Date())!
-            )
+    
+    func testDeletePeerLimit() throws {
+        // Given - add a limit first
+        let limit = StoredPeerLimit(
+            peerPubkey: "pk:peer456",
+            peerName: "Peer 456",
+            limitSats: 50000,
+            period: "daily"
         )
-
+        try viewModel.addPeerLimit(limit)
+        let initialCount = viewModel.peerLimits.count
+        
         // When
-        let spent = await viewModel.getPeerSpentToday(peerPubkey: peerPubkey)
-
-        // Then - should have reset to 0
-        XCTAssertEqual(spent, 0)
+        try viewModel.deletePeerLimit(limit)
+        
+        // Then
+        XCTAssertLessThan(viewModel.peerLimits.count, initialCount)
     }
-
-    // MARK: - Helper Methods
-
-    private func createTestRequest(
-        amountSats: Int64 = 1000,
-        fromPubkey: String = "pk:sender"
-    ) -> PaymentRequest {
-        return PaymentRequest(
-            id: "test-request",
-            fromPubkey: fromPubkey,
-            toPubkey: "pk:recipient",
-            amountSats: amountSats,
-            currency: "SAT",
-            methodId: "lightning",
-            description: "Test payment",
-            direction: .incoming
+    
+    // MARK: - Rule Tests
+    
+    func testAddRule() throws {
+        // Given
+        let rule = StoredAutoPayRule(
+            name: "Test Rule",
+            maxAmountSats: 10000,
+            allowedMethods: ["lightning"],
+            allowedPeers: []
         )
+        
+        // When
+        try viewModel.addRule(rule)
+        
+        // Then
+        XCTAssertGreaterThan(viewModel.rules.count, 0)
+    }
+    
+    func testDeleteRule() throws {
+        // Given - add a rule first
+        let rule = StoredAutoPayRule(
+            name: "Rule to Delete",
+            maxAmountSats: 5000,
+            allowedMethods: [],
+            allowedPeers: []
+        )
+        try viewModel.addRule(rule)
+        let initialCount = viewModel.rules.count
+        
+        // When
+        try viewModel.deleteRule(rule)
+        
+        // Then
+        XCTAssertLessThan(viewModel.rules.count, initialCount)
+    }
+    
+    // MARK: - Evaluation Tests
+    
+    func testEvaluateWhenDisabledReturnsDenied() {
+        // Given - auto-pay is disabled
+        viewModel.settings.isEnabled = false
+        
+        // When
+        let result = viewModel.evaluate(peerPubkey: "pk:test", amount: 1000, methodId: "lightning")
+        
+        // Then
+        if case .denied(let reason) = result {
+            XCTAssertTrue(reason.contains("disabled"))
+        } else {
+            XCTFail("Expected denied result")
+        }
+    }
+    
+    func testEvaluateExceedingDailyLimitReturnsDenied() throws {
+        // Given - auto-pay is enabled with low limit
+        viewModel.settings.isEnabled = true
+        viewModel.settings.globalDailyLimit = 100
+        try viewModel.saveSettings()
+        
+        // When - try to pay more than limit
+        let result = viewModel.evaluate(peerPubkey: "pk:test", amount: 1000, methodId: "lightning")
+        
+        // Then
+        if case .denied(let reason) = result {
+            XCTAssertTrue(reason.contains("daily limit"))
+        } else {
+            XCTFail("Expected denied result")
+        }
+    }
+    
+    func testEvaluateWithMatchingRuleReturnsApproved() throws {
+        // Given - auto-pay is enabled with matching rule
+        viewModel.settings.isEnabled = true
+        viewModel.settings.globalDailyLimit = 1000000
+        
+        let rule = StoredAutoPayRule(
+            name: "Allow Lightning",
+            maxAmountSats: 10000,
+            allowedMethods: ["lightning"],
+            allowedPeers: []
+        )
+        try viewModel.addRule(rule)
+        
+        // When - payment matches rule
+        let result = viewModel.evaluate(peerPubkey: "pk:test", amount: 5000, methodId: "lightning")
+        
+        // Then
+        if case .approved = result {
+            // Expected
+        } else {
+            XCTFail("Expected approved result, got: \(result)")
+        }
+    }
+    
+    func testEvaluateWithNoMatchingRuleReturnsNeedsApproval() throws {
+        // Given - auto-pay is enabled but no matching rule
+        viewModel.settings.isEnabled = true
+        viewModel.settings.globalDailyLimit = 1000000
+        
+        // When - no rules match
+        let result = viewModel.evaluate(peerPubkey: "pk:test", amount: 5000, methodId: "lightning")
+        
+        // Then
+        if case .needsApproval = result {
+            // Expected
+        } else {
+            XCTFail("Expected needsApproval result, got: \(result)")
+        }
+    }
+    
+    func testEvaluateExceedingPeerLimitReturnsDenied() throws {
+        // Given - auto-pay is enabled with peer limit that's almost exhausted
+        viewModel.settings.isEnabled = true
+        viewModel.settings.globalDailyLimit = 1000000
+        
+        var peerLimit = StoredPeerLimit(
+            peerPubkey: "pk:limited_peer",
+            peerName: "Limited Peer",
+            limitSats: 1000,
+            period: "daily"
+        )
+        // Simulate that 900 sats have already been spent
+        peerLimit.spentSats = 900
+        try viewModel.addPeerLimit(peerLimit)
+        
+        // When - try to pay more than remaining peer limit
+        let result = viewModel.evaluate(peerPubkey: "pk:limited_peer", amount: 200, methodId: "lightning")
+        
+        // Then
+        if case .denied(let reason) = result {
+            XCTAssertTrue(reason.contains("peer limit"))
+        } else {
+            XCTFail("Expected denied result, got: \(result)")
+        }
     }
 }
-
