@@ -88,23 +88,25 @@ public final class BitkitLightningExecutor {
             if let payments = lightningService.payments {
                 for payment in payments {
                     if payment.id.description == paymentHash {
-                        // Check payment status
                         switch payment.status {
                         case .succeeded:
-                            // Extract preimage from payment details
-                            // Note: Check actual PaymentDetails structure for preimage field
+                            // Extract payment details from LDKNode PaymentDetails
+                            let preimage = payment.preimage?.description ?? ""
+                            let amountMsat = payment.amountMsat ?? 0
+                            let feeMsat = payment.feeMsat ?? 0
+                            
                             return LightningPaymentResult(
-                                preimage: "", // TODO: Extract from payment.preimage
+                                preimage: preimage,
                                 paymentHash: paymentHash,
-                                amountMsat: 0, // TODO: Extract from payment
-                                feeMsat: 0, // TODO: Extract from payment
+                                amountMsat: amountMsat,
+                                feeMsat: feeMsat,
                                 hops: 0,
                                 status: .succeeded
                             )
                         case .failed:
                             throw PaykitError.paymentFailed("Payment failed")
                         default:
-                            break // Still pending
+                            break
                         }
                     }
                 }
@@ -121,18 +123,21 @@ public final class BitkitLightningExecutor {
     /// - Parameter invoice: BOLT11 invoice string
     /// - Returns: Decoded invoice details
     public func decodeInvoice(invoice: String) throws -> DecodedInvoice {
-        // TODO: Use BitkitCore.decode() when available
-        // For now, return placeholder
-        return DecodedInvoice(
-            paymentHash: "",
-            amountMsat: nil,
-            description: nil,
-            descriptionHash: nil,
-            payee: "",
-            expiry: 3600,
-            timestamp: UInt64(Date().timeIntervalSince1970),
-            expired: false
-        )
+        do {
+            let bolt11 = try Bolt11Invoice.fromStr(s: invoice)
+            return DecodedInvoice(
+                paymentHash: bolt11.paymentHash().description,
+                amountMsat: bolt11.amountMilliSatoshis(),
+                description: bolt11.description()?.intoInner().description,
+                descriptionHash: nil,
+                payee: bolt11.payeePubKey()?.description ?? "",
+                expiry: bolt11.expiryTime(),
+                timestamp: bolt11.timestamp(),
+                expired: bolt11.isExpired()
+            )
+        } catch {
+            throw PaykitError.paymentFailed("Failed to decode invoice: \(error.localizedDescription)")
+        }
     }
     
     /// Estimate routing fee for an invoice.
@@ -140,7 +145,16 @@ public final class BitkitLightningExecutor {
     /// - Parameter invoice: BOLT11 invoice
     /// - Returns: Estimated fee in millisatoshis
     public func estimateFee(invoice: String) throws -> UInt64 {
-        // Default routing fee estimate (1% with 1000 msat base)
+        // Estimate 1% fee with 1000 msat base
+        do {
+            let bolt11 = try Bolt11Invoice.fromStr(s: invoice)
+            if let amountMsat = bolt11.amountMilliSatoshis() {
+                let percentFee = amountMsat / 100
+                return max(1000, percentFee)
+            }
+        } catch {
+            // Ignore decode errors, return default
+        }
         return 1000
     }
     
@@ -161,11 +175,15 @@ public final class BitkitLightningExecutor {
                 default: .pending
                 }
                 
+                let preimage = payment.preimage?.description ?? ""
+                let amountMsat = payment.amountMsat ?? 0
+                let feeMsat = payment.feeMsat ?? 0
+                
                 return LightningPaymentResult(
-                    preimage: "", // TODO: Extract from payment
+                    preimage: preimage,
                     paymentHash: paymentHash,
-                    amountMsat: 0, // TODO: Extract from payment
-                    feeMsat: 0, // TODO: Extract from payment
+                    amountMsat: amountMsat,
+                    feeMsat: feeMsat,
                     hops: 0,
                     status: status
                 )
