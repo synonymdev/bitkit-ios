@@ -15,6 +15,17 @@ This app integrates with:
 - **Electrum/Esplora** for blockchain data
 - **Blocktank** for Lightning channel services
 
+## Git and GitHub Rules (CRITICAL)
+
+**NEVER create, submit, or push pull requests (PRs) to any GitHub organization except BitcoinErrorLog.**
+
+- NEVER push code, commits, or branches to synonymdev or any other organization
+- ONLY push to remotes that point to BitcoinErrorLog (e.g., `fork` remote pointing to `github.com/BitcoinErrorLog/*`)
+- When merging PRs from upstream (synonymdev), only merge locally and push to BitcoinErrorLog forks
+- NEVER use `gh pr create`, `gh pr comment`, or any GitHub CLI commands that would create/modify PRs outside BitcoinErrorLog
+- If unsure about a Git operation, verify the remote URL points to BitcoinErrorLog before pushing
+- Always check `git remote -v` before pushing to ensure you're pushing to the correct organization
+
 ## Build & Development Commands
 
 ### Building

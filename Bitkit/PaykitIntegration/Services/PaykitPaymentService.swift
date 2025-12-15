@@ -62,7 +62,7 @@ public final class PaykitPaymentService {
             // Query Paykit directory for recipient's payment methods
             let directoryService = DirectoryService.shared
             let pubkey = extractPubkeyFromUri(recipient)
-            return try await directoryService.fetchPaymentMethods(for: pubkey)
+            return try await directoryService.discoverPaymentMethods(for: pubkey)
         case .unknown:
             throw PaykitPaymentError.invalidRecipient(recipient)
         }
@@ -284,7 +284,7 @@ public final class PaykitPaymentService {
         let directoryService = DirectoryService.shared
         
         // Discover payment methods for the recipient
-        let methods = try await directoryService.fetchPaymentMethods(for: pubkey)
+        let methods = try await directoryService.discoverPaymentMethods(for: pubkey)
         guard let firstMethod = methods.first else {
             throw PaykitPaymentError.invalidRecipient("No payment methods found for \(pubkey)")
         }
