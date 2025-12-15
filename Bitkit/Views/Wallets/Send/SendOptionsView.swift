@@ -58,6 +58,7 @@ struct SendOptionsView: View {
                         title: t("wallet__recipient_manual"),
                         testID: "RecipientManual"
                     ) {
+                        app.resetManualEntryInput()
                         navigationPath.append(.manual)
                     }
                 }

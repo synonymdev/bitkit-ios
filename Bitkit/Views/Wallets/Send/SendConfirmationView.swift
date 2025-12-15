@@ -79,12 +79,22 @@ struct SendConfirmationView: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
-                        .padding(.bottom, 44)
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
+                    .padding(.bottom, 44)
                     lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
-                    MoneyStack(sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis), showSymbol: true, testIdPrefix: "ReviewAmount")
-                        .padding(.bottom, 44)
+                    MoneyStack(
+                        sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
+                        showSymbol: true,
+                        testIdPrefix: "ReviewAmount",
+                        onTap: navigateToAmount
+                    )
+                    .padding(.bottom, 44)
                     onchainView(invoice)
                 }
             }
@@ -421,12 +431,10 @@ struct SendConfirmationView: View {
     @ViewBuilder
     func onchainView(_ invoice: OnChainInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(t("wallet__send_to"))
-                BodySSBText(invoice.address.ellipsis(maxLength: 20))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            editableInvoiceSection(
+                title: t("wallet__send_to"),
+                value: invoice.address
+            )
             .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -487,14 +495,12 @@ struct SendConfirmationView: View {
     }
 
     @ViewBuilder
-    func lightningView(_: LightningInvoice) -> some View {
+    func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(t("wallet__send_invoice"))
-                BodySSBText(app.scannedLightningInvoice?.bolt11.ellipsis(maxLength: 20) ?? "")
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            editableInvoiceSection(
+                title: t("wallet__send_invoice"),
+                value: invoice.bolt11
+            )
             .padding(.bottom)
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -562,6 +568,45 @@ struct SendConfirmationView: View {
 
                 Divider()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func editableInvoiceSection(title: String, value: String) -> some View {
+        Button {
+            navigateToManual(with: value)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                CaptionMText(title)
+                BodySSBText(value.ellipsis(maxLength: 20))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("ReviewUri")
+    }
+
+    private func navigateToManual(with value: String) {
+        guard !value.isEmpty else { return }
+        app.manualEntryInput = value
+        Task { await app.validateManualEntryInput(value) }
+
+        if let manualIndex = navigationPath.firstIndex(of: .manual) {
+            navigationPath = Array(navigationPath.prefix(manualIndex + 1))
+        } else {
+            navigationPath = [.manual]
+        }
+    }
+
+    private func navigateToAmount() {
+        if let amountIndex = navigationPath.lastIndex(of: .amount) {
+            navigationPath = Array(navigationPath.prefix(amountIndex + 1))
+        } else {
+            if let confirmIndex = navigationPath.lastIndex(of: .confirm) {
+                navigationPath = Array(navigationPath.prefix(confirmIndex))
+            }
+            navigationPath.append(.amount)
         }
     }
 

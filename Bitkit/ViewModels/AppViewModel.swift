@@ -8,6 +8,8 @@ class AppViewModel: ObservableObject {
     @Published var scannedLightningInvoice: LightningInvoice?
     @Published var scannedOnchainInvoice: OnChainInvoice?
     @Published var selectedWalletToPayFrom: WalletType = .onchain
+    @Published var manualEntryInput: String = ""
+    @Published var isManualEntryInputValid: Bool = false
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -59,6 +61,7 @@ class AppViewModel: ObservableObject {
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel
     private let navigationViewModel: NavigationViewModel
+    private var manualEntryValidationSequence: UInt64 = 0
 
     init(
         lightningService: LightningService = .shared,
@@ -340,6 +343,38 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
+        resetManualEntryInput()
+    }
+}
+
+// MARK: Manual entry validation
+
+extension AppViewModel {
+    func normalizeManualEntry(_ value: String) -> String {
+        value.filter { !$0.isWhitespace }
+    }
+
+    func resetManualEntryInput() {
+        manualEntryValidationSequence &+= 1
+        manualEntryInput = ""
+        isManualEntryInputValid = false
+    }
+
+    func validateManualEntryInput(_ rawValue: String) async {
+        manualEntryValidationSequence &+= 1
+        let currentSequence = manualEntryValidationSequence
+
+        let normalized = normalizeManualEntry(rawValue)
+
+        guard !normalized.isEmpty else {
+            isManualEntryInputValid = false
+            return
+        }
+
+        let isValid = await (try? decode(invoice: normalized)) != nil
+
+        guard currentSequence == manualEntryValidationSequence else { return }
+        isManualEntryInputValid = isValid
     }
 }
 
