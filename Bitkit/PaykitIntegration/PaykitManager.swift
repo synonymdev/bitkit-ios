@@ -5,6 +5,7 @@
 
 import Foundation
 import LDKNode
+import PaykitMobile
 
 // MARK: - PaykitManager
 
@@ -17,7 +18,7 @@ public final class PaykitManager {
     
     // MARK: - Properties
     
-    private var client: Any?
+    private var client: PaykitClient?
     private var bitcoinExecutor: BitkitBitcoinExecutor?
     private var lightningExecutor: BitkitLightningExecutor?
     
@@ -61,11 +62,10 @@ public final class PaykitManager {
         
         Logger.info("Initializing PaykitManager with network: \(bitcoinNetwork)", context: "PaykitManager")
         
-        // TODO: Uncomment when PaykitMobile bindings are available
-        // client = try PaykitClient.newWithNetwork(
-        //     bitcoinNetwork: bitcoinNetwork.toFfi(),
-        //     lightningNetwork: lightningNetwork.toFfi()
-        // )
+        client = try PaykitClient.newWithNetwork(
+            bitcoinNetwork: bitcoinNetwork.toFfi(),
+            lightningNetwork: lightningNetwork.toFfi()
+        )
         
         isInitialized = true
         Logger.info("PaykitManager initialized successfully", context: "PaykitManager")
@@ -87,12 +87,11 @@ public final class PaykitManager {
         bitcoinExecutor = BitkitBitcoinExecutor()
         lightningExecutor = BitkitLightningExecutor()
         
-        // TODO: Uncomment when PaykitMobile bindings are available
-        // guard let client = client as? PaykitClient else {
-        //     throw PaykitError.notInitialized
-        // }
-        // try client.registerBitcoinExecutor(executor: bitcoinExecutor!)
-        // try client.registerLightningExecutor(executor: lightningExecutor!)
+        guard let client = client else {
+            throw PaykitError.notInitialized
+        }
+        try client.registerBitcoinExecutor(executor: bitcoinExecutor!)
+        try client.registerLightningExecutor(executor: lightningExecutor!)
         
         hasExecutors = true
         Logger.info("Paykit executors registered successfully", context: "PaykitManager")
@@ -113,10 +112,32 @@ public final class PaykitManager {
 
 public enum BitcoinNetworkConfig: String {
     case mainnet, testnet, regtest
+    
+    func toFfi() -> BitcoinNetworkFfi {
+        switch self {
+        case .mainnet:
+            return .mainnet
+        case .testnet:
+            return .testnet
+        case .regtest:
+            return .regtest
+        }
+    }
 }
 
 public enum LightningNetworkConfig: String {
     case mainnet, testnet, regtest
+    
+    func toFfi() -> LightningNetworkFfi {
+        switch self {
+        case .mainnet:
+            return .mainnet
+        case .testnet:
+            return .testnet
+        case .regtest:
+            return .regtest
+        }
+    }
 }
 
 // MARK: - Paykit Errors
