@@ -185,3 +185,149 @@ Ensure `PaykitIntegrationHelper.setup()` is called during app startup.
 ## API Reference
 
 See inline documentation in source files for detailed API reference.
+
+## Phase 6: Production Hardening
+
+### Logging & Monitoring
+
+**PaykitLogger** provides structured logging with configurable log levels:
+
+```swift
+import PaykitLogger
+
+// Configure log level
+PaykitConfigManager.shared.logLevel = .info  // .debug, .info, .warning, .error, .none
+
+// Basic logging
+paykitInfo("Payment initiated", category: "payment")
+paykitError("Payment failed", error: error, context: ["invoice": invoice])
+
+// Payment flow logging
+PaykitLogger.shared.logPaymentFlow(
+    event: "invoice_decoded",
+    paymentMethod: "lightning",
+    amount: 50000,
+    duration: 0.15
+)
+
+// Performance metrics
+PaykitLogger.shared.logPerformance(
+    operation: "payInvoice",
+    duration: 2.5,
+    success: true,
+    context: ["invoice": invoice]
+)
+```
+
+**Privacy:** Payment details are only logged in DEBUG builds. Set `logPaymentDetails = false` to disable.
+
+### Error Reporting
+
+Integrate with your error monitoring service (Sentry, Crashlytics, etc.):
+
+```swift
+// Set error reporter callback
+PaykitConfigManager.shared.errorReporter = { error, context in
+    Sentry.capture(error: error, extras: context)
+}
+
+// Errors are automatically reported when logged
+paykitError("Payment execution failed", error: error, context: context)
+// → Automatically sent to Sentry with full context
+```
+
+### Retry Logic
+
+Executors support automatic retry with exponential backoff:
+
+```swift
+// Configure retry behavior
+PaykitConfigManager.shared.maxRetryAttempts = 3
+PaykitConfigManager.shared.retryBaseDelay = 1.0  // seconds
+
+// Retries are automatic for transient failures:
+// - Network timeouts
+// - Temporary Lightning routing failures
+// - Rate limiting
+```
+
+### Performance Optimization
+
+**Caching:** Payment method discovery results are cached for 60 seconds.
+
+**Connection pooling:** Executor reuses Lightning node connections.
+
+**Metrics:** All operations are automatically timed and logged at INFO level.
+
+### Security Features
+
+1. **Input Validation:**
+   - All addresses/invoices validated before execution
+   - Amount bounds checking
+   - Fee rate sanity checks
+
+2. **Rate Limiting:**
+   - Configurable maximum retry attempts
+   - Exponential backoff prevents request storms
+
+3. **Privacy:**
+   - Payment details not logged in production
+   - Receipt data encrypted at rest
+   - No telemetry without explicit opt-in
+
+### Configuration Reference
+
+```swift
+// Environment (auto-configured based on build)
+PaykitConfigManager.shared.environment  // .development, .staging, .production
+
+// Logging
+PaykitConfigManager.shared.logLevel = .info
+PaykitConfigManager.shared.logPaymentDetails  // true in DEBUG only
+
+// Timeouts
+PaykitConfigManager.shared.defaultPaymentTimeout = 60.0  // seconds
+PaykitConfigManager.shared.lightningPollingInterval = 0.5  // seconds
+
+// Retry configuration
+PaykitConfigManager.shared.maxRetryAttempts = 3
+PaykitConfigManager.shared.retryBaseDelay = 1.0  // seconds
+
+// Monitoring
+PaykitConfigManager.shared.errorReporter = { error, context in
+    // Your error monitoring integration
+}
+```
+
+### Production Deployment Guide
+
+1. **Pre-deployment:**
+   - Review security checklist in `BUILD_CONFIGURATION.md`
+   - Configure error monitoring
+   - Set log level to `.warning` or `.error`
+   - Test on testnet with production settings
+
+2. **Deployment:**
+   - Enable feature flag for 5% of users
+   - Monitor error rates and performance metrics
+   - Gradually increase to 100% over 7 days
+
+3. **Monitoring:**
+   - Track payment success/failure rates
+   - Monitor average payment duration
+   - Set up alerts for error rate spikes
+   - Review logs daily during rollout
+
+4. **Rollback triggers:**
+   - Payment failure rate > 5%
+   - Error rate > 1%
+   - Average payment duration > 10s
+   - User reports of stuck payments
+
+### Known Limitations
+
+1. **Transaction verification** requires external block explorer (not yet integrated)
+2. **Payment method discovery** uses basic heuristics (Paykit URI support coming)
+3. **Receipt format** may change in future protocol versions
+
+See `CHANGELOG.md` for version history and migration guides.
