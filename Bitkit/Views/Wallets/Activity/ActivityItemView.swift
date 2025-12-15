@@ -571,7 +571,8 @@ struct ActivityItemView_Previews: PreviewProvider {
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: nil,
                         createdAt: nil,
-                        updatedAt: nil
+                        updatedAt: nil,
+                        seenAt: nil
                     )
                 )
             )
@@ -599,7 +600,8 @@ struct ActivityItemView_Previews: PreviewProvider {
                         channelId: nil,
                         transferTxId: nil,
                         createdAt: nil,
-                        updatedAt: nil
+                        updatedAt: nil,
+                        seenAt: nil
                     )
                 )
             )
