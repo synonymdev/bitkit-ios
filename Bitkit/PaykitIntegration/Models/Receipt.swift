@@ -16,8 +16,8 @@ public enum PaymentReceiptStatus: String, Codable {
     case refunded = "refunded"
 }
 
-/// Payment direction
-public enum PaymentDirection: String, Codable {
+/// Payment direction for Paykit receipts
+public enum ReceiptPaymentDirection: String, Codable {
     case sent = "sent"
     case received = "received"
 }
@@ -25,7 +25,7 @@ public enum PaymentDirection: String, Codable {
 /// A payment receipt (local model, different from PaykitMobile.Receipt)
 public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
     public let id: String
-    public let direction: PaymentDirection
+    public let direction: ReceiptPaymentDirection
     public let counterpartyKey: String
     public var counterpartyName: String?
     public let amountSats: UInt64
@@ -40,7 +40,7 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
     public var proofVerifiedAt: Date?
     
     public init(
-        direction: PaymentDirection,
+        direction: ReceiptPaymentDirection,
         counterpartyKey: String,
         counterpartyName: String? = nil,
         amountSats: UInt64,
@@ -65,7 +65,7 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
     
     init(
         id: String,
-        direction: PaymentDirection,
+        direction: ReceiptPaymentDirection,
         counterpartyKey: String,
         counterpartyName: String?,
         amountSats: UInt64,
@@ -132,7 +132,7 @@ extension PaymentReceipt {
     
     static func fromFFI(
         _ ffiReceipt: Receipt,
-        direction: PaymentDirection,
+        direction: ReceiptPaymentDirection,
         counterpartyName: String? = nil
     ) -> PaymentReceipt {
         let counterpartyKey = direction == .sent ? ffiReceipt.payee : ffiReceipt.payer

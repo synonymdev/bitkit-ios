@@ -54,7 +54,7 @@ struct ContactDiscoveryView: View {
                 .foregroundColor(.textSecondary)
         }
         .padding(16)
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -71,7 +71,7 @@ struct ContactDiscoveryView: View {
                     }
             }
             .padding(12)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
         }
     }
@@ -87,7 +87,7 @@ struct ContactDiscoveryView: View {
                 }
             }
         }
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -109,7 +109,7 @@ struct ContactDiscoveryView: View {
 }
 
 struct DiscoveredContactRow: View {
-    let contact: DiscoveredContact
+    let contact: DirectoryDiscoveredContact
     @ObservedObject var viewModel: ContactDiscoveryViewModel
     @EnvironmentObject private var app: AppViewModel
     
@@ -119,13 +119,13 @@ struct DiscoveredContactRow: View {
                 .fill(Color.brandAccent.opacity(0.2))
                 .frame(width: 40, height: 40)
                 .overlay {
-                    Text(String(contact.name.prefix(1)).uppercased())
+                    Text(String((contact.name ?? contact.pubkey).prefix(1)).uppercased())
                         .foregroundColor(.brandAccent)
                         .font(.headline)
                 }
             
             VStack(alignment: .leading, spacing: 4) {
-                BodyMBoldText(contact.name)
+                BodyMBoldText(contact.name ?? contact.pubkey)
                     .foregroundColor(.white)
                 
                 BodySText(contact.abbreviatedPubkey)
@@ -159,7 +159,7 @@ struct DiscoveredContactRow: View {
 // ViewModel for Contact Discovery
 @MainActor
 class ContactDiscoveryViewModel: ObservableObject {
-    @Published var discoveredContacts: [DiscoveredContact] = []
+    @Published var discoveredContacts: [DirectoryDiscoveredContact] = []
     @Published var isLoading = false
     
     private let directoryService: DirectoryService
@@ -199,16 +199,16 @@ class ContactDiscoveryViewModel: ObservableObject {
         } else {
             let queryLower = query.lowercased()
             discoveredContacts = discoveredContacts.filter { contact in
-                contact.name.lowercased().contains(queryLower) ||
+                (contact.name?.lowercased().contains(queryLower) ?? false) ||
                 contact.pubkey.lowercased().contains(queryLower)
             }
         }
     }
     
-    func addContact(_ discoveredContact: DiscoveredContact) throws {
+    func addContact(_ discoveredContact: DirectoryDiscoveredContact) throws {
         let contact = Contact(
             publicKeyZ32: discoveredContact.pubkey,
-            name: discoveredContact.name,
+            name: discoveredContact.name ?? discoveredContact.pubkey,
             notes: "Discovered from Pubky follows"
         )
         try contactStorage.saveContact(contact)

@@ -4,14 +4,14 @@ struct StatusRow: View {
     let imageName: String
     let title: String
     let description: String
-    let status: HealthStatus
+    let status: AppHealthStatus
     let onTap: (() -> Void)?
 
     init(
         imageName: String,
         title: String,
         description: String,
-        status: HealthStatus,
+        status: AppHealthStatus,
         onTap: (() -> Void)? = nil
     ) {
         self.imageName = imageName

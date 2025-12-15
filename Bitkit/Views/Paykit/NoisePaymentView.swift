@@ -61,7 +61,7 @@ struct NoisePaymentView: View {
                     .foregroundColor(.white)
                     .autocapitalization(.none)
                     .padding(12)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             }
             
@@ -73,12 +73,15 @@ struct NoisePaymentView: View {
                     BodyMText("Amount:")
                         .foregroundColor(.textSecondary)
                     Spacer()
-                    TextField("sats", value: $amount, format: .number)
+                    TextField("sats", text: Binding(
+                        get: { String(amount) },
+                        set: { amount = Int64($0) ?? 0 }
+                    ))
                         .foregroundColor(.white)
                         .keyboardType(.numberPad)
                         .multilineTextAlignment(.trailing)
                         .padding(12)
-                        .background(Color.gray900)
+                        .background(Color.gray6)
                         .cornerRadius(8)
                         .frame(width: 120)
                 }
@@ -92,7 +95,7 @@ struct NoisePaymentView: View {
                 TextField("Description (optional)", text: $description)
                     .foregroundColor(.white)
                     .padding(12)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             }
             
@@ -196,7 +199,7 @@ struct NoisePaymentView: View {
                     }
                 }
                 .padding(16)
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
             

@@ -1,6 +1,6 @@
 import SwiftUI
 
-enum HealthStatus: String {
+enum AppHealthStatus: String {
     case ready
     case pending
     case error
@@ -24,11 +24,11 @@ enum HealthStatus: String {
 
 @MainActor
 struct AppStatusHelper {
-    static func internetStatus(network: NetworkMonitor) -> HealthStatus {
+    static func internetStatus(network: NetworkMonitor) -> AppHealthStatus {
         return network.isConnected ? .ready : .error
     }
 
-    static func bitcoinNodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
+    static func bitcoinNodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> AppHealthStatus {
         let isOnline = network.isConnected
 
         guard isOnline else {
@@ -45,7 +45,7 @@ struct AppStatusHelper {
         }
     }
 
-    static func nodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
+    static func nodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> AppHealthStatus {
         let isOnline = network.isConnected
 
         switch wallet.nodeLifecycleState {
@@ -58,7 +58,7 @@ struct AppStatusHelper {
         }
     }
 
-    static func channelsStatus(from wallet: WalletViewModel) -> HealthStatus {
+    static func channelsStatus(from wallet: WalletViewModel) -> AppHealthStatus {
         let hasChannels = wallet.channelCount > 0
         let hasUsableChannels = wallet.channels?.contains(where: \.isUsable) ?? false
 
@@ -71,7 +71,7 @@ struct AppStatusHelper {
         }
     }
 
-    static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
+    static func combinedAppStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> AppHealthStatus {
         let internetState = internetStatus(network: network)
         let bitcoinNodeState = bitcoinNodeStatus(from: wallet, network: network)
         let nodeState = nodeStatus(from: wallet, network: network)

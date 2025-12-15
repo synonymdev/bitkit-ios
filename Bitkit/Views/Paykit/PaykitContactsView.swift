@@ -29,7 +29,7 @@ struct PaykitContactsView: View {
                             }
                     }
                     .padding(12)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
                     
                     // Contact list
@@ -49,7 +49,7 @@ struct PaykitContactsView: View {
                                 }
                             }
                         }
-                        .background(Color.gray900)
+                        .background(Color.gray6)
                         .cornerRadius(8)
                     }
                 }

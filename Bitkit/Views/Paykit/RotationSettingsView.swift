@@ -88,29 +88,29 @@ struct RotationSettingsView: View {
                         BodyMText("Threshold:")
                             .foregroundColor(.textSecondary)
                         Spacer()
-                        TextField("uses", value: Binding(
-                            get: { viewModel.settings.defaultThreshold },
+                        TextField("uses", text: Binding(
+                            get: { String(viewModel.settings.defaultThreshold) },
                             set: { newValue in
-                                viewModel.settings.defaultThreshold = newValue
+                                viewModel.settings.defaultThreshold = Int(newValue) ?? 0
                                 do {
                                     try viewModel.saveSettings()
                                 } catch {
                                     app.toast(error)
                                 }
                             }
-                        ), format: .number)
+                        ))
                             .foregroundColor(.white)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                             .frame(width: 100)
                     }
                 }
             }
             .padding(16)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
         }
     }
@@ -125,7 +125,7 @@ struct RotationSettingsView: View {
                     .foregroundColor(.textSecondary)
                     .padding(16)
                     .frame(maxWidth: .infinity)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             } else {
                 VStack(spacing: 0) {
@@ -144,7 +144,7 @@ struct RotationSettingsView: View {
                         }
                     }
                 }
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -177,7 +177,7 @@ struct RotationSettingsView: View {
                     .foregroundColor(.textSecondary)
                     .padding(16)
                     .frame(maxWidth: .infinity)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             } else {
                 VStack(spacing: 0) {
@@ -190,7 +190,7 @@ struct RotationSettingsView: View {
                         }
                     }
                 }
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -231,23 +231,23 @@ struct MethodSettingsRow: View {
                     BodyMText("Threshold:")
                         .foregroundColor(.textSecondary)
                     Spacer()
-                    TextField("uses", value: Binding(
-                        get: { settings.threshold },
+                    TextField("uses", text: Binding(
+                        get: { String(settings.threshold) },
                         set: { newValue in
                             var updated = settings
-                            updated.threshold = newValue
+                            updated.threshold = Int(newValue) ?? 0
                             do {
                                 try viewModel.updateMethodSettings(methodId, updated)
                             } catch {
                                 app.toast(error)
                             }
                         }
-                    ), format: .number)
+                    ))
                         .foregroundColor(.white)
                         .keyboardType(.numberPad)
                         .multilineTextAlignment(.trailing)
                         .padding(12)
-                        .background(Color.gray900)
+                        .background(Color.gray6)
                         .cornerRadius(8)
                         .frame(width: 100)
                 }

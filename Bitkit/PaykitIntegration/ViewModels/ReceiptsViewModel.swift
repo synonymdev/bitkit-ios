@@ -13,7 +13,7 @@ class ReceiptsViewModel: ObservableObject {
     @Published var receipts: [PaymentReceipt] = []
     @Published var searchQuery: String = ""
     @Published var selectedStatus: PaymentReceiptStatus?
-    @Published var selectedDirection: PaymentDirection?
+    @Published var selectedDirection: ReceiptPaymentDirection?
     @Published var isLoading = false
     
     private let receiptStorage: ReceiptStorage

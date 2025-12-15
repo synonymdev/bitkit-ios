@@ -77,7 +77,7 @@ struct PaykitReceiptsView: View {
                     }
             }
             .padding(12)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
             
             // Filter chips
@@ -127,7 +127,7 @@ struct PaykitReceiptsView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(12)
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -136,7 +136,7 @@ struct PaykitReceiptsView: View {
     private var receiptsList: some View {
         VStack(spacing: 0) {
             ForEach(viewModel.receipts) { receipt in
-                ReceiptRow(receipt: receipt)
+                ReceiptsViewRow(receipt: receipt)
                 
                 if receipt.id != viewModel.receipts.last?.id {
                     Divider()
@@ -144,7 +144,7 @@ struct PaykitReceiptsView: View {
                 }
             }
         }
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -186,7 +186,7 @@ struct StatBox: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
 }
@@ -213,11 +213,11 @@ struct FilterChip: View {
     }
 }
 
-struct ReceiptRow: View {
+struct ReceiptsViewRow: View {
     let receipt: PaymentReceipt
     
     var body: some View {
-        NavigationLink(value: Route.paykitReceiptDetail(receipt)) {
+        NavigationLink(value: Route.paykitReceiptDetail(receipt.id)) {
             HStack {
                 Image(systemName: receipt.direction == .sent ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
                     .foregroundColor(receipt.direction == .sent ? .redAccent : .greenAccent)

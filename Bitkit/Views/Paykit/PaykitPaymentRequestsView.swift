@@ -97,7 +97,7 @@ struct PaykitPaymentRequestsView: View {
                 }
             }
         }
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -263,7 +263,7 @@ struct CreatePaymentRequestView: View {
                             .foregroundColor(.white)
                             .autocapitalization(.none)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                     }
                     
@@ -280,7 +280,7 @@ struct CreatePaymentRequestView: View {
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                                 .padding(12)
-                                .background(Color.gray900)
+                                .background(Color.gray6)
                                 .cornerRadius(8)
                                 .frame(width: 120)
                         }
@@ -294,7 +294,7 @@ struct CreatePaymentRequestView: View {
                         TextField("Description (optional)", text: $description)
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                         
                         HStack {

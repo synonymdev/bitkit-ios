@@ -38,7 +38,7 @@ struct ReceiptDetailView: View {
             BodyLText(receipt.formattedAmount)
                 .foregroundColor(receipt.direction == .sent ? .redAccent : .greenAccent)
             
-            StatusBadge(status: receipt.status)
+            ReceiptStatusBadge(status: receipt.status)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 24)
@@ -46,26 +46,26 @@ struct ReceiptDetailView: View {
     
     private var detailsCard: some View {
         VStack(alignment: .leading, spacing: 16) {
-            DetailRow(label: "Counterparty", value: receipt.displayName)
-            DetailRow(label: "Public Key", value: receipt.abbreviatedCounterparty)
-            DetailRow(label: "Payment Method", value: receipt.paymentMethod)
-            DetailRow(label: "Status", value: receipt.status.rawValue.capitalized)
-            DetailRow(label: "Created", value: formatDate(receipt.createdAt))
+            ReceiptDetailRow(label: "Counterparty", value: receipt.displayName)
+            ReceiptDetailRow(label: "Public Key", value: receipt.abbreviatedCounterparty)
+            ReceiptDetailRow(label: "Payment Method", value: receipt.paymentMethod)
+            ReceiptDetailRow(label: "Status", value: receipt.status.rawValue.capitalized)
+            ReceiptDetailRow(label: "Created", value: formatDate(receipt.createdAt))
             
             if let completedAt = receipt.completedAt {
-                DetailRow(label: "Completed", value: formatDate(completedAt))
+                ReceiptDetailRow(label: "Completed", value: formatDate(completedAt))
             }
             
             if let memo = receipt.memo, !memo.isEmpty {
-                DetailRow(label: "Memo", value: memo)
+                ReceiptDetailRow(label: "Memo", value: memo)
             }
             
             if let txId = receipt.txId, !txId.isEmpty {
-                DetailRow(label: "Transaction ID", value: txId)
+                ReceiptDetailRow(label: "Transaction ID", value: txId)
             }
         }
         .padding(16)
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -77,7 +77,7 @@ struct ReceiptDetailView: View {
     }
 }
 
-struct DetailRow: View {
+struct ReceiptDetailRow: View {
     let label: String
     let value: String
     
@@ -91,6 +91,28 @@ struct DetailRow: View {
             BodyMBoldText(value)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
+struct ReceiptStatusBadge: View {
+    let status: PaymentReceiptStatus
+    
+    var body: some View {
+        BodySText(status.rawValue.capitalized)
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(statusColor)
+            .cornerRadius(8)
+    }
+    
+    private var statusColor: Color {
+        switch status {
+        case .pending: return .orange
+        case .completed: return .greenAccent
+        case .failed: return .redAccent
+        case .refunded: return .blueAccent
         }
     }
 }

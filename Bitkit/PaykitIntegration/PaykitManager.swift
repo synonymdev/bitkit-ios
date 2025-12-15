@@ -32,20 +32,17 @@ public final class PaykitManager {
     
     private init() {
         let ldkNetwork = Env.network
-        switch ldkNetwork {
-        case .bitcoin:
+        if ldkNetwork == .bitcoin {
             self.bitcoinNetwork = .mainnet
             self.lightningNetwork = .mainnet
-        case .testnet:
+        } else if ldkNetwork == .testnet {
             self.bitcoinNetwork = .testnet
             self.lightningNetwork = .testnet
-        case .regtest:
+        } else if ldkNetwork == .regtest {
             self.bitcoinNetwork = .regtest
             self.lightningNetwork = .regtest
-        case .signet:
-            self.bitcoinNetwork = .testnet
-            self.lightningNetwork = .testnet
-        @unknown default:
+        } else {
+            // signet or unknown
             self.bitcoinNetwork = .testnet
             self.lightningNetwork = .testnet
         }

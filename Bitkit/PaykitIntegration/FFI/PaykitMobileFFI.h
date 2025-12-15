@@ -24,12 +24,10 @@
 
 typedef struct RustBuffer
 {
-    int32_t capacity;
-    int32_t len;
+    uint64_t capacity;
+    uint64_t len;
     uint8_t *_Nullable data;
 } RustBuffer;
-
-typedef int32_t (*ForeignCallback)(uint64_t, int32_t, const uint8_t *_Nonnull, int32_t, RustBuffer *_Nonnull);
 
 typedef struct ForeignBytes
 {
@@ -46,935 +44,2428 @@ typedef struct RustCallStatus {
 // ⚠️ Attention: If you change this #else block (ending in `#endif // def UNIFFI_SHARED_H`) you *must* ⚠️
 // ⚠️ increment the version suffix in all instances of UNIFFI_SHARED_HEADER_V4 in this file.           ⚠️
 #endif // def UNIFFI_SHARED_H
+#ifndef UNIFFI_FFIDEF_RUST_FUTURE_CONTINUATION_CALLBACK
+#define UNIFFI_FFIDEF_RUST_FUTURE_CONTINUATION_CALLBACK
+typedef void (*UniffiRustFutureContinuationCallback)(uint64_t, int8_t
+    );
 
-// Continuation callback for UniFFI Futures
-typedef void (*UniFfiRustFutureContinuation)(void * _Nonnull, int8_t);
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_FREE
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_FREE
+typedef void (*UniffiForeignFutureFree)(uint64_t
+    );
 
-// Scaffolding functions
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_FREE
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_FREE
+typedef void (*UniffiCallbackInterfaceFree)(uint64_t
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE
+typedef struct UniffiForeignFuture {
+    uint64_t handle;
+    UniffiForeignFutureFree _Nonnull free;
+} UniffiForeignFuture;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U8
+typedef struct UniffiForeignFutureStructU8 {
+    uint8_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructU8;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U8
+typedef void (*UniffiForeignFutureCompleteU8)(uint64_t, UniffiForeignFutureStructU8
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I8
+typedef struct UniffiForeignFutureStructI8 {
+    int8_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructI8;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I8
+typedef void (*UniffiForeignFutureCompleteI8)(uint64_t, UniffiForeignFutureStructI8
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U16
+typedef struct UniffiForeignFutureStructU16 {
+    uint16_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructU16;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U16
+typedef void (*UniffiForeignFutureCompleteU16)(uint64_t, UniffiForeignFutureStructU16
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I16
+typedef struct UniffiForeignFutureStructI16 {
+    int16_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructI16;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I16
+typedef void (*UniffiForeignFutureCompleteI16)(uint64_t, UniffiForeignFutureStructI16
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U32
+typedef struct UniffiForeignFutureStructU32 {
+    uint32_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructU32;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U32
+typedef void (*UniffiForeignFutureCompleteU32)(uint64_t, UniffiForeignFutureStructU32
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I32
+typedef struct UniffiForeignFutureStructI32 {
+    int32_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructI32;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I32
+typedef void (*UniffiForeignFutureCompleteI32)(uint64_t, UniffiForeignFutureStructI32
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U64
+typedef struct UniffiForeignFutureStructU64 {
+    uint64_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructU64;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U64
+typedef void (*UniffiForeignFutureCompleteU64)(uint64_t, UniffiForeignFutureStructU64
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I64
+typedef struct UniffiForeignFutureStructI64 {
+    int64_t returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructI64;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I64
+typedef void (*UniffiForeignFutureCompleteI64)(uint64_t, UniffiForeignFutureStructI64
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F32
+typedef struct UniffiForeignFutureStructF32 {
+    float returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructF32;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F32
+typedef void (*UniffiForeignFutureCompleteF32)(uint64_t, UniffiForeignFutureStructF32
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F64
+typedef struct UniffiForeignFutureStructF64 {
+    double returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructF64;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F64
+typedef void (*UniffiForeignFutureCompleteF64)(uint64_t, UniffiForeignFutureStructF64
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_POINTER
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_POINTER
+typedef struct UniffiForeignFutureStructPointer {
+    void*_Nonnull returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructPointer;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_POINTER
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_POINTER
+typedef void (*UniffiForeignFutureCompletePointer)(uint64_t, UniffiForeignFutureStructPointer
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_RUST_BUFFER
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_RUST_BUFFER
+typedef struct UniffiForeignFutureStructRustBuffer {
+    RustBuffer returnValue;
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructRustBuffer;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_RUST_BUFFER
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_RUST_BUFFER
+typedef void (*UniffiForeignFutureCompleteRustBuffer)(uint64_t, UniffiForeignFutureStructRustBuffer
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_VOID
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_VOID
+typedef struct UniffiForeignFutureStructVoid {
+    RustCallStatus callStatus;
+} UniffiForeignFutureStructVoid;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_VOID
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_VOID
+typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStructVoid
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD0
+typedef void (*UniffiCallbackInterfaceBitcoinExecutorFfiMethod0)(uint64_t, RustBuffer, uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD1
+typedef void (*UniffiCallbackInterfaceBitcoinExecutorFfiMethod1)(uint64_t, RustBuffer, uint64_t, uint32_t, uint64_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD2
+typedef void (*UniffiCallbackInterfaceBitcoinExecutorFfiMethod2)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI_METHOD3
+typedef void (*UniffiCallbackInterfaceBitcoinExecutorFfiMethod3)(uint64_t, RustBuffer, RustBuffer, uint64_t, int8_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD0
+typedef void (*UniffiCallbackInterfaceLightningExecutorFfiMethod0)(uint64_t, RustBuffer, RustBuffer, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD1
+typedef void (*UniffiCallbackInterfaceLightningExecutorFfiMethod1)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD2
+typedef void (*UniffiCallbackInterfaceLightningExecutorFfiMethod2)(uint64_t, RustBuffer, uint64_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD3
+typedef void (*UniffiCallbackInterfaceLightningExecutorFfiMethod3)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD4
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI_METHOD4
+typedef void (*UniffiCallbackInterfaceLightningExecutorFfiMethod4)(uint64_t, RustBuffer, RustBuffer, int8_t* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD0
+typedef void (*UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod0)(uint64_t, RustBuffer, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD1
+typedef void (*UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod1)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD2
+typedef void (*UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod2)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK_METHOD3
+typedef void (*UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod3)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK_METHOD0
+typedef void (*UniffiCallbackInterfacePubkyUnauthenticatedStorageCallbackMethod0)(uint64_t, RustBuffer, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK_METHOD1
+typedef void (*UniffiCallbackInterfacePubkyUnauthenticatedStorageCallbackMethod1)(uint64_t, RustBuffer, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_RECEIPT_GENERATOR_CALLBACK_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_RECEIPT_GENERATOR_CALLBACK_METHOD0
+typedef void (*UniffiCallbackInterfaceReceiptGeneratorCallbackMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BITCOIN_EXECUTOR_FFI
+typedef struct UniffiVTableCallbackInterfaceBitcoinExecutorFfi {
+    UniffiCallbackInterfaceBitcoinExecutorFfiMethod0 _Nonnull sendToAddress;
+    UniffiCallbackInterfaceBitcoinExecutorFfiMethod1 _Nonnull estimateFee;
+    UniffiCallbackInterfaceBitcoinExecutorFfiMethod2 _Nonnull getTransaction;
+    UniffiCallbackInterfaceBitcoinExecutorFfiMethod3 _Nonnull verifyTransaction;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceBitcoinExecutorFfi;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LIGHTNING_EXECUTOR_FFI
+typedef struct UniffiVTableCallbackInterfaceLightningExecutorFfi {
+    UniffiCallbackInterfaceLightningExecutorFfiMethod0 _Nonnull payInvoice;
+    UniffiCallbackInterfaceLightningExecutorFfiMethod1 _Nonnull decodeInvoice;
+    UniffiCallbackInterfaceLightningExecutorFfiMethod2 _Nonnull estimateFee;
+    UniffiCallbackInterfaceLightningExecutorFfiMethod3 _Nonnull getPayment;
+    UniffiCallbackInterfaceLightningExecutorFfiMethod4 _Nonnull verifyPreimage;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceLightningExecutorFfi;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PUBKY_AUTHENTICATED_STORAGE_CALLBACK
+typedef struct UniffiVTableCallbackInterfacePubkyAuthenticatedStorageCallback {
+    UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod0 _Nonnull put;
+    UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod1 _Nonnull get;
+    UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod2 _Nonnull delete;
+    UniffiCallbackInterfacePubkyAuthenticatedStorageCallbackMethod3 _Nonnull list;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfacePubkyAuthenticatedStorageCallback;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PUBKY_UNAUTHENTICATED_STORAGE_CALLBACK
+typedef struct UniffiVTableCallbackInterfacePubkyUnauthenticatedStorageCallback {
+    UniffiCallbackInterfacePubkyUnauthenticatedStorageCallbackMethod0 _Nonnull get;
+    UniffiCallbackInterfacePubkyUnauthenticatedStorageCallbackMethod1 _Nonnull list;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfacePubkyUnauthenticatedStorageCallback;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_RECEIPT_GENERATOR_CALLBACK
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_RECEIPT_GENERATOR_CALLBACK
+typedef struct UniffiVTableCallbackInterfaceReceiptGeneratorCallback {
+    UniffiCallbackInterfaceReceiptGeneratorCallbackMethod0 _Nonnull generateReceipt;
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+} UniffiVTableCallbackInterfaceReceiptGeneratorCallback;
+
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_AUTHENTICATEDTRANSPORTFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_AUTHENTICATEDTRANSPORTFFI
 void*_Nonnull uniffi_paykit_mobile_fn_clone_authenticatedtransportffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_AUTHENTICATEDTRANSPORTFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_AUTHENTICATEDTRANSPORTFFI
 void uniffi_paykit_mobile_fn_free_authenticatedtransportffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_authenticatedtransportffi_from_callback(uint64_t callback, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_SESSION_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_SESSION_JSON
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_authenticatedtransportffi_from_session_json(RustBuffer session_json, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_NEW_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_NEW_MOCK
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_authenticatedtransportffi_new_mock(RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_DELETE
 void uniffi_paykit_mobile_fn_method_authenticatedtransportffi_delete(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_GET
 RustBuffer uniffi_paykit_mobile_fn_method_authenticatedtransportffi_get(void*_Nonnull ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_IS_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_IS_MOCK
 int8_t uniffi_paykit_mobile_fn_method_authenticatedtransportffi_is_mock(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_LIST
 RustBuffer uniffi_paykit_mobile_fn_method_authenticatedtransportffi_list(void*_Nonnull ptr, RustBuffer prefix, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_OWNER_PUBKEY
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_OWNER_PUBKEY
 RustBuffer uniffi_paykit_mobile_fn_method_authenticatedtransportffi_owner_pubkey(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_PUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_AUTHENTICATEDTRANSPORTFFI_PUT
 void uniffi_paykit_mobile_fn_method_authenticatedtransportffi_put(void*_Nonnull ptr, RustBuffer path, RustBuffer content, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_CONTACTCACHEFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_CONTACTCACHEFFI
 void*_Nonnull uniffi_paykit_mobile_fn_clone_contactcacheffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_CONTACTCACHEFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_CONTACTCACHEFFI
 void uniffi_paykit_mobile_fn_free_contactcacheffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_CONTACTCACHEFFI_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_CONTACTCACHEFFI_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_contactcacheffi_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_ADD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_ADD
 void uniffi_paykit_mobile_fn_method_contactcacheffi_add(void*_Nonnull ptr, RustBuffer pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_ADD_WITH_NAME
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_ADD_WITH_NAME
 void uniffi_paykit_mobile_fn_method_contactcacheffi_add_with_name(void*_Nonnull ptr, RustBuffer pubkey, RustBuffer name, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_CLEAR
 void uniffi_paykit_mobile_fn_method_contactcacheffi_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_CONTAINS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_CONTAINS
 int8_t uniffi_paykit_mobile_fn_method_contactcacheffi_contains(void*_Nonnull ptr, RustBuffer pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_COUNT
 uint32_t uniffi_paykit_mobile_fn_method_contactcacheffi_count(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_GET
 RustBuffer uniffi_paykit_mobile_fn_method_contactcacheffi_get(void*_Nonnull ptr, RustBuffer pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_GET_ALL
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_GET_ALL
 RustBuffer uniffi_paykit_mobile_fn_method_contactcacheffi_get_all(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_REMOVE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_REMOVE
 void uniffi_paykit_mobile_fn_method_contactcacheffi_remove(void*_Nonnull ptr, RustBuffer pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_SYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_CONTACTCACHEFFI_SYNC
 RustBuffer uniffi_paykit_mobile_fn_method_contactcacheffi_sync(void*_Nonnull ptr, RustBuffer remote_pubkeys, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_DIRECTORYOPERATIONSASYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_DIRECTORYOPERATIONSASYNC
 void*_Nonnull uniffi_paykit_mobile_fn_clone_directoryoperationsasync(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_DIRECTORYOPERATIONSASYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_DIRECTORYOPERATIONSASYNC
 void uniffi_paykit_mobile_fn_free_directoryoperationsasync(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_DIRECTORYOPERATIONSASYNC_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_DIRECTORYOPERATIONSASYNC_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_directoryoperationsasync_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_ADD_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_ADD_CONTACT
 void uniffi_paykit_mobile_fn_method_directoryoperationsasync_add_contact(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer contact_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_KNOWN_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_KNOWN_CONTACTS
 RustBuffer uniffi_paykit_mobile_fn_method_directoryoperationsasync_fetch_known_contacts(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_PAYMENT_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_method_directoryoperationsasync_fetch_payment_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_SUPPORTED_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_SUPPORTED_PAYMENTS
 RustBuffer uniffi_paykit_mobile_fn_method_directoryoperationsasync_fetch_supported_payments(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_LIST_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_LIST_CONTACTS
 RustBuffer uniffi_paykit_mobile_fn_method_directoryoperationsasync_list_contacts(void*_Nonnull ptr, void*_Nonnull transport, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_PUBLISH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_PUBLISH_PAYMENT_ENDPOINT
 void uniffi_paykit_mobile_fn_method_directoryoperationsasync_publish_payment_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer method_id, RustBuffer endpoint_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_CONTACT
 void uniffi_paykit_mobile_fn_method_directoryoperationsasync_remove_contact(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer contact_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_PAYMENT_ENDPOINT
 void uniffi_paykit_mobile_fn_method_directoryoperationsasync_remove_payment_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_EXECUTORASYNCBRIDGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_EXECUTORASYNCBRIDGE
 void*_Nonnull uniffi_paykit_mobile_fn_clone_executorasyncbridge(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_EXECUTORASYNCBRIDGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_EXECUTORASYNCBRIDGE
 void uniffi_paykit_mobile_fn_free_executorasyncbridge(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_EXECUTORASYNCBRIDGE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_EXECUTORASYNCBRIDGE_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_executorasyncbridge_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_EXECUTORASYNCBRIDGE_WITH_TIMEOUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_EXECUTORASYNCBRIDGE_WITH_TIMEOUT
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_executorasyncbridge_with_timeout(uint64_t timeout_ms, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_EXECUTORASYNCBRIDGE_DEFAULT_TIMEOUT_MS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_EXECUTORASYNCBRIDGE_DEFAULT_TIMEOUT_MS
 uint64_t uniffi_paykit_mobile_fn_method_executorasyncbridge_default_timeout_ms(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITCLIENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITCLIENT
 void*_Nonnull uniffi_paykit_mobile_fn_clone_paykitclient(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITCLIENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITCLIENT
 void uniffi_paykit_mobile_fn_free_paykitclient(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITCLIENT_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITCLIENT_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_paykitclient_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITCLIENT_NEW_WITH_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITCLIENT_NEW_WITH_NETWORK
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_paykitclient_new_with_network(RustBuffer bitcoin_network, RustBuffer lightning_network, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_ADD_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_ADD_CONTACT
 void uniffi_paykit_mobile_fn_method_paykitclient_add_contact(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer contact_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_BITCOIN_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_BITCOIN_NETWORK
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_bitcoin_network(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CALCULATE_PRORATION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CALCULATE_PRORATION
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_calculate_proration(void*_Nonnull ptr, int64_t current_amount_sats, int64_t new_amount_sats, int64_t period_start, int64_t period_end, int64_t change_date, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CHECK_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CHECK_HEALTH
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_check_health(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_NOISE_ERROR_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_NOISE_ERROR_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_noise_error_message(void*_Nonnull ptr, RustBuffer code, RustBuffer message, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_PAYMENT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_PAYMENT_REQUEST
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_payment_request(void*_Nonnull ptr, RustBuffer from_pubkey, RustBuffer to_pubkey, int64_t amount_sats, RustBuffer currency, RustBuffer method_id, RustBuffer description, RustBuffer expires_in_secs, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_receipt(void*_Nonnull ptr, RustBuffer payer, RustBuffer payee, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT_CONFIRMATION_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT_CONFIRMATION_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_receipt_confirmation_message(void*_Nonnull ptr, RustBuffer receipt_id, RustBuffer payer_pubkey, RustBuffer payee_pubkey, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustBuffer signature, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT_REQUEST_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_RECEIPT_REQUEST_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_receipt_request_message(void*_Nonnull ptr, RustBuffer receipt_id, RustBuffer payer_pubkey, RustBuffer payee_pubkey, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_SUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_CREATE_SUBSCRIPTION
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_create_subscription(void*_Nonnull ptr, RustBuffer subscriber, RustBuffer provider, RustBuffer terms, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_DAYS_REMAINING_IN_PERIOD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_DAYS_REMAINING_IN_PERIOD
 uint32_t uniffi_paykit_mobile_fn_method_paykitclient_days_remaining_in_period(void*_Nonnull ptr, int64_t period_end, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_DISCOVER_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_DISCOVER_NOISE_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_discover_noise_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer recipient_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXECUTE_PAYMENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXECUTE_PAYMENT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_execute_payment(void*_Nonnull ptr, RustBuffer method_id, RustBuffer endpoint, uint64_t amount_sats, RustBuffer metadata_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXTRACT_KEY_FROM_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXTRACT_KEY_FROM_QR
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_extract_key_from_qr(void*_Nonnull ptr, RustBuffer scanned_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXTRACT_METHOD_FROM_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_EXTRACT_METHOD_FROM_QR
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_extract_method_from_qr(void*_Nonnull ptr, RustBuffer scanned_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_KNOWN_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_KNOWN_CONTACTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_fetch_known_contacts(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_PAYMENT_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_fetch_payment_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_SUPPORTED_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_FETCH_SUPPORTED_PAYMENTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_fetch_supported_payments(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer owner_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GENERATE_PAYMENT_PROOF
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GENERATE_PAYMENT_PROOF
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_generate_payment_proof(void*_Nonnull ptr, RustBuffer method_id, RustBuffer execution_data_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_HEALTH_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_HEALTH_STATUS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_get_health_status(void*_Nonnull ptr, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_IN_PROGRESS_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_IN_PROGRESS_PAYMENTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_get_in_progress_payments(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_PAYMENT_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_GET_PAYMENT_STATUS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_get_payment_status(void*_Nonnull ptr, RustBuffer receipt_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_HAS_BITCOIN_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_HAS_BITCOIN_EXECUTOR
 int8_t uniffi_paykit_mobile_fn_method_paykitclient_has_bitcoin_executor(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_HAS_LIGHTNING_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_HAS_LIGHTNING_EXECUTOR
 int8_t uniffi_paykit_mobile_fn_method_paykitclient_has_lightning_executor(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_IS_METHOD_USABLE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_IS_METHOD_USABLE
 int8_t uniffi_paykit_mobile_fn_method_paykitclient_is_method_usable(void*_Nonnull ptr, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_IS_PAYKIT_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_IS_PAYKIT_QR
 int8_t uniffi_paykit_mobile_fn_method_paykitclient_is_paykit_qr(void*_Nonnull ptr, RustBuffer scanned_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIGHTNING_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIGHTNING_NETWORK
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_lightning_network(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIST_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIST_CONTACTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_list_contacts(void*_Nonnull ptr, void*_Nonnull transport, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIST_METHODS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_LIST_METHODS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_list_methods(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_NOISE_PAYMENT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_NOISE_PAYMENT_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_parse_noise_payment_message(void*_Nonnull ptr, RustBuffer json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_RECEIPT_METADATA
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_RECEIPT_METADATA
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_parse_receipt_metadata(void*_Nonnull ptr, RustBuffer metadata_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_SCANNED_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PARSE_SCANNED_QR
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_parse_scanned_qr(void*_Nonnull ptr, RustBuffer scanned_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PUBLISH_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PUBLISH_NOISE_ENDPOINT
 void uniffi_paykit_mobile_fn_method_paykitclient_publish_noise_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer host, uint16_t port, RustBuffer noise_pubkey, RustBuffer metadata, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PUBLISH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_PUBLISH_PAYMENT_ENDPOINT
 void uniffi_paykit_mobile_fn_method_paykitclient_publish_payment_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer method_id, RustBuffer endpoint_data, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REGISTER_BITCOIN_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REGISTER_BITCOIN_EXECUTOR
 void uniffi_paykit_mobile_fn_method_paykitclient_register_bitcoin_executor(void*_Nonnull ptr, uint64_t executor, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REGISTER_LIGHTNING_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REGISTER_LIGHTNING_EXECUTOR
 void uniffi_paykit_mobile_fn_method_paykitclient_register_lightning_executor(void*_Nonnull ptr, uint64_t executor, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_CONTACT
 void uniffi_paykit_mobile_fn_method_paykitclient_remove_contact(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer contact_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_NOISE_ENDPOINT
 void uniffi_paykit_mobile_fn_method_paykitclient_remove_noise_endpoint(void*_Nonnull ptr, void*_Nonnull transport, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_PAYMENT_ENDPOINT_FROM_DIRECTORY
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_REMOVE_PAYMENT_ENDPOINT_FROM_DIRECTORY
 void uniffi_paykit_mobile_fn_method_paykitclient_remove_payment_endpoint_from_directory(void*_Nonnull ptr, void*_Nonnull transport, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_SELECT_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_SELECT_METHOD
 RustBuffer uniffi_paykit_mobile_fn_method_paykitclient_select_method(void*_Nonnull ptr, RustBuffer supported_methods, uint64_t amount_sats, RustBuffer preferences, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_VALIDATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITCLIENT_VALIDATE_ENDPOINT
 int8_t uniffi_paykit_mobile_fn_method_paykitclient_validate_endpoint(void*_Nonnull ptr, RustBuffer method_id, RustBuffer endpoint, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITINTERACTIVEMANAGERFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITINTERACTIVEMANAGERFFI
 void*_Nonnull uniffi_paykit_mobile_fn_clone_paykitinteractivemanagerffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITINTERACTIVEMANAGERFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITINTERACTIVEMANAGERFFI
 void uniffi_paykit_mobile_fn_free_paykitinteractivemanagerffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITINTERACTIVEMANAGERFFI_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITINTERACTIVEMANAGERFFI_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_paykitinteractivemanagerffi_new(void*_Nonnull store, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_ENDPOINT_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_ENDPOINT_OFFER
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_create_endpoint_offer(void*_Nonnull ptr, RustBuffer method_id, RustBuffer endpoint, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_PAYMENT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_PAYMENT_REQUEST
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_create_payment_request(void*_Nonnull ptr, RustBuffer payer, RustBuffer payee, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustBuffer metadata_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_PRIVATE_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_get_private_endpoint(void*_Nonnull ptr, RustBuffer peer, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_RECEIPT
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_get_receipt(void*_Nonnull ptr, RustBuffer receipt_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_STORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_STORE
 void*_Nonnull uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_get_store(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_handle_message(void*_Nonnull ptr, RustBuffer message_json, RustBuffer peer_pubkey, RustBuffer my_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_PAYMENT_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_PAYMENT_RESPONSE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_handle_payment_response(void*_Nonnull ptr, RustBuffer response_json, RustBuffer original_receipt_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_PRIVATE_ENDPOINTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_PRIVATE_ENDPOINTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_list_private_endpoints(void*_Nonnull ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_RECEIPTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_RECEIPTS
 RustBuffer uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_list_receipts(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_SET_GENERATOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITINTERACTIVEMANAGERFFI_SET_GENERATOR
 void uniffi_paykit_mobile_fn_method_paykitinteractivemanagerffi_set_generator(void*_Nonnull ptr, uint64_t generator, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITMESSAGEBUILDER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_PAYKITMESSAGEBUILDER
 void*_Nonnull uniffi_paykit_mobile_fn_clone_paykitmessagebuilder(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITMESSAGEBUILDER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_PAYKITMESSAGEBUILDER
 void uniffi_paykit_mobile_fn_free_paykitmessagebuilder(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITMESSAGEBUILDER_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_PAYKITMESSAGEBUILDER_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_paykitmessagebuilder_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ACK
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_create_ack(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ENDPOINT_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ENDPOINT_OFFER
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_create_endpoint_offer(void*_Nonnull ptr, RustBuffer method_id, RustBuffer endpoint, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_ERROR
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_create_error(void*_Nonnull ptr, RustBuffer code, RustBuffer message, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_CONFIRM
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_create_receipt_confirm(void*_Nonnull ptr, RustBuffer receipt, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_REQUEST
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_create_receipt_request(void*_Nonnull ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_GET_MESSAGE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_GET_MESSAGE_TYPE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_get_message_type(void*_Nonnull ptr, RustBuffer message_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_PARSE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_PAYKITMESSAGEBUILDER_PARSE_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_method_paykitmessagebuilder_parse_message(void*_Nonnull ptr, RustBuffer message_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_RECEIPTSTORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_RECEIPTSTORE
 void*_Nonnull uniffi_paykit_mobile_fn_clone_receiptstore(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_RECEIPTSTORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_RECEIPTSTORE
 void uniffi_paykit_mobile_fn_free_receiptstore(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_RECEIPTSTORE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_RECEIPTSTORE_NEW
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_receiptstore_new(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_CLEAR
 void uniffi_paykit_mobile_fn_method_receiptstore_clear(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_DELETE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_DELETE_RECEIPT
 void uniffi_paykit_mobile_fn_method_receiptstore_delete_receipt(void*_Nonnull ptr, RustBuffer receipt_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_EXPORT_RECEIPTS_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_EXPORT_RECEIPTS_JSON
 RustBuffer uniffi_paykit_mobile_fn_method_receiptstore_export_receipts_json(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_GET_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_GET_PRIVATE_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_method_receiptstore_get_private_endpoint(void*_Nonnull ptr, RustBuffer peer, RustBuffer method_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_GET_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_GET_RECEIPT
 RustBuffer uniffi_paykit_mobile_fn_method_receiptstore_get_receipt(void*_Nonnull ptr, RustBuffer receipt_id, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_IMPORT_RECEIPTS_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_IMPORT_RECEIPTS_JSON
 uint32_t uniffi_paykit_mobile_fn_method_receiptstore_import_receipts_json(void*_Nonnull ptr, RustBuffer json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_LIST_PRIVATE_ENDPOINTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_LIST_PRIVATE_ENDPOINTS
 RustBuffer uniffi_paykit_mobile_fn_method_receiptstore_list_private_endpoints(void*_Nonnull ptr, RustBuffer peer, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_LIST_RECEIPTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_LIST_RECEIPTS
 RustBuffer uniffi_paykit_mobile_fn_method_receiptstore_list_receipts(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_SAVE_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_SAVE_PRIVATE_ENDPOINT
 void uniffi_paykit_mobile_fn_method_receiptstore_save_private_endpoint(void*_Nonnull ptr, RustBuffer peer, RustBuffer offer, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_SAVE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_RECEIPTSTORE_SAVE_RECEIPT
 void uniffi_paykit_mobile_fn_method_receiptstore_save_receipt(void*_Nonnull ptr, RustBuffer receipt, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_UNAUTHENTICATEDTRANSPORTFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CLONE_UNAUTHENTICATEDTRANSPORTFFI
 void*_Nonnull uniffi_paykit_mobile_fn_clone_unauthenticatedtransportffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_UNAUTHENTICATEDTRANSPORTFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FREE_UNAUTHENTICATEDTRANSPORTFFI
 void uniffi_paykit_mobile_fn_free_unauthenticatedtransportffi(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_AUTHENTICATED
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_AUTHENTICATED
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_unauthenticatedtransportffi_from_authenticated(void*_Nonnull auth, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_unauthenticatedtransportffi_from_callback(uint64_t callback, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CONFIG_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CONFIG_JSON
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_unauthenticatedtransportffi_from_config_json(RustBuffer config_json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_NEW_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_NEW_MOCK
 void*_Nonnull uniffi_paykit_mobile_fn_constructor_unauthenticatedtransportffi_new_mock(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_GET
 RustBuffer uniffi_paykit_mobile_fn_method_unauthenticatedtransportffi_get(void*_Nonnull ptr, RustBuffer owner_pubkey, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_IS_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_IS_MOCK
 int8_t uniffi_paykit_mobile_fn_method_unauthenticatedtransportffi_is_mock(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_METHOD_UNAUTHENTICATEDTRANSPORTFFI_LIST
 RustBuffer uniffi_paykit_mobile_fn_method_unauthenticatedtransportffi_list(void*_Nonnull ptr, RustBuffer owner_pubkey, RustBuffer prefix, RustCallStatus *_Nonnull out_status
 );
-void uniffi_paykit_mobile_fn_init_callback_bitcoinexecutorffi(ForeignCallback _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_BITCOINEXECUTORFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_BITCOINEXECUTORFFI
+void uniffi_paykit_mobile_fn_init_callback_vtable_bitcoinexecutorffi(const UniffiVTableCallbackInterfaceBitcoinExecutorFfi* _Nonnull vtable
 );
-void uniffi_paykit_mobile_fn_init_callback_lightningexecutorffi(ForeignCallback _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_LIGHTNINGEXECUTORFFI
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_LIGHTNINGEXECUTORFFI
+void uniffi_paykit_mobile_fn_init_callback_vtable_lightningexecutorffi(const UniffiVTableCallbackInterfaceLightningExecutorFfi* _Nonnull vtable
 );
-void uniffi_paykit_mobile_fn_init_callback_pubkyauthenticatedstoragecallback(ForeignCallback _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_PUBKYAUTHENTICATEDSTORAGECALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_PUBKYAUTHENTICATEDSTORAGECALLBACK
+void uniffi_paykit_mobile_fn_init_callback_vtable_pubkyauthenticatedstoragecallback(const UniffiVTableCallbackInterfacePubkyAuthenticatedStorageCallback* _Nonnull vtable
 );
-void uniffi_paykit_mobile_fn_init_callback_pubkyunauthenticatedstoragecallback(ForeignCallback _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_PUBKYUNAUTHENTICATEDSTORAGECALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_PUBKYUNAUTHENTICATEDSTORAGECALLBACK
+void uniffi_paykit_mobile_fn_init_callback_vtable_pubkyunauthenticatedstoragecallback(const UniffiVTableCallbackInterfacePubkyUnauthenticatedStorageCallback* _Nonnull vtable
 );
-void uniffi_paykit_mobile_fn_init_callback_receiptgeneratorcallback(ForeignCallback _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_RECEIPTGENERATORCALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_INIT_CALLBACK_VTABLE_RECEIPTGENERATORCALLBACK
+void uniffi_paykit_mobile_fn_init_callback_vtable_receiptgeneratorcallback(const UniffiVTableCallbackInterfaceReceiptGeneratorCallback* _Nonnull vtable
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_CONTACT_CACHE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_CONTACT_CACHE
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_contact_cache(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_DIRECTORY_OPERATIONS_ASYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_DIRECTORY_OPERATIONS_ASYNC
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_directory_operations_async(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_ERROR_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_ERROR_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_create_error_message(RustBuffer code, RustBuffer message, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_executor_async_bridge(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE_WITH_TIMEOUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE_WITH_TIMEOUT
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_executor_async_bridge_with_timeout(uint64_t timeout_ms, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_INTERACTIVE_MANAGER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_INTERACTIVE_MANAGER
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_interactive_manager(void*_Nonnull store, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_MESSAGE_BUILDER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_MESSAGE_BUILDER
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_message_builder(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_NOISE_SERVER_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_NOISE_SERVER_CONFIG
 RustBuffer uniffi_paykit_mobile_fn_func_create_noise_server_config(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_NOISE_SERVER_CONFIG_WITH_PORT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_NOISE_SERVER_CONFIG_WITH_PORT
 RustBuffer uniffi_paykit_mobile_fn_func_create_noise_server_config_with_port(uint16_t port, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_PAYKIT_CLIENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_PAYKIT_CLIENT
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_paykit_client(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_PRIVATE_ENDPOINT_OFFER_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_PRIVATE_ENDPOINT_OFFER_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_create_private_endpoint_offer_message(RustBuffer method_id, RustBuffer endpoint, RustBuffer expires_in_secs, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_CONFIRMATION_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_CONFIRMATION_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_create_receipt_confirmation_message(RustBuffer receipt_id, RustBuffer payer_pubkey, RustBuffer payee_pubkey, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustBuffer signature, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_REQUEST_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_REQUEST_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_create_receipt_request_message(RustBuffer receipt_id, RustBuffer payer_pubkey, RustBuffer payee_pubkey, RustBuffer method_id, RustBuffer amount, RustBuffer currency, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_STORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_CREATE_RECEIPT_STORE
 void*_Nonnull uniffi_paykit_mobile_fn_func_create_receipt_store(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_DERIVE_X25519_KEYPAIR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_DERIVE_X25519_KEYPAIR
 RustBuffer uniffi_paykit_mobile_fn_func_derive_x25519_keypair(RustBuffer ed25519_secret_hex, RustBuffer device_id, uint32_t epoch, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_DISCOVER_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_DISCOVER_NOISE_ENDPOINT
 RustBuffer uniffi_paykit_mobile_fn_func_discover_noise_endpoint(void*_Nonnull transport, RustBuffer recipient_pubkey, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_ED25519_KEYPAIR_FROM_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_ED25519_KEYPAIR_FROM_SECRET
 RustBuffer uniffi_paykit_mobile_fn_func_ed25519_keypair_from_secret(RustBuffer secret_key_hex, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_EXPORT_KEYPAIR_TO_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_EXPORT_KEYPAIR_TO_BACKUP
 RustBuffer uniffi_paykit_mobile_fn_func_export_keypair_to_backup(RustBuffer secret_key_hex, RustBuffer password, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_FORMAT_PUBLIC_KEY_Z32
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_FORMAT_PUBLIC_KEY_Z32
 RustBuffer uniffi_paykit_mobile_fn_func_format_public_key_z32(RustBuffer public_key_hex, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GENERATE_DEVICE_ID
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GENERATE_DEVICE_ID
 RustBuffer uniffi_paykit_mobile_fn_func_generate_device_id(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GENERATE_ED25519_KEYPAIR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GENERATE_ED25519_KEYPAIR
 RustBuffer uniffi_paykit_mobile_fn_func_generate_ed25519_keypair(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GET_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_GET_VERSION
 RustBuffer uniffi_paykit_mobile_fn_func_get_version(RustCallStatus *_Nonnull out_status
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_IMPORT_KEYPAIR_FROM_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_IMPORT_KEYPAIR_FROM_BACKUP
 RustBuffer uniffi_paykit_mobile_fn_func_import_keypair_from_backup(RustBuffer backup, RustBuffer password, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PARSE_PAYMENT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PARSE_PAYMENT_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_parse_payment_message(RustBuffer json, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PARSE_PUBLIC_KEY_Z32
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PARSE_PUBLIC_KEY_Z32
 RustBuffer uniffi_paykit_mobile_fn_func_parse_public_key_z32(RustBuffer public_key_z32, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PUBLISH_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_PUBLISH_NOISE_ENDPOINT
 void uniffi_paykit_mobile_fn_func_publish_noise_endpoint(void*_Nonnull transport, RustBuffer host, uint16_t port, RustBuffer noise_pubkey, RustBuffer metadata, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_REMOVE_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_REMOVE_NOISE_ENDPOINT
 void uniffi_paykit_mobile_fn_func_remove_noise_endpoint(void*_Nonnull transport, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_SIGN_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_SIGN_MESSAGE
 RustBuffer uniffi_paykit_mobile_fn_func_sign_message(RustBuffer secret_key_hex, RustBuffer message, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_VERIFY_SIGNATURE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_FN_FUNC_VERIFY_SIGNATURE
 int8_t uniffi_paykit_mobile_fn_func_verify_signature(RustBuffer public_key_hex, RustBuffer message, RustBuffer signature_hex, RustCallStatus *_Nonnull out_status
 );
-RustBuffer ffi_paykit_mobile_rustbuffer_alloc(int32_t size, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_ALLOC
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_ALLOC
+RustBuffer ffi_paykit_mobile_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_FROM_BYTES
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_FROM_BYTES
 RustBuffer ffi_paykit_mobile_rustbuffer_from_bytes(ForeignBytes bytes, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_FREE
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_FREE
 void ffi_paykit_mobile_rustbuffer_free(RustBuffer buf, RustCallStatus *_Nonnull out_status
 );
-RustBuffer ffi_paykit_mobile_rustbuffer_reserve(RustBuffer buf, int32_t additional, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_RESERVE
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUSTBUFFER_RESERVE
+RustBuffer ffi_paykit_mobile_rustbuffer_reserve(RustBuffer buf, uint64_t additional, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_u8(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U8
+void ffi_paykit_mobile_rust_future_poll_u8(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_u8(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U8
+void ffi_paykit_mobile_rust_future_cancel_u8(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_u8(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U8
+void ffi_paykit_mobile_rust_future_free_u8(uint64_t handle
 );
-uint8_t ffi_paykit_mobile_rust_future_complete_u8(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U8
+uint8_t ffi_paykit_mobile_rust_future_complete_u8(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_i8(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I8
+void ffi_paykit_mobile_rust_future_poll_i8(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_i8(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I8
+void ffi_paykit_mobile_rust_future_cancel_i8(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_i8(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I8
+void ffi_paykit_mobile_rust_future_free_i8(uint64_t handle
 );
-int8_t ffi_paykit_mobile_rust_future_complete_i8(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I8
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I8
+int8_t ffi_paykit_mobile_rust_future_complete_i8(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_u16(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U16
+void ffi_paykit_mobile_rust_future_poll_u16(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_u16(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U16
+void ffi_paykit_mobile_rust_future_cancel_u16(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_u16(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U16
+void ffi_paykit_mobile_rust_future_free_u16(uint64_t handle
 );
-uint16_t ffi_paykit_mobile_rust_future_complete_u16(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U16
+uint16_t ffi_paykit_mobile_rust_future_complete_u16(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_i16(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I16
+void ffi_paykit_mobile_rust_future_poll_i16(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_i16(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I16
+void ffi_paykit_mobile_rust_future_cancel_i16(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_i16(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I16
+void ffi_paykit_mobile_rust_future_free_i16(uint64_t handle
 );
-int16_t ffi_paykit_mobile_rust_future_complete_i16(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I16
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I16
+int16_t ffi_paykit_mobile_rust_future_complete_i16(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_u32(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U32
+void ffi_paykit_mobile_rust_future_poll_u32(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_u32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U32
+void ffi_paykit_mobile_rust_future_cancel_u32(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_u32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U32
+void ffi_paykit_mobile_rust_future_free_u32(uint64_t handle
 );
-uint32_t ffi_paykit_mobile_rust_future_complete_u32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U32
+uint32_t ffi_paykit_mobile_rust_future_complete_u32(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_i32(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I32
+void ffi_paykit_mobile_rust_future_poll_i32(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_i32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I32
+void ffi_paykit_mobile_rust_future_cancel_i32(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_i32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I32
+void ffi_paykit_mobile_rust_future_free_i32(uint64_t handle
 );
-int32_t ffi_paykit_mobile_rust_future_complete_i32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I32
+int32_t ffi_paykit_mobile_rust_future_complete_i32(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_u64(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_U64
+void ffi_paykit_mobile_rust_future_poll_u64(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_u64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_U64
+void ffi_paykit_mobile_rust_future_cancel_u64(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_u64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_U64
+void ffi_paykit_mobile_rust_future_free_u64(uint64_t handle
 );
-uint64_t ffi_paykit_mobile_rust_future_complete_u64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_U64
+uint64_t ffi_paykit_mobile_rust_future_complete_u64(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_i64(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_I64
+void ffi_paykit_mobile_rust_future_poll_i64(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_i64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_I64
+void ffi_paykit_mobile_rust_future_cancel_i64(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_i64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_I64
+void ffi_paykit_mobile_rust_future_free_i64(uint64_t handle
 );
-int64_t ffi_paykit_mobile_rust_future_complete_i64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_I64
+int64_t ffi_paykit_mobile_rust_future_complete_i64(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_f32(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_F32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_F32
+void ffi_paykit_mobile_rust_future_poll_f32(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_f32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_F32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_F32
+void ffi_paykit_mobile_rust_future_cancel_f32(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_f32(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_F32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_F32
+void ffi_paykit_mobile_rust_future_free_f32(uint64_t handle
 );
-float ffi_paykit_mobile_rust_future_complete_f32(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_F32
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_F32
+float ffi_paykit_mobile_rust_future_complete_f32(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_f64(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_F64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_F64
+void ffi_paykit_mobile_rust_future_poll_f64(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_f64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_F64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_F64
+void ffi_paykit_mobile_rust_future_cancel_f64(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_f64(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_F64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_F64
+void ffi_paykit_mobile_rust_future_free_f64(uint64_t handle
 );
-double ffi_paykit_mobile_rust_future_complete_f64(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_F64
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_F64
+double ffi_paykit_mobile_rust_future_complete_f64(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_pointer(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_POINTER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_POINTER
+void ffi_paykit_mobile_rust_future_poll_pointer(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_pointer(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_POINTER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_POINTER
+void ffi_paykit_mobile_rust_future_cancel_pointer(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_pointer(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_POINTER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_POINTER
+void ffi_paykit_mobile_rust_future_free_pointer(uint64_t handle
 );
-void*_Nonnull ffi_paykit_mobile_rust_future_complete_pointer(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_POINTER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_POINTER
+void*_Nonnull ffi_paykit_mobile_rust_future_complete_pointer(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_rust_buffer(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_RUST_BUFFER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_RUST_BUFFER
+void ffi_paykit_mobile_rust_future_poll_rust_buffer(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_rust_buffer(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_RUST_BUFFER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_RUST_BUFFER
+void ffi_paykit_mobile_rust_future_cancel_rust_buffer(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_rust_buffer(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_RUST_BUFFER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_RUST_BUFFER
+void ffi_paykit_mobile_rust_future_free_rust_buffer(uint64_t handle
 );
-RustBuffer ffi_paykit_mobile_rust_future_complete_rust_buffer(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_RUST_BUFFER
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_RUST_BUFFER
+RustBuffer ffi_paykit_mobile_rust_future_complete_rust_buffer(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
-void ffi_paykit_mobile_rust_future_poll_void(void* _Nonnull handle, UniFfiRustFutureContinuation _Nonnull callback, void* _Nonnull callback_data
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_VOID
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_POLL_VOID
+void ffi_paykit_mobile_rust_future_poll_void(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
 );
-void ffi_paykit_mobile_rust_future_cancel_void(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_VOID
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_CANCEL_VOID
+void ffi_paykit_mobile_rust_future_cancel_void(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_free_void(void* _Nonnull handle
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_VOID
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_FREE_VOID
+void ffi_paykit_mobile_rust_future_free_void(uint64_t handle
 );
-void ffi_paykit_mobile_rust_future_complete_void(void* _Nonnull handle, RustCallStatus *_Nonnull out_status
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_VOID
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_RUST_FUTURE_COMPLETE_VOID
+void ffi_paykit_mobile_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_CONTACT_CACHE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_CONTACT_CACHE
 uint16_t uniffi_paykit_mobile_checksum_func_create_contact_cache(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_DIRECTORY_OPERATIONS_ASYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_DIRECTORY_OPERATIONS_ASYNC
 uint16_t uniffi_paykit_mobile_checksum_func_create_directory_operations_async(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_ERROR_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_ERROR_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_create_error_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE
 uint16_t uniffi_paykit_mobile_checksum_func_create_executor_async_bridge(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE_WITH_TIMEOUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_EXECUTOR_ASYNC_BRIDGE_WITH_TIMEOUT
 uint16_t uniffi_paykit_mobile_checksum_func_create_executor_async_bridge_with_timeout(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_INTERACTIVE_MANAGER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_INTERACTIVE_MANAGER
 uint16_t uniffi_paykit_mobile_checksum_func_create_interactive_manager(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_MESSAGE_BUILDER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_MESSAGE_BUILDER
 uint16_t uniffi_paykit_mobile_checksum_func_create_message_builder(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_NOISE_SERVER_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_NOISE_SERVER_CONFIG
 uint16_t uniffi_paykit_mobile_checksum_func_create_noise_server_config(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_NOISE_SERVER_CONFIG_WITH_PORT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_NOISE_SERVER_CONFIG_WITH_PORT
 uint16_t uniffi_paykit_mobile_checksum_func_create_noise_server_config_with_port(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_PAYKIT_CLIENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_PAYKIT_CLIENT
 uint16_t uniffi_paykit_mobile_checksum_func_create_paykit_client(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_PRIVATE_ENDPOINT_OFFER_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_PRIVATE_ENDPOINT_OFFER_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_create_private_endpoint_offer_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_CONFIRMATION_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_CONFIRMATION_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_create_receipt_confirmation_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_REQUEST_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_REQUEST_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_create_receipt_request_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_STORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_CREATE_RECEIPT_STORE
 uint16_t uniffi_paykit_mobile_checksum_func_create_receipt_store(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_DERIVE_X25519_KEYPAIR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_DERIVE_X25519_KEYPAIR
 uint16_t uniffi_paykit_mobile_checksum_func_derive_x25519_keypair(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_DISCOVER_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_DISCOVER_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_func_discover_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_ED25519_KEYPAIR_FROM_SECRET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_ED25519_KEYPAIR_FROM_SECRET
 uint16_t uniffi_paykit_mobile_checksum_func_ed25519_keypair_from_secret(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_EXPORT_KEYPAIR_TO_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_EXPORT_KEYPAIR_TO_BACKUP
 uint16_t uniffi_paykit_mobile_checksum_func_export_keypair_to_backup(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_FORMAT_PUBLIC_KEY_Z32
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_FORMAT_PUBLIC_KEY_Z32
 uint16_t uniffi_paykit_mobile_checksum_func_format_public_key_z32(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GENERATE_DEVICE_ID
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GENERATE_DEVICE_ID
 uint16_t uniffi_paykit_mobile_checksum_func_generate_device_id(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GENERATE_ED25519_KEYPAIR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GENERATE_ED25519_KEYPAIR
 uint16_t uniffi_paykit_mobile_checksum_func_generate_ed25519_keypair(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GET_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_GET_VERSION
 uint16_t uniffi_paykit_mobile_checksum_func_get_version(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_IMPORT_KEYPAIR_FROM_BACKUP
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_IMPORT_KEYPAIR_FROM_BACKUP
 uint16_t uniffi_paykit_mobile_checksum_func_import_keypair_from_backup(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PARSE_PAYMENT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PARSE_PAYMENT_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_parse_payment_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PARSE_PUBLIC_KEY_Z32
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PARSE_PUBLIC_KEY_Z32
 uint16_t uniffi_paykit_mobile_checksum_func_parse_public_key_z32(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PUBLISH_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_PUBLISH_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_func_publish_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_REMOVE_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_REMOVE_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_func_remove_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_SIGN_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_SIGN_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_func_sign_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_VERIFY_SIGNATURE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_FUNC_VERIFY_SIGNATURE
 uint16_t uniffi_paykit_mobile_checksum_func_verify_signature(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_DELETE
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_delete(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_GET
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_get(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_IS_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_IS_MOCK
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_is_mock(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_LIST
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_list(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_OWNER_PUBKEY
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_OWNER_PUBKEY
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_owner_pubkey(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_PUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_AUTHENTICATEDTRANSPORTFFI_PUT
 uint16_t uniffi_paykit_mobile_checksum_method_authenticatedtransportffi_put(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_ADD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_ADD
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_add(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_ADD_WITH_NAME
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_ADD_WITH_NAME
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_add_with_name(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_CLEAR
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_clear(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_CONTAINS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_CONTAINS
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_contains(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_COUNT
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_count(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_GET
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_get(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_GET_ALL
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_GET_ALL
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_get_all(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_REMOVE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_REMOVE
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_remove(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_SYNC
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_CONTACTCACHEFFI_SYNC
 uint16_t uniffi_paykit_mobile_checksum_method_contactcacheffi_sync(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_ADD_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_ADD_CONTACT
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_add_contact(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_KNOWN_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_KNOWN_CONTACTS
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_fetch_known_contacts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_PAYMENT_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_fetch_payment_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_SUPPORTED_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_FETCH_SUPPORTED_PAYMENTS
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_fetch_supported_payments(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_LIST_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_LIST_CONTACTS
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_list_contacts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_PUBLISH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_PUBLISH_PAYMENT_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_publish_payment_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_CONTACT
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_remove_contact(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_DIRECTORYOPERATIONSASYNC_REMOVE_PAYMENT_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_directoryoperationsasync_remove_payment_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_EXECUTORASYNCBRIDGE_DEFAULT_TIMEOUT_MS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_EXECUTORASYNCBRIDGE_DEFAULT_TIMEOUT_MS
 uint16_t uniffi_paykit_mobile_checksum_method_executorasyncbridge_default_timeout_ms(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_ADD_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_ADD_CONTACT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_add_contact(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_BITCOIN_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_BITCOIN_NETWORK
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_bitcoin_network(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CALCULATE_PRORATION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CALCULATE_PRORATION
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_calculate_proration(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CHECK_HEALTH
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CHECK_HEALTH
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_check_health(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_NOISE_ERROR_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_NOISE_ERROR_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_noise_error_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_PAYMENT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_PAYMENT_REQUEST
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_payment_request(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT_CONFIRMATION_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT_CONFIRMATION_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_receipt_confirmation_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT_REQUEST_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_RECEIPT_REQUEST_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_receipt_request_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_SUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_CREATE_SUBSCRIPTION
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_create_subscription(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_DAYS_REMAINING_IN_PERIOD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_DAYS_REMAINING_IN_PERIOD
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_days_remaining_in_period(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_DISCOVER_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_DISCOVER_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_discover_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXECUTE_PAYMENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXECUTE_PAYMENT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_execute_payment(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXTRACT_KEY_FROM_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXTRACT_KEY_FROM_QR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_extract_key_from_qr(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXTRACT_METHOD_FROM_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_EXTRACT_METHOD_FROM_QR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_extract_method_from_qr(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_KNOWN_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_KNOWN_CONTACTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_fetch_known_contacts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_PAYMENT_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_fetch_payment_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_SUPPORTED_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_FETCH_SUPPORTED_PAYMENTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_fetch_supported_payments(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GENERATE_PAYMENT_PROOF
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GENERATE_PAYMENT_PROOF
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_generate_payment_proof(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_HEALTH_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_HEALTH_STATUS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_get_health_status(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_IN_PROGRESS_PAYMENTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_IN_PROGRESS_PAYMENTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_get_in_progress_payments(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_PAYMENT_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_GET_PAYMENT_STATUS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_get_payment_status(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_HAS_BITCOIN_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_HAS_BITCOIN_EXECUTOR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_has_bitcoin_executor(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_HAS_LIGHTNING_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_HAS_LIGHTNING_EXECUTOR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_has_lightning_executor(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_IS_METHOD_USABLE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_IS_METHOD_USABLE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_is_method_usable(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_IS_PAYKIT_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_IS_PAYKIT_QR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_is_paykit_qr(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIGHTNING_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIGHTNING_NETWORK
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_lightning_network(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIST_CONTACTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIST_CONTACTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_list_contacts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIST_METHODS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_LIST_METHODS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_list_methods(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_NOISE_PAYMENT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_NOISE_PAYMENT_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_parse_noise_payment_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_RECEIPT_METADATA
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_RECEIPT_METADATA
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_parse_receipt_metadata(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_SCANNED_QR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PARSE_SCANNED_QR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_parse_scanned_qr(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PUBLISH_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PUBLISH_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_publish_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PUBLISH_PAYMENT_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_PUBLISH_PAYMENT_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_publish_payment_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REGISTER_BITCOIN_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REGISTER_BITCOIN_EXECUTOR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_register_bitcoin_executor(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REGISTER_LIGHTNING_EXECUTOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REGISTER_LIGHTNING_EXECUTOR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_register_lightning_executor(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_CONTACT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_CONTACT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_remove_contact(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_NOISE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_NOISE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_remove_noise_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_PAYMENT_ENDPOINT_FROM_DIRECTORY
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_REMOVE_PAYMENT_ENDPOINT_FROM_DIRECTORY
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_remove_payment_endpoint_from_directory(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_SELECT_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_SELECT_METHOD
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_select_method(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_VALIDATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITCLIENT_VALIDATE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitclient_validate_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_ENDPOINT_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_ENDPOINT_OFFER
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_create_endpoint_offer(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_PAYMENT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_CREATE_PAYMENT_REQUEST
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_create_payment_request(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_PRIVATE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_get_private_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_get_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_STORE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_GET_STORE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_get_store(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_handle_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_PAYMENT_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_HANDLE_PAYMENT_RESPONSE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_handle_payment_response(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_PRIVATE_ENDPOINTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_PRIVATE_ENDPOINTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_list_private_endpoints(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_RECEIPTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_LIST_RECEIPTS
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_list_receipts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_SET_GENERATOR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITINTERACTIVEMANAGERFFI_SET_GENERATOR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitinteractivemanagerffi_set_generator(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ACK
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_create_ack(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ENDPOINT_OFFER
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ENDPOINT_OFFER
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_create_endpoint_offer(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ERROR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_ERROR
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_create_error(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_CONFIRM
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_CONFIRM
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_create_receipt_confirm(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_CREATE_RECEIPT_REQUEST
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_create_receipt_request(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_GET_MESSAGE_TYPE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_GET_MESSAGE_TYPE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_get_message_type(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_PARSE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PAYKITMESSAGEBUILDER_PARSE_MESSAGE
 uint16_t uniffi_paykit_mobile_checksum_method_paykitmessagebuilder_parse_message(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_CLEAR
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_clear(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_DELETE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_DELETE_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_delete_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_EXPORT_RECEIPTS_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_EXPORT_RECEIPTS_JSON
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_export_receipts_json(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_GET_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_GET_PRIVATE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_get_private_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_GET_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_GET_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_get_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_IMPORT_RECEIPTS_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_IMPORT_RECEIPTS_JSON
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_import_receipts_json(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_LIST_PRIVATE_ENDPOINTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_LIST_PRIVATE_ENDPOINTS
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_list_private_endpoints(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_LIST_RECEIPTS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_LIST_RECEIPTS
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_list_receipts(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_SAVE_PRIVATE_ENDPOINT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_SAVE_PRIVATE_ENDPOINT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_save_private_endpoint(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_SAVE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTSTORE_SAVE_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptstore_save_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_GET
 uint16_t uniffi_paykit_mobile_checksum_method_unauthenticatedtransportffi_get(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_IS_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_IS_MOCK
 uint16_t uniffi_paykit_mobile_checksum_method_unauthenticatedtransportffi_is_mock(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_UNAUTHENTICATEDTRANSPORTFFI_LIST
 uint16_t uniffi_paykit_mobile_checksum_method_unauthenticatedtransportffi_list(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
 uint16_t uniffi_paykit_mobile_checksum_constructor_authenticatedtransportffi_from_callback(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_SESSION_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_FROM_SESSION_JSON
 uint16_t uniffi_paykit_mobile_checksum_constructor_authenticatedtransportffi_from_session_json(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_NEW_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_AUTHENTICATEDTRANSPORTFFI_NEW_MOCK
 uint16_t uniffi_paykit_mobile_checksum_constructor_authenticatedtransportffi_new_mock(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_CONTACTCACHEFFI_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_CONTACTCACHEFFI_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_contactcacheffi_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_DIRECTORYOPERATIONSASYNC_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_DIRECTORYOPERATIONSASYNC_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_directoryoperationsasync_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_EXECUTORASYNCBRIDGE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_EXECUTORASYNCBRIDGE_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_executorasyncbridge_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_EXECUTORASYNCBRIDGE_WITH_TIMEOUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_EXECUTORASYNCBRIDGE_WITH_TIMEOUT
 uint16_t uniffi_paykit_mobile_checksum_constructor_executorasyncbridge_with_timeout(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITCLIENT_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITCLIENT_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_paykitclient_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITCLIENT_NEW_WITH_NETWORK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITCLIENT_NEW_WITH_NETWORK
 uint16_t uniffi_paykit_mobile_checksum_constructor_paykitclient_new_with_network(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITINTERACTIVEMANAGERFFI_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITINTERACTIVEMANAGERFFI_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_paykitinteractivemanagerffi_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITMESSAGEBUILDER_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_PAYKITMESSAGEBUILDER_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_paykitmessagebuilder_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_RECEIPTSTORE_NEW
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_RECEIPTSTORE_NEW
 uint16_t uniffi_paykit_mobile_checksum_constructor_receiptstore_new(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_AUTHENTICATED
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_AUTHENTICATED
 uint16_t uniffi_paykit_mobile_checksum_constructor_unauthenticatedtransportffi_from_authenticated(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CALLBACK
 uint16_t uniffi_paykit_mobile_checksum_constructor_unauthenticatedtransportffi_from_callback(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CONFIG_JSON
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_FROM_CONFIG_JSON
 uint16_t uniffi_paykit_mobile_checksum_constructor_unauthenticatedtransportffi_from_config_json(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_NEW_MOCK
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_CONSTRUCTOR_UNAUTHENTICATEDTRANSPORTFFI_NEW_MOCK
 uint16_t uniffi_paykit_mobile_checksum_constructor_unauthenticatedtransportffi_new_mock(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_SEND_TO_ADDRESS
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_SEND_TO_ADDRESS
 uint16_t uniffi_paykit_mobile_checksum_method_bitcoinexecutorffi_send_to_address(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_ESTIMATE_FEE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_ESTIMATE_FEE
 uint16_t uniffi_paykit_mobile_checksum_method_bitcoinexecutorffi_estimate_fee(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_GET_TRANSACTION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_GET_TRANSACTION
 uint16_t uniffi_paykit_mobile_checksum_method_bitcoinexecutorffi_get_transaction(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_VERIFY_TRANSACTION
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_BITCOINEXECUTORFFI_VERIFY_TRANSACTION
 uint16_t uniffi_paykit_mobile_checksum_method_bitcoinexecutorffi_verify_transaction(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_PAY_INVOICE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_PAY_INVOICE
 uint16_t uniffi_paykit_mobile_checksum_method_lightningexecutorffi_pay_invoice(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_DECODE_INVOICE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_DECODE_INVOICE
 uint16_t uniffi_paykit_mobile_checksum_method_lightningexecutorffi_decode_invoice(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_ESTIMATE_FEE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_ESTIMATE_FEE
 uint16_t uniffi_paykit_mobile_checksum_method_lightningexecutorffi_estimate_fee(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_GET_PAYMENT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_GET_PAYMENT
 uint16_t uniffi_paykit_mobile_checksum_method_lightningexecutorffi_get_payment(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_VERIFY_PREIMAGE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_LIGHTNINGEXECUTORFFI_VERIFY_PREIMAGE
 uint16_t uniffi_paykit_mobile_checksum_method_lightningexecutorffi_verify_preimage(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_PUT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_PUT
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyauthenticatedstoragecallback_put(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_GET
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyauthenticatedstoragecallback_get(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_DELETE
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyauthenticatedstoragecallback_delete(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYAUTHENTICATEDSTORAGECALLBACK_LIST
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyauthenticatedstoragecallback_list(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYUNAUTHENTICATEDSTORAGECALLBACK_GET
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYUNAUTHENTICATEDSTORAGECALLBACK_GET
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyunauthenticatedstoragecallback_get(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYUNAUTHENTICATEDSTORAGECALLBACK_LIST
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_PUBKYUNAUTHENTICATEDSTORAGECALLBACK_LIST
 uint16_t uniffi_paykit_mobile_checksum_method_pubkyunauthenticatedstoragecallback_list(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTGENERATORCALLBACK_GENERATE_RECEIPT
+#define UNIFFI_FFIDEF_UNIFFI_PAYKIT_MOBILE_CHECKSUM_METHOD_RECEIPTGENERATORCALLBACK_GENERATE_RECEIPT
 uint16_t uniffi_paykit_mobile_checksum_method_receiptgeneratorcallback_generate_receipt(void
     
 );
+#endif
+#ifndef UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_UNIFFI_CONTRACT_VERSION
+#define UNIFFI_FFIDEF_FFI_PAYKIT_MOBILE_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_paykit_mobile_uniffi_contract_version(void
     
 );
+#endif
 

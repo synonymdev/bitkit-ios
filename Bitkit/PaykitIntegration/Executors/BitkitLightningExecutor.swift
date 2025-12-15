@@ -57,14 +57,14 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
         let waitResult = semaphore.wait(timeout: .now() + timeout)
         
         if waitResult == .timedOut {
-            throw PaykitMobileError.Internal(message: "Payment timeout")
+            throw PaykitMobileError.Internal(msg: "Payment timeout")
         }
         
         guard case .success(let paymentHash) = paymentHashResult else {
             if case .failure(let error) = paymentHashResult {
-                throw PaykitMobileError.Internal(message: error.localizedDescription)
+                throw PaykitMobileError.Internal(msg: error.localizedDescription)
             }
-            throw PaykitMobileError.Internal(message: "No result returned")
+            throw PaykitMobileError.Internal(msg: "No result returned")
         }
         
         // Poll for payment completion to get preimage
@@ -97,7 +97,7 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
                                 status: .succeeded
                             )
                         case .failed:
-                            throw PaykitMobileError.Internal(message: "Payment failed")
+                            throw PaykitMobileError.Internal(msg: "Payment failed")
                         default:
                             break
                         }
@@ -108,7 +108,7 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
             Thread.sleep(forTimeInterval: pollingInterval)
         }
         
-        throw PaykitMobileError.Internal(message: "Payment timeout")
+        throw PaykitMobileError.Internal(msg: "Payment timeout")
     }
     
     /// Decode a BOLT11 invoice.
@@ -126,7 +126,7 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
                 expired: bolt11.isExpired()
             )
         } catch {
-            throw PaykitMobileError.Internal(message: "Failed to decode invoice: \(error.localizedDescription)")
+            throw PaykitMobileError.Internal(msg: "Failed to decode invoice: \(error.localizedDescription)")
         }
     }
     

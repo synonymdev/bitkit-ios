@@ -46,7 +46,7 @@ struct PrivateEndpointsView: View {
                 .foregroundColor(.textSecondary)
         }
         .padding(16)
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -61,7 +61,7 @@ struct PrivateEndpointsView: View {
                 }
             }
         }
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     

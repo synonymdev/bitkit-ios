@@ -76,7 +76,7 @@ struct PaykitAutoPayView: View {
                 .labelsHidden()
             }
             .padding(16)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
         }
     }
@@ -112,7 +112,7 @@ struct PaykitAutoPayView: View {
                 )
             }
             .padding(16)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
         }
     }
@@ -139,7 +139,7 @@ struct PaykitAutoPayView: View {
                     .foregroundColor(.textSecondary)
                     .padding(16)
                     .frame(maxWidth: .infinity)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             } else {
                 VStack(spacing: 0) {
@@ -152,7 +152,7 @@ struct PaykitAutoPayView: View {
                         }
                     }
                 }
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -180,7 +180,7 @@ struct PaykitAutoPayView: View {
                     .foregroundColor(.textSecondary)
                     .padding(16)
                     .frame(maxWidth: .infinity)
-                    .background(Color.gray900)
+                    .background(Color.gray6)
                     .cornerRadius(8)
             } else {
                 VStack(spacing: 0) {
@@ -193,7 +193,7 @@ struct PaykitAutoPayView: View {
                         }
                     }
                 }
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -332,14 +332,14 @@ struct AddPeerLimitView: View {
                         TextField("Peer Name", text: $peerName)
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                         
                         TextField("Public Key (z-base32)", text: $peerPubkey)
                             .foregroundColor(.white)
                             .autocapitalization(.none)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                     }
                     
@@ -356,7 +356,7 @@ struct AddPeerLimitView: View {
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                                 .padding(12)
-                                .background(Color.gray900)
+                                .background(Color.gray6)
                                 .cornerRadius(8)
                                 .frame(width: 120)
                         }
@@ -430,7 +430,7 @@ struct AddRuleView: View {
                         TextField("Rule Name", text: $ruleName)
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                     }
                     
@@ -447,7 +447,7 @@ struct AddRuleView: View {
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                                 .padding(12)
-                                .background(Color.gray900)
+                                .background(Color.gray6)
                                 .cornerRadius(8)
                                 .frame(width: 150)
                         }

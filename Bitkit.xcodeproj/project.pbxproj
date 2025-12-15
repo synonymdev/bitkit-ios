@@ -100,55 +100,12 @@
 				"Views/Wallets/Receive/PipReceiveView.swift",
 				"AppDelegate_integration.swift",
 				"PaykitIntegration/BUILD_CONFIGURATION.md",
-				"PaykitIntegration/FFI/PaykitMobile.swift",
 				"PaykitIntegration/FFI/PubkyNoise.swift",
-				"PaykitIntegration/Executors/BitkitBitcoinExecutor.swift",
-				"PaykitIntegration/Executors/BitkitLightningExecutor.swift",
-				"PaykitIntegration/Services/DirectoryService.swift",
-				"PaykitIntegration/Services/NoiseKeyCache.swift",
-				"PaykitIntegration/Services/NoisePaymentService.swift",
-				"PaykitIntegration/Services/PaykitPaymentService.swift",
-				"PaykitIntegration/Services/PaykitReceiptStore.swift",
-				"PaykitIntegration/Services/PaymentRequestService.swift",
-				"PaykitIntegration/Services/PubkyRingIntegration.swift",
-				"PaykitIntegration/Services/PubkyStorageAdapter.swift",
-				"PaykitIntegration/ViewModels/AutoPayViewModel.swift",
-				"PaykitIntegration/ViewModels/ContactsViewModel.swift",
-				"PaykitIntegration/ViewModels/DashboardViewModel.swift",
-				"PaykitIntegration/ViewModels/NoisePaymentViewModel.swift",
-				"PaykitIntegration/ViewModels/ReceiptsViewModel.swift",
-				"PaykitIntegration/ViewModels/SubscriptionsViewModel.swift",
-				"PaykitIntegration/Storage/AutoPayStorage.swift",
-				"PaykitIntegration/Storage/ContactStorage.swift",
-				"PaykitIntegration/Storage/PaykitKeychainStorage.swift",
-				"PaykitIntegration/Storage/PaymentRequestStorage.swift",
-				"PaykitIntegration/Storage/PrivateEndpointStorage.swift",
-				"PaykitIntegration/Storage/ReceiptStorage.swift",
-				"PaykitIntegration/Storage/RotationSettingsStorage.swift",
-				"PaykitIntegration/Storage/SubscriptionStorage.swift",
-				"PaykitIntegration/Models/AutoPayModels.swift",
-				"PaykitIntegration/Models/Contact.swift",
-				"PaykitIntegration/Models/PaymentRequest.swift",
-				"PaykitIntegration/Models/PrivateEndpoint.swift",
-				"PaykitIntegration/Models/Receipt.swift",
-				"PaykitIntegration/Models/Subscription.swift",
-				"PaykitIntegration/KeyManager.swift",
-				"PaykitIntegration/PaykitFeatureFlags.swift",
-				"PaykitIntegration/PaykitIntegrationHelper.swift",
-				"PaykitIntegration/PaykitLogger.swift",
-				"PaykitIntegration/PaykitManager.swift",
-				"Views/Paykit/ContactDiscoveryView.swift",
-				"Views/Paykit/NoisePaymentView.swift",
-				"Views/Paykit/PaykitAutoPayView.swift",
-				"Views/Paykit/PaykitContactsView.swift",
-				"Views/Paykit/PaykitDashboardView.swift",
-				"Views/Paykit/PaykitPaymentRequestsView.swift",
-				"Views/Paykit/PaykitReceiptsView.swift",
-				"Views/Paykit/PaykitSubscriptionsView.swift",
-				"Views/Paykit/PrivateEndpointsView.swift",
-				"Views/Paykit/ReceiptDetailView.swift",
-				"Views/Paykit/RotationSettingsView.swift",
 				"Views/Settings/PaymentProfileView.swift",
+				"Views/Paykit/ContactDiscoveryView.swift",
+				"Views/Paykit/PaykitAutoPayView.swift",
+				"Views/Paykit/PaykitPaymentRequestsView.swift",
+				"Views/Paykit/NoisePaymentView.swift",
 			);
 			target = 96FE1F602C2DE6AA006D0C8B /* Bitkit */;
 		};
@@ -756,6 +713,24 @@
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64_x86_64-simulator",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64_x86_64-simulator",
+				);
+				OTHER_LDFLAGS = (
+					"-lpaykit_mobile",
+					"-lpubky_noise",
+				);
+				SWIFT_INCLUDE_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/FFI",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64_x86_64-simulator",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64_x86_64-simulator",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64_x86_64-simulator/Headers",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64_x86_64-simulator/Headers",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Bitkit/PaykitIntegration/Bitkit-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -799,6 +774,24 @@
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				LIBRARY_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64",
+				);
+				OTHER_LDFLAGS = (
+					"-lpaykit_mobile",
+					"-lpubky_noise",
+				);
+				SWIFT_INCLUDE_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/FFI",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64/Headers",
+					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64/Headers",
+				);
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Bitkit/PaykitIntegration/Bitkit-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

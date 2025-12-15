@@ -138,12 +138,16 @@ public final class PaykitLogger {
         let fullMessage = "[\(level.prefix)] \(message)\(contextString)"
         
         let osLogType: OSLogType
-        switch level {
-        case .debug: osLogType = .debug
-        case .info: osLogType = .info
-        case .warning: osLogType = .default
-        case .error: osLogType = .error
-        case .none: osLogType = .default
+        if level == .debug {
+            osLogType = .debug
+        } else if level == .info {
+            osLogType = .info
+        } else if level == .warning {
+            osLogType = .default
+        } else if level == .error {
+            osLogType = .error
+        } else {
+            osLogType = .default
         }
         
         os_log("%{public}@", log: OSLog(subsystem: subsystem, category: category), type: osLogType, fullMessage)
@@ -154,12 +158,16 @@ public final class PaykitLogger {
 
 private extension PaykitLogLevel {
     var prefix: String {
-        switch self {
-        case .debug: return "DEBUG"
-        case .info: return "INFO"
-        case .warning: return "WARN"
-        case .error: return "ERROR"
-        case .none: return ""
+        if self == .debug {
+            return "DEBUG"
+        } else if self == .info {
+            return "INFO"
+        } else if self == .warning {
+            return "WARN"
+        } else if self == .error {
+            return "ERROR"
+        } else {
+            return ""
         }
     }
 }

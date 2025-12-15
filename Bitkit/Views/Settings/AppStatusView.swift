@@ -135,7 +135,7 @@ struct AppStatusView: View {
     private var backupStatusRow: some View {
         let timestamp = BackupService.shared.getLatestBackupTime()
         let description: String
-        let status: HealthStatus
+        let status: AppHealthStatus
 
         if let timestamp {
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))

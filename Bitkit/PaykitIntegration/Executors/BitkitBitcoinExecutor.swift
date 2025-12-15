@@ -57,7 +57,7 @@ public final class BitkitBitcoinExecutor: BitcoinExecutorFfi {
         let waitResult = semaphore.wait(timeout: .now() + timeout)
         
         if waitResult == .timedOut {
-            throw PaykitMobileError.Internal(message: "Transaction timeout")
+            throw PaykitMobileError.Internal(msg: "Transaction timeout")
         }
         
         switch result {
@@ -75,9 +75,9 @@ public final class BitkitBitcoinExecutor: BitcoinExecutorFfi {
                 confirmations: 0
             )
         case .failure(let error):
-            throw PaykitMobileError.Internal(message: error.localizedDescription)
+            throw PaykitMobileError.Internal(msg: error.localizedDescription)
         case .none:
-            throw PaykitMobileError.Internal(message: "No result returned")
+            throw PaykitMobileError.Internal(msg: "No result returned")
         }
     }
     

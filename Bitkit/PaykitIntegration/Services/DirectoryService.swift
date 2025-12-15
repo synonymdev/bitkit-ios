@@ -26,6 +26,14 @@ public final class DirectoryService {
         directoryOps = try? DirectoryOperationsAsync()
     }
     
+    /// Public initializer for creating a new instance
+    public convenience init(paykitClient: PaykitClient? = nil) {
+        self.init()
+        if let client = paykitClient {
+            self.paykitClient = client
+        }
+    }
+    
     /// Initialize with PaykitClient
     public func initialize(client: PaykitClient) {
         self.paykitClient = client
@@ -183,7 +191,8 @@ public final class DirectoryService {
 }
 
 /// Discovered contact from directory
-public struct DirectoryDiscoveredContact {
+public struct DirectoryDiscoveredContact: Identifiable {
+    public var id: String { pubkey }
     public let pubkey: String
     public let name: String?
     public let hasPaymentMethods: Bool

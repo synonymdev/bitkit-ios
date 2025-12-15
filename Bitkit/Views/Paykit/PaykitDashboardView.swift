@@ -127,7 +127,7 @@ struct PaykitDashboardView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(viewModel.recentReceipts) { receipt in
-                        ReceiptRow(receipt: receipt)
+                        DashboardReceiptRow(receipt: receipt)
                         
                         if receipt.id != viewModel.recentReceipts.last?.id {
                             Divider()
@@ -135,7 +135,7 @@ struct PaykitDashboardView: View {
                         }
                     }
                 }
-                .background(Color.gray900)
+                .background(Color.gray6)
                 .cornerRadius(8)
             }
         }
@@ -168,7 +168,7 @@ struct StatCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
 }
@@ -205,13 +205,13 @@ struct QuickAccessCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(16)
-            .background(Color.gray900)
+            .background(Color.gray6)
             .cornerRadius(8)
         }
     }
 }
 
-struct ReceiptRow: View {
+struct DashboardReceiptRow: View {
     let receipt: PaymentReceipt
     
     var body: some View {

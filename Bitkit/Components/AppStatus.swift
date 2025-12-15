@@ -53,7 +53,7 @@ struct AppStatus: View {
 
     // MARK: - Computed Properties
 
-    private var appStatus: HealthStatus {
+    private var appStatus: AppHealthStatus {
         // During initialization, return 'ready' instead of error
         if !app.appStatusInitialized {
             return .ready

@@ -61,7 +61,7 @@ struct PaykitSubscriptionsView: View {
                 }
             }
         }
-        .background(Color.gray900)
+        .background(Color.gray6)
         .cornerRadius(8)
     }
     
@@ -94,7 +94,7 @@ struct PaykitSubscriptionsView: View {
 }
 
 struct SubscriptionRow: View {
-    let subscription: Subscription
+    let subscription: BitkitSubscription
     @ObservedObject var viewModel: SubscriptionsViewModel
     @EnvironmentObject private var app: AppViewModel
     
@@ -189,14 +189,14 @@ struct AddSubscriptionView: View {
                         TextField("Provider Name", text: $providerName)
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                         
                         TextField("Provider Public Key (z-base32)", text: $providerPubkey)
                             .foregroundColor(.white)
                             .autocapitalization(.none)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                     }
                     
@@ -208,12 +208,15 @@ struct AddSubscriptionView: View {
                             BodyMText("Amount:")
                                 .foregroundColor(.textSecondary)
                             Spacer()
-                            TextField("sats", value: $amount, format: .number)
+                            TextField("sats", text: Binding(
+                                get: { String(amount) },
+                                set: { amount = Int64($0) ?? 0 }
+                            ))
                                 .foregroundColor(.white)
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
                                 .padding(12)
-                                .background(Color.gray900)
+                                .background(Color.gray6)
                                 .cornerRadius(8)
                                 .frame(width: 120)
                         }
@@ -235,12 +238,12 @@ struct AddSubscriptionView: View {
                         TextField("Description (optional)", text: $description)
                             .foregroundColor(.white)
                             .padding(12)
-                            .background(Color.gray900)
+                            .background(Color.gray6)
                             .cornerRadius(8)
                     }
                     
                     Button {
-                        let subscription = Subscription(
+                        let subscription = BitkitSubscription(
                             providerName: providerName,
                             providerPubkey: providerPubkey,
                             amountSats: amount,

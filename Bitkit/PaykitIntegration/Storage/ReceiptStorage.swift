@@ -55,7 +55,7 @@ public class ReceiptStorage {
     }
     
     /// Get receipts filtered by direction
-    public func listReceipts(direction: PaymentDirection) -> [PaymentReceipt] {
+    public func listReceipts(direction: ReceiptPaymentDirection) -> [PaymentReceipt] {
         return listReceipts().filter { $0.direction == direction }
     }
     
