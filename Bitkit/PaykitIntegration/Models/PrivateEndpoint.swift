@@ -1,0 +1,1 @@
+// PrivateEndpoint model placeholder - to be completed
