@@ -1,6 +1,6 @@
 import CryptoKit
 import Foundation
-import secp256k1
+import P256K
 
 class Crypto {
     struct KeyPair {
