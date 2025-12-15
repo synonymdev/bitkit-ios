@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Service for interacting with the Pubky directory
 /// Uses PaykitClient FFI methods for directory operations
@@ -16,11 +16,15 @@ public final class DirectoryService {
     public static let shared = DirectoryService()
     
     private var paykitClient: PaykitClient?
+    private var directoryOps: DirectoryOperationsAsync?
     private var unauthenticatedTransport: UnauthenticatedTransportFfi?
     private var authenticatedTransport: AuthenticatedTransportFfi?
     private var homeserverBaseURL: String?
     
-    private init() {}
+    private init() {
+        // Create directory operations manager
+        directoryOps = try? DirectoryOperationsAsync()
+    }
     
     /// Initialize with PaykitClient
     public func initialize(client: PaykitClient) {
@@ -31,14 +35,14 @@ public final class DirectoryService {
     public func configurePubkyTransport(homeserverBaseURL: String? = nil) {
         self.homeserverBaseURL = homeserverBaseURL
         let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
-        unauthenticatedTransport = UnauthenticatedTransportFfi.fromCallback(adapter)
+        unauthenticatedTransport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
     }
     
     /// Configure authenticated transport with session
     public func configureAuthenticatedTransport(sessionId: String, ownerPubkey: String, homeserverBaseURL: String? = nil) {
         self.homeserverBaseURL = homeserverBaseURL
         let adapter = PubkyAuthenticatedStorageAdapter(sessionId: sessionId, homeserverBaseURL: homeserverBaseURL)
-        authenticatedTransport = AuthenticatedTransportFfi.fromCallback(adapter, ownerPubkey: ownerPubkey)
+        authenticatedTransport = AuthenticatedTransportFfi.fromCallback(callback: adapter, ownerPubkey: ownerPubkey)
     }
     
     /// Discover noise endpoints for a recipient
@@ -49,15 +53,15 @@ public final class DirectoryService {
         
         let transport = unauthenticatedTransport ?? {
             let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
-            let transport = UnauthenticatedTransportFfi.fromCallback(adapter)
+            let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
             unauthenticatedTransport = transport
             return transport
         }()
         
         do {
-            return try discoverNoiseEndpoint(transport: transport, recipientPubkey: recipientPubkey)
+            return try Bitkit.discoverNoiseEndpoint(transport: transport, recipientPubkey: recipientPubkey)
         } catch {
-            Logger.error("Failed to discover Noise endpoint for \(recipientPubkey)", error: error, context: "DirectoryService")
+            Logger.error("Failed to discover Noise endpoint for \(recipientPubkey): \(error)", context: "DirectoryService")
             return nil
         }
     }
@@ -69,10 +73,10 @@ public final class DirectoryService {
         }
         
         do {
-            try publishNoiseEndpoint(transport: transport, host: host, port: port, noisePubkey: noisePubkey, metadata: metadata)
+            try Bitkit.publishNoiseEndpoint(transport: transport, host: host, port: port, noisePubkey: noisePubkey, metadata: metadata)
             Logger.info("Published Noise endpoint: \(host):\(port)", context: "DirectoryService")
         } catch {
-            Logger.error("Failed to publish Noise endpoint", error: error, context: "DirectoryService")
+            Logger.error("Failed to publish Noise endpoint: \(error)", context: "DirectoryService")
             throw DirectoryError.publishFailed(error.localizedDescription)
         }
     }
@@ -84,67 +88,67 @@ public final class DirectoryService {
         }
         
         do {
-            try removeNoiseEndpoint(transport: transport)
+            try Bitkit.removeNoiseEndpoint(transport: transport)
             Logger.info("Removed Noise endpoint", context: "DirectoryService")
         } catch {
-            Logger.error("Failed to remove Noise endpoint", error: error, context: "DirectoryService")
+            Logger.error("Failed to remove Noise endpoint: \(error)", context: "DirectoryService")
             throw DirectoryError.publishFailed(error.localizedDescription)
         }
     }
     
     /// Discover payment methods for a pubkey
     public func discoverPaymentMethods(for pubkey: String) async throws -> [PaymentMethod] {
-        guard paykitClient != nil else {
+        guard paykitClient != nil, let ops = directoryOps else {
             throw DirectoryError.notConfigured
         }
         
         let transport = unauthenticatedTransport ?? {
             let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
-            let transport = UnauthenticatedTransportFfi.fromCallback(adapter)
+            let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
             unauthenticatedTransport = transport
             return transport
         }()
         
         do {
-            return try fetchSupportedPayments(transport: transport, ownerPubkey: pubkey)
+            return try ops.fetchSupportedPayments(transport: transport, ownerPubkey: pubkey)
         } catch {
-            Logger.error("Failed to discover payment methods for \(pubkey)", error: error, context: "DirectoryService")
+            Logger.error("Failed to discover payment methods for \(pubkey): \(error)", context: "DirectoryService")
             return []
         }
     }
     
     /// Publish a payment method to the directory
     public func publishPaymentMethod(methodId: String, endpoint: String) async throws {
-        guard paykitClient != nil, let transport = authenticatedTransport else {
+        guard paykitClient != nil, let transport = authenticatedTransport, let ops = directoryOps else {
             throw DirectoryError.notConfigured
         }
         
         do {
-            try publishPaymentEndpoint(transport: transport, methodId: methodId, endpoint: endpoint)
+            try ops.publishPaymentEndpoint(transport: transport, methodId: methodId, endpointData: endpoint)
             Logger.info("Published payment method: \(methodId)", context: "DirectoryService")
         } catch {
-            Logger.error("Failed to publish payment method \(methodId)", error: error, context: "DirectoryService")
+            Logger.error("Failed to publish payment method \(methodId): \(error)", context: "DirectoryService")
             throw DirectoryError.publishFailed(error.localizedDescription)
         }
     }
     
     /// Remove a payment method from the directory
     public func removePaymentMethod(methodId: String) async throws {
-        guard paykitClient != nil, let transport = authenticatedTransport else {
+        guard paykitClient != nil, let transport = authenticatedTransport, let ops = directoryOps else {
             throw DirectoryError.notConfigured
         }
         
         do {
-            try removePaymentEndpointFromDirectory(transport: transport, methodId: methodId)
+            try ops.removePaymentEndpoint(transport: transport, methodId: methodId)
             Logger.info("Removed payment method: \(methodId)", context: "DirectoryService")
         } catch {
-            Logger.error("Failed to remove payment method \(methodId)", error: error, context: "DirectoryService")
+            Logger.error("Failed to remove payment method \(methodId): \(error)", context: "DirectoryService")
             throw DirectoryError.publishFailed(error.localizedDescription)
         }
     }
     
     /// Discover contacts from Pubky follows directory
-    public func discoverContactsFromFollows() async throws -> [DiscoveredContact] {
+    public func discoverContactsFromFollows() async throws -> [DirectoryDiscoveredContact] {
         guard let ownerPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() else {
             return []
         }
@@ -157,14 +161,14 @@ public final class DirectoryService {
         let followsPath = "/pub/pubky.app/follows/"
         let followsList = try await pubkyStorage.listDirectory(path: followsPath, adapter: unauthAdapter, ownerPubkey: ownerPubkey)
         
-        var discovered: [DiscoveredContact] = []
+        var discovered: [DirectoryDiscoveredContact] = []
         
         for followPubkey in followsList {
             // Check if this follow has payment methods
             let paymentMethods = try await discoverPaymentMethods(for: followPubkey)
             if !paymentMethods.isEmpty {
                 discovered.append(
-                    DiscoveredContact(
+                    DirectoryDiscoveredContact(
                         pubkey: followPubkey,
                         name: nil, // Could fetch from Pubky profile
                         hasPaymentMethods: true,
@@ -179,7 +183,7 @@ public final class DirectoryService {
 }
 
 /// Discovered contact from directory
-public struct DiscoveredContact {
+public struct DirectoryDiscoveredContact {
     public let pubkey: String
     public let name: String?
     public let hasPaymentMethods: Bool
@@ -215,4 +219,3 @@ public enum DirectoryError: LocalizedError {
         }
     }
 }
-

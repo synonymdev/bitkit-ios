@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// A stored subscription
-public struct Subscription: Identifiable, Codable {
+/// A stored subscription (distinct from PaykitMobile.Subscription)
+public struct BitkitSubscription: Identifiable, Codable {
     public let id: String
     public var providerName: String
     public var providerPubkey: String

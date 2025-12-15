@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Manages Ed25519 identity keys and X25519 device keys for Paykit
 public final class PaykitKeyManager {
@@ -25,16 +25,16 @@ public final class PaykitKeyManager {
     }
     
     private var deviceId: String {
-        if let existing = keychain.retrieve(key: Keys.deviceId) {
-            return String(data: existing, encoding: .utf8) ?? generateDeviceId()
+        if let existing = try? keychain.retrieve(key: Keys.deviceId) {
+            return String(data: existing, encoding: .utf8) ?? generateNewDeviceId()
         }
-        let newId = generateDeviceId()
+        let newId = generateNewDeviceId()
         try? keychain.store(key: Keys.deviceId, data: newId.data(using: .utf8)!)
         return newId
     }
     
     private var currentEpoch: UInt32 {
-        if let epochData = keychain.retrieve(key: Keys.epoch),
+        if let epochData = try? keychain.retrieve(key: Keys.epoch),
            let epochStr = String(data: epochData, encoding: .utf8),
            let epoch = UInt32(epochStr) {
             return epoch
@@ -48,7 +48,7 @@ public final class PaykitKeyManager {
     
     /// Get or create Ed25519 identity
     public func getOrCreateIdentity() async throws -> Ed25519Keypair {
-        if let secretData = keychain.retrieve(key: Keys.secretKey),
+        if let secretData = try? keychain.retrieve(key: Keys.secretKey),
            let secretHex = String(data: secretData, encoding: .utf8) {
             return try ed25519KeypairFromSecret(secretKeyHex: secretHex)
         }
@@ -69,7 +69,7 @@ public final class PaykitKeyManager {
     
     /// Get current public key in z-base32 format
     public func getCurrentPublicKeyZ32() -> String? {
-        guard let data = keychain.retrieve(key: Keys.publicKeyZ32),
+        guard let data = try? keychain.retrieve(key: Keys.publicKeyZ32),
               let pubkey = String(data: data, encoding: .utf8) else {
             return nil
         }
@@ -78,7 +78,7 @@ public final class PaykitKeyManager {
     
     /// Get current secret key hex
     public func getSecretKeyHex() -> String? {
-        guard let data = keychain.retrieve(key: Keys.secretKey),
+        guard let data = try? keychain.retrieve(key: Keys.secretKey),
               let secret = String(data: data, encoding: .utf8) else {
             return nil
         }
@@ -92,17 +92,17 @@ public final class PaykitKeyManager {
     }
     
     /// Derive X25519 keypair for Noise protocol
-    public func deriveX25519Keypair(epoch: UInt32? = nil) async throws -> X25519Keypair {
+    public func deriveNoiseKeypair(epoch: UInt32? = nil) async throws -> X25519Keypair {
         guard let secretHex = getSecretKeyHex() else {
             throw PaykitKeyError.noIdentity
         }
-        let deviceId = self.deviceId
-        let epoch = epoch ?? currentEpoch
+        let deviceIdValue = self.deviceId
+        let epochValue = epoch ?? currentEpoch
         
-        return try deriveX25519Keypair(
+        return try Bitkit.deriveX25519Keypair(
             ed25519SecretHex: secretHex,
-            deviceId: deviceId,
-            epoch: epoch
+            deviceId: deviceIdValue,
+            epoch: epochValue
         )
     }
     
@@ -131,7 +131,7 @@ public final class PaykitKeyManager {
     
     // MARK: - Private
     
-    private func generateDeviceId() -> String {
+    private func generateNewDeviceId() -> String {
         return UUID().uuidString
     }
 }
@@ -166,4 +166,3 @@ extension Data {
         self = data
     }
 }
-

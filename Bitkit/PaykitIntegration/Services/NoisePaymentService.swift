@@ -7,7 +7,7 @@
 
 import Foundation
 import Network
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// A payment request to send over Noise channel
 public struct NoisePaymentRequest {

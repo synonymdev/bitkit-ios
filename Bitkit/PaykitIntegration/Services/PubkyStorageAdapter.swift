@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Adapter for Pubky SDK storage operations
 /// This provides a simplified interface to Pubky storage

@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Payment status
 public enum PaymentReceiptStatus: String, Codable {

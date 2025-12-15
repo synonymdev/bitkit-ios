@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Integration for X25519 key derivation from Ed25519 identity
 /// Uses PaykitMobile FFI to derive keys deterministically from identity seed

@@ -6,8 +6,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are part of this module (from FFI/PaykitMobile.swift)
 
-/// A private endpoint offer (uses PaykitMobile.PrivateEndpointOffer)
-/// This is a type alias for clarity
-public typealias PrivateEndpointOffer = PaykitMobile.PrivateEndpointOffer
+/// A private endpoint offer (uses PrivateEndpointOffer from PaykitMobile.swift)
+/// Note: PrivateEndpointOffer is defined in FFI/PaykitMobile.swift

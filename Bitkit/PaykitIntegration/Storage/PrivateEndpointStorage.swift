@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 /// Manages persistent storage of private payment endpoints
 public class PrivateEndpointStorage {

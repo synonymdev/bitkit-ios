@@ -9,12 +9,14 @@ import Foundation
 
 /// Helper class for storing Paykit-specific data in Keychain
 /// Uses generic password items with custom account names
-class PaykitKeychainStorage {
+public class PaykitKeychainStorage {
     
     private let serviceIdentifier = "to.bitkit.paykit"
     
+    public init() {}
+    
     /// Store data in keychain
-    func store(key: String, data: Data) throws {
+    public func store(key: String, data: Data) throws {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: serviceIdentifier,

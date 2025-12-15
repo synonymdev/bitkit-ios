@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// A payment request stored in persistent storage
-public struct PaymentRequest: Identifiable, Codable {
+/// A payment request stored in persistent storage (distinct from PaykitMobile.PaymentRequest)
+public struct BitkitPaymentRequest: Identifiable, Codable {
     public let id: String
     public let fromPubkey: String
     public let toPubkey: String

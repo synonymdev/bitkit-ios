@@ -157,6 +157,42 @@ struct SubtitleText: View {
     }
 }
 
+struct BodyLText: View {
+    let text: String
+    var textColor: Color = .textPrimary
+    var accentColor: Color = .brandAccent
+    var accentFont: ((CGFloat) -> Font)?
+    var accentAction: (() -> Void)?
+
+    private let fontSize: CGFloat = 20
+
+    init(
+        _ text: String,
+        textColor: Color = .textPrimary,
+        accentColor: Color = .brandAccent,
+        accentFont: ((CGFloat) -> Font)? = nil,
+        accentAction: (() -> Void)? = nil
+    ) {
+        self.text = text
+        self.textColor = textColor
+        self.accentColor = accentColor
+        self.accentFont = accentFont
+        self.accentAction = accentAction
+    }
+
+    var body: some View {
+        AccentedText(
+            text,
+            font: Fonts.semiBold(size: fontSize),
+            fontColor: textColor,
+            accentColor: accentColor,
+            accentFont: accentFont?(fontSize),
+            accentAction: accentAction
+        )
+        .kerning(0.4)
+    }
+}
+
 struct BodyMText: View {
     let text: String
     var textColor: Color = .textSecondary

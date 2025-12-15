@@ -388,8 +388,8 @@ private enum DetectedPaymentType {
     case unknown
 }
 
-/// Available payment method for a recipient.
-public enum PaymentMethod {
+/// Available payment method for a recipient (distinct from PaykitMobile.PaymentMethod)
+public enum BitkitPaymentMethod {
     case lightning(invoice: String)
     case onchain(address: String)
     case paykit(uri: String)

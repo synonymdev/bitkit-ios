@@ -1,5 +1,5 @@
 import SwiftUI
-import PaykitMobile
+// PaykitMobile types are part of this module (no import needed)
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
@@ -391,18 +391,18 @@ struct MainNavView: View {
             case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
             case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
             
-            // Paykit routes
-            case .paykitDashboard: PaykitDashboardView()
-            case .paykitContacts: PaykitContactsView()
-            case .paykitContactDiscovery: ContactDiscoveryView()
-            case .paykitReceipts: PaykitReceiptsView()
-            case let .paykitReceiptDetail(receipt): ReceiptDetailView(receipt: receipt)
-            case .paykitSubscriptions: PaykitSubscriptionsView()
-            case .paykitAutoPay: PaykitAutoPayView()
-            case .paykitPaymentRequests: PaykitPaymentRequestsView()
-            case .paykitNoisePayment: NoisePaymentView()
-            case .paykitPrivateEndpoints: PrivateEndpointsView()
-            case .paykitRotationSettings: RotationSettingsView()
+            // Paykit routes (disabled - PaykitIntegration excluded from build)
+            case .paykitDashboard: Text("Paykit Dashboard - Integration Pending")
+            case .paykitContacts: Text("Paykit Contacts - Integration Pending")
+            case .paykitContactDiscovery: Text("Contact Discovery - Integration Pending")
+            case .paykitReceipts: Text("Paykit Receipts - Integration Pending")
+            case .paykitReceiptDetail(_): Text("Receipt Detail - Integration Pending")
+            case .paykitSubscriptions: Text("Paykit Subscriptions - Integration Pending")
+            case .paykitAutoPay: Text("Paykit AutoPay - Integration Pending")
+            case .paykitPaymentRequests: Text("Payment Requests - Integration Pending")
+            case .paykitNoisePayment: Text("Noise Payment - Integration Pending")
+            case .paykitPrivateEndpoints: Text("Private Endpoints - Integration Pending")
+            case .paykitRotationSettings: Text("Rotation Settings - Integration Pending")
             case .node: NodeStateView()
             case .electrumSettings: ElectrumSettingsScreen()
             case .rgsSettings: RgsSettingsScreen()
@@ -458,131 +458,14 @@ struct MainNavView: View {
         }
     }
     
-    /// Handle payment request deep links
+    /// Handle payment request deep links (disabled - PaykitIntegration excluded from build)
     /// Format: paykit://payment-request?requestId=xxx&from=yyy
     /// or: bitkit://payment-request?requestId=xxx&from=yyy
     private func handlePaymentRequestDeepLink(url: URL, app: AppViewModel, sheets: SheetViewModel) async {
-        guard PaykitIntegrationHelper.isReady else {
-            app.toast(
-                type: .error,
-                title: "Paykit Not Ready",
-                description: "Please wait for Paykit to initialize"
-            )
-            return
-        }
-        
-        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = components.queryItems else {
-            Logger.error("Invalid payment request URL format", context: "MainNavView")
-            app.toast(
-                type: .error,
-                title: "Invalid Request",
-                description: "Payment request URL format is invalid"
-            )
-            return
-        }
-        
-        let requestId = queryItems.first(where: { $0.name == "requestId" })?.value
-        let fromPubkey = queryItems.first(where: { $0.name == "from" })?.value
-        
-        guard let requestId = requestId, let fromPubkey = fromPubkey else {
-            Logger.error("Missing requestId or fromPubkey in payment request URL", context: "MainNavView")
-            app.toast(
-                type: .error,
-                title: "Invalid Request",
-                description: "Payment request URL is missing required parameters"
-            )
-            return
-        }
-        
-        // Get PaykitManager client
-        guard let paykitClient = PaykitManager.shared.client else {
-            app.toast(
-                type: .error,
-                title: "Paykit Not Initialized",
-                description: "Please restart the app"
-            )
-            return
-        }
-        
-        // Create PaymentRequestService
-        let autoPayViewModel = AutoPayViewModel()
-        let paymentRequestService = PaymentRequestService(
-            paykitClient: paykitClient,
-            autopayEvaluator: autoPayViewModel
+        app.toast(
+            type: .warning,
+            title: "Paykit Not Available",
+            description: "Paykit integration is pending"
         )
-        
-        // Handle the payment request
-        paymentRequestService.handleIncomingRequest(
-            requestId: requestId,
-            fromPubkey: fromPubkey
-        ) { result in
-            Task { @MainActor in
-                switch result {
-                case .success(let processingResult):
-                    switch processingResult {
-                    case .autoPaid(let paymentResult):
-                        app.toast(
-                            type: .success,
-                            title: "Payment Completed",
-                            description: "Payment was automatically approved and executed"
-                        )
-                        // Navigate to receipt if available
-                        if let receiptId = paymentResult.receiptId {
-                            let receipt = PaymentReceipt(
-                                id: receiptId,
-                                direction: .received,
-                                counterpartyKey: fromPubkey,
-                                counterpartyName: nil,
-                                amountSats: paymentResult.amountSats,
-                                status: .completed,
-                                paymentMethod: paymentResult.methodId,
-                                createdAt: Date(),
-                                completedAt: Date(timeIntervalSince1970: TimeInterval(paymentResult.executedAt / 1000)),
-                                memo: nil,
-                                txId: paymentResult.executionDataJson,
-                                proof: nil,
-                                proofVerified: false,
-                                proofVerifiedAt: nil
-                            )
-                            navigation.path.append(Route.paykitReceiptDetail(receipt))
-                        }
-                        
-                    case .needsApproval(let request):
-                        // Show manual approval UI
-                        app.toast(
-                            type: .info,
-                            title: "Payment Request",
-                            description: "Review the payment request"
-                        )
-                        // Navigate to payment requests view
-                        navigation.path.append(Route.paykitPaymentRequests)
-                        
-                    case .denied(let reason):
-                        app.toast(
-                            type: .warning,
-                            title: "Payment Denied",
-                            description: reason
-                        )
-                        
-                    case .error(let error):
-                        Logger.error("Payment request processing error", error: error, context: "MainNavView")
-                        app.toast(
-                            type: .error,
-                            title: "Payment Error",
-                            description: error.localizedDescription
-                        )
-                    }
-                    
-                case .failure(let error):
-                    Logger.error("Failed to process payment request", error: error, context: "MainNavView")
-                    app.toast(
-                        type: .error,
-                        title: "Request Failed",
-                        description: error.localizedDescription
-                    )
-                }
-            }
-        }
     }
 }

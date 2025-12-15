@@ -98,7 +98,7 @@ enum Route: Hashable {
     case paykitContacts
     case paykitContactDiscovery
     case paykitReceipts
-    case paykitReceiptDetail(PaymentReceipt)
+    case paykitReceiptDetail(String) // Receipt ID - PaykitIntegration excluded
     case paykitSubscriptions
     case paykitAutoPay
     case paykitPaymentRequests

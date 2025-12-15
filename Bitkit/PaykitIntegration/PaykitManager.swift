@@ -5,7 +5,7 @@
 
 import Foundation
 import LDKNode
-import PaykitMobile
+// PaykitMobile types are available from FFI/PaykitMobile.swift
 
 // MARK: - PaykitManager
 
