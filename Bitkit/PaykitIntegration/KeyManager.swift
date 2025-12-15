@@ -93,7 +93,9 @@ public final class PaykitKeyManager {
     
     /// Derive X25519 keypair for Noise protocol
     public func deriveX25519Keypair(epoch: UInt32? = nil) async throws -> X25519Keypair {
-        let secretHex = getSecretKeyHex() ?? throw PaykitKeyError.noIdentity
+        guard let secretHex = getSecretKeyHex() else {
+            throw PaykitKeyError.noIdentity
+        }
         let deviceId = self.deviceId
         let epoch = epoch ?? currentEpoch
         

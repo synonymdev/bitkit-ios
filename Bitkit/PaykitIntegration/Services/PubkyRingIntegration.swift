@@ -35,8 +35,9 @@ public final class PubkyRingIntegration {
         }
         
         // Derive via PaykitMobile FFI
-        let ed25519SecretHex = keyManager.getSecretKeyHex()
-            ?? throw PaykitRingError.noIdentity("No Ed25519 identity configured in Bitkit.")
+        guard let ed25519SecretHex = keyManager.getSecretKeyHex() else {
+            throw PaykitRingError.noIdentity("No Ed25519 identity configured in Bitkit.")
+        }
         
         let keypair = try deriveX25519Keypair(
             ed25519SecretHex: ed25519SecretHex,
