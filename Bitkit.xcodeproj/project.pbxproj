@@ -24,6 +24,10 @@
 		96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A32C942FD1000E8BC2 /* secp256k1 */; };
 		96E493A62C94317D000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A52C94317D000E8BC2 /* secp256k1 */; };
 		96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */ = {isa = PBXBuildFile; productRef = 96E493A72C943184000E8BC2 /* secp256k1 */; };
+		653535353063363831356463 /* PaykitMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 356364643963336664373536 /* PaykitMobile.xcframework */; };
+		393238643938643431663963 /* PubkyNoise.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 313438323636356161626437 /* PubkyNoise.xcframework */; };
+		653434323064303830666662 /* PaykitMobile.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 356364643963336664373536 /* PaykitMobile.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		353338626165333561643362 /* PubkyNoise.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 313438323636356161626437 /* PubkyNoise.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -62,6 +66,18 @@
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		663033386161356430326664 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+		dstPath = "";
+		dstSubfolderSpec = 10;
+		files = (
+			653434323064303830666662 /* PaykitMobile.xcframework in Embed Frameworks */,
+			353338626165333561643362 /* PubkyNoise.xcframework in Embed Frameworks */,
+		);
+		name = "Embed Frameworks";
+		runOnlyForDeploymentPostprocessing = 0;
+	};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
@@ -69,6 +85,8 @@
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F7C2C2DE6AC006D0C8B /* BitkitUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		356364643963336664373536 /* PaykitMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = PaykitMobile.xcframework; path = Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework; sourceTree = SOURCE_ROOT; };
+		313438323636356161626437 /* PubkyNoise.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = PubkyNoise.xcframework; path = Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -158,15 +176,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4AFCA3702E05933800205CAE /* Zip in Frameworks */,
-				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
-				96204B782DE9AA43007BAA26 /* SQLite in Frameworks */,
-				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
-				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
-				966DE6702C51210000A7B0EF /* LightningDevKit in Frameworks */,
-				96DEA03A2DE8BBA1009932BF /* BitkitCore in Frameworks */,
-				96E20CD42CB6D91A00C24149 /* CodeScanner in Frameworks */,
-				4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */,
+				653535353063363831356463 /* PaykitMobile.xcframework in Frameworks */,
+				393238643938643431663963 /* PubkyNoise.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,6 +203,8 @@
 		961058EC2C35798C00E1F1D8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				356364643963336664373536 /* PaykitMobile.xcframework */,
+				313438323636356161626437 /* PubkyNoise.xcframework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -250,10 +263,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 96FE1F862C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "Bitkit" */;
 			buildPhases = (
-				96FE1F5D2C2DE6AA006D0C8B /* Sources */,
-				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
-				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
-				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
+				663033386161356430326664 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
