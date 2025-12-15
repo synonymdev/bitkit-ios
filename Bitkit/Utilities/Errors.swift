@@ -122,6 +122,12 @@ struct AppError: LocalizedError {
 
     private init(ldkBuildError: BuildError) {
         switch ldkBuildError as BuildError {
+        case let .InvalidSeedBytes(message: ldkMessage):
+            message = "Invalid seed bytes"
+            debugMessage = ldkMessage
+        case let .InvalidSeedFile(message: ldkMessage):
+            message = "Invalid seed file"
+            debugMessage = ldkMessage
         case let .InvalidSystemTime(message: ldkMessage):
             message = "Invalid system time"
             debugMessage = ldkMessage
@@ -129,10 +135,16 @@ struct AppError: LocalizedError {
             message = "Invalid channel monitor"
             debugMessage = ldkMessage
         case let .InvalidListeningAddresses(message: ldkMessage):
-            message = "Invalid system time"
-            debugMessage = ldkMessage
-        case let .InvalidListeningAddresses(message: ldkMessage):
             message = "Invalid listening addresses"
+            debugMessage = ldkMessage
+        case let .InvalidAnnouncementAddresses(message: ldkMessage):
+            message = "Invalid announcement addresses"
+            debugMessage = ldkMessage
+        case let .InvalidNodeAlias(message: ldkMessage):
+            message = "Invalid node alias"
+            debugMessage = ldkMessage
+        case let .RuntimeSetupFailed(message: ldkMessage):
+            message = "Runtime setup failed"
             debugMessage = ldkMessage
         case let .ReadFailed(message: ldkMessage):
             message = "Read failed"
@@ -152,17 +164,8 @@ struct AppError: LocalizedError {
         case let .LoggerSetupFailed(message: ldkMessage):
             message = "Logger setup failed"
             debugMessage = ldkMessage
-        case let .InvalidNodeAlias(message: ldkMessage):
-            message = ldkMessage
-            debugMessage = nil
-        case let .InvalidAnnouncementAddresses(message: ldkMessage):
-            message = ldkMessage
-            debugMessage = nil
         case let .NetworkMismatch(message: ldkMessage):
-            message = ldkMessage
-            debugMessage = nil
-        case let .RuntimeSetupFailed(message: ldkMessage):
-            message = "Runtime setup failed"
+            message = "Network mismatch"
             debugMessage = ldkMessage
         case let .AsyncPaymentsConfigMismatch(message: ldkMessage):
             message = "Async payments config mismatch"

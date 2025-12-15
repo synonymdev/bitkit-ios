@@ -442,7 +442,8 @@ struct BoostSheet: View {
                             channelId: nil,
                             transferTxId: nil,
                             createdAt: nil,
-                            updatedAt: nil
+                            updatedAt: nil,
+                            seenAt: nil
                         )
                     )
                 )
