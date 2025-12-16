@@ -12,7 +12,7 @@ public struct BitkitSubscription: Identifiable, Codable {
     public let id: String
     public var providerName: String
     public var providerPubkey: String
-    public var amountSats: Int64
+    public var amountSats: UInt64
     public var currency: String
     public var frequency: String  // daily, weekly, monthly, yearly
     public var description: String
@@ -22,13 +22,17 @@ public struct BitkitSubscription: Identifiable, Codable {
     public var lastPaymentAt: Date?
     public var nextPaymentAt: Date?
     public var paymentCount: Int
-    public var totalSpent: Int64
+    public var totalSpent: UInt64
     public var spendingLimit: SubscriptionSpendingLimit?
+    public var lastInvoice: String?
+    public var lastPaymentHash: String?
+    public var lastPreimage: String?
+    public var lastFeeSats: UInt64?
     
     public init(
         providerName: String,
         providerPubkey: String,
-        amountSats: Int64,
+        amountSats: UInt64,
         currency: String = "SAT",
         frequency: String,
         description: String,
@@ -50,6 +54,10 @@ public struct BitkitSubscription: Identifiable, Codable {
         self.paymentCount = 0
         self.totalSpent = 0
         self.spendingLimit = spendingLimit
+        self.lastInvoice = nil
+        self.lastPaymentHash = nil
+        self.lastPreimage = nil
+        self.lastFeeSats = nil
     }
     
     public mutating func recordPayment() {
@@ -60,14 +68,21 @@ public struct BitkitSubscription: Identifiable, Codable {
         
         // Update spending limit if present
         if var limit = spendingLimit {
-            limit.usedAmount += amountSats
+            limit.usedAmount += Int64(amountSats)
             spendingLimit = limit
         }
     }
     
+    public mutating func recordPayment(paymentHash: String?, preimage: String?, feeSats: UInt64?) {
+        recordPayment()
+        self.lastPaymentHash = paymentHash
+        self.lastPreimage = preimage
+        self.lastFeeSats = feeSats
+    }
+    
     public func canMakePayment() -> Bool {
         guard let limit = spendingLimit else { return true }
-        return (limit.usedAmount + amountSats) <= limit.maxAmount
+        return (limit.usedAmount + Int64(amountSats)) <= limit.maxAmount
     }
     
     public static func calculateNextPayment(frequency: String, from date: Date) -> Date? {

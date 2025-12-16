@@ -77,18 +77,28 @@ public class SubscriptionStorage {
     }
     
     public func recordPayment(subscriptionId: String) throws {
+        try recordPayment(subscriptionId: subscriptionId, paymentHash: nil, preimage: nil, feeSats: nil)
+    }
+    
+    public func recordPayment(
+        subscriptionId: String,
+        paymentHash: String?,
+        preimage: String?,
+        feeSats: UInt64?
+    ) throws {
         var subscriptions = listSubscriptions()
         guard let index = subscriptions.firstIndex(where: { $0.id == subscriptionId }) else { return }
         
         let subscription = subscriptions[index]
-        subscriptions[index].recordPayment()
+        subscriptions[index].recordPayment(paymentHash: paymentHash, preimage: preimage, feeSats: feeSats)
         
         // Also record to payment history
         let payment = SubscriptionPayment(
             subscriptionId: subscriptionId,
             subscriptionName: subscription.providerName,
-            amountSats: subscription.amountSats,
-            status: .completed
+            amountSats: Int64(subscription.amountSats),
+            status: .completed,
+            preimage: preimage
         )
         try savePayment(payment)
         

@@ -191,17 +191,51 @@ public class SubscriptionBackgroundService {
             throw SubscriptionError.paykitNotReady
         }
         
-        // Execute payment via PaykitPaymentService
-        // For now, we'll use a placeholder - the actual implementation
-        // would call into the Paykit FFI to execute the payment
+        // Create payment request for the subscription
+        // Use the subscription's payment method (invoice or pubkey)
+        let paymentService = PaykitPaymentService.shared
+        
         do {
-            // Record the payment
-            try subscriptionStorage.recordPayment(subscriptionId: subscription.id)
+            // Determine the payment recipient from subscription
+            let recipient: String
+            if let invoice = subscription.lastInvoice, !invoice.isEmpty {
+                // Use the last invoice if available
+                recipient = invoice
+            } else {
+                // Fall back to Paykit URI using provider pubkey
+                recipient = "paykit:\(subscription.providerPubkey)"
+            }
             
-            // Send success notification
-            await sendPaymentSuccessNotification(subscription: subscription)
+            // Execute payment with spending limit enforcement
+            let result = try await paymentService.pay(
+                to: recipient,
+                amountSats: subscription.amountSats,
+                peerPubkey: subscription.providerPubkey
+            )
             
-            Logger.info("SubscriptionBackgroundService: Payment executed successfully for subscription \(subscription.id)", context: "SubscriptionBackgroundService")
+            if result.success {
+                // Record the payment with receipt information
+                try subscriptionStorage.recordPayment(
+                    subscriptionId: subscription.id,
+                    paymentHash: result.receipt.paymentHash,
+                    preimage: result.receipt.preimage,
+                    feeSats: result.receipt.feeSats
+                )
+                
+                // Send success notification
+                await sendPaymentSuccessNotification(subscription: subscription)
+                
+                Logger.info("SubscriptionBackgroundService: Payment executed successfully for subscription \(subscription.id), receipt: \(result.receipt.id)", context: "SubscriptionBackgroundService")
+            } else {
+                let errorMessage = result.error?.localizedDescription ?? "Unknown error"
+                Logger.error("SubscriptionBackgroundService: Payment failed: \(errorMessage)", context: "SubscriptionBackgroundService")
+                await sendPaymentFailedNotification(subscription: subscription, reason: errorMessage)
+                throw SubscriptionError.paymentFailed(errorMessage)
+            }
+        } catch let error as PaykitPaymentError {
+            Logger.error("SubscriptionBackgroundService: Payment execution failed: \(error.localizedDescription ?? "Unknown")", context: "SubscriptionBackgroundService")
+            await sendPaymentFailedNotification(subscription: subscription, reason: error.userMessage)
+            throw error
         } catch {
             Logger.error("SubscriptionBackgroundService: Payment execution failed: \(error)", context: "SubscriptionBackgroundService")
             await sendPaymentFailedNotification(subscription: subscription, reason: error.localizedDescription)
