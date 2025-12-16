@@ -42,7 +42,31 @@
 			<key>UIApplicationShortcutItemTitle</key>
 			<string>Recovery</string>
 			<key>UIApplicationShortcutItemIconFile</key>
-        	<string>recovery</string>
+			<string>recovery</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>PaykitRequestPayment</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Request Payment</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>arrow.down.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>PaykitPayContact</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Pay Contact</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>arrow.up.circle</string>
+		</dict>
+		<dict>
+			<key>UIApplicationShortcutItemType</key>
+			<string>ScanQR</string>
+			<key>UIApplicationShortcutItemTitle</key>
+			<string>Scan QR</string>
+			<key>UIApplicationShortcutItemIconSymbolName</key>
+			<string>qrcode.viewfinder</string>
 		</dict>
 	</array>
 </dict>

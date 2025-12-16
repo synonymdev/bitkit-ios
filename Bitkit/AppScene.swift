@@ -309,6 +309,18 @@ struct AppScene: View {
         switch shortcutType {
         case "Recovery":
             showRecoveryScreen = true
+        case "PaykitRequestPayment":
+            // Navigate to Paykit payment request creation
+            navigation.activeDrawerMenuItem = .paykit
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(name: .paykitRequestPayment, object: nil)
+            }
+        case "PaykitPayContact":
+            // Navigate to Paykit contacts for payment
+            navigation.activeDrawerMenuItem = .contacts
+        case "ScanQR":
+            // Open scanner with Paykit URI support
+            sheets.showSheet(.qrScanner)
         default:
             break
         }

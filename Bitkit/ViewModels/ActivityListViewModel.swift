@@ -3,7 +3,7 @@ import Combine
 import SwiftUI
 
 enum ActivityTab: CaseIterable, CustomStringConvertible {
-    case all, sent, received, other
+    case all, sent, received, other, paykit
 
     var description: String {
         switch self {
@@ -15,7 +15,65 @@ enum ActivityTab: CaseIterable, CustomStringConvertible {
             return t("wallet__activity_tabs__received")
         case .other:
             return t("wallet__activity_tabs__other")
+        case .paykit:
+            return "Paykit"
         }
+    }
+}
+
+/// Unified activity item that can represent either a standard Activity or a Paykit receipt
+public enum UnifiedActivityItem: Identifiable, Hashable {
+    case standard(Activity)
+    case paykit(PaymentReceipt)
+    
+    public var id: String {
+        switch self {
+        case .standard(let activity):
+            return activity.id
+        case .paykit(let receipt):
+            return "paykit-\(receipt.id)"
+        }
+    }
+    
+    public var timestamp: UInt64 {
+        switch self {
+        case .standard(let activity):
+            switch activity {
+            case .lightning(let ln): return ln.timestamp
+            case .onchain(let on): return on.timestamp
+            }
+        case .paykit(let receipt):
+            return UInt64(receipt.createdAt.timeIntervalSince1970)
+        }
+    }
+    
+    public var isSent: Bool {
+        switch self {
+        case .standard(let activity):
+            switch activity {
+            case .lightning(let ln): return ln.txType == .sent
+            case .onchain(let on): return on.txType == .sent
+            }
+        case .paykit(let receipt):
+            return receipt.direction == .sent
+        }
+    }
+    
+    public var isReceived: Bool {
+        switch self {
+        case .standard(let activity):
+            switch activity {
+            case .lightning(let ln): return ln.txType == .received
+            case .onchain(let on): return on.txType == .received
+            }
+        case .paykit(let receipt):
+            return receipt.direction == .received
+        }
+    }
+    
+    public var isPaykit: Bool {
+        if case .paykit = self { return true }
+        return false
     }
 }
 
@@ -35,6 +93,22 @@ class ActivityListViewModel: ObservableObject {
 
     // Grouped activities for display
     @Published var groupedActivities: [ActivityGroupItem] = []
+    
+    // MARK: - Paykit Integration
+    
+    /// Paykit payment receipts
+    @Published var paykitReceipts: [PaymentReceipt] = []
+    
+    /// Unified activities combining standard activities and Paykit receipts
+    @Published var unifiedActivities: [UnifiedActivityItem] = []
+    
+    /// Grouped unified activities for display
+    @Published var groupedUnifiedActivities: [UnifiedActivityGroupItem] = []
+    
+    /// Show Paykit receipts in activity list
+    @Published var showPaykitReceipts: Bool = true
+    
+    private let receiptStorage: ReceiptStorage
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -69,11 +143,13 @@ class ActivityListViewModel: ObservableObject {
     init(
         coreService: CoreService = .shared,
         lightningService: LightningService = .shared,
-        transferService: TransferService
+        transferService: TransferService,
+        receiptStorage: ReceiptStorage = ReceiptStorage()
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.transferService = transferService
+        self.receiptStorage = receiptStorage
 
         // Setup search text subscription with debounce
         searchCancellable =
@@ -157,12 +233,153 @@ class ActivityListViewModel: ObservableObject {
             let onchain = try await coreService.activity.get(filter: .onchain)
             onchainActivities = await filterOutReplacedSentTransactions(onchain)
 
+            // Sync Paykit receipts
+            syncPaykitReceipts()
+
             // Update available tags and fee estimates
             await updateAvailableTags()
             await updateFeeEstimates()
+            
+            // Update unified activities
+            updateUnifiedActivities()
         } catch {
             Logger.error(error, context: "Failed to sync activities")
         }
+    }
+    
+    // MARK: - Paykit Receipt Methods
+    
+    /// Sync Paykit receipts from storage
+    private func syncPaykitReceipts() {
+        paykitReceipts = receiptStorage.listReceipts()
+    }
+    
+    /// Update unified activities combining standard and Paykit
+    private func updateUnifiedActivities() {
+        var unified: [UnifiedActivityItem] = []
+        
+        // Add standard activities
+        if let activities = filteredActivities {
+            unified.append(contentsOf: activities.map { .standard($0) })
+        }
+        
+        // Add Paykit receipts if enabled
+        if showPaykitReceipts {
+            // Filter Paykit receipts based on selected tab
+            let filteredReceipts: [PaymentReceipt]
+            switch selectedTab {
+            case .all:
+                filteredReceipts = paykitReceipts
+            case .sent:
+                filteredReceipts = paykitReceipts.filter { $0.direction == .sent }
+            case .received:
+                filteredReceipts = paykitReceipts.filter { $0.direction == .received }
+            case .paykit:
+                filteredReceipts = paykitReceipts
+            case .other:
+                filteredReceipts = []
+            }
+            unified.append(contentsOf: filteredReceipts.map { .paykit($0) })
+        }
+        
+        // Sort by timestamp (newest first)
+        unified.sort { $0.timestamp > $1.timestamp }
+        
+        unifiedActivities = unified
+        
+        // Update grouped unified activities
+        groupedUnifiedActivities = groupUnifiedActivities(unified)
+    }
+    
+    /// Group unified activities by date
+    func groupUnifiedActivities(_ activities: [UnifiedActivityItem]) -> [UnifiedActivityGroupItem] {
+        let calendar = Calendar.current
+        let now = Date()
+
+        // Calculate date boundaries
+        let beginningOfDay = calendar.startOfDay(for: now)
+        let beginningOfYesterday = calendar.date(byAdding: .day, value: -1, to: beginningOfDay)!
+        let beginningOfWeek = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? now
+        let beginningOfMonth = calendar.dateInterval(of: .month, for: now)?.start ?? now
+        let beginningOfYear = calendar.dateInterval(of: .year, for: now)?.start ?? now
+
+        // Group activities
+        var today: [UnifiedActivityItem] = []
+        var yesterday: [UnifiedActivityItem] = []
+        var thisWeek: [UnifiedActivityItem] = []
+        var thisMonth: [UnifiedActivityItem] = []
+        var thisYear: [UnifiedActivityItem] = []
+        var earlier: [UnifiedActivityItem] = []
+
+        for activity in activities {
+            let activityDate = Date(timeIntervalSince1970: TimeInterval(activity.timestamp))
+
+            if activityDate >= beginningOfDay {
+                today.append(activity)
+            } else if activityDate >= beginningOfYesterday {
+                yesterday.append(activity)
+            } else if activityDate >= beginningOfWeek {
+                thisWeek.append(activity)
+            } else if activityDate >= beginningOfMonth {
+                thisMonth.append(activity)
+            } else if activityDate >= beginningOfYear {
+                thisYear.append(activity)
+            } else {
+                earlier.append(activity)
+            }
+        }
+
+        // Build result array
+        var result: [UnifiedActivityGroupItem] = []
+
+        if !today.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(today.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: today.map { .activity($0) })
+        }
+
+        if !yesterday.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(yesterday.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: yesterday.map { .activity($0) })
+        }
+
+        if !thisWeek.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(thisWeek.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisWeek.map { .activity($0) })
+        }
+
+        if !thisMonth.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(thisMonth.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisMonth.map { .activity($0) })
+        }
+
+        if !thisYear.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(thisYear.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: thisYear.map { .activity($0) })
+        }
+
+        if !earlier.isEmpty {
+            let headerDate = Date(timeIntervalSince1970: TimeInterval(earlier.first?.timestamp ?? 0))
+            result.append(.header(DateFormatterHelpers.getActivityGroupHeader(for: headerDate)))
+            result.append(contentsOf: earlier.map { .activity($0) })
+        }
+
+        return result
+    }
+    
+    /// Get a Paykit receipt by ID
+    func getPaykitReceipt(id: String) -> PaymentReceipt? {
+        paykitReceipts.first { $0.id == id }
+    }
+    
+    /// Toggle showing Paykit receipts
+    func togglePaykitReceipts() {
+        showPaykitReceipts.toggle()
+        updateUnifiedActivities()
     }
 
     func clearDateRange() {
@@ -319,6 +536,12 @@ class ActivityListViewModel: ObservableObject {
 enum ActivityGroupItem: Hashable {
     case header(String)
     case activity(Activity)
+}
+
+/// Unified activity group item for mixed activity lists
+enum UnifiedActivityGroupItem: Hashable {
+    case header(String)
+    case activity(UnifiedActivityItem)
 }
 
 extension ActivityListViewModel {

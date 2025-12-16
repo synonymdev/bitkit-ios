@@ -226,6 +226,12 @@ struct MainNavView: View {
             Task {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
+                // Handle Pubky-ring callbacks first (session, keypair, profile, follows)
+                if PubkyRingBridge.shared.handleCallback(url: url) {
+                    Logger.info("Handled Pubky-ring callback: \(url.host ?? "unknown")")
+                    return
+                }
+
                 // Check if this is a Paykit payment request
                 if url.scheme == "paykit" || (url.scheme == "bitkit" && url.host == "payment-request") {
                     await handlePaymentRequestDeepLink(url: url, app: app, sheets: sheets)
@@ -393,13 +399,13 @@ struct MainNavView: View {
             // Paykit routes
             case .paykitDashboard: PaykitDashboardView()
             case .paykitContacts: PaykitContactsView()
-            case .paykitContactDiscovery: Text("Contact Discovery - In Development")
+            case .paykitContactDiscovery: ContactDiscoveryView()
             case .paykitReceipts: PaykitReceiptsView()
             case .paykitReceiptDetail(let receiptId): ReceiptDetailLookupView(receiptId: receiptId)
             case .paykitSubscriptions: PaykitSubscriptionsView()
-            case .paykitAutoPay: Text("AutoPay - In Development")
-            case .paykitPaymentRequests: Text("Payment Requests - In Development")
-            case .paykitNoisePayment: Text("Noise Payment - In Development")
+            case .paykitAutoPay: PaykitAutoPayView()
+            case .paykitPaymentRequests: PaykitPaymentRequestsView()
+            case .paykitNoisePayment: NoisePaymentView()
             case .paykitPrivateEndpoints: PrivateEndpointsView()
             case .paykitRotationSettings: RotationSettingsView()
             case .node: NodeStateView()

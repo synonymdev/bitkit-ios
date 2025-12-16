@@ -9,6 +9,32 @@
 import Foundation
 // PaykitMobile types are available from FFI/PaykitMobile.swift
 
+// MARK: - Pubky Homeserver Configuration
+
+/// Configuration for Pubky homeserver connections
+public struct PubkyConfig {
+    /// Production homeserver pubkey (Synonym mainnet)
+    public static let productionHomeserver = "8um71us3fyw6h8wbcxb5ar3rwusy1a6u49956ikzojg3gcwd1dty"
+    
+    /// Staging homeserver pubkey (Synonym staging)
+    public static let stagingHomeserver = "ufibwbmed6jeq9k4p583go95wofakh9fwpp4k734trq79pd9u1uy"
+    
+    /// Default homeserver to use
+    public static let defaultHomeserver = productionHomeserver
+    
+    /// Pubky app URL for production
+    public static let productionAppUrl = "https://pubky.app"
+    
+    /// Pubky app URL for staging
+    public static let stagingAppUrl = "https://staging.pubky.app"
+    
+    /// Get the homeserver base URL for directory operations
+    public static func homeserverUrl(for homeserver: String = defaultHomeserver) -> String {
+        // The homeserver pubkey is used as the base for directory operations
+        return homeserver
+    }
+}
+
 /// Service for interacting with the Pubky directory
 /// Uses PaykitClient FFI methods for directory operations
 public final class DirectoryService {
@@ -40,17 +66,37 @@ public final class DirectoryService {
     }
     
     /// Configure Pubky transport for directory operations
+    /// - Parameter homeserverBaseURL: The homeserver pubkey (defaults to PubkyConfig.defaultHomeserver)
     public func configurePubkyTransport(homeserverBaseURL: String? = nil) {
-        self.homeserverBaseURL = homeserverBaseURL
-        let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+        self.homeserverBaseURL = homeserverBaseURL ?? PubkyConfig.defaultHomeserver
+        let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: self.homeserverBaseURL)
         unauthenticatedTransport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
     }
     
     /// Configure authenticated transport with session
+    /// - Parameters:
+    ///   - sessionId: The session ID from Pubky-ring
+    ///   - ownerPubkey: The owner's public key
+    ///   - homeserverBaseURL: The homeserver pubkey (defaults to PubkyConfig.defaultHomeserver)
     public func configureAuthenticatedTransport(sessionId: String, ownerPubkey: String, homeserverBaseURL: String? = nil) {
-        self.homeserverBaseURL = homeserverBaseURL
-        let adapter = PubkyAuthenticatedStorageAdapter(sessionId: sessionId, homeserverBaseURL: homeserverBaseURL)
+        self.homeserverBaseURL = homeserverBaseURL ?? PubkyConfig.defaultHomeserver
+        let adapter = PubkyAuthenticatedStorageAdapter(sessionId: sessionId, homeserverBaseURL: self.homeserverBaseURL)
         authenticatedTransport = AuthenticatedTransportFfi.fromCallback(callback: adapter, ownerPubkey: ownerPubkey)
+    }
+    
+    /// Configure transport using a Pubky session from Pubky-ring
+    public func configureWithPubkySession(_ session: PubkySession) {
+        homeserverBaseURL = PubkyConfig.defaultHomeserver
+        
+        // Configure authenticated transport
+        let adapter = PubkyAuthenticatedStorageAdapter(sessionId: session.sessionSecret, homeserverBaseURL: homeserverBaseURL)
+        authenticatedTransport = AuthenticatedTransportFfi.fromCallback(callback: adapter, ownerPubkey: session.pubkey)
+        
+        // Also configure unauthenticated transport
+        let unauthAdapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+        unauthenticatedTransport = UnauthenticatedTransportFfi.fromCallback(callback: unauthAdapter)
+        
+        Logger.info("Configured DirectoryService with Pubky session for \(session.pubkey)", context: "DirectoryService")
     }
     
     /// Discover noise endpoints for a recipient

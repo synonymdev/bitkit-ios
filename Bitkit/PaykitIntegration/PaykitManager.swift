@@ -108,6 +108,34 @@ public final class PaykitManager {
         hasExecutors = false
         Logger.info("PaykitManager reset", context: "PaykitManager")
     }
+    
+    // MARK: - Pubky-Ring Integration
+    
+    /// Request a session from Pubky-ring app.
+    /// This opens Pubky-ring to authenticate and returns a session with credentials.
+    public func requestPubkySession() async throws -> PubkySession {
+        if PubkyRingBridge.shared.isPubkyRingInstalled {
+            Logger.info("Requesting session from Pubky-ring", context: "PaykitManager")
+            return try await PubkyRingBridge.shared.requestSession()
+        }
+        throw PaykitError.pubkyRingNotInstalled
+    }
+    
+    /// Get a cached session or request a new one from Pubky-ring.
+    public func getOrRequestSession(for pubkey: String? = nil) async throws -> PubkySession {
+        // Check cache first
+        if let pubkey = pubkey, let cached = PubkyRingBridge.shared.getCachedSession(for: pubkey) {
+            return cached
+        }
+        
+        // Request new session from Pubky-ring
+        return try await requestPubkySession()
+    }
+    
+    /// Check if Pubky-ring is installed and available
+    public var isPubkyRingAvailable: Bool {
+        PubkyRingBridge.shared.isPubkyRingInstalled
+    }
 }
 
 // MARK: - Network Configuration
@@ -149,6 +177,8 @@ public enum PaykitError: LocalizedError {
     case executorRegistrationFailed(String)
     case paymentFailed(String)
     case timeout
+    case pubkyRingNotInstalled
+    case sessionRequired
     case unknown(String)
     
     public var errorDescription: String? {
@@ -161,6 +191,10 @@ public enum PaykitError: LocalizedError {
             return "Payment failed: \(message)"
         case .timeout:
             return "Operation timed out"
+        case .pubkyRingNotInstalled:
+            return "Pubky-ring app is not installed. Please install Pubky-ring to use this feature."
+        case .sessionRequired:
+            return "A Pubky session is required for this operation"
         case .unknown(let message):
             return "Unknown error: \(message)"
         }
