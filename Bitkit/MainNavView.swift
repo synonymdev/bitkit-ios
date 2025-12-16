@@ -278,8 +278,7 @@ struct MainNavView: View {
                 AllActivityView()
             case .contacts:
                 if app.hasSeenContactsIntro {
-                    // ContactsView()
-                    Text("Coming Soon")
+                    PaykitContactsView()
                 } else {
                     ContactsIntroView()
                 }
@@ -314,7 +313,7 @@ struct MainNavView: View {
             case let .activityDetail(activity): ActivityItemView(item: activity)
             case let .activityExplorer(activity): ActivityExplorerView(item: activity)
             case .buyBitcoin: BuyBitcoinView()
-            case .contacts: Text("Coming Soon")
+            case .contacts: PaykitContactsView()
             case .contactsIntro: ContactsIntroView()
             case .savingsWallet: SavingsWalletView()
             case .spendingWallet: SpendingWalletView()

@@ -312,8 +312,7 @@ struct CreatePaymentRequestView: View {
                     
                     Button {
                         let expiresAt = Calendar.current.date(byAdding: .day, value: expiresInDays, to: Date())
-                        // TODO: Get current user's pubkey
-                        let fromPubkey = "current_user_pubkey" // Replace with actual
+                        let fromPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() ?? ""
                         
                         let request = PaymentRequest(
                             id: UUID().uuidString,

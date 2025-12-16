@@ -51,12 +51,87 @@ public final class PubkyStorageAdapter {
         }
         return result.entries
     }
+    
+    /// Read a file from Pubky storage (unauthenticated)
+    public func readFile(path: String, adapter: Any, ownerPubkey: String) async throws -> Data? {
+        if let unauthAdapter = adapter as? PubkyUnauthenticatedStorageAdapter {
+            let result = unauthAdapter.get(ownerPubkey: ownerPubkey, path: path)
+            if !result.success {
+                if result.error?.contains("404") == true {
+                    return nil
+                }
+                throw PubkyStorageError.retrieveFailed(result.error ?? "Unknown error")
+            }
+            return result.content?.data(using: .utf8)
+        } else if let _ = adapter as? UnauthenticatedTransportFfi {
+            // For FFI transport, use URLSession directly
+            let urlString = "https://homeserver.pubky.app/\(ownerPubkey)\(path)"
+            guard let url = URL(string: urlString) else { return nil }
+            
+            let (data, response) = try await session.data(from: url)
+            guard let httpResponse = response as? HTTPURLResponse else { return nil }
+            
+            if httpResponse.statusCode == 404 {
+                return nil
+            }
+            if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                return data
+            }
+            throw PubkyStorageError.retrieveFailed("HTTP \(httpResponse.statusCode)")
+        }
+        return nil
+    }
+    
+    /// Write a file to Pubky storage (requires authentication)
+    public func writeFile(path: String, data: Data, transport: AuthenticatedTransportFfi) async throws {
+        let content = String(data: data, encoding: .utf8) ?? ""
+        let urlString = "https://homeserver.pubky.app\(path)"
+        guard let url = URL(string: urlString) else {
+            throw PubkyStorageError.saveFailed("Invalid URL")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = content.data(using: .utf8)
+        
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PubkyStorageError.saveFailed("Invalid HTTP response")
+        }
+        
+        if httpResponse.statusCode < 200 || httpResponse.statusCode >= 300 {
+            throw PubkyStorageError.saveFailed("HTTP \(httpResponse.statusCode)")
+        }
+    }
+    
+    /// Delete a file from Pubky storage (requires authentication)
+    public func deleteFile(path: String, transport: AuthenticatedTransportFfi) async throws {
+        let urlString = "https://homeserver.pubky.app\(path)"
+        guard let url = URL(string: urlString) else {
+            throw PubkyStorageError.deleteFailed("Invalid URL")
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        
+        let (_, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw PubkyStorageError.deleteFailed("Invalid HTTP response")
+        }
+        
+        // 204 No Content, 200 OK, or 404 Not Found are all valid
+        if httpResponse.statusCode < 200 || (httpResponse.statusCode >= 300 && httpResponse.statusCode != 404) {
+            throw PubkyStorageError.deleteFailed("HTTP \(httpResponse.statusCode)")
+        }
+    }
 }
 
 enum PubkyStorageError: LocalizedError {
     case saveFailed(String)
     case retrieveFailed(String)
     case listFailed(String)
+    case deleteFailed(String)
     
     var errorDescription: String? {
         switch self {
@@ -66,6 +141,8 @@ enum PubkyStorageError: LocalizedError {
             return "Failed to retrieve from Pubky storage: \(msg)"
         case .listFailed(let msg):
             return "Failed to list Pubky directory: \(msg)"
+        case .deleteFailed(let msg):
+            return "Failed to delete from Pubky storage: \(msg)"
         }
     }
 }

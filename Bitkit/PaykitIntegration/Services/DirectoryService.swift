@@ -155,6 +155,111 @@ public final class DirectoryService {
         }
     }
     
+    // MARK: - Profile Operations
+    
+    /// Fetch profile for a pubkey from Pubky directory
+    public func fetchProfile(for pubkey: String) async throws -> PubkyProfile? {
+        let adapter = unauthenticatedTransport ?? {
+            let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+            let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
+            unauthenticatedTransport = transport
+            return transport
+        }()
+        
+        let profilePath = "/pub/pubky.app/profile.json"
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        do {
+            if let data = try await pubkyStorage.readFile(path: profilePath, adapter: adapter, ownerPubkey: pubkey) {
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    return PubkyProfile(
+                        name: json["name"] as? String,
+                        bio: json["bio"] as? String,
+                        avatar: json["avatar"] as? String,
+                        links: (json["links"] as? [[String: String]])?.compactMap { dict in
+                            guard let title = dict["title"], let url = dict["url"] else { return nil }
+                            return PubkyProfileLink(title: title, url: url)
+                        }
+                    )
+                }
+            }
+            return nil
+        } catch {
+            Logger.error("Failed to fetch profile for \(pubkey): \(error)", context: "DirectoryService")
+            return nil
+        }
+    }
+    
+    /// Publish profile to Pubky directory
+    public func publishProfile(_ profile: PubkyProfile) async throws {
+        guard let transport = authenticatedTransport else {
+            throw DirectoryError.notConfigured
+        }
+        
+        let pubkyStorage = PubkyStorageAdapter.shared
+        let profilePath = "/pub/pubky.app/profile.json"
+        
+        var profileDict: [String: Any] = [:]
+        if let name = profile.name { profileDict["name"] = name }
+        if let bio = profile.bio { profileDict["bio"] = bio }
+        if let avatar = profile.avatar { profileDict["avatar"] = avatar }
+        if let links = profile.links {
+            profileDict["links"] = links.map { ["title": $0.title, "url": $0.url] }
+        }
+        
+        let data = try JSONSerialization.data(withJSONObject: profileDict)
+        try await pubkyStorage.writeFile(path: profilePath, data: data, transport: transport)
+        Logger.info("Published profile to Pubky directory", context: "DirectoryService")
+    }
+    
+    // MARK: - Follows Operations
+    
+    /// Fetch list of pubkeys user follows
+    public func fetchFollows() async throws -> [String] {
+        guard let ownerPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() else {
+            return []
+        }
+        
+        let adapter = unauthenticatedTransport ?? {
+            let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+            let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
+            unauthenticatedTransport = transport
+            return transport
+        }()
+        
+        let pubkyStorage = PubkyStorageAdapter.shared
+        let followsPath = "/pub/pubky.app/follows/"
+        
+        return try await pubkyStorage.listDirectory(path: followsPath, adapter: adapter, ownerPubkey: ownerPubkey)
+    }
+    
+    /// Add a follow to the Pubky directory
+    public func addFollow(pubkey: String) async throws {
+        guard let transport = authenticatedTransport else {
+            throw DirectoryError.notConfigured
+        }
+        
+        let pubkyStorage = PubkyStorageAdapter.shared
+        let followPath = "/pub/pubky.app/follows/\(pubkey)"
+        let data = "{}".data(using: .utf8)!
+        
+        try await pubkyStorage.writeFile(path: followPath, data: data, transport: transport)
+        Logger.info("Added follow: \(pubkey)", context: "DirectoryService")
+    }
+    
+    /// Remove a follow from the Pubky directory
+    public func removeFollow(pubkey: String) async throws {
+        guard let transport = authenticatedTransport else {
+            throw DirectoryError.notConfigured
+        }
+        
+        let pubkyStorage = PubkyStorageAdapter.shared
+        let followPath = "/pub/pubky.app/follows/\(pubkey)"
+        
+        try await pubkyStorage.deleteFile(path: followPath, transport: transport)
+        Logger.info("Removed follow: \(pubkey)", context: "DirectoryService")
+    }
+    
     /// Discover contacts from Pubky follows directory
     public func discoverContactsFromFollows() async throws -> [DirectoryDiscoveredContact] {
         guard let ownerPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() else {
@@ -203,6 +308,31 @@ public struct DirectoryDiscoveredContact: Identifiable {
         self.name = name
         self.hasPaymentMethods = hasPaymentMethods
         self.supportedMethods = supportedMethods
+    }
+}
+
+/// Profile from Pubky directory
+public struct PubkyProfile: Codable {
+    public let name: String?
+    public let bio: String?
+    public let avatar: String?
+    public let links: [PubkyProfileLink]?
+    
+    public init(name: String? = nil, bio: String? = nil, avatar: String? = nil, links: [PubkyProfileLink]? = nil) {
+        self.name = name
+        self.bio = bio
+        self.avatar = avatar
+        self.links = links
+    }
+}
+
+public struct PubkyProfileLink: Codable {
+    public let title: String
+    public let url: String
+    
+    public init(title: String, url: String) {
+        self.title = title
+        self.url = url
     }
 }
 

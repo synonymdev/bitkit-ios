@@ -140,28 +140,47 @@ public class SubscriptionBackgroundService {
             return
         }
         
-        // Evaluate auto-pay
-        let autoPayViewModel = AutoPayViewModel()
-        autoPayViewModel.loadSettings()
+        // Evaluate auto-pay using storage directly (non-MainActor)
+        let autoPayStorage = AutoPayStorage.shared
+        let settings = autoPayStorage.getSettings()
         
-        let evaluation = autoPayViewModel.evaluate(
-            peerPubkey: subscription.providerPubkey,
-            amount: subscription.amountSats,
-            methodId: subscription.methodId
-        )
+        // Check if auto-pay is enabled
+        guard settings.isEnabled else {
+            Logger.info("SubscriptionBackgroundService: Auto-pay disabled, needs manual approval", context: "SubscriptionBackgroundService")
+            await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: "Auto-pay is disabled")
+            return
+        }
         
-        switch evaluation {
-        case .approved(_, let ruleName):
-            Logger.info("SubscriptionBackgroundService: Auto-pay approved by rule: \(ruleName ?? "default")", context: "SubscriptionBackgroundService")
+        // Check spending limit
+        do {
+            let checkResult = try SpendingLimitManager.shared.wouldExceedLimit(
+                peerPubkey: subscription.providerPubkey,
+                amountSats: subscription.amountSats
+            )
+            
+            if checkResult.wouldExceed {
+                Logger.info("SubscriptionBackgroundService: Auto-pay denied: Would exceed spending limit", context: "SubscriptionBackgroundService")
+                await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: "Would exceed spending limit")
+                return
+            }
+        } catch {
+            // No spending limit configured - continue with approval
+            Logger.debug("SubscriptionBackgroundService: No spending limit configured for peer", context: "SubscriptionBackgroundService")
+        }
+        
+        // Check for matching rule
+        if let rule = autoPayStorage.getRule(for: subscription.providerPubkey) {
+            if let maxAmount = rule.maxAmountSats, subscription.amountSats > maxAmount {
+                Logger.info("SubscriptionBackgroundService: Auto-pay denied: Amount exceeds rule limit", context: "SubscriptionBackgroundService")
+                await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: "Amount exceeds rule limit")
+                return
+            }
+            
+            Logger.info("SubscriptionBackgroundService: Auto-pay approved by rule: \(rule.name)", context: "SubscriptionBackgroundService")
             try await executePayment(subscription)
-            
-        case .denied(let reason):
-            Logger.info("SubscriptionBackgroundService: Auto-pay denied: \(reason)", context: "SubscriptionBackgroundService")
-            await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: reason)
-            
-        case .needsApproval:
-            Logger.info("SubscriptionBackgroundService: Payment needs manual approval", context: "SubscriptionBackgroundService")
-            await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: "Manual approval required")
+        } else {
+            Logger.info("SubscriptionBackgroundService: No matching rule, needs manual approval", context: "SubscriptionBackgroundService")
+            await sendPaymentNeedsApprovalNotification(subscription: subscription, reason: "No auto-pay rule for this peer")
         }
     }
     
@@ -195,8 +214,8 @@ public class SubscriptionBackgroundService {
         let startTime = Date()
         
         while Date().timeIntervalSince(startTime) < timeout {
-            // Check if node is running via LightningService
-            if LightningService.shared.isRunning {
+            // Check if node is available via LightningService
+            if LightningService.shared.node != nil {
                 return true
             }
             

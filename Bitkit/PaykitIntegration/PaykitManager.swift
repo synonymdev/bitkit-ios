@@ -28,6 +28,11 @@ public final class PaykitManager {
     public let bitcoinNetwork: BitcoinNetworkConfig
     public let lightningNetwork: LightningNetworkConfig
     
+    /// The owner's public key (our pubkey for receiving payments)
+    public var ownerPubkey: String? {
+        PaykitKeyManager.shared.getCurrentPublicKeyZ32()
+    }
+    
     // MARK: - Initialization
     
     private init() {

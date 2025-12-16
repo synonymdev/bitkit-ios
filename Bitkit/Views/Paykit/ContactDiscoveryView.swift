@@ -215,18 +215,17 @@ class ContactDiscoveryViewModel: ObservableObject {
     }
 }
 
-// Model for discovered contacts
-struct DiscoveredContact: Identifiable {
-    let id: String
-    let pubkey: String
-    let name: String
-    let paymentMethods: [String]
-    
+// Extension for DirectoryDiscoveredContact view convenience
+extension DirectoryDiscoveredContact {
     var abbreviatedPubkey: String {
         guard pubkey.count > 16 else { return pubkey }
         let prefix = pubkey.prefix(8)
         let suffix = pubkey.suffix(8)
         return "\(prefix)...\(suffix)"
+    }
+    
+    var paymentMethods: [String] {
+        return supportedMethods
     }
 }
 

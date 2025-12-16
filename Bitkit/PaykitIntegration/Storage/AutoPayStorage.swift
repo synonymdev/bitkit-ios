@@ -110,6 +110,10 @@ public struct StoredAutoPayRule: Identifiable, Codable {
 /// Manages persistent storage of auto-pay settings
 public class AutoPayStorage {
     
+    // MARK: - Singleton
+    
+    public static let shared = AutoPayStorage()
+    
     private let keychain: PaykitKeychainStorage
     private let identityName: String
     
@@ -133,6 +137,20 @@ public class AutoPayStorage {
     public init(identityName: String = "default", keychain: PaykitKeychainStorage = PaykitKeychainStorage()) {
         self.identityName = identityName
         self.keychain = keychain
+    }
+    
+    // MARK: - Convenience
+    
+    /// Whether auto-pay is globally enabled
+    public var isEnabled: Bool {
+        getSettings().isEnabled
+    }
+    
+    /// Get an auto-pay rule for a specific peer
+    public func getRule(for peerPubkey: String) -> StoredAutoPayRule? {
+        getRules().first { rule in
+            rule.isEnabled && (rule.allowedPeers.isEmpty || rule.allowedPeers.contains(peerPubkey))
+        }
     }
     
     // MARK: - Settings

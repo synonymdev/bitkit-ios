@@ -2,6 +2,13 @@ import BitkitCore
 import LDKNode
 import SwiftUI
 
+/// Paykit URI route types
+enum PaykitUriRoute {
+    case paykit(pubkey: String, method: String?, amount: Int64?)
+    case paymentRequest(id: String)
+    case subscription(id: String)
+}
+
 @MainActor
 class AppViewModel: ObservableObject {
     // Send flow
@@ -161,6 +168,12 @@ extension AppViewModel {
     func handleScannedData(_ uri: String) async throws {
         // Reset send state before handling new data
         resetSendState()
+        
+        // Check for Paykit URIs first
+        if let paykitRoute = parsePaykitUri(uri) {
+            handlePaykitUri(paykitRoute)
+            return
+        }
 
         let data = try await decode(invoice: uri)
 
@@ -240,6 +253,73 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain
         scannedOnchainInvoice = invoice
         scannedLightningInvoice = nil
+    }
+    
+    // MARK: - Paykit URI Handling
+    
+    /// Parse Paykit URI schemes: paykit:, pip:, sub:
+    private func parsePaykitUri(_ uri: String) -> PaykitUriRoute? {
+        let lowercased = uri.lowercased()
+        
+        // paykit:{pubkey}?method=lightning&amount=1000
+        if lowercased.hasPrefix("paykit:") {
+            let content = String(uri.dropFirst(7))
+            let components = content.components(separatedBy: "?")
+            let pubkey = components[0]
+            var params: [String: String] = [:]
+            
+            if components.count > 1 {
+                let queryItems = components[1].components(separatedBy: "&")
+                for item in queryItems {
+                    let pair = item.components(separatedBy: "=")
+                    if pair.count == 2 {
+                        params[pair[0]] = pair[1]
+                    }
+                }
+            }
+            
+            return .paykit(pubkey: pubkey, method: params["method"], amount: Int64(params["amount"] ?? ""))
+        }
+        
+        // pip:{request_id} - Payment request
+        if lowercased.hasPrefix("pip:") {
+            let requestId = String(uri.dropFirst(4))
+            return .paymentRequest(id: requestId)
+        }
+        
+        // sub:{subscription_id} - Subscription
+        if lowercased.hasPrefix("sub:") {
+            let subscriptionId = String(uri.dropFirst(4))
+            return .subscription(id: subscriptionId)
+        }
+        
+        return nil
+    }
+    
+    /// Handle Paykit URI routes
+    private func handlePaykitUri(_ route: PaykitUriRoute) {
+        switch route {
+        case let .paykit(pubkey, method, amount):
+            Logger.info("Paykit URI: pubkey=\(pubkey), method=\(method ?? "any"), amount=\(amount?.description ?? "none")", context: "AppViewModel")
+            // Navigate to Paykit send flow with pre-filled data
+            navigationViewModel.navigateTo(.paykitDashboard)
+            // TODO: Pass pubkey, method, amount to the send flow
+            toast(type: .success, title: "Paykit Contact", description: "Opening payment flow for \(pubkey.prefix(8))...")
+            
+        case let .paymentRequest(id):
+            Logger.info("Payment Request URI: id=\(id)", context: "AppViewModel")
+            // Navigate to payment request detail
+            navigationViewModel.navigateTo(.paykitDashboard)
+            // TODO: Navigate directly to specific request
+            toast(type: .info, title: "Payment Request", description: "Opening request \(id.prefix(8))...")
+            
+        case let .subscription(id):
+            Logger.info("Subscription URI: id=\(id)", context: "AppViewModel")
+            // Navigate to subscription detail
+            navigationViewModel.navigateTo(.paykitDashboard)
+            // TODO: Navigate directly to specific subscription
+            toast(type: .info, title: "Subscription", description: "Opening subscription \(id.prefix(8))...")
+        }
     }
 
     private func handleLnurlPayInvoice(_ data: LnurlPayData) {

@@ -4093,6 +4093,461 @@ public func FfiConverterTypeReceiptStore_lower(_ value: ReceiptStore) -> UnsafeM
 
 
 /**
+ * Manager for atomic spending limit operations.
+ *
+ * This manager handles the reserve-commit-rollback pattern for spending limits,
+ * ensuring thread-safe atomic operations during background auto-pay.
+ */
+public protocol SpendingManagerFfiProtocol: AnyObject, Sendable {
+    
+    /**
+     * Get the number of active (in-flight) reservations.
+     *
+     * Useful for debugging and monitoring.
+     */
+    func activeReservationsCount()  -> UInt32
+    
+    /**
+     * Commit a spending reservation after successful payment.
+     *
+     * This finalizes the reservation - the spent amount becomes permanent.
+     * This operation is idempotent.
+     *
+     * # Arguments
+     *
+     * * `reservation_id` - The reservation ID from `try_reserve_spending()`
+     */
+    func commitSpending(reservationId: String) throws 
+    
+    /**
+     * Get the current spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     *
+     * # Returns
+     *
+     * The spending limit if one exists, None otherwise.
+     */
+    func getPeerSpendingLimit(peerPubkey: String) throws  -> PeerSpendingLimitFfi?
+    
+    /**
+     * List all spending limits.
+     *
+     * # Returns
+     *
+     * List of all configured spending limits.
+     */
+    func listSpendingLimits() throws  -> [PeerSpendingLimitFfi]
+    
+    /**
+     * Remove a spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     */
+    func removePeerSpendingLimit(peerPubkey: String) throws 
+    
+    /**
+     * Rollback a spending reservation after failed payment.
+     *
+     * This releases the reserved amount back to the limit.
+     * This operation is idempotent.
+     *
+     * # Arguments
+     *
+     * * `reservation_id` - The reservation ID from `try_reserve_spending()`
+     */
+    func rollbackSpending(reservationId: String) throws 
+    
+    /**
+     * Set a spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     * * `limit_sats` - Maximum spending limit in satoshis
+     * * `period` - Reset period ("daily", "weekly", or "monthly")
+     *
+     * # Example
+     *
+     * ```ignore
+     * manager.set_peer_spending_limit(
+     * "8pinxxgqs41...",
+     * 100000,  // 100,000 sats
+     * "monthly"
+     * )?;
+     * ```
+     */
+    func setPeerSpendingLimit(peerPubkey: String, limitSats: Int64, period: String) throws  -> PeerSpendingLimitFfi
+    
+    /**
+     * Try to reserve spending amount atomically.
+     *
+     * This method performs an atomic check-and-reserve operation:
+     * 1. Acquires exclusive file lock
+     * 2. Checks if amount would exceed limit
+     * 3. If within limit, reserves the amount
+     * 4. Returns a reservation token
+     *
+     * The reservation MUST be either committed or rolled back after payment.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key
+     * * `amount_sats` - Amount to reserve in satoshis
+     *
+     * # Errors
+     *
+     * - `NotFound` if no spending limit is set for this peer
+     * - `Validation` with "Limit exceeded" if amount would exceed limit
+     *
+     * # Example
+     *
+     * ```ignore
+     * let reservation = manager.try_reserve_spending("8pinxxgqs41...", 10000)?;
+     * // Execute payment...
+     * manager.commit_spending(reservation.reservation_id)?;
+     * ```
+     */
+    func tryReserveSpending(peerPubkey: String, amountSats: Int64) throws  -> SpendingReservationFfi
+    
+    /**
+     * Check if an amount would exceed the spending limit (non-blocking check).
+     *
+     * This is a read-only check that does not modify the spending limit.
+     * For actual payment execution, use `try_reserve_spending()` instead.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key
+     * * `amount_sats` - Amount to check in satoshis
+     *
+     * # Returns
+     *
+     * A result containing whether the amount would exceed the limit.
+     */
+    func wouldExceedSpendingLimit(peerPubkey: String, amountSats: Int64) throws  -> SpendingCheckResultFfi
+    
+}
+/**
+ * Manager for atomic spending limit operations.
+ *
+ * This manager handles the reserve-commit-rollback pattern for spending limits,
+ * ensuring thread-safe atomic operations during background auto-pay.
+ */
+open class SpendingManagerFfi: SpendingManagerFfiProtocol, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_paykit_mobile_fn_clone_spendingmanagerffi(self.pointer, $0) }
+    }
+    /**
+     * Create a new spending manager with the given storage path.
+     *
+     * # Arguments
+     *
+     * * `storage_path` - Path to the storage directory for spending limits
+     */
+public convenience init(storagePath: String)throws  {
+    let pointer =
+        try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_constructor_spendingmanagerffi_new(
+        FfiConverterString.lower(storagePath),$0
+    )
+}
+    self.init(unsafeFromRawPointer: pointer)
+}
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_paykit_mobile_fn_free_spendingmanagerffi(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * Get the number of active (in-flight) reservations.
+     *
+     * Useful for debugging and monitoring.
+     */
+open func activeReservationsCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_active_reservations_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Commit a spending reservation after successful payment.
+     *
+     * This finalizes the reservation - the spent amount becomes permanent.
+     * This operation is idempotent.
+     *
+     * # Arguments
+     *
+     * * `reservation_id` - The reservation ID from `try_reserve_spending()`
+     */
+open func commitSpending(reservationId: String)throws   {try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_commit_spending(self.uniffiClonePointer(),
+        FfiConverterString.lower(reservationId),$0
+    )
+}
+}
+    
+    /**
+     * Get the current spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     *
+     * # Returns
+     *
+     * The spending limit if one exists, None otherwise.
+     */
+open func getPeerSpendingLimit(peerPubkey: String)throws  -> PeerSpendingLimitFfi?  {
+    return try  FfiConverterOptionTypePeerSpendingLimitFFI.lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_get_peer_spending_limit(self.uniffiClonePointer(),
+        FfiConverterString.lower(peerPubkey),$0
+    )
+})
+}
+    
+    /**
+     * List all spending limits.
+     *
+     * # Returns
+     *
+     * List of all configured spending limits.
+     */
+open func listSpendingLimits()throws  -> [PeerSpendingLimitFfi]  {
+    return try  FfiConverterSequenceTypePeerSpendingLimitFFI.lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_list_spending_limits(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Remove a spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     */
+open func removePeerSpendingLimit(peerPubkey: String)throws   {try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_remove_peer_spending_limit(self.uniffiClonePointer(),
+        FfiConverterString.lower(peerPubkey),$0
+    )
+}
+}
+    
+    /**
+     * Rollback a spending reservation after failed payment.
+     *
+     * This releases the reserved amount back to the limit.
+     * This operation is idempotent.
+     *
+     * # Arguments
+     *
+     * * `reservation_id` - The reservation ID from `try_reserve_spending()`
+     */
+open func rollbackSpending(reservationId: String)throws   {try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_rollback_spending(self.uniffiClonePointer(),
+        FfiConverterString.lower(reservationId),$0
+    )
+}
+}
+    
+    /**
+     * Set a spending limit for a peer.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key (z-base32 encoded)
+     * * `limit_sats` - Maximum spending limit in satoshis
+     * * `period` - Reset period ("daily", "weekly", or "monthly")
+     *
+     * # Example
+     *
+     * ```ignore
+     * manager.set_peer_spending_limit(
+     * "8pinxxgqs41...",
+     * 100000,  // 100,000 sats
+     * "monthly"
+     * )?;
+     * ```
+     */
+open func setPeerSpendingLimit(peerPubkey: String, limitSats: Int64, period: String)throws  -> PeerSpendingLimitFfi  {
+    return try  FfiConverterTypePeerSpendingLimitFFI_lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_set_peer_spending_limit(self.uniffiClonePointer(),
+        FfiConverterString.lower(peerPubkey),
+        FfiConverterInt64.lower(limitSats),
+        FfiConverterString.lower(period),$0
+    )
+})
+}
+    
+    /**
+     * Try to reserve spending amount atomically.
+     *
+     * This method performs an atomic check-and-reserve operation:
+     * 1. Acquires exclusive file lock
+     * 2. Checks if amount would exceed limit
+     * 3. If within limit, reserves the amount
+     * 4. Returns a reservation token
+     *
+     * The reservation MUST be either committed or rolled back after payment.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key
+     * * `amount_sats` - Amount to reserve in satoshis
+     *
+     * # Errors
+     *
+     * - `NotFound` if no spending limit is set for this peer
+     * - `Validation` with "Limit exceeded" if amount would exceed limit
+     *
+     * # Example
+     *
+     * ```ignore
+     * let reservation = manager.try_reserve_spending("8pinxxgqs41...", 10000)?;
+     * // Execute payment...
+     * manager.commit_spending(reservation.reservation_id)?;
+     * ```
+     */
+open func tryReserveSpending(peerPubkey: String, amountSats: Int64)throws  -> SpendingReservationFfi  {
+    return try  FfiConverterTypeSpendingReservationFFI_lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_try_reserve_spending(self.uniffiClonePointer(),
+        FfiConverterString.lower(peerPubkey),
+        FfiConverterInt64.lower(amountSats),$0
+    )
+})
+}
+    
+    /**
+     * Check if an amount would exceed the spending limit (non-blocking check).
+     *
+     * This is a read-only check that does not modify the spending limit.
+     * For actual payment execution, use `try_reserve_spending()` instead.
+     *
+     * # Arguments
+     *
+     * * `peer_pubkey` - Peer's public key
+     * * `amount_sats` - Amount to check in satoshis
+     *
+     * # Returns
+     *
+     * A result containing whether the amount would exceed the limit.
+     */
+open func wouldExceedSpendingLimit(peerPubkey: String, amountSats: Int64)throws  -> SpendingCheckResultFfi  {
+    return try  FfiConverterTypeSpendingCheckResultFFI_lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_method_spendingmanagerffi_would_exceed_spending_limit(self.uniffiClonePointer(),
+        FfiConverterString.lower(peerPubkey),
+        FfiConverterInt64.lower(amountSats),$0
+    )
+})
+}
+    
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSpendingManagerFFI: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = SpendingManagerFfi
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> SpendingManagerFfi {
+        return SpendingManagerFfi(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: SpendingManagerFfi) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SpendingManagerFfi {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: SpendingManagerFfi, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingManagerFFI_lift(_ pointer: UnsafeMutableRawPointer) throws -> SpendingManagerFfi {
+    return try FfiConverterTypeSpendingManagerFFI.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingManagerFFI_lower(_ value: SpendingManagerFfi) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeSpendingManagerFFI.lower(value)
+}
+
+
+
+
+
+
+/**
  * FFI wrapper for unauthenticated (read-only) transport operations.
  *
  * This wraps read-only access to public Pubky storage.
@@ -6846,6 +7301,147 @@ public func FfiConverterTypePaymentStatusInfo_lower(_ value: PaymentStatusInfo) 
 
 
 /**
+ * FFI-safe peer spending limit information.
+ */
+public struct PeerSpendingLimitFfi {
+    /**
+     * Peer public key (z-base32 encoded)
+     */
+    public var peerPubkey: String
+    /**
+     * Total spending limit in satoshis
+     */
+    public var totalLimitSats: Int64
+    /**
+     * Currently spent amount in satoshis
+     */
+    public var currentSpentSats: Int64
+    /**
+     * Period for limit reset ("daily", "weekly", "monthly")
+     */
+    public var period: String
+    /**
+     * Remaining limit in satoshis
+     */
+    public var remainingSats: Int64
+    /**
+     * Unix timestamp of last reset
+     */
+    public var lastReset: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Peer public key (z-base32 encoded)
+         */peerPubkey: String, 
+        /**
+         * Total spending limit in satoshis
+         */totalLimitSats: Int64, 
+        /**
+         * Currently spent amount in satoshis
+         */currentSpentSats: Int64, 
+        /**
+         * Period for limit reset ("daily", "weekly", "monthly")
+         */period: String, 
+        /**
+         * Remaining limit in satoshis
+         */remainingSats: Int64, 
+        /**
+         * Unix timestamp of last reset
+         */lastReset: Int64) {
+        self.peerPubkey = peerPubkey
+        self.totalLimitSats = totalLimitSats
+        self.currentSpentSats = currentSpentSats
+        self.period = period
+        self.remainingSats = remainingSats
+        self.lastReset = lastReset
+    }
+}
+
+#if compiler(>=6)
+extension PeerSpendingLimitFfi: Sendable {}
+#endif
+
+
+extension PeerSpendingLimitFfi: Equatable, Hashable {
+    public static func ==(lhs: PeerSpendingLimitFfi, rhs: PeerSpendingLimitFfi) -> Bool {
+        if lhs.peerPubkey != rhs.peerPubkey {
+            return false
+        }
+        if lhs.totalLimitSats != rhs.totalLimitSats {
+            return false
+        }
+        if lhs.currentSpentSats != rhs.currentSpentSats {
+            return false
+        }
+        if lhs.period != rhs.period {
+            return false
+        }
+        if lhs.remainingSats != rhs.remainingSats {
+            return false
+        }
+        if lhs.lastReset != rhs.lastReset {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(peerPubkey)
+        hasher.combine(totalLimitSats)
+        hasher.combine(currentSpentSats)
+        hasher.combine(period)
+        hasher.combine(remainingSats)
+        hasher.combine(lastReset)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePeerSpendingLimitFFI: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PeerSpendingLimitFfi {
+        return
+            try PeerSpendingLimitFfi(
+                peerPubkey: FfiConverterString.read(from: &buf), 
+                totalLimitSats: FfiConverterInt64.read(from: &buf), 
+                currentSpentSats: FfiConverterInt64.read(from: &buf), 
+                period: FfiConverterString.read(from: &buf), 
+                remainingSats: FfiConverterInt64.read(from: &buf), 
+                lastReset: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PeerSpendingLimitFfi, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.peerPubkey, into: &buf)
+        FfiConverterInt64.write(value.totalLimitSats, into: &buf)
+        FfiConverterInt64.write(value.currentSpentSats, into: &buf)
+        FfiConverterString.write(value.period, into: &buf)
+        FfiConverterInt64.write(value.remainingSats, into: &buf)
+        FfiConverterInt64.write(value.lastReset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePeerSpendingLimitFFI_lift(_ buf: RustBuffer) throws -> PeerSpendingLimitFfi {
+    return try FfiConverterTypePeerSpendingLimitFFI.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePeerSpendingLimitFFI_lower(_ value: PeerSpendingLimitFfi) -> RustBuffer {
+    return FfiConverterTypePeerSpendingLimitFFI.lower(value)
+}
+
+
+/**
  * Private endpoint information.
  */
 public struct PrivateEndpoint {
@@ -7747,6 +8343,235 @@ public func FfiConverterTypeSelectionResult_lift(_ buf: RustBuffer) throws -> Se
 #endif
 public func FfiConverterTypeSelectionResult_lower(_ value: SelectionResult) -> RustBuffer {
     return FfiConverterTypeSelectionResult.lower(value)
+}
+
+
+/**
+ * Result of checking if amount would exceed limit.
+ */
+public struct SpendingCheckResultFfi {
+    /**
+     * Whether the amount would exceed the limit
+     */
+    public var wouldExceed: Bool
+    /**
+     * Current spent amount in satoshis
+     */
+    public var currentSpentSats: Int64
+    /**
+     * Remaining limit in satoshis
+     */
+    public var remainingSats: Int64
+    /**
+     * Amount being checked in satoshis
+     */
+    public var checkAmountSats: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Whether the amount would exceed the limit
+         */wouldExceed: Bool, 
+        /**
+         * Current spent amount in satoshis
+         */currentSpentSats: Int64, 
+        /**
+         * Remaining limit in satoshis
+         */remainingSats: Int64, 
+        /**
+         * Amount being checked in satoshis
+         */checkAmountSats: Int64) {
+        self.wouldExceed = wouldExceed
+        self.currentSpentSats = currentSpentSats
+        self.remainingSats = remainingSats
+        self.checkAmountSats = checkAmountSats
+    }
+}
+
+#if compiler(>=6)
+extension SpendingCheckResultFfi: Sendable {}
+#endif
+
+
+extension SpendingCheckResultFfi: Equatable, Hashable {
+    public static func ==(lhs: SpendingCheckResultFfi, rhs: SpendingCheckResultFfi) -> Bool {
+        if lhs.wouldExceed != rhs.wouldExceed {
+            return false
+        }
+        if lhs.currentSpentSats != rhs.currentSpentSats {
+            return false
+        }
+        if lhs.remainingSats != rhs.remainingSats {
+            return false
+        }
+        if lhs.checkAmountSats != rhs.checkAmountSats {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(wouldExceed)
+        hasher.combine(currentSpentSats)
+        hasher.combine(remainingSats)
+        hasher.combine(checkAmountSats)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSpendingCheckResultFFI: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SpendingCheckResultFfi {
+        return
+            try SpendingCheckResultFfi(
+                wouldExceed: FfiConverterBool.read(from: &buf), 
+                currentSpentSats: FfiConverterInt64.read(from: &buf), 
+                remainingSats: FfiConverterInt64.read(from: &buf), 
+                checkAmountSats: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SpendingCheckResultFfi, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.wouldExceed, into: &buf)
+        FfiConverterInt64.write(value.currentSpentSats, into: &buf)
+        FfiConverterInt64.write(value.remainingSats, into: &buf)
+        FfiConverterInt64.write(value.checkAmountSats, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingCheckResultFFI_lift(_ buf: RustBuffer) throws -> SpendingCheckResultFfi {
+    return try FfiConverterTypeSpendingCheckResultFFI.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingCheckResultFFI_lower(_ value: SpendingCheckResultFfi) -> RustBuffer {
+    return FfiConverterTypeSpendingCheckResultFFI.lower(value)
+}
+
+
+/**
+ * FFI-safe spending reservation token.
+ *
+ * Returned by `try_reserve_spending()` and must be either committed
+ * or rolled back after payment execution.
+ */
+public struct SpendingReservationFfi {
+    /**
+     * Unique identifier for this reservation
+     */
+    public var reservationId: String
+    /**
+     * Peer public key (z-base32 encoded)
+     */
+    public var peerPubkey: String
+    /**
+     * Reserved amount in satoshis
+     */
+    public var amountSats: Int64
+    /**
+     * Unix timestamp when reservation was created
+     */
+    public var createdAt: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Unique identifier for this reservation
+         */reservationId: String, 
+        /**
+         * Peer public key (z-base32 encoded)
+         */peerPubkey: String, 
+        /**
+         * Reserved amount in satoshis
+         */amountSats: Int64, 
+        /**
+         * Unix timestamp when reservation was created
+         */createdAt: Int64) {
+        self.reservationId = reservationId
+        self.peerPubkey = peerPubkey
+        self.amountSats = amountSats
+        self.createdAt = createdAt
+    }
+}
+
+#if compiler(>=6)
+extension SpendingReservationFfi: Sendable {}
+#endif
+
+
+extension SpendingReservationFfi: Equatable, Hashable {
+    public static func ==(lhs: SpendingReservationFfi, rhs: SpendingReservationFfi) -> Bool {
+        if lhs.reservationId != rhs.reservationId {
+            return false
+        }
+        if lhs.peerPubkey != rhs.peerPubkey {
+            return false
+        }
+        if lhs.amountSats != rhs.amountSats {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(reservationId)
+        hasher.combine(peerPubkey)
+        hasher.combine(amountSats)
+        hasher.combine(createdAt)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSpendingReservationFFI: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SpendingReservationFfi {
+        return
+            try SpendingReservationFfi(
+                reservationId: FfiConverterString.read(from: &buf), 
+                peerPubkey: FfiConverterString.read(from: &buf), 
+                amountSats: FfiConverterInt64.read(from: &buf), 
+                createdAt: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SpendingReservationFfi, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.reservationId, into: &buf)
+        FfiConverterString.write(value.peerPubkey, into: &buf)
+        FfiConverterInt64.write(value.amountSats, into: &buf)
+        FfiConverterInt64.write(value.createdAt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingReservationFFI_lift(_ buf: RustBuffer) throws -> SpendingReservationFfi {
+    return try FfiConverterTypeSpendingReservationFFI.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSpendingReservationFFI_lower(_ value: SpendingReservationFfi) -> RustBuffer {
+    return FfiConverterTypeSpendingReservationFFI.lower(value)
 }
 
 
@@ -11575,6 +12400,30 @@ fileprivate struct FfiConverterOptionTypePaymentStatusInfo: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypePeerSpendingLimitFFI: FfiConverterRustBuffer {
+    typealias SwiftType = PeerSpendingLimitFfi?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypePeerSpendingLimitFFI.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypePeerSpendingLimitFFI.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypePrivateEndpointOffer: FfiConverterRustBuffer {
     typealias SwiftType = PrivateEndpointOffer?
 
@@ -11788,6 +12637,31 @@ fileprivate struct FfiConverterSequenceTypePaymentStatusInfo: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypePaymentStatusInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePeerSpendingLimitFFI: FfiConverterRustBuffer {
+    typealias SwiftType = [PeerSpendingLimitFfi]
+
+    public static func write(_ value: [PeerSpendingLimitFfi], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePeerSpendingLimitFFI.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PeerSpendingLimitFfi] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PeerSpendingLimitFfi]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePeerSpendingLimitFFI.read(from: &buf))
         }
         return seq
     }
@@ -12016,6 +12890,20 @@ public func createReceiptRequestMessage(receiptId: String, payerPubkey: String, 
 public func createReceiptStore() -> ReceiptStore  {
     return try!  FfiConverterTypeReceiptStore_lift(try! rustCall() {
     uniffi_paykit_mobile_fn_func_create_receipt_store($0
+    )
+})
+}
+/**
+ * Create a new spending manager.
+ *
+ * # Arguments
+ *
+ * * `storage_path` - Path to the storage directory
+ */
+public func createSpendingManager(storagePath: String)throws  -> SpendingManagerFfi  {
+    return try  FfiConverterTypeSpendingManagerFFI_lift(try rustCallWithError(FfiConverterTypePaykitMobileError_lift) {
+    uniffi_paykit_mobile_fn_func_create_spending_manager(
+        FfiConverterString.lower(storagePath),$0
     )
 })
 }
@@ -12343,6 +13231,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_paykit_mobile_checksum_func_create_receipt_store() != 25695) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_paykit_mobile_checksum_func_create_spending_manager() != 50773) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_paykit_mobile_checksum_func_derive_x25519_keypair() != 88) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12664,6 +13555,33 @@ private let initializationResult: InitializationResult = {
     if (uniffi_paykit_mobile_checksum_method_receiptstore_save_receipt() != 8333) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_active_reservations_count() != 55714) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_commit_spending() != 13846) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_get_peer_spending_limit() != 5613) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_list_spending_limits() != 65228) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_remove_peer_spending_limit() != 47647) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_rollback_spending() != 34174) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_set_peer_spending_limit() != 27818) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_try_reserve_spending() != 12692) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_method_spendingmanagerffi_would_exceed_spending_limit() != 55448) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_paykit_mobile_checksum_method_unauthenticatedtransportffi_get() != 49528) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12707,6 +13625,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_paykit_mobile_checksum_constructor_receiptstore_new() != 15932) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_paykit_mobile_checksum_constructor_spendingmanagerffi_new() != 42030) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_paykit_mobile_checksum_constructor_unauthenticatedtransportffi_from_authenticated() != 32228) {
