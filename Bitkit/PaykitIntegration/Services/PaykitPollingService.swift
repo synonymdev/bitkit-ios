@@ -310,10 +310,11 @@ public final class PaykitPollingService {
         // Ensure node is ready
         try await waitForNodeReady()
         
-        // Execute payment via PaykitPaymentService
+        // Execute payment via PaykitPaymentService with spending limit enforcement
         _ = try await PaykitPaymentService.shared.pay(
             to: request.fromPubkey,
-            amountSats: UInt64(request.amountSats)
+            amountSats: UInt64(request.amountSats),
+            peerPubkey: request.fromPubkey // Use peer pubkey for spending limit
         )
     }
     

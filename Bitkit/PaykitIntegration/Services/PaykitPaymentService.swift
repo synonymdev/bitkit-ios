@@ -95,17 +95,31 @@ public final class PaykitPaymentService {
     ///   - recipient: Address, invoice, or Paykit URI
     ///   - amountSats: Amount in satoshis (required for onchain, optional for invoices)
     ///   - feeRate: Fee rate for onchain payments (sat/vB)
+    ///   - peerPubkey: Optional peer pubkey for spending limit enforcement
     /// - Returns: Payment result with receipt
     public func pay(
         to recipient: String,
         amountSats: UInt64? = nil,
-        feeRate: Double? = nil
+        feeRate: Double? = nil,
+        peerPubkey: String? = nil
     ) async throws -> PaykitPaymentResult {
         guard PaykitIntegrationHelper.isReady else {
             throw PaykitPaymentError.notInitialized
         }
         
         let paymentType = detectPaymentType(recipient)
+        
+        // If peer pubkey is provided and spending limit manager is initialized, use atomic spending
+        let spendingLimitManager = SpendingLimitManager.shared
+        if let peerPubkey = peerPubkey, let amount = amountSats, spendingLimitManager.isInitialized {
+            return try await payWithSpendingLimit(
+                recipient: recipient,
+                amountSats: amount,
+                feeRate: feeRate,
+                peerPubkey: peerPubkey,
+                paymentType: paymentType
+            )
+        }
         
         switch paymentType {
         case .lightning:
@@ -119,6 +133,43 @@ public final class PaykitPaymentService {
             return try await payPaykitUri(uri: recipient, amountSats: amountSats)
         case .unknown:
             throw PaykitPaymentError.invalidRecipient(recipient)
+        }
+    }
+    
+    /// Execute a payment with atomic spending limit enforcement.
+    ///
+    /// Uses reserve/commit/rollback pattern to prevent race conditions.
+    private func payWithSpendingLimit(
+        recipient: String,
+        amountSats: UInt64,
+        feeRate: Double?,
+        peerPubkey: String,
+        paymentType: DetectedPaymentType
+    ) async throws -> PaykitPaymentResult {
+        let spendingLimitManager = SpendingLimitManager.shared
+        
+        do {
+            return try await spendingLimitManager.executeWithSpendingLimit(
+                peerPubkey: peerPubkey,
+                amountSats: Int64(amountSats)
+            ) {
+                switch paymentType {
+                case .lightning:
+                    return try await payLightning(invoice: recipient, amountSats: amountSats)
+                case .onchain:
+                    return try await payOnchain(address: recipient, amountSats: amountSats, feeRate: feeRate)
+                case .paykit:
+                    return try await payPaykitUri(uri: recipient, amountSats: amountSats)
+                case .unknown:
+                    throw PaykitPaymentError.invalidRecipient(recipient)
+                }
+            }
+        } catch let error as SpendingLimitError {
+            Logger.error("Payment with spending limit failed: \(error)", context: "PaykitPaymentService")
+            if case .wouldExceedLimit(let remaining) = error {
+                throw PaykitPaymentError.spendingLimitExceeded(remaining)
+            }
+            throw PaykitPaymentError.unknown(error.localizedDescription)
         }
     }
     
@@ -436,6 +487,7 @@ public enum PaykitPaymentError: LocalizedError {
     case paymentFailed(String)
     case timeout
     case unsupportedPaymentType
+    case spendingLimitExceeded(Int64)
     case unknown(String)
     
     public var errorDescription: String? {
@@ -454,6 +506,8 @@ public enum PaykitPaymentError: LocalizedError {
             return "Payment timed out"
         case .unsupportedPaymentType:
             return "Unsupported payment type"
+        case .spendingLimitExceeded(let remaining):
+            return "Spending limit exceeded (\(remaining) sats remaining)"
         case .unknown(let message):
             return message
         }
@@ -476,6 +530,8 @@ public enum PaykitPaymentError: LocalizedError {
             return "Payment is taking longer than expected"
         case .unsupportedPaymentType:
             return "This payment type is not supported yet"
+        case .spendingLimitExceeded:
+            return "This payment would exceed your spending limit"
         case .unknown:
             return "An unexpected error occurred"
         }
