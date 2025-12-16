@@ -1,3 +1,4 @@
+import BackgroundTasks
 import SwiftUI
 
 // MARK: - Quick Action Notification
@@ -22,6 +23,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 }
             }
         }
+        
+        // Register Paykit subscription background task
+        SubscriptionBackgroundService.shared.registerBackgroundTask()
 
         return true
     }

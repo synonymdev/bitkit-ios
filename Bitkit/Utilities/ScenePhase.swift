@@ -25,6 +25,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     Logger.debug("Scene phase changed: \(newPhase)")
 
                     if newPhase == .background {
+                        // Schedule Paykit subscription background check
+                        SubscriptionBackgroundService.shared.scheduleBackgroundTask()
+                        
                         do {
                             try await stopNodeIfNeeded()
                         } catch {
