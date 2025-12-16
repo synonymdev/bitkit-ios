@@ -23,6 +23,7 @@ class DashboardViewModel: ObservableObject {
     @Published var activeSubscriptions: Int = 0
     @Published var pendingRequests: Int = 0
     @Published var publishedMethodsCount: Int = 0
+    @Published var sessionCount: Int = 0
     
     private let receiptStorage: ReceiptStorage
     private let contactStorage: ContactStorage
@@ -62,6 +63,9 @@ class DashboardViewModel: ObservableObject {
         
         // Load Payment Requests count
         pendingRequests = paymentRequestStorage.pendingCount()
+        
+        // Load Session count
+        sessionCount = PubkyRingBridge.shared.getAllSessions().count
         
         isLoading = false
     }

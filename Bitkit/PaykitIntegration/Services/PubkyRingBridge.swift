@@ -85,9 +85,59 @@ public final class PubkyRingBridge {
     /// Cached keypairs by derivation path
     private var keypairCache: [String: NoiseKeypair] = [:]
     
+    /// Keychain storage for persistent session storage
+    private let keychainStorage = PaykitKeychainStorage()
+    
+    /// Device ID for noise key derivation
+    private var _deviceId: String?
+    
     // MARK: - Initialization
     
-    private init() {}
+    private init() {
+        // Load or generate device ID
+        _deviceId = loadOrGenerateDeviceId()
+    }
+    
+    // MARK: - Device ID Management
+    
+    /// Get consistent device ID for noise key derivations
+    public var deviceId: String {
+        if let id = _deviceId {
+            return id
+        }
+        let id = loadOrGenerateDeviceId()
+        _deviceId = id
+        return id
+    }
+    
+    private func loadOrGenerateDeviceId() -> String {
+        let key = "paykit.device_id"
+        
+        // Try to load existing
+        if let data = keychainStorage.get(key: key),
+           let id = String(data: data, encoding: .utf8), !id.isEmpty {
+            Logger.debug("Loaded device ID: \(id.prefix(8))...", context: "PubkyRingBridge")
+            return id
+        }
+        
+        // Generate new UUID
+        let newId = UUID().uuidString.lowercased()
+        
+        // Persist
+        if let data = newId.data(using: .utf8) {
+            keychainStorage.set(key: key, value: data)
+        }
+        
+        Logger.info("Generated new device ID: \(newId.prefix(8))...", context: "PubkyRingBridge")
+        return newId
+    }
+    
+    /// Reset device ID (for debugging/testing only)
+    public func resetDeviceId() {
+        keychainStorage.deleteQuietly(key: "paykit.device_id")
+        _deviceId = loadOrGenerateDeviceId()
+        Logger.info("Device ID reset", context: "PubkyRingBridge")
+    }
     
     // MARK: - Public API
     
@@ -134,16 +184,31 @@ public final class PubkyRingBridge {
     
     /// Request a noise keypair derivation from Pubky-ring
     ///
+    /// First checks NoiseKeyCache, then requests from Pubky-ring if not found.
+    ///
     /// - Parameters:
-    ///   - deviceId: Device identifier for key derivation
+    ///   - deviceId: Device identifier for key derivation (defaults to stored device ID)
     ///   - epoch: Epoch for key rotation
     /// - Returns: X25519 keypair for Noise protocol
     /// - Throws: PubkyRingError if request fails
-    public func requestNoiseKeypair(deviceId: String, epoch: UInt64) async throws -> NoiseKeypair {
-        // Check cache first
-        let cacheKey = "\(deviceId):\(epoch)"
+    public func requestNoiseKeypair(deviceId: String? = nil, epoch: UInt64) async throws -> NoiseKeypair {
+        let actualDeviceId = deviceId ?? self.deviceId
+        let cacheKey = "\(actualDeviceId):\(epoch)"
+        
+        // Check memory cache first
         if let cached = keypairCache[cacheKey] {
+            Logger.debug("Noise keypair cache hit for \(cacheKey)", context: "PubkyRingBridge")
             return cached
+        }
+        
+        // Check persistent cache (NoiseKeyCache)
+        let noiseKeyCache = NoiseKeyCache.shared
+        if let keyData = noiseKeyCache.getKey(deviceId: actualDeviceId, epoch: UInt32(epoch)) {
+            // We have the secret key, we need to also have the public key
+            // For now, try to reconstruct from stored data
+            Logger.debug("Noise keypair found in persistent cache for \(cacheKey)", context: "PubkyRingBridge")
+            // The keyData is just the secret key, public key would need to be derived
+            // For full support, we'd need to store both - for now request from Pubky-ring
         }
         
         guard isPubkyRingInstalled else {
@@ -151,13 +216,13 @@ public final class PubkyRingBridge {
         }
         
         let callbackUrl = "\(bitkitScheme)://\(CallbackPaths.keypair)"
-        let requestUrl = "\(pubkyRingScheme)://derive-keypair?deviceId=\(deviceId)&epoch=\(epoch)&callback=\(callbackUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackUrl)"
+        let requestUrl = "\(pubkyRingScheme)://derive-keypair?deviceId=\(actualDeviceId)&epoch=\(epoch)&callback=\(callbackUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackUrl)"
         
         guard let url = URL(string: requestUrl) else {
             throw PubkyRingError.invalidUrl
         }
         
-        return try await withCheckedThrowingContinuation { continuation in
+        let keypair = try await withCheckedThrowingContinuation { continuation in
             self.pendingKeypairContinuation = continuation
             
             DispatchQueue.main.async {
@@ -169,6 +234,16 @@ public final class PubkyRingBridge {
                 }
             }
         }
+        
+        // Cache the keypair
+        keypairCache[cacheKey] = keypair
+        
+        // Persist secret key to NoiseKeyCache
+        if let secretKeyData = keypair.secretKey.data(using: .utf8) {
+            noiseKeyCache.setKey(secretKeyData, deviceId: actualDeviceId, epoch: UInt32(epoch))
+        }
+        
+        return keypair
     }
     
     /// Get cached session for a pubkey
@@ -180,6 +255,77 @@ public final class PubkyRingBridge {
     public func clearCache() {
         sessionCache.removeAll()
         keypairCache.removeAll()
+    }
+    
+    // MARK: - Profile & Follows Requests
+    
+    /// Pending profile request continuation
+    private var pendingProfileContinuation: CheckedContinuation<PubkyProfile?, Error>?
+    
+    /// Pending follows request continuation
+    private var pendingFollowsContinuation: CheckedContinuation<[String], Error>?
+    
+    /// Request a profile from Pubky-ring (which fetches from homeserver)
+    ///
+    /// - Parameter pubkey: The pubkey of the profile to fetch
+    /// - Returns: PubkyProfile if found, nil otherwise
+    /// - Throws: PubkyRingError if request fails
+    public func requestProfile(pubkey: String) async throws -> PubkyProfile? {
+        guard isPubkyRingInstalled else {
+            throw PubkyRingError.appNotInstalled
+        }
+        
+        let callbackUrl = "\(bitkitScheme)://\(CallbackPaths.profile)"
+        let encodedCallback = callbackUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackUrl
+        let requestUrl = "\(pubkyRingScheme)://get-profile?pubkey=\(pubkey)&callback=\(encodedCallback)"
+        
+        guard let url = URL(string: requestUrl) else {
+            throw PubkyRingError.invalidUrl
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            self.pendingProfileContinuation = continuation
+            
+            DispatchQueue.main.async {
+                UIApplication.shared.open(url) { success in
+                    if !success {
+                        self.pendingProfileContinuation?.resume(throwing: PubkyRingError.failedToOpenApp)
+                        self.pendingProfileContinuation = nil
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Request follows list from Pubky-ring (which fetches from homeserver)
+    ///
+    /// - Returns: Array of followed pubkeys
+    /// - Throws: PubkyRingError if request fails
+    public func requestFollows() async throws -> [String] {
+        guard isPubkyRingInstalled else {
+            throw PubkyRingError.appNotInstalled
+        }
+        
+        let callbackUrl = "\(bitkitScheme)://\(CallbackPaths.follows)"
+        let encodedCallback = callbackUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackUrl
+        let requestUrl = "\(pubkyRingScheme)://get-follows?callback=\(encodedCallback)"
+        
+        guard let url = URL(string: requestUrl) else {
+            throw PubkyRingError.invalidUrl
+        }
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            self.pendingFollowsContinuation = continuation
+            
+            DispatchQueue.main.async {
+                UIApplication.shared.open(url) { success in
+                    if !success {
+                        self.pendingFollowsContinuation?.resume(throwing: PubkyRingError.failedToOpenApp)
+                        self.pendingFollowsContinuation = nil
+                    }
+                }
+            }
+        }
     }
     
     // MARK: - Cross-Device Authentication
@@ -369,6 +515,10 @@ public final class PubkyRingBridge {
             return handleSessionCallback(url: url)
         case CallbackPaths.keypair:
             return handleKeypairCallback(url: url)
+        case CallbackPaths.profile:
+            return handleProfileCallback(url: url)
+        case CallbackPaths.follows:
+            return handleFollowsCallback(url: url)
         case CallbackPaths.crossDeviceSession:
             return handleCrossDeviceSessionCallback(url: url)
         default:
@@ -412,6 +562,9 @@ public final class PubkyRingBridge {
         // Cache the session
         sessionCache[pubkey] = session
         
+        // Persist to keychain
+        persistSession(session)
+        
         pendingSessionContinuation?.resume(returning: session)
         pendingSessionContinuation = nil
         
@@ -450,12 +603,93 @@ public final class PubkyRingBridge {
             epoch: epoch
         )
         
-        // Cache the keypair
+        // Cache the keypair in memory
         let cacheKey = "\(deviceId):\(epoch)"
         keypairCache[cacheKey] = keypair
         
+        // Persist secret key to NoiseKeyCache
+        if let secretKeyData = secretKey.data(using: .utf8) {
+            NoiseKeyCache.shared.setKey(secretKeyData, deviceId: deviceId, epoch: UInt32(epoch))
+            Logger.debug("Persisted noise keypair to NoiseKeyCache for \(cacheKey)", context: "PubkyRingBridge")
+        }
+        
         pendingKeypairContinuation?.resume(returning: keypair)
         pendingKeypairContinuation = nil
+        
+        return true
+    }
+    
+    private func handleProfileCallback(url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else {
+            pendingProfileContinuation?.resume(returning: nil)
+            pendingProfileContinuation = nil
+            return true
+        }
+        
+        var params: [String: String] = [:]
+        for item in queryItems {
+            if let value = item.value {
+                params[item.name] = value
+            }
+        }
+        
+        // Check for error response
+        if let error = params["error"] {
+            Logger.warn("Profile request returned error: \(error)", context: "PubkyRingBridge")
+            pendingProfileContinuation?.resume(returning: nil)
+            pendingProfileContinuation = nil
+            return true
+        }
+        
+        // Build profile from response
+        let profile = PubkyProfile(
+            name: params["name"]?.removingPercentEncoding,
+            bio: params["bio"]?.removingPercentEncoding,
+            avatar: params["avatar"]?.removingPercentEncoding,
+            links: nil // Links would need JSON parsing, simplified for now
+        )
+        
+        Logger.debug("Received profile from Pubky-ring: \(profile.name ?? "unknown")", context: "PubkyRingBridge")
+        
+        pendingProfileContinuation?.resume(returning: profile)
+        pendingProfileContinuation = nil
+        
+        return true
+    }
+    
+    private func handleFollowsCallback(url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else {
+            pendingFollowsContinuation?.resume(returning: [])
+            pendingFollowsContinuation = nil
+            return true
+        }
+        
+        var params: [String: String] = [:]
+        for item in queryItems {
+            if let value = item.value {
+                params[item.name] = value
+            }
+        }
+        
+        // Check for error response
+        if let error = params["error"] {
+            Logger.warn("Follows request returned error: \(error)", context: "PubkyRingBridge")
+            pendingFollowsContinuation?.resume(returning: [])
+            pendingFollowsContinuation = nil
+            return true
+        }
+        
+        // Parse follows list (comma-separated pubkeys)
+        let follows = params["follows"]?
+            .components(separatedBy: ",")
+            .filter { !$0.isEmpty } ?? []
+        
+        Logger.debug("Received \(follows.count) follows from Pubky-ring", context: "PubkyRingBridge")
+        
+        pendingFollowsContinuation?.resume(returning: follows)
+        pendingFollowsContinuation = nil
         
         return true
     }
@@ -497,10 +731,189 @@ public final class PubkyRingBridge {
         sessionCache[pubkey] = session
         pendingCrossDeviceRequestId = nil
         
-        // Note: For cross-device, the session is stored in cache
-        // The polling task will pick it up
+        // Persist to keychain for cross-device sessions too
+        persistSession(session)
         
         return true
+    }
+    
+    // MARK: - Session Persistence
+    
+    /// Persist a session to keychain
+    private func persistSession(_ session: PubkySession) {
+        do {
+            let data = try JSONEncoder().encode(session)
+            keychainStorage.set(key: "pubky.session.\(session.pubkey)", value: data)
+            Logger.debug("Persisted session for \(session.pubkey.prefix(12))...", context: "PubkyRingBridge")
+        } catch {
+            Logger.error("Failed to persist session: \(error)", context: "PubkyRingBridge")
+        }
+    }
+    
+    /// Restore all sessions from keychain on app launch
+    public func restoreSessions() {
+        let sessionKeys = keychainStorage.listKeys(withPrefix: "pubky.session.")
+        
+        for key in sessionKeys {
+            do {
+                guard let data = keychainStorage.get(key: key) else { continue }
+                let session = try JSONDecoder().decode(PubkySession.self, from: data)
+                sessionCache[session.pubkey] = session
+                Logger.info("Restored session for \(session.pubkey.prefix(12))...", context: "PubkyRingBridge")
+            } catch {
+                Logger.error("Failed to restore session from \(key): \(error)", context: "PubkyRingBridge")
+            }
+        }
+        
+        Logger.info("Restored \(sessionCache.count) sessions from keychain", context: "PubkyRingBridge")
+    }
+    
+    /// Get all cached sessions
+    public var cachedSessions: [PubkySession] {
+        Array(sessionCache.values)
+    }
+    
+    /// Get all cached sessions
+    public func getAllSessions() -> [PubkySession] {
+        Array(sessionCache.values)
+    }
+    
+    /// Get count of cached keypairs
+    public func getCachedKeypairCount() -> Int {
+        keypairCache.count
+    }
+    
+    /// Clear a specific session from cache and keychain
+    public func clearSession(pubkey: String) {
+        sessionCache.removeValue(forKey: pubkey)
+        keychainStorage.deleteQuietly(key: "pubky.session.\(pubkey)")
+        Logger.info("Cleared session for \(pubkey.prefix(12))...", context: "PubkyRingBridge")
+    }
+    
+    /// Clear all sessions from cache and keychain
+    public func clearAllSessions() {
+        for pubkey in sessionCache.keys {
+            keychainStorage.deleteQuietly(key: "pubky.session.\(pubkey)")
+        }
+        sessionCache.removeAll()
+        Logger.info("Cleared all sessions", context: "PubkyRingBridge")
+    }
+    
+    /// Set a session directly (for manual or imported sessions)
+    public func setCachedSession(_ session: PubkySession) {
+        sessionCache[session.pubkey] = session
+        persistSession(session)
+    }
+    
+    // MARK: - Backup & Restore
+    
+    /// Backup data structure for export
+    public struct BackupData: Codable {
+        public let deviceId: String
+        public let sessions: [PubkySession]
+        public let noiseKeys: [BackupNoiseKey]
+        public let exportedAt: Date
+        public let version: Int
+        
+        public init(deviceId: String, sessions: [PubkySession], noiseKeys: [BackupNoiseKey], exportedAt: Date = Date(), version: Int = 1) {
+            self.deviceId = deviceId
+            self.sessions = sessions
+            self.noiseKeys = noiseKeys
+            self.exportedAt = exportedAt
+            self.version = version
+        }
+    }
+    
+    /// Noise key backup structure
+    public struct BackupNoiseKey: Codable {
+        public let deviceId: String
+        public let epoch: UInt64
+        public let secretKey: String
+        
+        public init(deviceId: String, epoch: UInt64, secretKey: String) {
+            self.deviceId = deviceId
+            self.epoch = epoch
+            self.secretKey = secretKey
+        }
+    }
+    
+    /// Export all sessions and noise keys for backup
+    ///
+    /// - Returns: BackupData containing device ID, sessions, and noise keys
+    public func exportBackup() -> BackupData {
+        let sessions = Array(sessionCache.values)
+        var noiseKeys: [BackupNoiseKey] = []
+        
+        // Export noise keys from keypair cache
+        for (cacheKey, keypair) in keypairCache {
+            noiseKeys.append(BackupNoiseKey(
+                deviceId: keypair.deviceId,
+                epoch: keypair.epoch,
+                secretKey: keypair.secretKey
+            ))
+        }
+        
+        let backup = BackupData(
+            deviceId: deviceId,
+            sessions: sessions,
+            noiseKeys: noiseKeys
+        )
+        
+        Logger.info("Exported backup with \(sessions.count) sessions and \(noiseKeys.count) noise keys", context: "PubkyRingBridge")
+        return backup
+    }
+    
+    /// Export backup as JSON data
+    public func exportBackupAsJSON() throws -> Data {
+        let backup = exportBackup()
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = .prettyPrinted
+        return try encoder.encode(backup)
+    }
+    
+    /// Import backup data and restore sessions/keys
+    ///
+    /// - Parameter backup: The backup data to restore
+    /// - Parameter overwriteDeviceId: Whether to overwrite the local device ID with the backup's
+    public func importBackup(_ backup: BackupData, overwriteDeviceId: Bool = false) {
+        // Optionally restore device ID
+        if overwriteDeviceId {
+            let key = "paykit.device_id"
+            if let data = backup.deviceId.data(using: .utf8) {
+                keychainStorage.set(key: key, value: data)
+                _deviceId = backup.deviceId
+                Logger.info("Restored device ID from backup", context: "PubkyRingBridge")
+            }
+        }
+        
+        // Restore sessions
+        for session in backup.sessions {
+            sessionCache[session.pubkey] = session
+            persistSession(session)
+        }
+        
+        // Restore noise keys
+        let noiseKeyCache = NoiseKeyCache.shared
+        for noiseKey in backup.noiseKeys {
+            let cacheKey = "\(noiseKey.deviceId):\(noiseKey.epoch)"
+            
+            // Restore to keypair cache (we only have the secret key, not public)
+            // The public key would need to be re-derived from Pubky-ring
+            if let secretKeyData = noiseKey.secretKey.data(using: .utf8) {
+                noiseKeyCache.setKey(secretKeyData, deviceId: noiseKey.deviceId, epoch: UInt32(noiseKey.epoch))
+            }
+        }
+        
+        Logger.info("Imported backup with \(backup.sessions.count) sessions and \(backup.noiseKeys.count) noise keys", context: "PubkyRingBridge")
+    }
+    
+    /// Import backup from JSON data
+    public func importBackup(from jsonData: Data, overwriteDeviceId: Bool = false) throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let backup = try decoder.decode(BackupData.self, from: jsonData)
+        importBackup(backup, overwriteDeviceId: overwriteDeviceId)
     }
 }
 
@@ -512,10 +925,26 @@ public struct PubkySession: Codable {
     public let sessionSecret: String
     public let capabilities: [String]
     public let createdAt: Date
+    public let expiresAt: Date?
+    
+    /// Initialize with all parameters
+    public init(pubkey: String, sessionSecret: String, capabilities: [String], createdAt: Date, expiresAt: Date? = nil) {
+        self.pubkey = pubkey
+        self.sessionSecret = sessionSecret
+        self.capabilities = capabilities
+        self.createdAt = createdAt
+        self.expiresAt = expiresAt
+    }
     
     /// Check if session has a specific capability
     public func hasCapability(_ capability: String) -> Bool {
         capabilities.contains(capability)
+    }
+    
+    /// Check if session is expired
+    public var isExpired: Bool {
+        guard let expiresAt = expiresAt else { return false }
+        return Date() > expiresAt
     }
 }
 

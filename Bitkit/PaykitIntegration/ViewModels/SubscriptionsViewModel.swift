@@ -88,7 +88,7 @@ class SubscriptionsViewModel: ObservableObject {
         let subscription = BitkitSubscription(
             providerName: proposal.providerName,
             providerPubkey: proposal.providerPubkey,
-            amountSats: proposal.amountSats,
+            amountSats: UInt64(proposal.amountSats),
             currency: proposal.currency,
             frequency: proposal.frequency,
             description: proposal.description,
@@ -128,8 +128,8 @@ class SubscriptionsViewModel: ObservableObject {
 
 // MARK: - Models
 
-struct SubscriptionProposal: Identifiable, Codable {
-    let id: String
+public struct SubscriptionProposal: Identifiable, Codable {
+    public let id: String
     let providerName: String
     let providerPubkey: String
     let amountSats: Int64
@@ -168,8 +168,8 @@ struct SubscriptionProposal: Identifiable, Codable {
     }
 }
 
-struct SubscriptionPayment: Identifiable, Codable {
-    let id: String
+public struct SubscriptionPayment: Identifiable, Codable {
+    public let id: String
     let subscriptionId: String
     let subscriptionName: String
     let amountSats: Int64
@@ -205,11 +205,11 @@ enum SubscriptionPaymentStatus: String, Codable {
     case failed = "Failed"
 }
 
-struct SubscriptionSpendingLimit: Codable {
-    let maxAmount: Int64
-    let period: SpendingLimitPeriod
-    var usedAmount: Int64
-    let requireConfirmation: Bool
+public struct SubscriptionSpendingLimit: Codable {
+    public let maxAmount: Int64
+    public let period: SpendingLimitPeriod
+    public var usedAmount: Int64
+    public let requireConfirmation: Bool
     
     init(maxAmount: Int64, period: SpendingLimitPeriod, usedAmount: Int64 = 0, requireConfirmation: Bool = false) {
         self.maxAmount = maxAmount
@@ -219,7 +219,7 @@ struct SubscriptionSpendingLimit: Codable {
     }
 }
 
-enum SpendingLimitPeriod: String, Codable {
+public enum SpendingLimitPeriod: String, Codable {
     case daily = "day"
     case weekly = "week"
     case monthly = "month"

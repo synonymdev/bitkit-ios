@@ -17,7 +17,7 @@ struct PaykitPaymentRequestsView: View {
     @State private var selectedStatusFilter: PaymentRequestStatus? = nil
     @State private var peerFilter: String = ""
     @State private var showingFilters = false
-    @State private var selectedRequest: PaymentRequest? = nil
+    @State private var selectedRequest: BitkitPaymentRequest? = nil
     @State private var showingRequestDetail = false
     
     enum RequestFilter: String, CaseIterable {
@@ -31,7 +31,7 @@ struct PaykitPaymentRequestsView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: "Payment Requests",
-                trailing: AnyView(
+                action: AnyView(
                     HStack(spacing: 16) {
                         Button {
                             showingFilters.toggle()
@@ -114,11 +114,11 @@ struct PaykitPaymentRequestsView: View {
             // Status Filter
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    FilterChip(title: "Any Status", isSelected: selectedStatusFilter == nil) {
+                    RequestFilterChip(title: "Any Status", isSelected: selectedStatusFilter == nil) {
                         selectedStatusFilter = nil
                     }
                     ForEach(PaymentRequestStatus.allCases, id: \.self) { status in
-                        FilterChip(title: status.rawValue, isSelected: selectedStatusFilter == status) {
+                        RequestFilterChip(title: status.rawValue, isSelected: selectedStatusFilter == status) {
                             selectedStatusFilter = status
                         }
                     }
@@ -150,7 +150,7 @@ struct PaykitPaymentRequestsView: View {
         .cornerRadius(12)
     }
     
-    private var filteredRequests: [PaymentRequest] {
+    private var filteredRequests: [BitkitPaymentRequest] {
         var results = viewModel.requests
         
         // Direction filter
@@ -235,7 +235,7 @@ struct PaykitPaymentRequestsView: View {
         .padding(.vertical, 40)
     }
     
-    private func initiatePayment(for request: PaymentRequest) {
+    private func initiatePayment(for request: BitkitPaymentRequest) {
         Task {
             do {
                 let result = try await PaykitPaymentService.shared.pay(
@@ -261,7 +261,7 @@ struct PaykitPaymentRequestsView: View {
 
 // MARK: - Filter Chip
 
-struct FilterChip: View {
+private struct RequestFilterChip: View {
     let title: String
     let isSelected: Bool
     let action: () -> Void
@@ -279,7 +279,7 @@ struct FilterChip: View {
 }
 
 struct PaymentRequestRow: View {
-    let request: PaymentRequest
+    let request: BitkitPaymentRequest
     @ObservedObject var viewModel: PaymentRequestsViewModel
     var onTap: () -> Void = {}
     var onPayNow: () -> Void = {}
@@ -318,12 +318,12 @@ struct PaymentRequestRow: View {
                         }
                     }
                     
-                    // Metadata preview
-                    if let metadata = request.metadata, !metadata.isEmpty {
+                    // Description preview (metadata-like)
+                    if !request.description.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "doc.text")
                                 .font(.caption2)
-                            BodySText("\(metadata.count) item\(metadata.count == 1 ? "" : "s")")
+                            BodySText(request.description)
                         }
                         .foregroundColor(.brandAccent)
                     }
@@ -503,7 +503,7 @@ struct StatusBadge: View {
 // MARK: - Payment Request Detail Sheet
 
 struct PaymentRequestDetailSheet: View {
-    let request: PaymentRequest
+    let request: BitkitPaymentRequest
     @ObservedObject var viewModel: PaymentRequestsViewModel
     @EnvironmentObject private var app: AppViewModel
     @Environment(\.dismiss) private var dismiss
@@ -518,8 +518,8 @@ struct PaymentRequestDetailSheet: View {
                     peerSection
                     methodSection
                     
-                    if let metadata = request.metadata, !metadata.isEmpty {
-                        metadataSection(metadata)
+                    if !request.description.isEmpty {
+                        descriptionSection
                     }
                     
                     if request.status == .pending {
@@ -553,7 +553,7 @@ struct PaymentRequestDetailSheet: View {
                     .foregroundColor(request.direction == .incoming ? .greenAccent : .brandAccent)
             }
             
-            HeadlineXLText(formatSats(request.amountSats))
+            HeadlineText(formatSats(request.amountSats))
                 .foregroundColor(.white)
             
             if !request.description.isEmpty {
@@ -690,6 +690,20 @@ struct PaymentRequestDetailSheet: View {
                 }
             }
         }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    private var descriptionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            BodyMBoldText("Description")
+                .foregroundColor(.textSecondary)
+            
+            BodyMText(request.description)
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(Color.gray6)
         .cornerRadius(12)
@@ -856,7 +870,10 @@ struct CreatePaymentRequestView: View {
                             BodyMText("Amount:")
                                 .foregroundColor(.textSecondary)
                             Spacer()
-                            TextField("sats", value: $amount, format: .number)
+                            TextField("sats", text: Binding(
+                                get: { String(amount) },
+                                set: { amount = Int64($0) ?? 0 }
+                            ))
                                 .foregroundColor(.white)
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
@@ -895,7 +912,7 @@ struct CreatePaymentRequestView: View {
                         let expiresAt = Calendar.current.date(byAdding: .day, value: expiresInDays, to: Date())
                         let fromPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() ?? ""
                         
-                        let request = PaymentRequest(
+                        let request = BitkitPaymentRequest(
                             id: UUID().uuidString,
                             fromPubkey: fromPubkey,
                             toPubkey: toPubkey,
@@ -944,7 +961,7 @@ struct CreatePaymentRequestView: View {
 // ViewModel for Payment Requests
 @MainActor
 class PaymentRequestsViewModel: ObservableObject {
-    @Published var requests: [PaymentRequest] = []
+    @Published var requests: [BitkitPaymentRequest] = []
     @Published var isLoading = false
     
     private let storage: PaymentRequestStorage
@@ -961,17 +978,17 @@ class PaymentRequestsViewModel: ObservableObject {
         isLoading = false
     }
     
-    func addRequest(_ request: PaymentRequest) throws {
+    func addRequest(_ request: BitkitPaymentRequest) throws {
         try storage.addRequest(request)
         loadRequests()
     }
     
-    func updateRequest(_ request: PaymentRequest) throws {
+    func updateRequest(_ request: BitkitPaymentRequest) throws {
         try storage.updateRequest(request)
         loadRequests()
     }
     
-    func deleteRequest(_ request: PaymentRequest) throws {
+    func deleteRequest(_ request: BitkitPaymentRequest) throws {
         try storage.deleteRequest(id: request.id)
         loadRequests()
     }

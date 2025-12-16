@@ -19,10 +19,7 @@ struct ProfileImportView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: "Import Profile",
-                leftButton: NavigationBarButton(
-                    type: .close,
-                    action: { dismiss() }
-                )
+                onBack: { dismiss() }
             )
             
             ScrollView {
@@ -124,7 +121,7 @@ struct ProfileImportView: View {
                 .padding(.top, 16)
             }
         }
-        .background(Color.gray8)
+        .background(Color.gray6)
         .onAppear {
             // Pre-fill with current pubkey if available
             if let currentPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() {
@@ -230,7 +227,8 @@ struct ProfilePreviewCard: View {
                             VStack(alignment: .leading) {
                                 BodySText(link.title)
                                     .foregroundColor(.white)
-                                BodyXSText(link.url)
+                                Text(link.url)
+                                    .font(.caption)
                                     .foregroundColor(.textSecondary)
                             }
                         }

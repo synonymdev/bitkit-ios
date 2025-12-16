@@ -204,7 +204,40 @@ public final class DirectoryService {
     // MARK: - Profile Operations
     
     /// Fetch profile for a pubkey from Pubky directory
+    /// Uses PubkySDKService first, falls back to direct FFI if unavailable
     public func fetchProfile(for pubkey: String) async throws -> PubkyProfile? {
+        // Try PubkySDKService first (preferred, direct homeserver access)
+        do {
+            let sdkProfile = try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
+            // Convert to local PubkyProfile type
+            return PubkyProfile(
+                name: sdkProfile.name,
+                bio: sdkProfile.bio,
+                avatar: sdkProfile.image,
+                links: sdkProfile.links?.map { PubkyProfileLink(title: $0.title, url: $0.url) }
+            )
+        } catch {
+            Logger.debug("PubkySDKService profile fetch failed: \(error)", context: "DirectoryService")
+        }
+        
+        // Try PubkyRingBridge if Pubky-ring is installed (user interaction required)
+        if PubkyRingBridge.shared.isPubkyRingInstalled {
+            do {
+                if let profile = try await PubkyRingBridge.shared.requestProfile(pubkey: pubkey) {
+                    Logger.debug("Got profile from Pubky-ring", context: "DirectoryService")
+                    return profile
+                }
+            } catch {
+                Logger.debug("PubkyRingBridge profile fetch failed: \(error)", context: "DirectoryService")
+            }
+        }
+        
+        // Fallback to direct FFI
+        return try await fetchProfileViaFFI(for: pubkey)
+    }
+    
+    /// Fetch profile using direct FFI (fallback)
+    private func fetchProfileViaFFI(for pubkey: String) async throws -> PubkyProfile? {
         let adapter = unauthenticatedTransport ?? {
             let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
             let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
@@ -261,11 +294,38 @@ public final class DirectoryService {
     // MARK: - Follows Operations
     
     /// Fetch list of pubkeys user follows
+    /// Uses PubkySDKService first, falls back to direct FFI if unavailable
     public func fetchFollows() async throws -> [String] {
         guard let ownerPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() else {
             return []
         }
         
+        // Try PubkySDKService first (preferred, direct homeserver access)
+        do {
+            return try await PubkySDKService.shared.fetchFollows(pubkey: ownerPubkey)
+        } catch {
+            Logger.debug("PubkySDKService follows fetch failed: \(error)", context: "DirectoryService")
+        }
+        
+        // Try PubkyRingBridge if Pubky-ring is installed (user interaction required)
+        if PubkyRingBridge.shared.isPubkyRingInstalled {
+            do {
+                let follows = try await PubkyRingBridge.shared.requestFollows()
+                if !follows.isEmpty {
+                    Logger.debug("Got \(follows.count) follows from Pubky-ring", context: "DirectoryService")
+                    return follows
+                }
+            } catch {
+                Logger.debug("PubkyRingBridge follows fetch failed: \(error)", context: "DirectoryService")
+            }
+        }
+        
+        // Fallback to direct FFI
+        return try await fetchFollowsViaFFI(ownerPubkey: ownerPubkey)
+    }
+    
+    /// Fetch follows using direct FFI (fallback)
+    private func fetchFollowsViaFFI(ownerPubkey: String) async throws -> [String] {
         let adapter = unauthenticatedTransport ?? {
             let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
             let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
@@ -275,8 +335,9 @@ public final class DirectoryService {
         
         let pubkyStorage = PubkyStorageAdapter.shared
         let followsPath = "/pub/pubky.app/follows/"
+        let unauthenticatedAdapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
         
-        return try await pubkyStorage.listDirectory(path: followsPath, adapter: adapter, ownerPubkey: ownerPubkey)
+        return try await pubkyStorage.listDirectory(path: followsPath, adapter: unauthenticatedAdapter, ownerPubkey: ownerPubkey)
     }
     
     /// Add a follow to the Pubky directory

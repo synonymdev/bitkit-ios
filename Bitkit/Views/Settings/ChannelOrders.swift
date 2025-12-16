@@ -133,7 +133,7 @@ struct CJitRow: View {
     }
 }
 
-struct DetailRow: View {
+private struct ChannelDetailRow: View {
     let label: String
     let value: String
     var isError: Bool = false
@@ -179,49 +179,49 @@ struct OrderDetailView: View {
     var body: some View {
         List {
             Section("Order Details") {
-                DetailRow(label: "ID", value: order.id)
-                DetailRow(label: "Onchain txs", value: "\(order.payment?.onchain?.transactions.count ?? 0)")
-                DetailRow(label: "State", value: String(describing: order.state))
-                DetailRow(label: "State 2", value: String(describing: order.state2))
-                DetailRow(label: "LSP Balance", value: "\(order.lspBalanceSat) sats")
-                DetailRow(label: "Client Balance", value: "\(order.clientBalanceSat) sats")
-                DetailRow(label: "Total Fee", value: "\(order.feeSat) sats")
-                DetailRow(label: "Network Fee", value: "\(order.networkFeeSat) sats")
-                DetailRow(label: "Service Fee", value: "\(order.serviceFeeSat) sats")
+                ChannelDetailRow(label: "ID", value: order.id)
+                ChannelDetailRow(label: "Onchain txs", value: "\(order.payment?.onchain?.transactions.count ?? 0)")
+                ChannelDetailRow(label: "State", value: String(describing: order.state))
+                ChannelDetailRow(label: "State 2", value: String(describing: order.state2))
+                ChannelDetailRow(label: "LSP Balance", value: "\(order.lspBalanceSat) sats")
+                ChannelDetailRow(label: "Client Balance", value: "\(order.clientBalanceSat) sats")
+                ChannelDetailRow(label: "Total Fee", value: "\(order.feeSat) sats")
+                ChannelDetailRow(label: "Network Fee", value: "\(order.networkFeeSat) sats")
+                ChannelDetailRow(label: "Service Fee", value: "\(order.serviceFeeSat) sats")
             }
 
             Section("Channel Settings") {
-                DetailRow(label: "Zero Conf", value: order.zeroConf ? "Yes" : "No")
-                DetailRow(label: "Zero Reserve", value: order.zeroReserve ? "Yes" : "No")
+                ChannelDetailRow(label: "Zero Conf", value: order.zeroConf ? "Yes" : "No")
+                ChannelDetailRow(label: "Zero Reserve", value: order.zeroReserve ? "Yes" : "No")
                 if let clientNodeId = order.clientNodeId {
-                    DetailRow(label: "Client Node ID", value: clientNodeId)
+                    ChannelDetailRow(label: "Client Node ID", value: clientNodeId)
                 }
-                DetailRow(label: "Expiry Weeks", value: "\(order.channelExpiryWeeks)")
-                DetailRow(label: "Channel Expires", value: order.channelExpiresAt)
-                DetailRow(label: "Order Expires", value: order.orderExpiresAt)
+                ChannelDetailRow(label: "Expiry Weeks", value: "\(order.channelExpiryWeeks)")
+                ChannelDetailRow(label: "Channel Expires", value: order.channelExpiresAt)
+                ChannelDetailRow(label: "Order Expires", value: order.orderExpiresAt)
             }
 
             Section("LSP Information") {
-                DetailRow(label: "Alias", value: order.lspNode?.alias ?? "")
-                DetailRow(label: "Node ID", value: order.lspNode?.pubkey ?? "")
+                ChannelDetailRow(label: "Alias", value: order.lspNode?.alias ?? "")
+                ChannelDetailRow(label: "Node ID", value: order.lspNode?.pubkey ?? "")
                 if let lnurl = order.lnurl {
-                    DetailRow(label: "LNURL", value: lnurl)
+                    ChannelDetailRow(label: "LNURL", value: lnurl)
                 }
             }
 
             if let couponCode = order.couponCode {
                 Section("Discount") {
-                    DetailRow(label: "Coupon Code", value: couponCode)
+                    ChannelDetailRow(label: "Coupon Code", value: couponCode)
                     if let discount = order.discount {
-                        DetailRow(label: "Discount Type", value: String(describing: discount.code))
-                        DetailRow(label: "Value", value: "\(discount.absoluteSat)")
+                        ChannelDetailRow(label: "Discount Type", value: String(describing: discount.code))
+                        ChannelDetailRow(label: "Value", value: "\(discount.absoluteSat)")
                     }
                 }
             }
 
             Section("Timestamps") {
-                DetailRow(label: "Created", value: order.createdAt)
-                DetailRow(label: "Updated", value: order.updatedAt)
+                ChannelDetailRow(label: "Created", value: order.createdAt)
+                ChannelDetailRow(label: "Updated", value: order.updatedAt)
             }
 
             if order.state2 == .paid {
@@ -250,44 +250,44 @@ struct CJitDetailView: View {
     var body: some View {
         List {
             Section("Entry Details") {
-                DetailRow(label: "ID", value: entry.id)
-                DetailRow(label: "State", value: String(describing: entry.state))
-                DetailRow(label: "Channel Size", value: "\(entry.channelSizeSat) sats")
+                ChannelDetailRow(label: "ID", value: entry.id)
+                ChannelDetailRow(label: "State", value: String(describing: entry.state))
+                ChannelDetailRow(label: "Channel Size", value: "\(entry.channelSizeSat) sats")
                 if let error = entry.channelOpenError {
-                    DetailRow(label: "Error", value: error, isError: true)
+                    ChannelDetailRow(label: "Error", value: error, isError: true)
                 }
             }
 
             Section("Fees") {
-                DetailRow(label: "Total Fee", value: "\(entry.feeSat) sats")
-                DetailRow(label: "Network Fee", value: "\(entry.networkFeeSat) sats")
-                DetailRow(label: "Service Fee", value: "\(entry.serviceFeeSat) sats")
+                ChannelDetailRow(label: "Total Fee", value: "\(entry.feeSat) sats")
+                ChannelDetailRow(label: "Network Fee", value: "\(entry.networkFeeSat) sats")
+                ChannelDetailRow(label: "Service Fee", value: "\(entry.serviceFeeSat) sats")
             }
 
             Section("Channel Settings") {
-                DetailRow(label: "Node ID", value: entry.nodeId)
-                DetailRow(label: "Expiry Weeks", value: "\(entry.channelExpiryWeeks)")
+                ChannelDetailRow(label: "Node ID", value: entry.nodeId)
+                ChannelDetailRow(label: "Expiry Weeks", value: "\(entry.channelExpiryWeeks)")
             }
 
             Section("LSP Information") {
-                DetailRow(label: "Alias", value: entry.lspNode.alias)
-                DetailRow(label: "Node ID", value: entry.lspNode.pubkey)
+                ChannelDetailRow(label: "Alias", value: entry.lspNode.alias)
+                ChannelDetailRow(label: "Node ID", value: entry.lspNode.pubkey)
             }
 
             if !entry.couponCode.isEmpty {
                 Section("Discount") {
-                    DetailRow(label: "Coupon Code", value: entry.couponCode)
+                    ChannelDetailRow(label: "Coupon Code", value: entry.couponCode)
                     if let discount = entry.discount {
-                        DetailRow(label: "Discount Type", value: String(describing: discount.code))
-                        DetailRow(label: "Value", value: "\(discount.absoluteSat)")
+                        ChannelDetailRow(label: "Discount Type", value: String(describing: discount.code))
+                        ChannelDetailRow(label: "Value", value: "\(discount.absoluteSat)")
                     }
                 }
             }
 
             Section("Timestamps") {
-                DetailRow(label: "Created", value: entry.createdAt)
-                DetailRow(label: "Updated", value: entry.updatedAt)
-                DetailRow(label: "Expires", value: entry.expiresAt)
+                ChannelDetailRow(label: "Created", value: entry.createdAt)
+                ChannelDetailRow(label: "Updated", value: entry.updatedAt)
+                ChannelDetailRow(label: "Expires", value: entry.expiresAt)
             }
         }
         .navigationTitle("cJIT Entry Details")

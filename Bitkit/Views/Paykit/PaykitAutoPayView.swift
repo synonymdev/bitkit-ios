@@ -564,95 +564,6 @@ struct AutoPayHistoryRow: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
-    
-    private var peerLimitsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                BodyLText("Per-Peer Limits")
-                    .foregroundColor(.textPrimary)
-                
-                Spacer()
-                
-                Button {
-                    showingAddPeerLimit = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.brandAccent)
-                        .font(.title3)
-                }
-            }
-            
-            if viewModel.peerLimits.isEmpty {
-                BodyMText("No peer limits set")
-                    .foregroundColor(.textSecondary)
-                    .padding(16)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.gray6)
-                    .cornerRadius(8)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(viewModel.peerLimits) { limit in
-                        PeerLimitRow(limit: limit, viewModel: viewModel)
-                        
-                        if limit.id != viewModel.peerLimits.last?.id {
-                            Divider()
-                                .background(Color.white16)
-                        }
-                    }
-                }
-                .background(Color.gray6)
-                .cornerRadius(8)
-            }
-        }
-    }
-    
-    private var rulesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                BodyLText("Auto-Pay Rules")
-                    .foregroundColor(.textPrimary)
-                
-                Spacer()
-                
-                Button {
-                    showingAddRule = true
-                } label: {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundColor(.brandAccent)
-                        .font(.title3)
-                }
-            }
-            
-            if viewModel.rules.isEmpty {
-                BodyMText("No rules set")
-                    .foregroundColor(.textSecondary)
-                    .padding(16)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.gray6)
-                    .cornerRadius(8)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(viewModel.rules) { rule in
-                        RuleRow(rule: rule, viewModel: viewModel)
-                        
-                        if rule.id != viewModel.rules.last?.id {
-                            Divider()
-                                .background(Color.white16)
-                        }
-                    }
-                }
-                .background(Color.gray6)
-                .cornerRadius(8)
-            }
-        }
-    }
-    
-    private func formatSats(_ amount: Int64) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return "\(formatter.string(from: NSNumber(value: amount)) ?? "\(amount)") sats"
-    }
-}
 
 struct PeerLimitRow: View {
     let limit: StoredPeerLimit
@@ -799,7 +710,10 @@ struct AddPeerLimitView: View {
                             BodyMText("Amount:")
                                 .foregroundColor(.textSecondary)
                             Spacer()
-                            TextField("sats", value: $limit, format: .number)
+                            TextField("sats", text: Binding(
+                                get: { String(limit) },
+                                set: { limit = Int64($0) ?? 0 }
+                            ))
                                 .foregroundColor(.white)
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)
@@ -890,7 +804,10 @@ struct AddRuleView: View {
                             BodyMText("Max Amount:")
                                 .foregroundColor(.textSecondary)
                             Spacer()
-                            TextField("sats (optional)", value: $maxAmount, format: .number)
+                            TextField("sats (optional)", text: Binding(
+                                get: { maxAmount.map { String($0) } ?? "" },
+                                set: { maxAmount = Int64($0) }
+                            ))
                                 .foregroundColor(.white)
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.trailing)

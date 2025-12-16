@@ -26,14 +26,13 @@ struct ProfileEditView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: "Edit Profile",
-                leftButton: NavigationBarButton(
-                    type: .close,
-                    action: { dismiss() }
-                ),
-                rightButton: hasChanges ? NavigationBarButton(
-                    type: .textButton(text: "Save"),
-                    action: { Task { await saveProfile() } }
-                ) : nil
+                action: hasChanges ? AnyView(
+                    Button("Save") {
+                        Task { await saveProfile() }
+                    }
+                    .foregroundColor(.brandAccent)
+                ) : nil,
+                onBack: { dismiss() }
             )
             
             if isLoading {
@@ -74,7 +73,7 @@ struct ProfileEditView: View {
                                 BodySText("Bio")
                                     .foregroundColor(.textSecondary)
                                 Spacer()
-                                BodyXSText("\(bio.count)/160")
+                                Text("\(bio.count)/160").font(.caption2)
                                     .foregroundColor(bio.count > 160 ? .red : .textSecondary)
                             }
                             
@@ -146,7 +145,7 @@ struct ProfileEditView: View {
                 }
             }
         }
-        .background(Color.gray8)
+        .background(Color.gray6)
         .onAppear {
             Task {
                 await loadCurrentProfile()
@@ -175,7 +174,8 @@ struct ProfileEditView: View {
                         }
                     }
                 
-                BodyXSText("Tap to change avatar")
+                Text("Tap to change avatar")
+                    .font(.caption)
                     .foregroundColor(.textSecondary)
             }
             Spacer()

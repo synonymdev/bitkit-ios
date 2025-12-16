@@ -195,6 +195,16 @@ struct PaykitDashboardView: View {
             
             // Pubky-ring connection status
             pubkyRingConnectionCard
+            
+            // Session management
+            QuickAccessCard(
+                title: "Sessions",
+                icon: "person.badge.shield.checkmark.fill",
+                color: .teal,
+                badge: viewModel.sessionCount > 0 ? "\(viewModel.sessionCount)" : nil
+            ) {
+                navigation.navigate(.paykitSessionManagement)
+            }
         }
     }
     
@@ -258,7 +268,7 @@ struct PaykitDashboardView: View {
                         .foregroundColor(.textSecondary)
                     
                     BodySText("Your Paykit transactions will appear here")
-                        .foregroundColor(.textTertiary)
+                        .foregroundColor(.textSecondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)

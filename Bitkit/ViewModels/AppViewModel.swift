@@ -302,21 +302,21 @@ extension AppViewModel {
         case let .paykit(pubkey, method, amount):
             Logger.info("Paykit URI: pubkey=\(pubkey), method=\(method ?? "any"), amount=\(amount?.description ?? "none")", context: "AppViewModel")
             // Navigate to Paykit send flow with pre-filled data
-            navigationViewModel.navigateTo(.paykitDashboard)
+            navigationViewModel.navigate(.paykitDashboard)
             // TODO: Pass pubkey, method, amount to the send flow
             toast(type: .success, title: "Paykit Contact", description: "Opening payment flow for \(pubkey.prefix(8))...")
             
         case let .paymentRequest(id):
             Logger.info("Payment Request URI: id=\(id)", context: "AppViewModel")
             // Navigate to payment request detail
-            navigationViewModel.navigateTo(.paykitDashboard)
+            navigationViewModel.navigate(.paykitDashboard)
             // TODO: Navigate directly to specific request
             toast(type: .info, title: "Payment Request", description: "Opening request \(id.prefix(8))...")
             
         case let .subscription(id):
             Logger.info("Subscription URI: id=\(id)", context: "AppViewModel")
             // Navigate to subscription detail
-            navigationViewModel.navigateTo(.paykitDashboard)
+            navigationViewModel.navigate(.paykitDashboard)
             // TODO: Navigate directly to specific subscription
             toast(type: .info, title: "Subscription", description: "Opening subscription \(id.prefix(8))...")
         }

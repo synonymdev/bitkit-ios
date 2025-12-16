@@ -69,6 +69,11 @@ public final class PaykitManager {
             lightningNetwork: lightningNetwork.toFfi()
         )
         
+        // Restore persisted sessions and configure SDK
+        PubkyRingBridge.shared.restoreSessions()
+        PubkySDKService.shared.restoreSessions()
+        PubkySDKService.shared.configure()
+        
         isInitialized = true
         Logger.info("PaykitManager initialized successfully", context: "PaykitManager")
     }

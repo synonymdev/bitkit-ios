@@ -311,16 +311,13 @@ struct AppScene: View {
             showRecoveryScreen = true
         case "PaykitRequestPayment":
             // Navigate to Paykit payment request creation
-            navigation.activeDrawerMenuItem = .paykit
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                NotificationCenter.default.post(name: .paykitRequestPayment, object: nil)
-            }
+            navigation.navigate(.paykitPaymentRequests)
         case "PaykitPayContact":
             // Navigate to Paykit contacts for payment
-            navigation.activeDrawerMenuItem = .contacts
+            navigation.navigate(.paykitContacts)
         case "ScanQR":
             // Open scanner with Paykit URI support
-            sheets.showSheet(.qrScanner)
+            sheets.showSheet(.scanner)
         default:
             break
         }

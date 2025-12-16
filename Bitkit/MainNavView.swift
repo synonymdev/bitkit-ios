@@ -408,6 +408,7 @@ struct MainNavView: View {
             case .paykitNoisePayment: NoisePaymentView()
             case .paykitPrivateEndpoints: PrivateEndpointsView()
             case .paykitRotationSettings: RotationSettingsView()
+            case .paykitSessionManagement: SessionManagementView()
             case .node: NodeStateView()
             case .electrumSettings: ElectrumSettingsScreen()
             case .rgsSettings: RgsSettingsScreen()

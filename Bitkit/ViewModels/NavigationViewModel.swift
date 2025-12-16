@@ -105,6 +105,7 @@ enum Route: Hashable {
     case paykitNoisePayment
     case paykitPrivateEndpoints
     case paykitRotationSettings
+    case paykitSessionManagement
 }
 
 @MainActor

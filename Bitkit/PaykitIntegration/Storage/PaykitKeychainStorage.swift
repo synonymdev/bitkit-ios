@@ -11,6 +11,8 @@ import Foundation
 /// Uses generic password items with custom account names
 public class PaykitKeychainStorage {
     
+    public static let shared = PaykitKeychainStorage()
+    
     private let serviceIdentifier = "to.bitkit.paykit"
     
     public init() {}
@@ -93,6 +95,71 @@ public class PaykitKeychainStorage {
             return try retrieve(key: key) != nil
         } catch {
             return false
+        }
+    }
+    
+    // MARK: - Convenience Methods
+    
+    /// Store data using set/get naming convention
+    public func set(key: String, value: Data) {
+        do {
+            try store(key: key, data: value)
+        } catch {
+            Logger.error("Failed to set keychain value: \(error)", context: "PaykitKeychainStorage")
+        }
+    }
+    
+    /// Get data using set/get naming convention
+    public func get(key: String) -> Data? {
+        do {
+            return try retrieve(key: key)
+        } catch {
+            Logger.error("Failed to get keychain value: \(error)", context: "PaykitKeychainStorage")
+            return nil
+        }
+    }
+    
+    /// Delete without throwing (convenience method)
+    public func deleteQuietly(key: String) {
+        do {
+            try delete(key: key) as Void
+        } catch {
+            Logger.error("Failed to delete keychain value: \(error)", context: "PaykitKeychainStorage")
+        }
+    }
+    
+    /// List all keys with a given prefix
+    /// - Parameter prefix: The key prefix to filter by
+    /// - Returns: Array of matching keys
+    public func listKeys(withPrefix prefix: String) -> [String] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: serviceIdentifier,
+            kSecReturnAttributes as String: kCFBooleanTrue!,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        
+        guard status == noErr else {
+            if status == errSecItemNotFound {
+                return []
+            }
+            Logger.error("Failed to list keychain items, status: \(status)", context: "PaykitKeychainStorage")
+            return []
+        }
+        
+        guard let items = result as? [[String: Any]] else {
+            return []
+        }
+        
+        return items.compactMap { item -> String? in
+            guard let account = item[kSecAttrAccount as String] as? String else {
+                return nil
+            }
+            return account.hasPrefix(prefix) ? account : nil
         }
     }
 }

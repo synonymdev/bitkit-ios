@@ -170,7 +170,7 @@ public class SubscriptionBackgroundService {
         do {
             let checkResult = try SpendingLimitManager.shared.wouldExceedLimit(
                 peerPubkey: subscription.providerPubkey,
-                amountSats: subscription.amountSats
+                amountSats: Int64(subscription.amountSats)
             )
             
             if checkResult.wouldExceed {
@@ -248,7 +248,7 @@ public class SubscriptionBackgroundService {
                 throw SubscriptionError.paymentFailed(errorMessage)
             }
         } catch let error as PaykitPaymentError {
-            Logger.error("SubscriptionBackgroundService: Payment execution failed: \(error.localizedDescription ?? "Unknown")", context: "SubscriptionBackgroundService")
+            Logger.error("SubscriptionBackgroundService: Payment execution failed: \(error.localizedDescription)", context: "SubscriptionBackgroundService")
             await sendPaymentFailedNotification(subscription: subscription, reason: error.userMessage)
             throw error
         } catch {

@@ -53,7 +53,7 @@ struct NoisePaymentView: View {
         }
         .sheet(isPresented: $showingContactPicker) {
             ContactPickerSheet { contact in
-                recipientPubkey = contact.pubkey
+                recipientPubkey = contact.publicKeyZ32
             }
         }
         .sheet(isPresented: $showingPubkyRingAuth) {
@@ -453,7 +453,7 @@ struct NoisePaymentView: View {
             }
             
             if let amountStr = request.amount {
-                HeadlineLText("\(amountStr) \(request.currency ?? "sats")")
+                HeadlineText("\(amountStr) \(request.currency ?? "sats")")
                     .foregroundColor(.white)
             }
             
@@ -516,7 +516,7 @@ struct NoisePaymentView: View {
 // MARK: - Contact Picker Sheet
 
 struct ContactPickerSheet: View {
-    let onSelect: (PaykitContact) -> Void
+    let onSelect: (Contact) -> Void
     @Environment(\.dismiss) private var dismiss
     @StateObject private var contactsVM = ContactsViewModel()
     @State private var searchText = ""
@@ -542,7 +542,7 @@ struct ContactPickerSheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(contact.name)
                                     .foregroundColor(.white)
-                                Text(contact.pubkey.prefix(16) + "...")
+                                Text(contact.publicKeyZ32.prefix(16) + "...")
                                     .font(.caption)
                                     .foregroundColor(.textSecondary)
                             }
@@ -568,13 +568,13 @@ struct ContactPickerSheet: View {
         }
     }
     
-    private var filteredContacts: [PaykitContact] {
+    private var filteredContacts: [Contact] {
         if searchText.isEmpty {
             return contactsVM.contacts
         }
         return contactsVM.contacts.filter {
             $0.name.localizedCaseInsensitiveContains(searchText) ||
-            $0.pubkey.localizedCaseInsensitiveContains(searchText)
+            $0.publicKeyZ32.localizedCaseInsensitiveContains(searchText)
         }
     }
 }

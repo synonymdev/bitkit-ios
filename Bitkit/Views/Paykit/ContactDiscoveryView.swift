@@ -20,7 +20,7 @@ struct ContactDiscoveryView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: "Discover Contacts",
-                trailing: AnyView(
+                action: AnyView(
                     HStack(spacing: 12) {
                         Button {
                             showingFilters.toggle()
@@ -189,16 +189,16 @@ struct ContactDiscoveryView: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    FilterChip(title: "All", isSelected: filterMethod == nil) {
+                    DiscoveryFilterChip(title: "All", isSelected: filterMethod == nil) {
                         filterMethod = nil
                     }
-                    FilterChip(title: "⚡ Lightning", isSelected: filterMethod == "lightning") {
+                    DiscoveryFilterChip(title: "⚡ Lightning", isSelected: filterMethod == "lightning") {
                         filterMethod = "lightning"
                     }
-                    FilterChip(title: "₿ On-chain", isSelected: filterMethod == "onchain") {
+                    DiscoveryFilterChip(title: "₿ On-chain", isSelected: filterMethod == "onchain") {
                         filterMethod = "onchain"
                     }
-                    FilterChip(title: "📡 Noise", isSelected: filterMethod == "noise") {
+                    DiscoveryFilterChip(title: "📡 Noise", isSelected: filterMethod == "noise") {
                         filterMethod = "noise"
                     }
                 }
@@ -407,7 +407,7 @@ struct ContactDetailSheet: View {
                         .font(.largeTitle)
                 }
             
-            HeadlineLText(contact.name ?? "Unknown")
+            HeadlineText(contact.name ?? "Unknown")
                 .foregroundColor(.white)
             
             Button {
@@ -716,12 +716,8 @@ class ContactDiscoveryViewModel: ObservableObject {
     }
     
     func checkEndpointHealth(for contact: DirectoryDiscoveredContact) async {
-        // Check health of all endpoints for this contact
-        for method in contact.supportedMethods {
-            await directoryService.checkEndpointHealth(pubkey: contact.pubkey, method: method)
-        }
-        
-        // Refresh data
+        // TODO: Implement endpoint health check when DirectoryService supports it
+        // For now, just refresh data
         loadFollows()
     }
 }
@@ -773,6 +769,23 @@ extension DirectoryDiscoveredContact {
         if healthyMethodCount == supportedMethods.count { return "checkmark.circle.fill" }
         if healthyMethodCount > 0 { return "exclamationmark.circle.fill" }
         return "xmark.circle.fill"
+    }
+}
+
+private struct DiscoveryFilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            BodySText(title)
+                .foregroundColor(isSelected ? .white : .textSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.brandAccent : Color.gray5)
+                .cornerRadius(16)
+        }
     }
 }
 

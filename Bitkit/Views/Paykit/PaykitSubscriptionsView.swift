@@ -24,7 +24,7 @@ struct PaykitSubscriptionsView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: "Subscriptions",
-                trailing: AnyView(
+                action: AnyView(
                     Button {
                         viewModel.showingAddSubscription = true
                     } label: {
@@ -121,7 +121,7 @@ struct PaykitSubscriptionsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     BodySText("Used")
                         .foregroundColor(.textSecondary)
-                    HeadlineMText(formatSats(viewModel.totalSpentThisMonth))
+                    HeadlineText(formatSats(viewModel.totalSpentThisMonth))
                         .foregroundColor(.white)
                 }
                 
@@ -130,7 +130,7 @@ struct PaykitSubscriptionsView: View {
                 VStack(alignment: .trailing, spacing: 4) {
                     BodySText("Remaining")
                         .foregroundColor(.textSecondary)
-                    HeadlineMText(formatSats(viewModel.remainingSpendingLimit))
+                    HeadlineText(formatSats(viewModel.remainingSpendingLimit))
                         .foregroundColor(.greenAccent)
                 }
             }
@@ -299,7 +299,7 @@ struct ProposalCard: View {
                 Spacer()
                 
                 VStack(alignment: .trailing, spacing: 4) {
-                    HeadlineMText(formatSats(proposal.amountSats))
+                    HeadlineText(formatSats(proposal.amountSats))
                         .foregroundColor(.white)
                     BodySText("/ \(proposal.frequency)")
                         .foregroundColor(.textSecondary)
@@ -529,7 +529,7 @@ struct SubscriptionDetailSheet: View {
                     .foregroundColor(subscription.isActive ? .greenAccent : .textSecondary)
             }
             
-            HeadlineLText(subscription.providerName)
+            HeadlineText(subscription.providerName)
                 .foregroundColor(.white)
             
             HStack(spacing: 4) {
@@ -583,7 +583,7 @@ struct SubscriptionDetailSheet: View {
                     BodyMText("Max per \(limit.period.rawValue)")
                         .foregroundColor(.white)
                     Spacer()
-                    BodyMBoldText(formatSats(limit.maxAmount))
+                    BodyMBoldText(formatSats(UInt64(limit.maxAmount)))
                         .foregroundColor(.white)
                 }
                 
@@ -602,7 +602,7 @@ struct SubscriptionDetailSheet: View {
                 }
                 .frame(height: 8)
                 
-                BodySText("\(formatSats(limit.usedAmount)) used of \(formatSats(limit.maxAmount))")
+                BodySText("\(formatSats(UInt64(limit.usedAmount))) used of \(formatSats(UInt64(limit.maxAmount)))")
                     .foregroundColor(.textSecondary)
             } else {
                 Button {
@@ -638,7 +638,7 @@ struct SubscriptionDetailSheet: View {
                         BodySText(formatDate(payment.paidAt))
                             .foregroundColor(.textSecondary)
                         Spacer()
-                        BodySText(formatSats(payment.amountSats))
+                        BodySText(formatSats(UInt64(payment.amountSats)))
                             .foregroundColor(.white)
                     }
                 }
@@ -692,7 +692,7 @@ struct SubscriptionDetailSheet: View {
         }
     }
     
-    private func formatSats(_ amount: Int64) -> String {
+    private func formatSats(_ amount: UInt64) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return "\(formatter.string(from: NSNumber(value: amount)) ?? "\(amount)") sats"
@@ -741,7 +741,10 @@ struct EditSpendingLimitSheet: View {
                         BodyLText("Maximum Amount")
                             .foregroundColor(.textPrimary)
                         
-                        TextField("sats", value: $maxAmount, format: .number)
+                        TextField("sats", text: Binding(
+                            get: { String(maxAmount) },
+                            set: { maxAmount = Int64($0) ?? 0 }
+                        ))
                             .foregroundColor(.white)
                             .keyboardType(.numberPad)
                             .padding(12)
@@ -902,7 +905,7 @@ struct SubscriptionRow: View {
                         HStack(spacing: 2) {
                             Image(systemName: "shield.fill")
                                 .font(.caption2)
-                            BodySText("\(formatSats(limit.usedAmount))/\(formatSats(limit.maxAmount))")
+                            BodySText("\(formatSats(UInt64(limit.usedAmount)))/\(formatSats(UInt64(limit.maxAmount)))")
                         }
                         .foregroundColor(.brandAccent)
                     }
@@ -926,7 +929,7 @@ struct SubscriptionRow: View {
         .padding(16)
     }
     
-    private func formatSats(_ amount: Int64) -> String {
+    private func formatSats(_ amount: UInt64) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         return "\(formatter.string(from: NSNumber(value: amount)) ?? "\(amount)")"
@@ -946,7 +949,7 @@ struct AddSubscriptionView: View {
     
     @State private var providerName = ""
     @State private var providerPubkey = ""
-    @State private var amount: Int64 = 1000
+    @State private var amount: UInt64 = 1000
     @State private var frequency = "monthly"
     @State private var methodId = "lightning"
     @State private var description = ""
@@ -983,7 +986,7 @@ struct AddSubscriptionView: View {
                             Spacer()
                             TextField("sats", text: Binding(
                                 get: { String(amount) },
-                                set: { amount = Int64($0) ?? 0 }
+                                set: { amount = UInt64($0) ?? 0 }
                             ))
                                 .foregroundColor(.white)
                                 .keyboardType(.numberPad)

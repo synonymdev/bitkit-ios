@@ -110,6 +110,9 @@ public class PaymentRequestService {
                     
                 case .needsApproval:
                     completion(.success(.needsApproval(request: request)))
+                    
+                case .needsBiometric:
+                    completion(.success(.needsApproval(request: request)))
                 }
             } catch {
                 Logger.error("PaymentRequestService: Failed to handle request: \(error)", context: "PaymentRequestService")
@@ -196,6 +199,8 @@ enum PaymentRequestError: LocalizedError {
 
 // Make AutoPayViewModel conform to AutopayEvaluator
 extension AutoPayViewModel: AutopayEvaluator {
-    // Already implements evaluate() method above
+    func evaluate(peerPubkey: String, amount: Int64, methodId: String) -> AutopayEvaluationResult {
+        return evaluate(peerPubkey: peerPubkey, peerName: "", amount: amount, methodId: methodId, isSubscription: false)
+    }
 }
 

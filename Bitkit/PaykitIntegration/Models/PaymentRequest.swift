@@ -32,7 +32,7 @@ public struct BitkitPaymentRequest: Identifiable, Codable {
 }
 
 /// Status of a payment request
-public enum PaymentRequestStatus: String, Codable {
+public enum PaymentRequestStatus: String, Codable, CaseIterable {
     case pending = "Pending"
     case accepted = "Accepted"
     case declined = "Declined"

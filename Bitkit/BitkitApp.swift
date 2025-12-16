@@ -50,6 +50,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationWillTerminate(_ application: UIApplication) {
         try? StateLocker.unlock(.lightning)
     }
+    
+    // MARK: - URL Handling
+    
+    func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+        // Route bitkit:// URLs to PubkyRingBridge for Paykit/Pubky-ring callbacks
+        if url.scheme == "bitkit" {
+            Logger.info("AppDelegate: Received bitkit:// URL: \(url.absoluteString)", context: "AppDelegate")
+            return PubkyRingBridge.shared.handleCallback(url: url)
+        }
+        return false
+    }
 }
 
 // MARK: - Push Notifications

@@ -177,8 +177,8 @@ class AutoPayViewModel: ObservableObject {
 
 // MARK: - History Entry Model
 
-struct AutoPayHistoryEntry: Identifiable, Codable {
-    let id: String
+public struct AutoPayHistoryEntry: Identifiable, Codable {
+    public let id: String
     let peerPubkey: String
     let peerName: String
     let amount: Int64

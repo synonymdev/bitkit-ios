@@ -29,7 +29,12 @@ public enum UnifiedActivityItem: Identifiable, Hashable {
     public var id: String {
         switch self {
         case .standard(let activity):
-            return activity.id
+            switch activity {
+            case .lightning(let ln):
+                return ln.id
+            case .onchain(let on):
+                return on.id
+            }
         case .paykit(let receipt):
             return "paykit-\(receipt.id)"
         }
@@ -733,6 +738,8 @@ extension ActivityListViewModel {
                     return on.isTransfer
                 }
             }
+        case .paykit:
+            return [] // Paykit receipts are handled separately
         }
     }
 }
