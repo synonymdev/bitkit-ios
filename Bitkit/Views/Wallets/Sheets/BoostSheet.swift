@@ -389,7 +389,8 @@ struct BoostSheet: View {
             app.toast(
                 type: .success,
                 title: t("wallet__boost_success_title"),
-                description: t("wallet__boost_success_msg")
+                description: t("wallet__boost_success_msg"),
+                accessibilityIdentifier: "BoostSuccessToast"
             )
 
             Logger.info("Boost transaction completed successfully, hiding sheet", context: "BoostSheet.performBoost")
@@ -408,8 +409,9 @@ struct BoostSheet: View {
 
             app.toast(
                 type: .error,
-                title: t("wallet__boost_error"),
-                description: error.localizedDescription
+                title: t("wallet__boost_error_title"),
+                description: t("wallet__boost_error_msg"),
+                accessibilityIdentifier: "BoostFailureToast"
             )
 
             throw error
