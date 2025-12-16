@@ -268,6 +268,11 @@ struct AppScene: View {
         } else if state == .running {
             walletInitShouldFinish = true
             BackupService.shared.startObservingBackups()
+            
+            // Initialize Paykit after node is running
+            Task {
+                await initializePaykit()
+            }
         } else {
             if case .errorStarting = state {
                 walletInitShouldFinish = true
@@ -275,6 +280,15 @@ struct AppScene: View {
             Task {
                 await BackupService.shared.stopObservingBackups()
             }
+        }
+    }
+    
+    private func initializePaykit() async {
+        let success = await PaykitIntegrationHelper.setupAsync()
+        if success {
+            Logger.info("Paykit initialized successfully after node started", context: "AppScene")
+        } else {
+            Logger.error("Failed to initialize Paykit after node started", context: "AppScene")
         }
     }
 

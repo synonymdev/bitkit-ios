@@ -104,9 +104,76 @@ class NotificationService: UNNotificationServiceExtension {
                     self.deliver()
                 }
             }
+            
+            // Handle Paykit notification types
+            await handlePaykitNotification()
         }
     }
 
+    func handlePaykitNotification() async {
+        guard let type = notificationType, let payload = notificationPayload else {
+            return
+        }
+        
+        switch type {
+        case .paykitPaymentRequest:
+            guard let requestId = payload["requestId"] as? String else {
+                os_log("🔔 NotificationService: Missing requestId for payment request", log: notificationLogger, type: .error)
+                return
+            }
+            
+            os_log("🔔 NotificationService: Processing Paykit payment request %{public}@", log: notificationLogger, type: .error, requestId)
+            
+            // Node is already started, Paykit can process the payment request
+            // The actual processing will happen in foreground when app opens
+            bestAttemptContent?.title = "Payment Request Received"
+            bestAttemptContent?.body = "Tap to review and pay"
+            deliver()
+            
+        case .paykitSubscriptionDue:
+            guard let subscriptionId = payload["subscriptionId"] as? String else {
+                os_log("🔔 NotificationService: Missing subscriptionId for subscription", log: notificationLogger, type: .error)
+                return
+            }
+            
+            os_log("🔔 NotificationService: Processing subscription payment %{public}@", log: notificationLogger, type: .error, subscriptionId)
+            
+            // Node is started, subscription payment can be processed
+            bestAttemptContent?.title = "Subscription Payment Due"
+            bestAttemptContent?.body = "Processing payment..."
+            deliver()
+            
+        case .paykitAutoPayExecuted:
+            guard let amount = payload["amount"] as? UInt64 else {
+                os_log("🔔 NotificationService: Missing amount for auto-pay", log: notificationLogger, type: .error)
+                return
+            }
+            
+            os_log("🔔 NotificationService: Auto-pay executed for amount %{public}llu", log: notificationLogger, type: .error, amount)
+            
+            bestAttemptContent?.title = "Auto-Pay Executed"
+            bestAttemptContent?.body = "₿ \(amount) sent"
+            deliver()
+            
+        case .paykitSubscriptionFailed:
+            guard let subscriptionId = payload["subscriptionId"] as? String,
+                  let reason = payload["reason"] as? String else {
+                os_log("🔔 NotificationService: Missing details for subscription failure", log: notificationLogger, type: .error)
+                return
+            }
+            
+            os_log("🔔 NotificationService: Subscription payment failed %{public}@: %{public}@", log: notificationLogger, type: .error, subscriptionId, reason)
+            
+            bestAttemptContent?.title = "Subscription Payment Failed"
+            bestAttemptContent?.body = reason
+            deliver()
+            
+        default:
+            // Not a Paykit notification
+            break
+        }
+    }
+    
     func decryptPayload(_ request: UNNotificationRequest) async throws {
         guard let aps = request.content.userInfo["aps"] as? AnyObject else {
             os_log("🔔 Failed to decrypt payload: missing aps payload", log: notificationLogger, type: .error)
