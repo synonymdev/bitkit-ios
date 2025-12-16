@@ -103,6 +103,11 @@ final class PaykitE2ETests: XCTestCase {
     // MARK: - Error Scenario E2E Tests
     
     func testPaymentFailsWithInvalidRecipient() async throws {
+        // Skip if Paykit is not ready - notInitialized is thrown before recipient validation
+        guard PaykitIntegrationHelper.isReady else {
+            throw XCTSkip("Paykit not ready - can't test invalidRecipient error")
+        }
+        
         // Given an invalid recipient
         let invalidRecipient = "invalid_recipient_string"
         

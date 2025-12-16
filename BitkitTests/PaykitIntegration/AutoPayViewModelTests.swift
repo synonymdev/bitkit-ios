@@ -158,6 +158,8 @@ final class AutoPayViewModelTests: XCTestCase {
         // Given - auto-pay is enabled with matching rule
         viewModel.settings.isEnabled = true
         viewModel.settings.globalDailyLimit = 1000000
+        try viewModel.saveSettings() // Persist settings
+        viewModel.loadSettings() // Reload to ensure state is updated
         
         let rule = StoredAutoPayRule(
             name: "Allow Lightning",
@@ -198,6 +200,8 @@ final class AutoPayViewModelTests: XCTestCase {
         // Given - auto-pay is enabled with peer limit that's almost exhausted
         viewModel.settings.isEnabled = true
         viewModel.settings.globalDailyLimit = 1000000
+        try viewModel.saveSettings() // Persist settings
+        viewModel.loadSettings() // Reload to ensure state is updated
         
         var peerLimit = StoredPeerLimit(
             peerPubkey: "pk:limited_peer",
