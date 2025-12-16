@@ -339,6 +339,108 @@ public final class DirectoryService {
         
         return discovered
     }
+    
+    // MARK: - Pending Requests Discovery
+    
+    private static let paykitPathPrefix = "/pub/paykit.app/v0/"
+    
+    /// Discover pending payment requests from the Pubky directory
+    public func discoverPendingRequests(for ownerPubkey: String) async throws -> [DiscoveredRequest] {
+        let unauthAdapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        let requestsPath = "\(Self.paykitPathPrefix)requests/\(ownerPubkey)/"
+        
+        do {
+            let requestFiles = try await pubkyStorage.listDirectory(path: requestsPath, adapter: unauthAdapter, ownerPubkey: ownerPubkey)
+            
+            var requests: [DiscoveredRequest] = []
+            for requestId in requestFiles {
+                if let request = await parsePaymentRequest(requestId: requestId, path: requestsPath + requestId, adapter: unauthAdapter, ownerPubkey: ownerPubkey) {
+                    requests.append(request)
+                }
+            }
+            return requests
+        } catch {
+            Logger.error("Failed to discover pending requests for \(ownerPubkey): \(error)", context: "DirectoryService")
+            return []
+        }
+    }
+    
+    /// Discover subscription proposals from the Pubky directory
+    public func discoverSubscriptionProposals(for ownerPubkey: String) async throws -> [DiscoveredSubscriptionProposal] {
+        let unauthAdapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        let proposalsPath = "\(Self.paykitPathPrefix)subscriptions/proposals/\(ownerPubkey)/"
+        
+        do {
+            let proposalFiles = try await pubkyStorage.listDirectory(path: proposalsPath, adapter: unauthAdapter, ownerPubkey: ownerPubkey)
+            
+            var proposals: [DiscoveredSubscriptionProposal] = []
+            for proposalId in proposalFiles {
+                if let proposal = await parseSubscriptionProposal(proposalId: proposalId, path: proposalsPath + proposalId, adapter: unauthAdapter, ownerPubkey: ownerPubkey) {
+                    proposals.append(proposal)
+                }
+            }
+            return proposals
+        } catch {
+            Logger.error("Failed to discover subscription proposals for \(ownerPubkey): \(error)", context: "DirectoryService")
+            return []
+        }
+    }
+    
+    private func parsePaymentRequest(requestId: String, path: String, adapter: PubkyUnauthenticatedStorageAdapter, ownerPubkey: String) async -> DiscoveredRequest? {
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        do {
+            guard let data = try await pubkyStorage.readFile(path: path, adapter: adapter, ownerPubkey: ownerPubkey) else {
+                return nil
+            }
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            
+            return DiscoveredRequest(
+                requestId: requestId,
+                type: .paymentRequest,
+                fromPubkey: json["from_pubkey"] as? String ?? "",
+                amountSats: (json["amount_sats"] as? Int64) ?? 0,
+                description: json["description"] as? String,
+                createdAt: Date(timeIntervalSince1970: TimeInterval((json["created_at"] as? Int64) ?? Int64(Date().timeIntervalSince1970)))
+            )
+        } catch {
+            Logger.error("Failed to parse payment request \(requestId): \(error)", context: "DirectoryService")
+            return nil
+        }
+    }
+    
+    private func parseSubscriptionProposal(proposalId: String, path: String, adapter: PubkyUnauthenticatedStorageAdapter, ownerPubkey: String) async -> DiscoveredSubscriptionProposal? {
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        do {
+            guard let data = try await pubkyStorage.readFile(path: path, adapter: adapter, ownerPubkey: ownerPubkey) else {
+                return nil
+            }
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            
+            return DiscoveredSubscriptionProposal(
+                subscriptionId: proposalId,
+                providerPubkey: json["provider_pubkey"] as? String ?? "",
+                amountSats: (json["amount_sats"] as? Int64) ?? 0,
+                description: json["description"] as? String,
+                frequency: json["frequency"] as? String ?? "monthly",
+                createdAt: Date(timeIntervalSince1970: TimeInterval((json["created_at"] as? Int64) ?? Int64(Date().timeIntervalSince1970)))
+            )
+        } catch {
+            Logger.error("Failed to parse subscription proposal \(proposalId): \(error)", context: "DirectoryService")
+            return nil
+        }
+    }
 }
 
 /// Discovered contact from directory

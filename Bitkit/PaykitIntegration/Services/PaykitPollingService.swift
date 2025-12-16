@@ -192,18 +192,35 @@ public final class PaykitPollingService {
         }
         
         // Discover pending payment requests from directory
-        // TODO: Implement directory query when Paykit directory API is ready
-        // For now, we rely on push notifications for immediate requests
-        // and this polls for any that may have been missed
-        
-        // Check for payment methods that may have incoming requests
-        let paymentMethods = try await directoryService.discoverPaymentMethods(for: ownerPubkey)
-        
-        // For each payment method, check for pending requests
-        // This is a placeholder - actual implementation depends on Paykit directory schema
-        for method in paymentMethods {
-            Logger.debug("PaykitPollingService: Checking method \(method.methodId) for pending requests", context: "PaykitPollingService")
+        let paymentRequests = try await directoryService.discoverPendingRequests(for: ownerPubkey)
+        for request in paymentRequests {
+            // Filter out requests we've already seen
+            if !seenRequestIds.contains(request.requestId) {
+                seenRequestIds.insert(request.requestId)
+                newRequests.append(request)
+            }
         }
+        
+        Logger.debug("PaykitPollingService: Found \(paymentRequests.count) payment requests, \(newRequests.count) new", context: "PaykitPollingService")
+        
+        // Discover subscription proposals
+        let proposals = try await directoryService.discoverSubscriptionProposals(for: ownerPubkey)
+        for proposal in proposals {
+            let request = DiscoveredRequest(
+                requestId: proposal.subscriptionId,
+                type: .subscriptionProposal,
+                fromPubkey: proposal.providerPubkey,
+                amountSats: proposal.amountSats,
+                description: proposal.description,
+                createdAt: proposal.createdAt
+            )
+            if !seenRequestIds.contains(request.requestId) {
+                seenRequestIds.insert(request.requestId)
+                newRequests.append(request)
+            }
+        }
+        
+        Logger.debug("PaykitPollingService: Found \(proposals.count) subscription proposals", context: "PaykitPollingService")
         
         return newRequests
     }
