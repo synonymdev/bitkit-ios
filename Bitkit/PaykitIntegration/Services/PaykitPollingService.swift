@@ -76,6 +76,18 @@ public final class PaykitPollingService {
         Logger.info("PaykitPollingService: Registered background task", context: "PaykitPollingService")
     }
     
+    /// Verify that background task is scheduled
+    private func verifyBackgroundTaskScheduled() {
+        BGTaskScheduler.shared.getPendingTaskRequests { requests in
+            let hasPollingTask = requests.contains { $0.identifier == Self.taskIdentifier }
+            if hasPollingTask {
+                Logger.debug("PaykitPollingService: Background task verified as scheduled", context: "PaykitPollingService")
+            } else {
+                Logger.warn("PaykitPollingService: Background task not found in pending requests", context: "PaykitPollingService")
+            }
+        }
+    }
+    
     /// Schedule a background app refresh task.
     /// Call this when the app enters the background.
     public func scheduleBackgroundPoll() {
@@ -84,7 +96,10 @@ public final class PaykitPollingService {
         
         do {
             try BGTaskScheduler.shared.submit(request)
-            Logger.info("PaykitPollingService: Scheduled background poll", context: "PaykitPollingService")
+            Logger.info("PaykitPollingService: Scheduled background poll for \(request.earliestBeginDate?.description ?? "unknown")", context: "PaykitPollingService")
+            
+            // Verify scheduling
+            verifyBackgroundTaskScheduled()
         } catch {
             Logger.error("PaykitPollingService: Failed to schedule background poll: \(error)", context: "PaykitPollingService")
         }

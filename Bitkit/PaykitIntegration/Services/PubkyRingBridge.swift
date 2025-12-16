@@ -43,10 +43,21 @@ public final class PubkyRingBridge {
     private let bitkitScheme = "bitkit"
     
     /// Web URL for cross-device authentication
-    public static let crossDeviceWebUrl = "https://pubky.app/auth"
+    public static var crossDeviceWebUrl: String {
+        if let envUrl = ProcessInfo.processInfo.environment["PUBKY_CROSS_DEVICE_URL"] {
+            return envUrl
+        }
+        return "https://pubky.app/auth"
+    }
     
     /// Relay endpoint for cross-device session exchange
-    public static let sessionRelayUrl = "https://relay.pubky.app/sessions"
+    public static var sessionRelayUrl: String {
+        if let envUrl = ProcessInfo.processInfo.environment["PUBKY_RELAY_URL"] {
+            return envUrl
+        }
+        // Default production relay
+        return "https://relay.pubky.app/sessions"
+    }
     
     // Callback paths for different request types
     public struct CallbackPaths {

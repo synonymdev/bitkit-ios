@@ -56,9 +56,24 @@ public class SubscriptionBackgroundService {
         
         do {
             try BGTaskScheduler.shared.submit(request)
-            Logger.info("SubscriptionBackgroundService: Scheduled background task", context: "SubscriptionBackgroundService")
+            Logger.info("SubscriptionBackgroundService: Scheduled background task for \(request.earliestBeginDate?.description ?? "unknown")", context: "SubscriptionBackgroundService")
+            
+            // Verify scheduling
+            verifyBackgroundTaskScheduled()
         } catch {
             Logger.error("SubscriptionBackgroundService: Failed to schedule background task: \(error)", context: "SubscriptionBackgroundService")
+        }
+    }
+    
+    /// Verify that background task is scheduled
+    private func verifyBackgroundTaskScheduled() {
+        BGTaskScheduler.shared.getPendingTaskRequests { requests in
+            let hasSubscriptionTask = requests.contains { $0.identifier == Self.taskIdentifier }
+            if hasSubscriptionTask {
+                Logger.debug("SubscriptionBackgroundService: Background task verified as scheduled", context: "SubscriptionBackgroundService")
+            } else {
+                Logger.warn("SubscriptionBackgroundService: Background task not found in pending requests", context: "SubscriptionBackgroundService")
+            }
         }
     }
     

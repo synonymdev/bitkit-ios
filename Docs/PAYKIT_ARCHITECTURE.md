@@ -94,13 +94,42 @@ Handles Pubky directory operations.
 - Manage follows/contacts
 
 **Directory Schema:**
+
+The Pubky directory uses a hierarchical structure for storing Paykit-related data:
+
 ```
 /pub/paykit.app/v0/
   ├── endpoints/{pubkey}/              # Payment endpoints
+  │   └── {methodId}.json            # Endpoint configuration (Lightning, onchain, etc.)
   ├── subscriptions/
-  │   ├── requests/{pubkey}/          # Payment requests
-  │   └── proposals/{pubkey}/         # Subscription proposals
-  └── profiles/{pubkey}               # User profiles
+  │   ├── requests/{recipientPubkey}/ # Payment requests
+  │   │   └── {requestId}.json      # Request metadata (amount, memo, expiry)
+  │   └── proposals/{recipientPubkey}/ # Subscription proposals
+  │       └── {proposalId}.json      # Proposal metadata (amount, frequency, etc.)
+  └── profiles/{pubkey}/              # User profiles
+      └── profile.json               # Profile data (name, bio, avatar URL)
+```
+
+**Directory Path Conventions:**
+- All paths use z-base32 encoded pubkeys
+- JSON files contain UTF-8 encoded metadata
+- Files are versioned and can be updated atomically
+- Directory listings return file names, not contents (for privacy)
+- Authentication required for write operations
+- Read operations are public (unauthenticated)
+
+**Example Request File Structure:**
+```json
+{
+  "requestId": "abc123...",
+  "fromPubkey": "ybndrfg8...",
+  "toPubkey": "ybndrfg8...",
+  "amountSats": 10000,
+  "memo": "Payment for services",
+  "methodId": "lightning",
+  "createdAt": 1234567890,
+  "expiresAt": 1234567890
+}
 ```
 
 ### SpendingLimitManager

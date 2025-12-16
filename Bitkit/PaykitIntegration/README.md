@@ -151,13 +151,14 @@ Test files:
 
 ## Production Checklist
 
-- [ ] Generate PaykitMobile bindings for release targets
-- [ ] Link `libpaykit_mobile.a` in Xcode project
-- [ ] Configure Library Search Paths
-- [ ] Uncomment FFI binding code (search for `// TODO: Uncomment`)
+- [x] Generate PaykitMobile bindings for release targets
+- [x] Link `libpaykit_mobile.a` in Xcode project
+- [x] Configure Library Search Paths
+- [x] FFI binding code is active and working
 - [ ] Test on testnet before mainnet
 - [ ] Configure error monitoring (Sentry/Crashlytics)
 - [ ] Enable feature flag for gradual rollout
+- [ ] Complete production configuration (see `Docs/PAYKIT_PRODUCTION_CONFIG.md`)
 
 ## Rollback Plan
 
