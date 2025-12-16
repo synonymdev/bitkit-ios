@@ -77,12 +77,6 @@ struct LnurlPayAmount: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
-        .onAppear {
-            if amountViewModel.amountSats == 0 {
-                let minSendable = app.lnurlPayData?.minSendable ?? 0
-                amountViewModel.updateFromSats(minSendable, currency: currency)
-            }
-        }
     }
 
     private func onContinue() {
