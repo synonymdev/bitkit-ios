@@ -87,12 +87,13 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
                                 preimage = paymentPreimage?.description ?? ""
                             }
                             let amountMsat = payment.amountMsat ?? 0
+                            let feeMsat = payment.feePaidMsat ?? 0
                             
                             return LightningPaymentResultFfi(
                                 preimage: preimage,
                                 paymentHash: paymentHash,
                                 amountMsat: amountMsat,
-                                feeMsat: 0, // LDK doesn't expose fee directly
+                                feeMsat: feeMsat,
                                 hops: 0,
                                 status: .succeeded
                             )
@@ -165,12 +166,13 @@ public final class BitkitLightningExecutor: LightningExecutorFfi {
                     preimage = paymentPreimage?.description ?? ""
                 }
                 let amountMsat = payment.amountMsat ?? 0
+                let feeMsat = payment.feePaidMsat ?? 0
                 
                 return LightningPaymentResultFfi(
                     preimage: preimage,
                     paymentHash: paymentHash,
                     amountMsat: amountMsat,
-                    feeMsat: 0,
+                    feeMsat: feeMsat,
                     hops: 0,
                     status: status
                 )
