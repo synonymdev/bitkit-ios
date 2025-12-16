@@ -73,6 +73,18 @@ struct SendConfirmationView: View {
         return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
     }
 
+    private var canEditAmount: Bool {
+        guard app.selectedWalletToPayFrom == .lightning else {
+            return true
+        }
+
+        guard let invoice = app.scannedLightningInvoice else {
+            return true
+        }
+
+        return invoice.amountSatoshis == 0
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__send_review"), showBackButton: true)
@@ -600,6 +612,8 @@ struct SendConfirmationView: View {
     }
 
     private func navigateToAmount() {
+        guard canEditAmount else { return }
+
         if let amountIndex = navigationPath.lastIndex(of: .amount) {
             navigationPath = Array(navigationPath.prefix(amountIndex + 1))
         } else {
