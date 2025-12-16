@@ -443,19 +443,41 @@ public final class DirectoryService {
     }
 }
 
-/// Discovered contact from directory
+/// Discovered contact from directory with health tracking
 public struct DirectoryDiscoveredContact: Identifiable {
     public var id: String { pubkey }
     public let pubkey: String
     public let name: String?
     public let hasPaymentMethods: Bool
     public let supportedMethods: [String]
+    public var endpointHealth: [String: Bool]
+    public var lastHealthCheckDates: [String: Date]
     
-    public init(pubkey: String, name: String?, hasPaymentMethods: Bool, supportedMethods: [String]) {
+    public init(
+        pubkey: String,
+        name: String?,
+        hasPaymentMethods: Bool,
+        supportedMethods: [String],
+        endpointHealth: [String: Bool] = [:],
+        lastHealthCheckDates: [String: Date] = [:]
+    ) {
         self.pubkey = pubkey
         self.name = name
         self.hasPaymentMethods = hasPaymentMethods
         self.supportedMethods = supportedMethods
+        
+        // Default all endpoints to healthy if not specified
+        if endpointHealth.isEmpty {
+            var health: [String: Bool] = [:]
+            for method in supportedMethods {
+                health[method] = true
+            }
+            self.endpointHealth = health
+        } else {
+            self.endpointHealth = endpointHealth
+        }
+        
+        self.lastHealthCheckDates = lastHealthCheckDates
     }
 }
 

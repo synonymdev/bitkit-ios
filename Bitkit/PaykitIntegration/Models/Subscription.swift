@@ -22,6 +22,8 @@ public struct BitkitSubscription: Identifiable, Codable {
     public var lastPaymentAt: Date?
     public var nextPaymentAt: Date?
     public var paymentCount: Int
+    public var totalSpent: Int64
+    public var spendingLimit: SubscriptionSpendingLimit?
     
     public init(
         providerName: String,
@@ -30,7 +32,8 @@ public struct BitkitSubscription: Identifiable, Codable {
         currency: String = "SAT",
         frequency: String,
         description: String,
-        methodId: String = "lightning"
+        methodId: String = "lightning",
+        spendingLimit: SubscriptionSpendingLimit? = nil
     ) {
         self.id = UUID().uuidString
         self.providerName = providerName
@@ -45,12 +48,26 @@ public struct BitkitSubscription: Identifiable, Codable {
         self.lastPaymentAt = nil
         self.nextPaymentAt = Self.calculateNextPayment(frequency: frequency, from: Date())
         self.paymentCount = 0
+        self.totalSpent = 0
+        self.spendingLimit = spendingLimit
     }
     
     public mutating func recordPayment() {
         lastPaymentAt = Date()
         paymentCount += 1
+        totalSpent += amountSats
         nextPaymentAt = Self.calculateNextPayment(frequency: frequency, from: Date())
+        
+        // Update spending limit if present
+        if var limit = spendingLimit {
+            limit.usedAmount += amountSats
+            spendingLimit = limit
+        }
+    }
+    
+    public func canMakePayment() -> Bool {
+        guard let limit = spendingLimit else { return true }
+        return (limit.usedAmount + amountSats) <= limit.maxAmount
     }
     
     public static func calculateNextPayment(frequency: String, from date: Date) -> Date? {

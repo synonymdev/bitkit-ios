@@ -93,17 +93,35 @@ public enum PaymentExecutionStatus: String, Codable {
 public struct AutoPaySettings: Codable {
     public var isEnabled: Bool
     public var globalDailyLimit: Int64
+    public var maxPerPayment: Int64
     public var requireBiometricAbove: Int64?
-    public var notifyOnAutoPay: Bool
+    
+    // Notification preferences
+    public var notifyOnPayment: Bool
     public var notifyOnLimitReached: Bool
+    public var notifyOnBlocked: Bool
+    public var notifyOnNewPeer: Bool
+    
+    // Confirmation requirements
+    public var confirmFirstPayment: Bool
+    public var confirmHighValue: Bool
+    public var confirmSubscriptions: Bool
+    public var biometricForLarge: Bool
     
     public static var defaults: AutoPaySettings {
         AutoPaySettings(
             isEnabled: false,
             globalDailyLimit: 100000,
+            maxPerPayment: 10000,
             requireBiometricAbove: 10000,
-            notifyOnAutoPay: true,
-            notifyOnLimitReached: true
+            notifyOnPayment: true,
+            notifyOnLimitReached: true,
+            notifyOnBlocked: true,
+            notifyOnNewPeer: true,
+            confirmFirstPayment: true,
+            confirmHighValue: true,
+            confirmSubscriptions: false,
+            biometricForLarge: false
         )
     }
 }

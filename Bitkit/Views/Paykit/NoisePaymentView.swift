@@ -2,7 +2,7 @@
 //  NoisePaymentView.swift
 //  Bitkit
 //
-//  Noise payment send/receive view
+//  Noise payment send/receive view with real Pubky-ring integration
 //
 
 import SwiftUI
@@ -10,15 +10,18 @@ import SwiftUI
 struct NoisePaymentView: View {
     @StateObject private var viewModel = NoisePaymentViewModel()
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @State private var mode: PaymentMode = .send
     @State private var recipientPubkey = ""
     @State private var amount: Int64 = 1000
     @State private var methodId = "lightning"
     @State private var description = ""
+    @State private var showingContactPicker = false
+    @State private var showingPubkyRingAuth = false
     
-    enum PaymentMode {
-        case send
-        case receive
+    enum PaymentMode: String, CaseIterable {
+        case send = "Send"
+        case receive = "Receive"
     }
     
     var body: some View {
@@ -26,7 +29,10 @@ struct NoisePaymentView: View {
             NavigationBar(title: "Noise Payment")
             
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Session Status Card
+                    sessionStatusCard
+                    
                     // Mode Selector
                     modeSelector
                     
@@ -38,184 +44,537 @@ struct NoisePaymentView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
+                .padding(.bottom, 32)
             }
         }
         .navigationBarHidden(true)
+        .onAppear {
+            viewModel.checkSessionStatus()
+        }
+        .sheet(isPresented: $showingContactPicker) {
+            ContactPickerSheet { contact in
+                recipientPubkey = contact.pubkey
+            }
+        }
+        .sheet(isPresented: $showingPubkyRingAuth) {
+            PubkyRingAuthView { session in
+                viewModel.handleSessionAuthenticated(session)
+            }
+        }
+    }
+    
+    // MARK: - Session Status Card
+    
+    private var sessionStatusCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(viewModel.isSessionActive ? Color.greenAccent.opacity(0.2) : Color.orange.opacity(0.2))
+                        .frame(width: 40, height: 40)
+                    
+                    Image(systemName: viewModel.isSessionActive ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                        .foregroundColor(viewModel.isSessionActive ? .greenAccent : .orange)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    BodyMBoldText(viewModel.isSessionActive ? "Connected to Pubky-ring" : "Not Connected")
+                        .foregroundColor(.white)
+                    
+                    if viewModel.isSessionActive, let pubkey = viewModel.currentUserPubkey {
+                        BodySText(truncatePubkey(pubkey))
+                            .foregroundColor(.textSecondary)
+                    } else {
+                        BodySText("Authenticate to send Noise payments")
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+                
+                Spacer()
+                
+                if viewModel.isSessionActive {
+                    Button {
+                        viewModel.refreshSession()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(.brandAccent)
+                    }
+                } else {
+                    Button {
+                        showingPubkyRingAuth = true
+                    } label: {
+                        BodySText("Connect")
+                            .foregroundColor(.brandAccent)
+                    }
+                }
+            }
+            
+            // Noise key info
+            if viewModel.isSessionActive {
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        BodySText("Noise Key")
+                            .foregroundColor(.textSecondary)
+                        BodySText(viewModel.noiseKeyStatus)
+                            .foregroundColor(viewModel.hasNoiseKey ? .greenAccent : .orange)
+                    }
+                    
+                    Spacer()
+                    
+                    VStack(alignment: .trailing, spacing: 2) {
+                        BodySText("Channels")
+                            .foregroundColor(.textSecondary)
+                        BodySText(viewModel.activeChannelsStatus)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
     }
     
     private var modeSelector: some View {
         Picker("Mode", selection: $mode) {
-            Text("Send").tag(PaymentMode.send)
-            Text("Receive").tag(PaymentMode.receive)
+            ForEach(PaymentMode.allCases, id: \.self) { mode in
+                Text(mode.rawValue).tag(mode)
+            }
         }
         .pickerStyle(.segmented)
     }
     
+    // MARK: - Send Payment Form
+    
     private var sendPaymentForm: some View {
-        VStack(alignment: .leading, spacing: 24) {
+        VStack(alignment: .leading, spacing: 20) {
+            // Recipient section
             VStack(alignment: .leading, spacing: 12) {
-                BodyLText("Recipient")
-                    .foregroundColor(.textPrimary)
-                
-                TextField("Recipient Public Key (z-base32)", text: $recipientPubkey)
-                    .foregroundColor(.white)
-                    .autocapitalization(.none)
-                    .padding(12)
-                    .background(Color.gray6)
-                    .cornerRadius(8)
-            }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                BodyLText("Payment Details")
-                    .foregroundColor(.textPrimary)
+                HStack {
+                    BodyMBoldText("Recipient")
+                        .foregroundColor(.textSecondary)
+                    
+                    Spacer()
+                    
+                    Button {
+                        showingContactPicker = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.crop.circle")
+                            BodySText("Contacts")
+                        }
+                        .foregroundColor(.brandAccent)
+                    }
+                }
                 
                 HStack {
-                    BodyMText("Amount:")
-                        .foregroundColor(.textSecondary)
-                    Spacer()
-                    TextField("sats", text: Binding(
+                    TextField("Recipient Public Key (z-base32)", text: $recipientPubkey)
+                        .foregroundColor(.white)
+                        .autocapitalization(.none)
+                    
+                    if !recipientPubkey.isEmpty {
+                        Button {
+                            recipientPubkey = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.textSecondary)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(Color.gray6)
+                .cornerRadius(8)
+                
+                // Recipient validation indicator
+                if !recipientPubkey.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: viewModel.isValidRecipient(recipientPubkey) ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .font(.caption)
+                        BodySText(viewModel.isValidRecipient(recipientPubkey) ? "Valid pubkey format" : "Invalid pubkey format")
+                    }
+                    .foregroundColor(viewModel.isValidRecipient(recipientPubkey) ? .greenAccent : .redAccent)
+                }
+            }
+            
+            // Amount section
+            VStack(alignment: .leading, spacing: 12) {
+                BodyMBoldText("Amount")
+                    .foregroundColor(.textSecondary)
+                
+                HStack {
+                    TextField("0", text: Binding(
                         get: { String(amount) },
                         set: { amount = Int64($0) ?? 0 }
                     ))
-                        .foregroundColor(.white)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                        .padding(12)
-                        .background(Color.gray6)
-                        .cornerRadius(8)
-                        .frame(width: 120)
+                    .foregroundColor(.white)
+                    .font(.system(size: 32, weight: .bold))
+                    .keyboardType(.numberPad)
+                    
+                    BodyLText("sats")
+                        .foregroundColor(.textSecondary)
                 }
+                .padding(16)
+                .background(Color.gray6)
+                .cornerRadius(12)
                 
-                Picker("Payment Method", selection: $methodId) {
-                    Text("Lightning").tag("lightning")
-                    Text("On-Chain").tag("onchain")
+                // Quick amounts
+                HStack(spacing: 8) {
+                    ForEach([1000, 5000, 10000, 50000], id: \.self) { quickAmount in
+                        Button {
+                            amount = Int64(quickAmount)
+                        } label: {
+                            BodySText("\(quickAmount)")
+                                .foregroundColor(amount == quickAmount ? .white : .textSecondary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(amount == quickAmount ? Color.brandAccent : Color.gray5)
+                                .cornerRadius(16)
+                        }
+                    }
+                }
+            }
+            
+            // Payment method
+            VStack(alignment: .leading, spacing: 12) {
+                BodyMBoldText("Payment Method")
+                    .foregroundColor(.textSecondary)
+                
+                Picker("Method", selection: $methodId) {
+                    HStack {
+                        Image(systemName: "bolt.fill")
+                        Text("Lightning")
+                    }.tag("lightning")
+                    
+                    HStack {
+                        Image(systemName: "bitcoinsign.circle.fill")
+                        Text("On-Chain")
+                    }.tag("onchain")
                 }
                 .pickerStyle(.segmented)
+            }
+            
+            // Description
+            VStack(alignment: .leading, spacing: 12) {
+                BodyMBoldText("Note (optional)")
+                    .foregroundColor(.textSecondary)
                 
-                TextField("Description (optional)", text: $description)
+                TextField("What's this for?", text: $description)
                     .foregroundColor(.white)
                     .padding(12)
                     .background(Color.gray6)
                     .cornerRadius(8)
             }
             
+            // Send button
             Button {
-                Task {
-                    // TODO: Get current user's pubkey
-                    let payerPubkey = "current_user_pubkey"
-                    
-                    let request = NoisePaymentRequest(
-                        payerPubkey: payerPubkey,
-                        payeePubkey: recipientPubkey,
-                        methodId: methodId,
-                        amount: "\(amount)",
-                        currency: "SAT",
-                        description: description.isEmpty ? nil : description
-                    )
-                    
-                    await viewModel.sendPayment(request)
-                    
-                    if let response = viewModel.paymentResponse, response.success {
-                        app.toast(type: .success, title: "Payment sent successfully")
-                    } else if let error = viewModel.errorMessage {
-                        app.toast(type: .error, title: "Payment failed", description: error)
-                    }
-                }
+                sendPayment()
             } label: {
                 HStack {
                     if viewModel.isConnecting {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Image(systemName: "paperplane.fill")
                     }
                     
-                    BodyMText(viewModel.isConnecting ? "Sending..." : "Send Payment")
-                        .foregroundColor(.white)
+                    BodyMBoldText(viewModel.isConnecting ? "Sending..." : "Send Payment")
                 }
+                .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 16)
-                .background(Color.brandAccent)
-                .cornerRadius(8)
+                .background(canSend ? Color.brandAccent : Color.gray5)
+                .cornerRadius(12)
             }
-            .disabled(recipientPubkey.isEmpty || amount <= 0 || viewModel.isConnecting)
+            .disabled(!canSend)
         }
     }
     
-    private var receivePaymentSection: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            BodyLText("Receive Payment")
-                .foregroundColor(.textPrimary)
+    private var canSend: Bool {
+        viewModel.isSessionActive &&
+        !recipientPubkey.isEmpty &&
+        viewModel.isValidRecipient(recipientPubkey) &&
+        amount > 0 &&
+        !viewModel.isConnecting
+    }
+    
+    private func sendPayment() {
+        guard let payerPubkey = viewModel.currentUserPubkey else {
+            app.toast(type: .error, title: "Not connected", description: "Please authenticate with Pubky-ring first")
+            return
+        }
+        
+        Task {
+            let request = NoisePaymentRequest(
+                payerPubkey: payerPubkey,
+                payeePubkey: recipientPubkey,
+                methodId: methodId,
+                amount: "\(amount)",
+                currency: "SAT",
+                description: description.isEmpty ? nil : description
+            )
             
-            BodyMText("Waiting for incoming Noise payment request...")
-                .foregroundColor(.textSecondary)
+            await viewModel.sendPayment(request)
             
-            if viewModel.isConnecting {
-                ProgressView()
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding()
+            if let response = viewModel.paymentResponse, response.success {
+                app.toast(type: .success, title: "Payment sent!", description: "\(amount) sats to \(truncatePubkey(recipientPubkey))")
+                resetForm()
+            } else if let error = viewModel.errorMessage {
+                app.toast(type: .error, title: "Payment failed", description: error)
             }
-            
-            if let request = viewModel.paymentRequest {
-                VStack(alignment: .leading, spacing: 16) {
-                    BodyMBoldText("Incoming Payment Request")
-                        .foregroundColor(.white)
-                    
-                    BodyMText("From: \(request.payerPubkey.prefix(12))...")
+        }
+    }
+    
+    private func resetForm() {
+        recipientPubkey = ""
+        amount = 1000
+        description = ""
+    }
+    
+    // MARK: - Receive Payment Section
+    
+    private var receivePaymentSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Your receive info
+            if let pubkey = viewModel.currentUserPubkey {
+                VStack(alignment: .leading, spacing: 12) {
+                    BodyMBoldText("Your Pubkey")
                         .foregroundColor(.textSecondary)
                     
-                    if let amount = request.amount {
-                        BodyMText("Amount: \(amount) \(request.currency ?? "sats")")
-                            .foregroundColor(.textSecondary)
-                    }
-                    
-                    if let desc = request.description {
-                        BodyMText("Description: \(desc)")
-                            .foregroundColor(.textSecondary)
-                    }
-                    
-                    HStack(spacing: 12) {
+                    HStack {
+                        BodyMText(truncatePubkey(pubkey))
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
                         Button {
-                            // Accept payment
-                            app.toast(type: .success, title: "Payment accepted")
+                            UIPasteboard.general.string = pubkey
+                            app.toast(type: .success, title: "Copied to clipboard")
                         } label: {
-                            BodyMText("Accept")
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.greenAccent)
-                                .cornerRadius(8)
+                            Image(systemName: "doc.on.doc")
+                                .foregroundColor(.brandAccent)
                         }
                         
                         Button {
-                            // Decline payment
-                            app.toast(type: .error, title: "Payment declined")
+                            // Generate QR code
                         } label: {
-                            BodyMText("Decline")
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(Color.redAccent)
-                                .cornerRadius(8)
+                            Image(systemName: "qrcode")
+                                .foregroundColor(.brandAccent)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.gray6)
+                    .cornerRadius(8)
+                }
+            }
+            
+            // Listening status
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(viewModel.isListening ? Color.greenAccent.opacity(0.2) : Color.gray5)
+                            .frame(width: 44, height: 44)
+                        
+                        if viewModel.isListening {
+                            Circle()
+                                .fill(Color.greenAccent)
+                                .frame(width: 12, height: 12)
+                                .animation(.easeInOut(duration: 1).repeatForever(), value: viewModel.isListening)
+                        }
+                        
+                        Image(systemName: viewModel.isListening ? "antenna.radiowaves.left.and.right" : "antenna.radiowaves.left.and.right.slash")
+                            .foregroundColor(viewModel.isListening ? .greenAccent : .textSecondary)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        BodyMBoldText(viewModel.isListening ? "Listening for payments..." : "Not listening")
+                            .foregroundColor(.white)
+                        
+                        BodySText(viewModel.isListening ? "Waiting for incoming Noise requests" : "Start listening to receive payments")
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+            }
+            .padding(16)
+            .background(Color.gray6)
+            .cornerRadius(12)
+            
+            // Incoming request
+            if let request = viewModel.paymentRequest {
+                incomingRequestCard(request)
+            }
+            
+            // Start/Stop listening button
+            Button {
+                Task {
+                    if viewModel.isListening {
+                        viewModel.stopListening()
+                    } else {
+                        await viewModel.receivePayment()
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: viewModel.isListening ? "stop.fill" : "play.fill")
+                    BodyMBoldText(viewModel.isListening ? "Stop Listening" : "Start Listening")
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(viewModel.isSessionActive ? (viewModel.isListening ? Color.orange : Color.brandAccent) : Color.gray5)
+                .cornerRadius(12)
+            }
+            .disabled(!viewModel.isSessionActive)
+        }
+    }
+    
+    private func incomingRequestCard(_ request: NoisePaymentRequest) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(Color.brandAccent.opacity(0.2))
+                        .frame(width: 48, height: 48)
+                    
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundColor(.brandAccent)
+                        .font(.title2)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    BodyMBoldText("Incoming Payment")
+                        .foregroundColor(.white)
+                    
+                    BodySText("From: \(truncatePubkey(request.payerPubkey))")
+                        .foregroundColor(.textSecondary)
+                }
+                
+                Spacer()
+            }
+            
+            if let amountStr = request.amount {
+                HeadlineLText("\(amountStr) \(request.currency ?? "sats")")
+                    .foregroundColor(.white)
+            }
+            
+            if let desc = request.description {
+                BodyMText(desc)
+                    .foregroundColor(.textSecondary)
+            }
+            
+            HStack(spacing: 12) {
+                Button {
+                    Task {
+                        await viewModel.declineIncomingRequest()
+                        app.toast(type: .error, title: "Payment declined")
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "xmark")
+                        BodyMText("Decline")
+                    }
+                    .foregroundColor(.redAccent)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.redAccent.opacity(0.2))
+                    .cornerRadius(8)
+                }
+                
+                Button {
+                    Task {
+                        await viewModel.acceptIncomingRequest()
+                        app.toast(type: .success, title: "Payment accepted!")
+                    }
+                } label: {
+                    HStack {
+                        Image(systemName: "checkmark")
+                        BodyMText("Accept")
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.greenAccent)
+                    .cornerRadius(8)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray5)
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.brandAccent.opacity(0.5), lineWidth: 1)
+        )
+    }
+    
+    private func truncatePubkey(_ pubkey: String) -> String {
+        guard pubkey.count > 16 else { return pubkey }
+        return "\(pubkey.prefix(8))...\(pubkey.suffix(8))"
+    }
+}
+
+// MARK: - Contact Picker Sheet
+
+struct ContactPickerSheet: View {
+    let onSelect: (PaykitContact) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var contactsVM = ContactsViewModel()
+    @State private var searchText = ""
+    
+    var body: some View {
+        NavigationView {
+            List {
+                ForEach(filteredContacts) { contact in
+                    Button {
+                        onSelect(contact)
+                        dismiss()
+                    } label: {
+                        HStack {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.brandAccent.opacity(0.2))
+                                    .frame(width: 40, height: 40)
+                                
+                                Text(String(contact.name.prefix(1)).uppercased())
+                                    .foregroundColor(.brandAccent)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(contact.name)
+                                    .foregroundColor(.white)
+                                Text(contact.pubkey.prefix(16) + "...")
+                                    .font(.caption)
+                                    .foregroundColor(.textSecondary)
+                            }
+                            
+                            Spacer()
                         }
                     }
                 }
-                .padding(16)
-                .background(Color.gray6)
-                .cornerRadius(8)
             }
-            
-            Button {
-                Task {
-                    await viewModel.receivePayment()
+            .searchable(text: $searchText, prompt: "Search contacts")
+            .navigationTitle("Select Contact")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
                 }
-            } label: {
-                BodyMText("Start Listening")
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(Color.brandAccent)
-                    .cornerRadius(8)
             }
-            .disabled(viewModel.isConnecting)
+        }
+        .onAppear {
+            contactsVM.loadContacts()
+        }
+    }
+    
+    private var filteredContacts: [PaykitContact] {
+        if searchText.isEmpty {
+            return contactsVM.contacts
+        }
+        return contactsVM.contacts.filter {
+            $0.name.localizedCaseInsensitiveContains(searchText) ||
+            $0.pubkey.localizedCaseInsensitiveContains(searchText)
         }
     }
 }

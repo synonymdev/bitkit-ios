@@ -13,9 +13,15 @@ public enum AutopayEvaluationResult {
     case approved(ruleId: String?, ruleName: String?)
     case denied(reason: String)
     case needsApproval
+    case needsBiometric
     
     public var isApproved: Bool {
         if case .approved = self { return true }
+        return false
+    }
+    
+    public var requiresBiometric: Bool {
+        if case .needsBiometric = self { return true }
         return false
     }
 }

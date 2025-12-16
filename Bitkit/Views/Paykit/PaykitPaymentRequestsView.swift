@@ -2,7 +2,7 @@
 //  PaykitPaymentRequestsView.swift
 //  Bitkit
 //
-//  Payment requests management view
+//  Payment requests management view with full functionality
 //
 
 import SwiftUI
@@ -10,8 +10,15 @@ import SwiftUI
 struct PaykitPaymentRequestsView: View {
     @StateObject private var viewModel = PaymentRequestsViewModel()
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @State private var showingCreateRequest = false
     @State private var selectedFilter: RequestFilter = .all
+    @State private var selectedStatusFilter: PaymentRequestStatus? = nil
+    @State private var peerFilter: String = ""
+    @State private var showingFilters = false
+    @State private var selectedRequest: PaymentRequest? = nil
+    @State private var showingRequestDetail = false
     
     enum RequestFilter: String, CaseIterable {
         case all = "All"
@@ -22,12 +29,36 @@ struct PaykitPaymentRequestsView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: "Payment Requests")
+            NavigationBar(
+                title: "Payment Requests",
+                trailing: AnyView(
+                    HStack(spacing: 16) {
+                        Button {
+                            showingFilters.toggle()
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle")
+                                .foregroundColor(hasActiveFilters ? .brandAccent : .textSecondary)
+                        }
+                        
+                        Button {
+                            showingCreateRequest = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .foregroundColor(.brandAccent)
+                        }
+                    }
+                )
+            )
             
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 24) {
-                    // Filter Picker
+                VStack(alignment: .leading, spacing: 16) {
+                    // Direction Filter Picker
                     filterSection
+                    
+                    // Advanced Filters
+                    if showingFilters {
+                        advancedFiltersSection
+                    }
                     
                     // Requests List
                     if viewModel.isLoading {
@@ -42,25 +73,28 @@ struct PaykitPaymentRequestsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
+                .padding(.bottom, 32)
             }
         }
         .navigationBarHidden(true)
         .onAppear {
             viewModel.loadRequests()
         }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    showingCreateRequest = true
-                } label: {
-                    Image(systemName: "plus")
-                        .foregroundColor(.brandAccent)
-                }
-            }
+        .refreshable {
+            viewModel.loadRequests()
         }
         .sheet(isPresented: $showingCreateRequest) {
             CreatePaymentRequestView(viewModel: viewModel)
         }
+        .sheet(isPresented: $showingRequestDetail) {
+            if let request = selectedRequest {
+                PaymentRequestDetailSheet(request: request, viewModel: viewModel)
+            }
+        }
+    }
+    
+    private var hasActiveFilters: Bool {
+        selectedStatusFilter != nil || !peerFilter.isEmpty
     }
     
     private var filterSection: some View {
@@ -72,24 +106,97 @@ struct PaykitPaymentRequestsView: View {
         .pickerStyle(.segmented)
     }
     
+    private var advancedFiltersSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMText("Advanced Filters")
+                .foregroundColor(.textSecondary)
+            
+            // Status Filter
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    FilterChip(title: "Any Status", isSelected: selectedStatusFilter == nil) {
+                        selectedStatusFilter = nil
+                    }
+                    ForEach(PaymentRequestStatus.allCases, id: \.self) { status in
+                        FilterChip(title: status.rawValue, isSelected: selectedStatusFilter == status) {
+                            selectedStatusFilter = status
+                        }
+                    }
+                }
+            }
+            
+            // Peer Filter
+            HStack {
+                Image(systemName: "person.circle")
+                    .foregroundColor(.textSecondary)
+                TextField("Filter by peer pubkey...", text: $peerFilter)
+                    .foregroundColor(.white)
+                    .autocapitalization(.none)
+                if !peerFilter.isEmpty {
+                    Button {
+                        peerFilter = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.textSecondary)
+                    }
+                }
+            }
+            .padding(12)
+            .background(Color.gray6)
+            .cornerRadius(8)
+        }
+        .padding(16)
+        .background(Color.gray5)
+        .cornerRadius(12)
+    }
+    
     private var filteredRequests: [PaymentRequest] {
-        let all = viewModel.requests
+        var results = viewModel.requests
+        
+        // Direction filter
         switch selectedFilter {
         case .all:
-            return all
+            break
         case .incoming:
-            return all.filter { $0.direction == .incoming }
+            results = results.filter { $0.direction == .incoming }
         case .outgoing:
-            return all.filter { $0.direction == .outgoing }
+            results = results.filter { $0.direction == .outgoing }
         case .pending:
-            return all.filter { $0.status == .pending }
+            results = results.filter { $0.status == .pending }
         }
+        
+        // Status filter
+        if let statusFilter = selectedStatusFilter {
+            results = results.filter { $0.status == statusFilter }
+        }
+        
+        // Peer filter
+        if !peerFilter.isEmpty {
+            let query = peerFilter.lowercased()
+            results = results.filter {
+                $0.fromPubkey.lowercased().contains(query) ||
+                $0.toPubkey.lowercased().contains(query) ||
+                $0.counterpartyName.lowercased().contains(query)
+            }
+        }
+        
+        return results.sorted { $0.createdAt > $1.createdAt }
     }
     
     private var requestsList: some View {
         VStack(spacing: 0) {
             ForEach(filteredRequests) { request in
-                PaymentRequestRow(request: request, viewModel: viewModel)
+                PaymentRequestRow(
+                    request: request,
+                    viewModel: viewModel,
+                    onTap: {
+                        selectedRequest = request
+                        showingRequestDetail = true
+                    },
+                    onPayNow: {
+                        initiatePayment(for: request)
+                    }
+                )
                 
                 if request.id != filteredRequests.last?.id {
                     Divider()
@@ -127,81 +234,202 @@ struct PaykitPaymentRequestsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
+    
+    private func initiatePayment(for request: PaymentRequest) {
+        Task {
+            do {
+                let result = try await PaykitPaymentService.shared.pay(
+                    to: request.methodId == "lightning" ? "lightning:\(request.id)" : request.toPubkey,
+                    amountSats: UInt64(request.amountSats),
+                    peerPubkey: request.fromPubkey
+                )
+                
+                if result.success {
+                    var updatedRequest = request
+                    updatedRequest.status = .paid
+                    try viewModel.updateRequest(updatedRequest)
+                    app.toast(type: .success, title: "Payment sent!")
+                } else {
+                    app.toast(type: .error, title: "Payment failed", description: result.error?.localizedDescription)
+                }
+            } catch {
+                app.toast(error)
+            }
+        }
+    }
+}
+
+// MARK: - Filter Chip
+
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            BodySText(title)
+                .foregroundColor(isSelected ? .white : .textSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(isSelected ? Color.brandAccent : Color.gray5)
+                .cornerRadius(16)
+        }
+    }
 }
 
 struct PaymentRequestRow: View {
     let request: PaymentRequest
     @ObservedObject var viewModel: PaymentRequestsViewModel
+    var onTap: () -> Void = {}
+    var onPayNow: () -> Void = {}
     @EnvironmentObject private var app: AppViewModel
+    @State private var isProcessing = false
     
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    BodyMBoldText(request.counterpartyName)
+        Button(action: onTap) {
+            HStack {
+                // Direction indicator
+                Image(systemName: request.direction == .incoming ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
+                    .foregroundColor(request.direction == .incoming ? .greenAccent : .brandAccent)
+                    .font(.title2)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        BodyMBoldText(request.counterpartyName)
+                            .foregroundColor(.white)
+                        
+                        Spacer()
+                        
+                        StatusBadge(status: request.status)
+                    }
+                    
+                    BodyMText("\(formatSats(request.amountSats))")
                         .foregroundColor(.white)
                     
-                    Spacer()
-                    
-                    StatusBadge(status: request.status)
-                }
-                
-                BodyMText("\(formatSats(request.amountSats)) via \(request.methodId)")
-                    .foregroundColor(.textSecondary)
-                
-                if !request.description.isEmpty {
-                    BodySText(request.description)
-                        .foregroundColor(.textSecondary)
-                }
-                
-                HStack {
-                    BodySText(request.direction == .incoming ? "Incoming" : "Outgoing")
-                        .foregroundColor(.textSecondary)
-                    
-                    if let expiresAt = request.expiresAt {
-                        BodySText("• Expires: \(formatDate(expiresAt))")
+                    HStack(spacing: 8) {
+                        BodySText(request.methodId.capitalized)
                             .foregroundColor(.textSecondary)
+                        
+                        if !request.description.isEmpty {
+                            BodySText("• \(request.description)")
+                                .foregroundColor(.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    
+                    // Metadata preview
+                    if let metadata = request.metadata, !metadata.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "doc.text")
+                                .font(.caption2)
+                            BodySText("\(metadata.count) item\(metadata.count == 1 ? "" : "s")")
+                        }
+                        .foregroundColor(.brandAccent)
+                    }
+                    
+                    // Expiry
+                    if let expiresAt = request.expiresAt {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock")
+                                .font(.caption2)
+                            BodySText(expiryText(expiresAt))
+                        }
+                        .foregroundColor(isExpiringSoon(expiresAt) ? .orange : .textSecondary)
                     }
                 }
-            }
-            
-            if request.direction == .incoming && request.status == .pending {
+                
                 Spacer()
                 
-                VStack(spacing: 8) {
-                    Button {
-                        do {
-                            var updated = request
-                            updated.status = .accepted
-                            try viewModel.updateRequest(updated)
-                            app.toast(type: .success, title: "Request accepted")
-                        } catch {
-                            app.toast(error)
+                // Action buttons
+                if request.status == .pending {
+                    actionButtons
+                }
+            }
+            .padding(16)
+        }
+        .buttonStyle(.plain)
+    }
+    
+    @ViewBuilder
+    private var actionButtons: some View {
+        if request.direction == .incoming {
+            // Incoming: Approve, Decline, Pay Now
+            VStack(spacing: 8) {
+                Button {
+                    isProcessing = true
+                    onPayNow()
+                } label: {
+                    HStack(spacing: 4) {
+                        if isProcessing {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "bolt.fill")
                         }
+                        BodySText("Pay")
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.greenAccent)
+                    .cornerRadius(8)
+                }
+                .disabled(isProcessing)
+                
+                HStack(spacing: 8) {
+                    Button {
+                        approveRequest()
                     } label: {
-                        Image(systemName: "checkmark.circle.fill")
+                        Image(systemName: "checkmark")
                             .foregroundColor(.greenAccent)
-                            .font(.title3)
+                            .font(.caption)
+                            .frame(width: 28, height: 28)
+                            .background(Color.greenAccent.opacity(0.2))
+                            .cornerRadius(6)
                     }
                     
                     Button {
-                        do {
-                            var updated = request
-                            updated.status = .declined
-                            try viewModel.updateRequest(updated)
-                            app.toast(type: .success, title: "Request declined")
-                        } catch {
-                            app.toast(error)
-                        }
+                        declineRequest()
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
+                        Image(systemName: "xmark")
                             .foregroundColor(.redAccent)
-                            .font(.title3)
+                            .font(.caption)
+                            .frame(width: 28, height: 28)
+                            .background(Color.redAccent.opacity(0.2))
+                            .cornerRadius(6)
                     }
                 }
             }
+        } else {
+            // Outgoing: Show status indicator
+            Image(systemName: "chevron.right")
+                .foregroundColor(.textSecondary)
+                .font(.caption)
         }
-        .padding(16)
+    }
+    
+    private func approveRequest() {
+        do {
+            var updated = request
+            updated.status = .accepted
+            try viewModel.updateRequest(updated)
+            app.toast(type: .success, title: "Request accepted")
+        } catch {
+            app.toast(error)
+        }
+    }
+    
+    private func declineRequest() {
+        do {
+            var updated = request
+            updated.status = .declined
+            try viewModel.updateRequest(updated)
+            app.toast(type: .success, title: "Request declined")
+        } catch {
+            app.toast(error)
+        }
     }
     
     private func formatSats(_ amount: Int64) -> String {
@@ -210,10 +438,18 @@ struct PaymentRequestRow: View {
         return "\(formatter.string(from: NSNumber(value: amount)) ?? "\(amount)") sats"
     }
     
-    private func formatDate(_ date: Date) -> String {
+    private func expiryText(_ date: Date) -> String {
+        if date < Date() {
+            return "Expired"
+        }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        return "Expires \(formatter.localizedString(for: date, relativeTo: Date()))"
+    }
+    
+    private func isExpiringSoon(_ date: Date) -> Bool {
+        let hoursUntilExpiry = date.timeIntervalSinceNow / 3600
+        return hoursUntilExpiry < 24 && hoursUntilExpiry > 0
     }
 }
 
@@ -221,12 +457,36 @@ struct StatusBadge: View {
     let status: PaymentRequestStatus
     
     var body: some View {
-        BodySText(status.rawValue)
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(statusColor)
-            .cornerRadius(8)
+        HStack(spacing: 4) {
+            statusIcon
+            BodySText(status.rawValue)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(statusColor)
+        .cornerRadius(8)
+    }
+    
+    @ViewBuilder
+    private var statusIcon: some View {
+        switch status {
+        case .pending:
+            Image(systemName: "clock")
+                .font(.caption2)
+        case .accepted:
+            Image(systemName: "checkmark")
+                .font(.caption2)
+        case .declined:
+            Image(systemName: "xmark")
+                .font(.caption2)
+        case .paid:
+            Image(systemName: "checkmark.seal.fill")
+                .font(.caption2)
+        case .expired:
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.caption2)
+        }
     }
     
     private var statusColor: Color {
@@ -237,6 +497,327 @@ struct StatusBadge: View {
         case .expired: return .gray2
         case .paid: return .greenAccent
         }
+    }
+}
+
+// MARK: - Payment Request Detail Sheet
+
+struct PaymentRequestDetailSheet: View {
+    let request: PaymentRequest
+    @ObservedObject var viewModel: PaymentRequestsViewModel
+    @EnvironmentObject private var app: AppViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var isProcessingPayment = false
+    
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerSection
+                    statusSection
+                    peerSection
+                    methodSection
+                    
+                    if let metadata = request.metadata, !metadata.isEmpty {
+                        metadataSection(metadata)
+                    }
+                    
+                    if request.status == .pending {
+                        actionsSection
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color.gray5)
+            .navigationTitle("Request Details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+    
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(request.direction == .incoming ? Color.greenAccent.opacity(0.2) : Color.brandAccent.opacity(0.2))
+                    .frame(width: 72, height: 72)
+                
+                Image(systemName: request.direction == .incoming ? "arrow.down" : "arrow.up")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundColor(request.direction == .incoming ? .greenAccent : .brandAccent)
+            }
+            
+            HeadlineXLText(formatSats(request.amountSats))
+                .foregroundColor(.white)
+            
+            if !request.description.isEmpty {
+                BodyMText(request.description)
+                    .foregroundColor(.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMBoldText("Status")
+                .foregroundColor(.textSecondary)
+            
+            HStack {
+                StatusBadge(status: request.status)
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 4) {
+                    BodySText("Created")
+                        .foregroundColor(.textSecondary)
+                    BodySText(formatDate(request.createdAt))
+                        .foregroundColor(.white)
+                }
+            }
+            
+            if let expiresAt = request.expiresAt {
+                HStack {
+                    Image(systemName: "clock")
+                        .foregroundColor(.textSecondary)
+                    
+                    if expiresAt < Date() {
+                        BodyMText("Expired on \(formatDate(expiresAt))")
+                            .foregroundColor(.redAccent)
+                    } else {
+                        BodyMText("Expires \(formatDate(expiresAt))")
+                            .foregroundColor(.orange)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    private var peerSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMBoldText(request.direction == .incoming ? "From" : "To")
+                .foregroundColor(.textSecondary)
+            
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(Color.brandAccent.opacity(0.2))
+                        .frame(width: 44, height: 44)
+                    
+                    Text(String(request.counterpartyName.prefix(1)).uppercased())
+                        .font(.headline)
+                        .foregroundColor(.brandAccent)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    BodyMBoldText(request.counterpartyName)
+                        .foregroundColor(.white)
+                    
+                    BodySText(truncatePubkey(request.direction == .incoming ? request.fromPubkey : request.toPubkey))
+                        .foregroundColor(.textSecondary)
+                }
+                
+                Spacer()
+                
+                Button {
+                    let pubkey = request.direction == .incoming ? request.fromPubkey : request.toPubkey
+                    UIPasteboard.general.string = pubkey
+                    app.toast(type: .success, title: "Copied to clipboard")
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundColor(.brandAccent)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    private var methodSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMBoldText("Payment Method")
+                .foregroundColor(.textSecondary)
+            
+            HStack {
+                Image(systemName: methodIcon)
+                    .foregroundColor(.brandAccent)
+                
+                BodyMText(request.methodId.capitalized)
+                    .foregroundColor(.white)
+                
+                Spacer()
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    private var methodIcon: String {
+        switch request.methodId.lowercased() {
+        case "lightning": return "bolt.fill"
+        case "onchain", "bitcoin": return "bitcoinsign.circle.fill"
+        case "noise": return "antenna.radiowaves.left.and.right"
+        default: return "creditcard.fill"
+        }
+    }
+    
+    private func metadataSection(_ metadata: [String: String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMBoldText("Invoice Details")
+                .foregroundColor(.textSecondary)
+            
+            ForEach(Array(metadata.keys.sorted()), id: \.self) { key in
+                if let value = metadata[key] {
+                    HStack {
+                        BodySText(key.capitalized)
+                            .foregroundColor(.textSecondary)
+                        Spacer()
+                        BodySText(value)
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    private var actionsSection: some View {
+        VStack(spacing: 12) {
+            if request.direction == .incoming {
+                Button {
+                    isProcessingPayment = true
+                    executePayment()
+                } label: {
+                    HStack {
+                        if isProcessingPayment {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Image(systemName: "bolt.fill")
+                        }
+                        BodyMBoldText("Pay Now")
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.greenAccent)
+                    .cornerRadius(12)
+                }
+                .disabled(isProcessingPayment)
+                
+                HStack(spacing: 12) {
+                    Button {
+                        approveRequest()
+                    } label: {
+                        HStack {
+                            Image(systemName: "checkmark")
+                            BodyMText("Accept")
+                        }
+                        .foregroundColor(.greenAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.greenAccent.opacity(0.2))
+                        .cornerRadius(12)
+                    }
+                    
+                    Button {
+                        declineRequest()
+                    } label: {
+                        HStack {
+                            Image(systemName: "xmark")
+                            BodyMText("Decline")
+                        }
+                        .foregroundColor(.redAccent)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.redAccent.opacity(0.2))
+                        .cornerRadius(12)
+                    }
+                }
+            }
+        }
+    }
+    
+    private func executePayment() {
+        Task {
+            defer { isProcessingPayment = false }
+            
+            do {
+                let result = try await PaykitPaymentService.shared.pay(
+                    to: request.methodId == "lightning" ? "lightning:\(request.id)" : request.toPubkey,
+                    amountSats: UInt64(request.amountSats),
+                    peerPubkey: request.fromPubkey
+                )
+                
+                if result.success {
+                    var updated = request
+                    updated.status = .paid
+                    try viewModel.updateRequest(updated)
+                    app.toast(type: .success, title: "Payment sent!")
+                    dismiss()
+                } else {
+                    app.toast(type: .error, title: "Payment failed", description: result.error?.localizedDescription)
+                }
+            } catch {
+                app.toast(error)
+            }
+        }
+    }
+    
+    private func approveRequest() {
+        do {
+            var updated = request
+            updated.status = .accepted
+            try viewModel.updateRequest(updated)
+            app.toast(type: .success, title: "Request accepted")
+            dismiss()
+        } catch {
+            app.toast(error)
+        }
+    }
+    
+    private func declineRequest() {
+        do {
+            var updated = request
+            updated.status = .declined
+            try viewModel.updateRequest(updated)
+            app.toast(type: .success, title: "Request declined")
+            dismiss()
+        } catch {
+            app.toast(error)
+        }
+    }
+    
+    private func formatSats(_ amount: Int64) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return "\(formatter.string(from: NSNumber(value: amount)) ?? "\(amount)") sats"
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    private func truncatePubkey(_ pubkey: String) -> String {
+        guard pubkey.count > 16 else { return pubkey }
+        return "\(pubkey.prefix(8))...\(pubkey.suffix(8))"
     }
 }
 
@@ -395,4 +976,5 @@ class PaymentRequestsViewModel: ObservableObject {
         loadRequests()
     }
 }
+
 
