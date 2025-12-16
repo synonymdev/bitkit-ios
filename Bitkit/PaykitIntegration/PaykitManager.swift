@@ -136,6 +136,21 @@ public final class PaykitManager {
     public var isPubkyRingAvailable: Bool {
         PubkyRingBridge.shared.isPubkyRingInstalled
     }
+    
+    /// Set a session manually (from cross-device auth or manual import)
+    public func setSession(_ session: PubkySession) {
+        Logger.info("Session set for pubkey: \(session.pubkey)", context: "PaykitManager")
+        // The session is already cached in PubkyRingBridge during import/callback
+        // This method is provided for explicit session setting from UI
+    }
+    
+    /// Check if a session is currently active
+    public var hasActiveSession: Bool {
+        if let pubkey = ownerPubkey {
+            return PubkyRingBridge.shared.getCachedSession(for: pubkey) != nil
+        }
+        return false
+    }
 }
 
 // MARK: - Network Configuration

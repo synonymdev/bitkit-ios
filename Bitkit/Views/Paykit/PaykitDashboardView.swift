@@ -2,7 +2,7 @@
 //  PaykitDashboardView.swift
 //  Bitkit
 //
-//  Dashboard overview showing key metrics and recent activity
+//  Dashboard overview showing key metrics and Paykit features
 //
 
 import SwiftUI
@@ -10,6 +10,9 @@ import SwiftUI
 struct PaykitDashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @EnvironmentObject private var navigation: NavigationViewModel
+    @State private var showPubkyRingAuth = false
+    
+    private let pubkyRingBridge = PubkyRingBridge.shared
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,11 +26,18 @@ struct PaykitDashboardView: View {
                     // Quick Access Section
                     quickAccessSection
                     
+                    // Payments Section
+                    paymentsSection
+                    
+                    // Identity & Security Section
+                    identitySection
+                    
                     // Recent Activity
                     recentActivitySection
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
+                .padding(.bottom, 32)
             }
         }
         .navigationBarHidden(true)
@@ -36,6 +46,12 @@ struct PaykitDashboardView: View {
         }
         .refreshable {
             viewModel.loadDashboard()
+        }
+        .sheet(isPresented: $showPubkyRingAuth) {
+            PubkyRingAuthView { session in
+                PaykitManager.shared.setSession(session)
+                viewModel.loadDashboard()
+            }
         }
     }
     
@@ -105,6 +121,118 @@ struct PaykitDashboardView: View {
         }
     }
     
+    private var paymentsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyLText("Payments")
+                .foregroundColor(.textSecondary)
+            
+            HStack(spacing: 12) {
+                QuickAccessCard(
+                    title: "Payment Requests",
+                    icon: "arrow.down.doc.fill",
+                    color: .green,
+                    badge: viewModel.pendingRequests > 0 ? "\(viewModel.pendingRequests)" : nil
+                ) {
+                    navigation.navigate(.paykitPaymentRequests)
+                }
+                
+                QuickAccessCard(
+                    title: "Noise Payment",
+                    icon: "waveform.circle.fill",
+                    color: .purple,
+                    badge: nil
+                ) {
+                    navigation.navigate(.paykitNoisePayment)
+                }
+            }
+            
+            HStack(spacing: 12) {
+                QuickAccessCard(
+                    title: "Contacts",
+                    icon: "person.crop.circle.fill",
+                    color: .cyan,
+                    badge: viewModel.contactCount > 0 ? "\(viewModel.contactCount)" : nil
+                ) {
+                    navigation.navigate(.paykitContacts)
+                }
+                
+                QuickAccessCard(
+                    title: "Discover",
+                    icon: "magnifyingglass.circle.fill",
+                    color: .mint,
+                    badge: nil
+                ) {
+                    navigation.navigate(.paykitContactDiscovery)
+                }
+            }
+        }
+    }
+    
+    private var identitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyLText("Identity & Security")
+                .foregroundColor(.textSecondary)
+            
+            HStack(spacing: 12) {
+                QuickAccessCard(
+                    title: "Endpoints",
+                    icon: "link.circle.fill",
+                    color: .indigo,
+                    badge: viewModel.publishedMethodsCount > 0 ? "\(viewModel.publishedMethodsCount)" : nil
+                ) {
+                    navigation.navigate(.paykitPrivateEndpoints)
+                }
+                
+                QuickAccessCard(
+                    title: "Key Rotation",
+                    icon: "key.fill",
+                    color: .yellow,
+                    badge: nil
+                ) {
+                    navigation.navigate(.paykitRotationSettings)
+                }
+            }
+            
+            // Pubky-ring connection status
+            pubkyRingConnectionCard
+        }
+    }
+    
+    private var pubkyRingConnectionCard: some View {
+        Button {
+            showPubkyRingAuth = true
+        } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(pubkyRingBridge.isPubkyRingInstalled ? Color.green.opacity(0.2) : Color.orange.opacity(0.2))
+                        .frame(width: 44, height: 44)
+                    
+                    Image(systemName: pubkyRingBridge.isPubkyRingInstalled ? "checkmark.shield.fill" : "qrcode")
+                        .foregroundColor(pubkyRingBridge.isPubkyRingInstalled ? .green : .orange)
+                        .font(.title3)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    BodyMBoldText(pubkyRingBridge.isPubkyRingInstalled ? "Pubky-ring Connected" : "Connect Pubky-ring")
+                        .foregroundColor(.white)
+                    
+                    BodySText(pubkyRingBridge.authenticationStatus.description)
+                        .foregroundColor(.textSecondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .foregroundColor(.textSecondary)
+                    .font(.caption)
+            }
+            .padding(16)
+            .background(Color.gray6)
+            .cornerRadius(12)
+        }
+    }
+    
     private var recentActivitySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -120,10 +248,23 @@ struct PaykitDashboardView: View {
             }
             
             if viewModel.recentReceipts.isEmpty {
-                EmptyStateView(
-                    type: .home,
-                    onClose: nil
-                )
+                // Simple empty state instead of the large overlay
+                VStack(spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 32))
+                        .foregroundColor(.textSecondary)
+                    
+                    BodyMText("No recent activity")
+                        .foregroundColor(.textSecondary)
+                    
+                    BodySText("Your Paykit transactions will appear here")
+                        .foregroundColor(.textTertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 32)
+                .background(Color.gray6)
+                .cornerRadius(8)
             } else {
                 VStack(spacing: 0) {
                     ForEach(viewModel.recentReceipts) { receipt in
