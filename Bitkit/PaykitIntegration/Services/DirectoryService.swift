@@ -208,14 +208,7 @@ public final class DirectoryService {
     public func fetchProfile(for pubkey: String) async throws -> PubkyProfile? {
         // Try PubkySDKService first (preferred, direct homeserver access)
         do {
-            let sdkProfile = try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
-            // Convert to local PubkyProfile type
-            return PubkyProfile(
-                name: sdkProfile.name,
-                bio: sdkProfile.bio,
-                avatar: sdkProfile.image,
-                links: sdkProfile.links?.map { PubkyProfileLink(title: $0.title, url: $0.url) }
-            )
+            return try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
         } catch {
             Logger.debug("PubkySDKService profile fetch failed: \(error)", context: "DirectoryService")
         }

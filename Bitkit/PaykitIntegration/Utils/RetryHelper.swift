@@ -7,6 +7,28 @@
 
 import Foundation
 
+/// Simple retry function for async operations
+public func tryNTimes<T>(
+    toTry operation: () async throws -> T,
+    times: Int = 3,
+    interval: TimeInterval = 1.0
+) async throws -> T {
+    var lastError: Error?
+    
+    for attempt in 1...times {
+        do {
+            return try await operation()
+        } catch {
+            lastError = error
+            if attempt < times {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+            }
+        }
+    }
+    
+    throw lastError ?? NSError(domain: "tryNTimes", code: -1, userInfo: nil)
+}
+
 /// Helper for retrying async operations with exponential backoff
 public struct RetryHelper {
     
@@ -59,7 +81,7 @@ public struct RetryHelper {
                     throw error
                 }
                 
-                Logger.warning(
+                Logger.warn(
                     "Operation failed (attempt \(attempt)/\(config.maxAttempts)), retrying in \(delay)s: \(error)",
                     context: "RetryHelper"
                 )
@@ -92,12 +114,12 @@ public struct RetryHelper {
             }
         }
         
-        // Pubky SDK errors
+        // Pubky SDK errors - only network errors are retryable
         if let sdkError = error as? PubkySDKError {
             switch sdkError {
-            case .fetchFailed, .writeFailed:
+            case .networkError:
                 return true
-            case .notFound, .invalidData, .invalidUri, .notConfigured, .noSession:
+            case .notInitialized, .authenticationFailed, .sessionNotFound, .storageError, .invalidInput:
                 return false
             }
         }
@@ -129,22 +151,7 @@ public extension Error {
         
         // Pubky SDK errors
         if let sdkError = self as? PubkySDKError {
-            switch sdkError {
-            case .notConfigured:
-                return "Service not configured. Please restart the app."
-            case .noSession:
-                return "Please reconnect to Pubky-ring."
-            case .fetchFailed(let msg):
-                return "Failed to fetch data: \(msg)"
-            case .writeFailed(let msg):
-                return "Failed to save data: \(msg)"
-            case .notFound(let msg):
-                return "Not found: \(msg)"
-            case .invalidData(let msg):
-                return "Invalid data: \(msg)"
-            case .invalidUri:
-                return "Invalid URL format."
-            }
+            return sdkError.userFriendlyMessage
         }
         
         // Pubky Ring errors

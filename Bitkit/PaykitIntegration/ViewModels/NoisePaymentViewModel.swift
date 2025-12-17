@@ -127,11 +127,11 @@ class NoisePaymentViewModel: ObservableObject {
             
             // Store the payment response
             paymentResponse = NoisePaymentResponse(
-                receiptId: request.receiptId,
                 success: true,
-                paymentHash: result.paymentHash,
-                preimage: result.preimage,
-                feePaidSats: result.feeSats
+                receiptId: request.receiptId,
+                confirmedAt: Date(),
+                errorCode: nil,
+                errorMessage: nil
             )
             
             // Clear the request
