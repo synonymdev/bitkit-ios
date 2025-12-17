@@ -59,7 +59,7 @@ public class SessionRefreshService {
         
         // Create expiration handler
         task.expirationHandler = {
-            Logger.warning("Session refresh task expired", context: "SessionRefreshService")
+                Logger.warn("Session refresh task expired", context: "SessionRefreshService")
         }
         
         // Perform refresh

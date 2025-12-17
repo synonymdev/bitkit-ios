@@ -1,0 +1,5 @@
+// Modified to avoid duplicate module.modulemap conflict with BitkitCore
+module pubkycoreFFI [system] {
+    header "pubkycoreFFI.h"
+    export *
+}

@@ -688,7 +688,6 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64_x86_64-simulator/Headers",
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64_x86_64-simulator/Headers",
-					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyCore.xcframework/ios-arm64-simulator/Headers",
 				);
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
@@ -711,14 +710,12 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64_x86_64-simulator",
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64_x86_64-simulator",
-					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyCore.xcframework/ios-arm64-simulator",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lpaykit_mobile",
 					"-lpubky_noise",
-					"-lpubkycore",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit-regtest";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -751,7 +748,6 @@
 				HEADER_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64/Headers",
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64/Headers",
-					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyCore.xcframework/ios-arm64/Headers",
 				);
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
@@ -774,14 +770,12 @@
 				LIBRARY_SEARCH_PATHS = (
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PaykitMobile.xcframework/ios-arm64",
 					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyNoise.xcframework/ios-arm64",
-					"$(PROJECT_DIR)/Bitkit/PaykitIntegration/Frameworks/PubkyCore.xcframework/ios-arm64",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 1.0;
 				OTHER_LDFLAGS = (
 					"-lpaykit_mobile",
 					"-lpubky_noise",
-					"-lpubkycore",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit-regtest";
 				PRODUCT_NAME = "$(TARGET_NAME)";
