@@ -15,5 +15,6 @@ final class LnurlAmountConversionTests: XCTestCase {
     func testSatsFloorRoundsDown() {
         XCTAssertEqual(LnurlAmountConversion.satsFloor(fromMsats: 100_999), 100)
         XCTAssertEqual(LnurlAmountConversion.satsFloor(fromMsats: 100_000), 100)
+        XCTAssertEqual(LnurlAmountConversion.satsFloor(fromMsats: 0), 0)
     }
 }
