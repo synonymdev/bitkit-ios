@@ -1,13 +1,13 @@
 {
-  "originHash" : "afebf53471e2eb2f8c45a9c3fbd45b779930aea0b8a7bf2fd223d03d490867a3",
+  "originHash" : "8f2122638242e90a315782ed7470f7cd4c8d11928904daa783cae56706024ffe",
   "pins" : [
     {
       "identity" : "bitkit-core",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/synonymdev/bitkit-core",
+      "location" : "https://github.com/BitcoinErrorLog/bitkit-core",
       "state" : {
         "branch" : "master",
-        "revision" : "539c48daa059bb9bb46bb00f5eb8e227021020d0"
+        "revision" : "83c5b2301a75a8800c3546563135419304f42444"
       }
     },
     {

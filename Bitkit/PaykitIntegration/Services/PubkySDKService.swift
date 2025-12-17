@@ -1,84 +1,11 @@
 //  PubkySDKService.swift
 //  Bitkit
 //
-//  Service for managing Pubky SDK operations.
-//  Note: Full FFI integration requires pushing bitkit-core changes to BitcoinErrorLog/bitkit-core.
-//  Until then, this uses local type definitions and will be updated when FFI is available.
+//  Service for managing Pubky SDK operations (sign-in, session management, storage)
+//  Uses BitkitCore FFI bindings for pubky SDK functionality.
 
 import Foundation
-
-// MARK: - Local Type Definitions (until BitkitCore FFI is updated)
-
-/// Session information from pubky SDK
-public struct PubkySessionInfo: Codable {
-    public let pubkey: String
-    public let capabilities: [String]
-    public let createdAt: UInt64
-}
-
-/// Keypair from pubky SDK
-public struct PubkyKeypair: Codable {
-    public let secretKeyHex: String
-    public let publicKey: String
-}
-
-/// List item from pubky storage
-public struct PubkyListItem: Codable {
-    public let name: String
-    public let path: String
-    public let isDirectory: Bool
-}
-
-// Note: PubkyProfile is defined in DirectoryService.swift
-
-/// Signup options
-public struct PubkySignupOptions {
-    public let signupToken: String?
-}
-
-/// Error types for pubky SDK operations
-public enum PubkySDKError: Error, LocalizedError {
-    case notInitialized
-    case authenticationFailed(String)
-    case networkError(String)
-    case sessionNotFound
-    case storageError(String)
-    case invalidInput(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .notInitialized:
-            return "Pubky SDK not initialized"
-        case .authenticationFailed(let msg):
-            return "Authentication failed: \(msg)"
-        case .networkError(let msg):
-            return "Network error: \(msg)"
-        case .sessionNotFound:
-            return "Session not found"
-        case .storageError(let msg):
-            return "Storage error: \(msg)"
-        case .invalidInput(let msg):
-            return "Invalid input: \(msg)"
-        }
-    }
-    
-    public var userFriendlyMessage: String {
-        switch self {
-        case .notInitialized:
-            return "Service not initialized. Please restart the app."
-        case .authenticationFailed:
-            return "Sign in failed. Please try again."
-        case .networkError:
-            return "Network error. Please check your connection."
-        case .sessionNotFound:
-            return "Session not found. Please sign in again."
-        case .storageError:
-            return "Storage operation failed."
-        case .invalidInput:
-            return "Invalid input provided."
-        }
-    }
-}
+import BitkitCore
 
 // MARK: - PubkySDKService
 
@@ -86,7 +13,6 @@ public final class PubkySDKService {
     public static let shared = PubkySDKService()
     
     private var isInitialized = false
-    private var sessions: [String: PubkySessionInfo] = [:]
     
     private init() {
         Logger.info("PubkySDKService initializing", context: "PubkySDKService")
@@ -96,128 +22,128 @@ public final class PubkySDKService {
     
     public func configure(useTestnet: Bool = false) {
         guard !isInitialized else { return }
-        isInitialized = true
-        Logger.info("PubkySDKService configured (testnet: \(useTestnet))", context: "PubkySDKService")
-        Logger.info("Note: Full pubky SDK requires BitkitCore FFI update", context: "PubkySDKService")
+        
+        do {
+            if useTestnet {
+                try pubkyInitializeTestnet()
+            } else {
+                try pubkyInitialize()
+            }
+            isInitialized = true
+            Logger.info("PubkySDKService configured (testnet: \(useTestnet))", context: "PubkySDKService")
+        } catch {
+            Logger.error("Failed to initialize PubkySDK: \(error)", context: "PubkySDKService")
+        }
     }
     
-    // MARK: - Authentication (Placeholder until FFI available)
+    // MARK: - Authentication
     
     public func signIn(secretKeyHex: String) async throws -> PubkySessionInfo {
         ensureInitialized()
-        // TODO: Replace with actual FFI call when BitkitCore is updated
-        // return try await pubkySignin(secretKeyHex: secretKeyHex)
-        Logger.warn("PubkySDKService.signIn: FFI not available yet", context: "PubkySDKService")
-        throw PubkySDKError.notInitialized
+        let session = try await pubkySignin(secretKeyHex: secretKeyHex)
+        Logger.info("Signed in as \(session.pubkey.prefix(12))...", context: "PubkySDKService")
+        return session
     }
     
     public func signUp(secretKeyHex: String, homeserverPubkey: String, signupToken: String? = nil) async throws -> PubkySessionInfo {
         ensureInitialized()
-        // TODO: Replace with actual FFI call when BitkitCore is updated
-        Logger.warn("PubkySDKService.signUp: FFI not available yet", context: "PubkySDKService")
-        throw PubkySDKError.notInitialized
+        let options = signupToken.map { PubkySignupOptions(signupToken: $0) }
+        let session = try await pubkySignup(secretKeyHex: secretKeyHex, homeserverPubkey: homeserverPubkey, options: options)
+        Logger.info("Signed up as \(session.pubkey.prefix(12))...", context: "PubkySDKService")
+        return session
     }
     
     public func signOut(pubkey: String) async throws {
-        sessions.removeValue(forKey: pubkey)
+        try await pubkySignout(pubkey: pubkey)
         Logger.info("Signed out \(pubkey.prefix(12))...", context: "PubkySDKService")
     }
     
     // MARK: - Session Management
     
     public func hasSession(pubkey: String) async -> Bool {
-        return sessions[pubkey] != nil
+        return await pubkyHasSession(pubkey: pubkey)
     }
     
     public func getSession(pubkey: String) async throws -> PubkySessionInfo? {
-        return sessions[pubkey]
+        return try await pubkyGetSession(pubkey: pubkey)
     }
     
     public func listSessions() async -> [String] {
-        return Array(sessions.keys)
+        return await pubkyListSessions()
     }
     
     public func refreshExpiringSessions() async {
+        // Sessions are managed in-memory by the Rust SDK
         Logger.debug("refreshExpiringSessions called", context: "PubkySDKService")
     }
     
-    // MARK: - Key Management (Can work locally)
-    
-    public static func generateKeypair() -> PubkyKeypair {
-        // Generate a random 32-byte secret key
-        var secretBytes = [UInt8](repeating: 0, count: 32)
-        _ = SecRandomCopyBytes(kSecRandomDefault, 32, &secretBytes)
-        let secretKeyHex = secretBytes.map { String(format: "%02x", $0) }.joined()
-        
-        // For the public key, we'd need the actual derivation
-        // This is a placeholder - the real implementation would use the FFI
-        let publicKey = "placeholder_pubkey_\(secretKeyHex.prefix(16))"
-        
-        return PubkyKeypair(secretKeyHex: secretKeyHex, publicKey: publicKey)
-    }
-    
-    public static func publicKeyFromSecret(secretKeyHex: String) throws -> String {
-        // TODO: Replace with actual FFI call
-        // return try pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
-        guard secretKeyHex.count == 64 else {
-            throw PubkySDKError.invalidInput("Secret key must be 64 hex characters (32 bytes)")
-        }
-        return "placeholder_pubkey_\(secretKeyHex.prefix(16))"
-    }
-    
-    // MARK: - Storage Operations (Placeholder)
+    // MARK: - Session Storage
     
     public func sessionGet(pubkey: String, path: String) async throws -> Data {
-        throw PubkySDKError.notInitialized
+        return try await pubkySessionGet(pubkey: pubkey, path: path)
     }
     
     public func sessionPut(pubkey: String, path: String, content: Data) async throws {
-        throw PubkySDKError.notInitialized
+        try await pubkySessionPut(pubkey: pubkey, path: path, content: content)
     }
     
     public func sessionDelete(pubkey: String, path: String) async throws {
-        throw PubkySDKError.notInitialized
+        try await pubkySessionDelete(pubkey: pubkey, path: path)
     }
     
     public func sessionList(pubkey: String, path: String) async throws -> [PubkyListItem] {
-        throw PubkySDKError.notInitialized
+        return try await pubkySessionList(pubkey: pubkey, path: path)
     }
     
-    // MARK: - Public Storage (Placeholder)
+    // MARK: - Public Storage (No Authentication)
     
     public func publicGet(uri: String) async throws -> Data {
-        throw PubkySDKError.notInitialized
+        ensureInitialized()
+        return try await pubkyPublicGet(uri: uri)
     }
     
     public func publicList(uri: String) async throws -> [PubkyListItem] {
-        throw PubkySDKError.notInitialized
+        ensureInitialized()
+        return try await pubkyPublicList(uri: uri)
     }
     
-    // MARK: - Profile & Contacts (Placeholder)
+    // MARK: - Profile & Contacts
     
-    /// Fetch profile from pubky.app
     public func fetchProfile(pubkey: String) async throws -> PubkyProfile {
-        throw PubkySDKError.notInitialized
+        ensureInitialized()
+        return try await pubkyFetchProfile(pubkey: pubkey)
     }
     
     public func fetchFollows(pubkey: String) async throws -> [String] {
-        throw PubkySDKError.notInitialized
+        ensureInitialized()
+        return try await pubkyFetchFollows(pubkey: pubkey)
     }
     
-    // MARK: - DNS Resolution (Placeholder)
+    // MARK: - Key Management
+    
+    public static func generateKeypair() -> PubkyKeypair {
+        return pubkyGenerateKeypair()
+    }
+    
+    public static func publicKeyFromSecret(secretKeyHex: String) throws -> String {
+        return try pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
+    }
+    
+    // MARK: - DNS Resolution
     
     public func resolveHomeserver(pubkey: String) async throws -> String? {
-        throw PubkySDKError.notInitialized
+        ensureInitialized()
+        return try await pubkyResolveHomeserver(pubkey: pubkey)
     }
     
     // MARK: - Persistence
     
     public func storeSessions() {
-        // TODO: Implement session persistence
+        // Session persistence will be implemented when needed
     }
     
     public func restoreSessions() {
-        // TODO: Implement session restoration
+        // Session restoration will be implemented when needed
     }
     
     // MARK: - Helpers
@@ -225,6 +151,48 @@ public final class PubkySDKService {
     private func ensureInitialized() {
         if !isInitialized {
             configure()
+        }
+    }
+}
+
+// MARK: - Error Extensions
+
+extension PubkyError: @retroactive LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .Auth(let message):
+            return "Authentication error: \(message)"
+        case .Network(let message):
+            return "Network error: \(message)"
+        case .InvalidInput(let message):
+            return "Invalid input: \(message)"
+        case .Session(let message):
+            return "Session error: \(message)"
+        case .Build(let message):
+            return "Build error: \(message)"
+        case .Storage(let message):
+            return "Storage error: \(message)"
+        case .NotFound(let message):
+            return "Not found: \(message)"
+        }
+    }
+    
+    public var userFriendlyMessage: String {
+        switch self {
+        case .Auth:
+            return "Authentication failed. Please try again."
+        case .Network:
+            return "Network error. Please check your connection."
+        case .InvalidInput:
+            return "Invalid input provided."
+        case .Session:
+            return "Session error. Please sign in again."
+        case .Build:
+            return "Service initialization failed."
+        case .Storage:
+            return "Storage operation failed."
+        case .NotFound:
+            return "The requested resource was not found."
         }
     }
 }

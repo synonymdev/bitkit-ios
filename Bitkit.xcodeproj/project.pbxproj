@@ -986,7 +986,7 @@
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/synonymdev/bitkit-core";
+			repositoryURL = "https://github.com/BitcoinErrorLog/bitkit-core";
 			requirement = {
 				branch = master;
 				kind = branch;

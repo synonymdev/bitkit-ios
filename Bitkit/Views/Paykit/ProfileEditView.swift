@@ -20,7 +20,7 @@ struct ProfileEditView: View {
     @State private var links: [EditableLink] = []
     
     // Original profile for comparison
-    @State private var originalProfile: PubkyProfile?
+    @State private var originalProfile: DirectoryProfile?
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -248,8 +248,8 @@ struct ProfileEditView: View {
     
     // MARK: - Computed Properties
     
-    private var currentProfile: PubkyProfile {
-        PubkyProfile(
+    private var currentProfile: DirectoryProfile {
+        DirectoryProfile(
             name: name.isEmpty ? nil : name,
             bio: bio.isEmpty ? nil : bio,
             avatar: nil,

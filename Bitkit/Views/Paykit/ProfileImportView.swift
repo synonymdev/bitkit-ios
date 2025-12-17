@@ -10,7 +10,7 @@ import SwiftUI
 struct ProfileImportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isLoading = false
-    @State private var profile: PubkyProfile?
+    @State private var profile: DirectoryProfile?
     @State private var errorMessage: String?
     @State private var pubkeyToImport: String = ""
     @State private var importedSuccessfully = false
@@ -175,7 +175,7 @@ struct ProfileImportView: View {
 }
 
 struct ProfilePreviewCard: View {
-    let profile: PubkyProfile
+    let profile: DirectoryProfile
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

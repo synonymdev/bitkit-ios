@@ -205,10 +205,11 @@ public final class DirectoryService {
     
     /// Fetch profile for a pubkey from Pubky directory
     /// Uses PubkySDKService first, falls back to direct FFI if unavailable
-    public func fetchProfile(for pubkey: String) async throws -> PubkyProfile? {
+    public func fetchProfile(for pubkey: String) async throws -> DirectoryProfile? {
         // Try PubkySDKService first (preferred, direct homeserver access)
         do {
-            return try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
+            let profile = try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
+            return DirectoryProfile(from: profile)
         } catch {
             Logger.debug("PubkySDKService profile fetch failed: \(error)", context: "DirectoryService")
         }
@@ -230,7 +231,7 @@ public final class DirectoryService {
     }
     
     /// Fetch profile using direct FFI (fallback)
-    private func fetchProfileViaFFI(for pubkey: String) async throws -> PubkyProfile? {
+    private func fetchProfileViaFFI(for pubkey: String) async throws -> DirectoryProfile? {
         let adapter = unauthenticatedTransport ?? {
             let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
             let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
@@ -244,7 +245,7 @@ public final class DirectoryService {
         do {
             if let data = try await pubkyStorage.readFile(path: profilePath, adapter: adapter, ownerPubkey: pubkey) {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    return PubkyProfile(
+                    return DirectoryProfile(
                         name: json["name"] as? String,
                         bio: json["bio"] as? String,
                         avatar: json["avatar"] as? String,
@@ -263,7 +264,7 @@ public final class DirectoryService {
     }
     
     /// Publish profile to Pubky directory
-    public func publishProfile(_ profile: PubkyProfile) async throws {
+    public func publishProfile(_ profile: DirectoryProfile) async throws {
         guard let transport = authenticatedTransport else {
             throw DirectoryError.notConfigured
         }
@@ -535,8 +536,8 @@ public struct DirectoryDiscoveredContact: Identifiable {
     }
 }
 
-/// Profile from Pubky directory
-public struct PubkyProfile: Codable {
+/// Profile from Pubky directory (local app type)
+public struct DirectoryProfile: Codable {
     public let name: String?
     public let bio: String?
     public let avatar: String?
@@ -547,6 +548,14 @@ public struct PubkyProfile: Codable {
         self.bio = bio
         self.avatar = avatar
         self.links = links
+    }
+    
+    /// Convert from BitkitCore's PubkyProfile
+    public init(from profile: BitkitCore.PubkyProfile) {
+        self.name = profile.name
+        self.bio = profile.bio
+        self.avatar = profile.image
+        self.links = profile.links.map { PubkyProfileLink(title: "", url: $0) }
     }
 }
 

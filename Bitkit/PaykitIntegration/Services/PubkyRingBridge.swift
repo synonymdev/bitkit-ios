@@ -260,7 +260,7 @@ public final class PubkyRingBridge {
     // MARK: - Profile & Follows Requests
     
     /// Pending profile request continuation
-    private var pendingProfileContinuation: CheckedContinuation<PubkyProfile?, Error>?
+    private var pendingProfileContinuation: CheckedContinuation<DirectoryProfile?, Error>?
     
     /// Pending follows request continuation
     private var pendingFollowsContinuation: CheckedContinuation<[String], Error>?
@@ -268,9 +268,9 @@ public final class PubkyRingBridge {
     /// Request a profile from Pubky-ring (which fetches from homeserver)
     ///
     /// - Parameter pubkey: The pubkey of the profile to fetch
-    /// - Returns: PubkyProfile if found, nil otherwise
+    /// - Returns: DirectoryProfile if found, nil otherwise
     /// - Throws: PubkyRingError if request fails
-    public func requestProfile(pubkey: String) async throws -> PubkyProfile? {
+    public func requestProfile(pubkey: String) async throws -> DirectoryProfile? {
         guard isPubkyRingInstalled else {
             throw PubkyRingError.appNotInstalled
         }
@@ -643,7 +643,7 @@ public final class PubkyRingBridge {
         }
         
         // Build profile from response
-        let profile = PubkyProfile(
+        let profile = DirectoryProfile(
             name: params["name"]?.removingPercentEncoding,
             bio: params["bio"]?.removingPercentEncoding,
             avatar: params["avatar"]?.removingPercentEncoding,
