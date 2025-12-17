@@ -2,7 +2,7 @@
 //  PubkySDKService.swift
 //  Bitkit
 //
-//  Service for Pubky SDK operations using real UniFFI bindings
+//  Service for Pubky SDK operations using pubky-core-ffi bindings
 //  Provides direct homeserver access for profile/follows fetching
 //
 
@@ -10,7 +10,7 @@ import Foundation
 
 // MARK: - PubkySDKService
 
-/// Service for direct Pubky homeserver operations using real FFI bindings
+/// Service for direct Pubky homeserver operations using pubky-core-ffi bindings
 public final class PubkySDKService {
     
     // MARK: - Singleton
@@ -20,9 +20,7 @@ public final class PubkySDKService {
     // MARK: - Properties
     
     private let keychainStorage = PaykitKeychainStorage.shared
-    private var sdk: Sdk?
-    private var sessionCache: [String: PubkySession] = [:]
-    private var legacySessionCache: [String: LegacyPubkySession] = [:] // For compatibility with existing code
+    private var sessionCache: [String: PubkyCoreSession] = [:]
     private let lock = NSLock()
     
     // MARK: - Configuration
@@ -41,183 +39,122 @@ public final class PubkySDKService {
     // MARK: - Initialization
     
     private init() {
-        do {
-            sdk = try Sdk()
-            Logger.info("PubkySDKService initialized with real FFI SDK", context: "PubkySDKService")
-        } catch {
-            Logger.error("Failed to initialize FFI SDK: \(error)", context: "PubkySDKService")
-        }
+        Logger.info("PubkySDKService initialized with pubky-core-ffi", context: "PubkySDKService")
     }
     
     // MARK: - Public API
     
     /// Configure the service with a homeserver
-    /// - Parameter homeserver: The homeserver pubkey (defaults to production)
     public func configure(homeserver: String? = nil) {
         self.homeserver = homeserver ?? PubkyConfig.defaultHomeserver
         Logger.info("PubkySDKService configured with homeserver: \(self.homeserver)", context: "PubkySDKService")
     }
     
-    /// Sign in to homeserver using a key provider
-    /// - Parameters:
-    ///   - secretKey: The 32-byte secret key
-    ///   - homeserver: The homeserver pubkey (uses default if nil)
-    /// - Returns: Session info
-    public func signin(secretKey: Data, homeserver: String? = nil) async throws -> LegacyPubkySession {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
+    /// Sign in to homeserver using a secret key
+    public func signin(secretKey: String) async throws -> PubkyCoreSession {
+        let result = signIn(secretKey: secretKey)
+        try checkResult(result)
         
-        let keyProvider = SecretKeyProvider(secretKey: secretKey)
-        let hs = homeserver ?? self.homeserver
-        
-        let ffiSession = try await sdk.signin(keyProvider: keyProvider, homeserver: hs)
+        let sessionData = try parseJSON(result[1])
+        let session = PubkyCoreSession(
+            pubkey: sessionData["public_key"] as? String ?? "",
+            sessionSecret: sessionData["session_secret"] as? String ?? "",
+            capabilities: sessionData["capabilities"] as? [String] ?? [],
+            expiresAt: (sessionData["expires_at"] as? TimeInterval).map { Date(timeIntervalSince1970: $0) }
+        )
         
         lock.lock()
-        defer { lock.unlock() }
+        sessionCache[session.pubkey] = session
+        lock.unlock()
         
-        let info = ffiSession.info()
-        sessionCache[info.pubkey] = ffiSession
-        
-        // Create compatible LegacyPubkySession
-        let session = LegacyPubkySession(
-            pubkey: info.pubkey,
-            sessionSecret: info.sessionSecret ?? "",
-            capabilities: info.capabilities,
-            expiresAt: info.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-        )
-        legacySessionCache[info.pubkey] = session
         persistSession(session)
-        
-        Logger.info("Signed in as \(info.pubkey.prefix(12))...", context: "PubkySDKService")
+        Logger.info("Signed in as \(session.pubkey.prefix(12))...", context: "PubkySDKService")
         return session
     }
     
     /// Sign up to homeserver
-    /// - Parameters:
-    ///   - secretKey: The 32-byte secret key
-    ///   - homeserver: The homeserver pubkey
-    ///   - signupToken: Optional signup token
-    /// - Returns: Session info
-    public func signup(secretKey: Data, homeserver: String? = nil, signupToken: UInt64? = nil) async throws -> LegacyPubkySession {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
-        
-        let keyProvider = SecretKeyProvider(secretKey: secretKey)
+    public func signup(secretKey: String, homeserver: String? = nil, signupToken: String? = nil) async throws -> PubkyCoreSession {
         let hs = homeserver ?? self.homeserver
+        let result = signUp(secretKey: secretKey, homeserver: hs, signupToken: signupToken)
+        try checkResult(result)
         
-        var options: SignupOptions? = nil
-        if let token = signupToken {
-            options = SignupOptions(capabilities: nil, signupToken: token)
-        }
-        
-        let ffiSession = try await sdk.signup(keyProvider: keyProvider, homeserver: hs, options: options)
+        let sessionData = try parseJSON(result[1])
+        let session = PubkyCoreSession(
+            pubkey: sessionData["public_key"] as? String ?? "",
+            sessionSecret: sessionData["session_secret"] as? String ?? "",
+            capabilities: sessionData["capabilities"] as? [String] ?? [],
+            expiresAt: (sessionData["expires_at"] as? TimeInterval).map { Date(timeIntervalSince1970: $0) }
+        )
         
         lock.lock()
-        defer { lock.unlock() }
+        sessionCache[session.pubkey] = session
+        lock.unlock()
         
-        let info = ffiSession.info()
-        sessionCache[info.pubkey] = ffiSession
-        
-        // Create compatible LegacyPubkySession
-        let session = LegacyPubkySession(
-            pubkey: info.pubkey,
-            sessionSecret: info.sessionSecret ?? "",
-            capabilities: info.capabilities,
-            expiresAt: info.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-        )
-        legacySessionCache[info.pubkey] = session
         persistSession(session)
-        
-        Logger.info("Signed up as \(info.pubkey.prefix(12))...", context: "PubkySDKService")
+        Logger.info("Signed up as \(session.pubkey.prefix(12))...", context: "PubkySDKService")
         return session
     }
     
-    /// Start auth flow for QR/deeplink authentication
-    /// - Parameter capabilities: List of capability paths
-    /// - Returns: Auth flow info with authorization URL
-    public func startAuthFlow(capabilities: [String]) throws -> (authorizationUrl: String, requestId: String) {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
+    /// Revalidate a session
+    public func revalidateSession(sessionSecret: String) async throws -> PubkyCoreSession {
+        let result = revalidateSession(sessionSecret: sessionSecret)
+        try checkResult(result)
         
-        let flowInfo = try sdk.startAuthFlow(capabilities: capabilities)
-        return (flowInfo.authorizationUrl, flowInfo.requestId)
-    }
-    
-    /// Await approval of auth flow
-    /// - Parameter requestId: The request ID from startAuthFlow
-    /// - Returns: Session after approval
-    public func awaitApproval(requestId: String) async throws -> LegacyPubkySession {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
-        
-        let ffiSession = try await sdk.awaitApproval(requestId: requestId)
+        let sessionData = try parseJSON(result[1])
+        let session = PubkyCoreSession(
+            pubkey: sessionData["public_key"] as? String ?? "",
+            sessionSecret: sessionData["session_secret"] as? String ?? "",
+            capabilities: sessionData["capabilities"] as? [String] ?? [],
+            expiresAt: (sessionData["expires_at"] as? TimeInterval).map { Date(timeIntervalSince1970: $0) }
+        )
         
         lock.lock()
-        defer { lock.unlock() }
+        sessionCache[session.pubkey] = session
+        lock.unlock()
         
-        let info = ffiSession.info()
-        sessionCache[info.pubkey] = ffiSession
-        
-        // Create compatible LegacyPubkySession
-        let session = LegacyPubkySession(
-            pubkey: info.pubkey,
-            sessionSecret: info.sessionSecret ?? "",
-            capabilities: info.capabilities,
-            expiresAt: info.expiresAt.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-        )
-        legacySessionCache[info.pubkey] = session
         persistSession(session)
-        
-        Logger.info("Auth flow approved for \(info.pubkey.prefix(12))...", context: "PubkySDKService")
+        Logger.info("Session revalidated for \(session.pubkey.prefix(12))...", context: "PubkySDKService")
         return session
     }
     
-    /// Set a session from Pubky-ring callback (for compatibility)
-    /// - Parameter session: The session to cache and persist
-    public func setSession(_ session: LegacyPubkySession) {
-        lock.lock()
-        defer { lock.unlock() }
-        
-        legacySessionCache[session.pubkey] = session
-        persistSession(session)
-        
-        Logger.info("Session set for pubkey: \(session.pubkey.prefix(12))...", context: "PubkySDKService")
+    /// Parse an auth URL
+    public func parseAuthUrl(_ url: String) throws -> [String: Any] {
+        let result = parseAuthUrl(url: url)
+        try checkResult(result)
+        return try parseJSON(result[1])
+    }
+    
+    /// Approve an auth request
+    public func approveAuth(url: String, secretKey: String) async throws {
+        let result = auth(url: url, secretKey: secretKey)
+        try checkResult(result)
+        Logger.info("Auth approved", context: "PubkySDKService")
     }
     
     /// Get cached session for a pubkey
-    /// - Parameter pubkey: The pubkey to get session for
-    /// - Returns: The session if available
-    public func getSession(for pubkey: String) -> LegacyPubkySession? {
+    public func getSession(for pubkey: String) -> PubkyCoreSession? {
         lock.lock()
         defer { lock.unlock() }
-        return legacySessionCache[pubkey]
+        return sessionCache[pubkey]
     }
     
     /// Check if we have an active session
     public var hasActiveSession: Bool {
         lock.lock()
         defer { lock.unlock() }
-        return !legacySessionCache.isEmpty || !sessionCache.isEmpty
+        return !sessionCache.isEmpty
     }
     
-    /// Get the current active session (first available)
-    public var activeSession: LegacyPubkySession? {
+    /// Get the current active session
+    public var activeSession: PubkyCoreSession? {
         lock.lock()
         defer { lock.unlock() }
-        return legacySessionCache.values.first
+        return sessionCache.values.first
     }
     
     // MARK: - Profile Operations
     
     /// Fetch a user's profile from their homeserver
-    /// - Parameters:
-    ///   - pubkey: The user's public key
-    ///   - app: The app namespace (default: pubky.app)
-    /// - Returns: The user's profile
     public func fetchProfile(pubkey: String, app: String = "pubky.app") async throws -> SDKProfile {
         // Check cache first
         if let cached = profileCache[pubkey], !cached.isExpired(ttl: profileCacheTTL) {
@@ -225,17 +162,17 @@ public final class PubkySDKService {
             return cached.profile
         }
         
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
-        
         let profileUri = "pubky://\(pubkey)/pub/\(app)/profile.json"
         Logger.debug("Fetching profile from \(profileUri)", context: "PubkySDKService")
         
-        let publicStorage = sdk.publicStorage()
-        let data = try await publicStorage.get(uri: profileUri)
+        let result = get(url: profileUri)
+        try checkResult(result)
         
-        let profile = try JSONDecoder().decode(SDKProfile.self, from: Data(data))
+        guard let data = result[1].data(using: .utf8) else {
+            throw PubkySDKError.invalidData("Invalid profile data encoding")
+        }
+        
+        let profile = try JSONDecoder().decode(SDKProfile.self, from: data)
         
         // Cache the result
         profileCache[pubkey] = CachedProfile(profile: profile, fetchedAt: Date())
@@ -245,10 +182,6 @@ public final class PubkySDKService {
     }
     
     /// Fetch a user's follows list from their homeserver
-    /// - Parameters:
-    ///   - pubkey: The user's public key
-    ///   - app: The app namespace (default: pubky.app)
-    /// - Returns: List of followed pubkeys
     public func fetchFollows(pubkey: String, app: String = "pubky.app") async throws -> [String] {
         // Check cache first
         if let cached = followsCache[pubkey], !cached.isExpired(ttl: followsCacheTTL) {
@@ -256,20 +189,18 @@ public final class PubkySDKService {
             return cached.follows
         }
         
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
-        
         let followsUri = "pubky://\(pubkey)/pub/\(app)/follows/"
         Logger.debug("Fetching follows from \(followsUri)", context: "PubkySDKService")
         
-        let publicStorage = sdk.publicStorage()
-        let items = try await publicStorage.list(uri: followsUri)
+        let result = list(url: followsUri)
+        try checkResult(result)
         
-        // Extract pubkeys from entry names
-        let follows = items.compactMap { item -> String? in
-            // Remove any path prefix to get just the pubkey
-            return item.name.isEmpty ? nil : item.name
+        // Parse the JSON array of URLs
+        let urls = try JSONDecoder().decode([String].self, from: result[1].data(using: .utf8) ?? Data())
+        
+        // Extract pubkeys from URLs
+        let follows = urls.compactMap { url -> String? in
+            url.components(separatedBy: "/").last
         }
         
         // Cache the result
@@ -282,72 +213,122 @@ public final class PubkySDKService {
     // MARK: - Storage Operations
     
     /// Get data from homeserver (public read)
-    /// - Parameter uri: The pubky:// URI
-    /// - Returns: The data if found
-    public func get(uri: String) async throws -> Data? {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
+    public func getData(uri: String) async throws -> Data? {
+        let result = get(url: uri)
+        
+        if result[0] == "error" {
+            if result[1].contains("404") || result[1].contains("Not found") {
+                return nil
+            }
+            throw PubkySDKError.fetchFailed(result[1])
         }
         
-        let publicStorage = sdk.publicStorage()
-        do {
-            let data = try await publicStorage.get(uri: uri)
-            return Data(data)
-        } catch {
-            // Return nil for not found
-            return nil
+        // Handle base64 encoded binary data
+        if result[1].hasPrefix("base64:") {
+            let base64String = String(result[1].dropFirst(7))
+            return Data(base64Encoded: base64String)
         }
+        
+        return result[1].data(using: .utf8)
     }
     
-    /// Put data to homeserver (requires session)
-    /// - Parameters:
-    ///   - path: The storage path
-    ///   - data: The data to store
-    ///   - pubkey: The owner pubkey (must have active session)
-    public func put(path: String, data: Data, pubkey: String) async throws {
-        lock.lock()
-        let ffiSession = sessionCache[pubkey]
-        lock.unlock()
-        
-        guard let session = ffiSession else {
-            throw PubkySDKError.noSession
-        }
-        
-        let storage = session.storage()
-        try await storage.put(path: path, content: [UInt8](data))
-        
-        Logger.debug("Put data to \(path)", context: "PubkySDKService")
+    /// Put data to homeserver (requires secret key)
+    public func putData(url: String, content: String, secretKey: String) async throws {
+        let result = put(url: url, content: content, secretKey: secretKey)
+        try checkResult(result)
+        Logger.debug("Put data to \(url)", context: "PubkySDKService")
     }
     
-    /// Delete data from homeserver (requires session)
-    /// - Parameters:
-    ///   - path: The storage path
-    ///   - pubkey: The owner pubkey (must have active session)
-    public func delete(path: String, pubkey: String) async throws {
-        lock.lock()
-        let ffiSession = sessionCache[pubkey]
-        lock.unlock()
-        
-        guard let session = ffiSession else {
-            throw PubkySDKError.noSession
-        }
-        
-        let storage = session.storage()
-        try await storage.delete(path: path)
-        
-        Logger.debug("Deleted \(path)", context: "PubkySDKService")
+    /// Delete data from homeserver
+    public func deleteData(url: String, secretKey: String) async throws {
+        let result = deleteFile(url: url, secretKey: secretKey)
+        try checkResult(result)
+        Logger.debug("Deleted \(url)", context: "PubkySDKService")
     }
     
     /// List directory contents
-    /// - Parameter uri: The pubky:// URI
-    /// - Returns: List of items
-    public func listDirectory(uri: String) async throws -> [ListItem] {
-        guard let sdk = sdk else {
-            throw PubkySDKError.notConfigured
-        }
+    public func listDirectory(uri: String) async throws -> [String] {
+        let result = list(url: uri)
+        try checkResult(result)
+        return try JSONDecoder().decode([String].self, from: result[1].data(using: .utf8) ?? Data())
+    }
+    
+    // MARK: - Key Operations
+    
+    /// Generate a new secret key
+    public func generateSecretKey() throws -> (secretKey: String, publicKey: String, uri: String) {
+        let result = generateSecretKey()
+        try checkResult(result)
         
-        let publicStorage = sdk.publicStorage()
-        return try await publicStorage.list(uri: uri)
+        let data = try parseJSON(result[1])
+        return (
+            secretKey: data["secret_key"] as? String ?? "",
+            publicKey: data["public_key"] as? String ?? "",
+            uri: data["uri"] as? String ?? ""
+        )
+    }
+    
+    /// Get public key from secret key
+    public func getPublicKey(secretKey: String) throws -> (publicKey: String, uri: String) {
+        let result = getPublicKeyFromSecretKey(secretKey: secretKey)
+        try checkResult(result)
+        
+        let data = try parseJSON(result[1])
+        return (
+            publicKey: data["public_key"] as? String ?? "",
+            uri: data["uri"] as? String ?? ""
+        )
+    }
+    
+    /// Get homeserver for a pubkey
+    public func getHomeserver(pubkey: String) async throws -> String {
+        let result = getHomeserver(pubky: pubkey)
+        try checkResult(result)
+        return result[1]
+    }
+    
+    // MARK: - Recovery
+    
+    /// Create a recovery file
+    public func createRecoveryFile(secretKey: String, passphrase: String) throws -> String {
+        let result = createRecoveryFile(secretKey: secretKey, passphrase: passphrase)
+        try checkResult(result)
+        return result[1]
+    }
+    
+    /// Decrypt a recovery file
+    public func decryptRecoveryFile(recoveryFile: String, passphrase: String) throws -> String {
+        let result = decryptRecoveryFile(recoveryFile: recoveryFile, passphrase: passphrase)
+        try checkResult(result)
+        return result[1]
+    }
+    
+    // MARK: - Mnemonic
+    
+    /// Generate a mnemonic phrase
+    public func generateMnemonic() throws -> String {
+        let result = generateMnemonicPhrase()
+        try checkResult(result)
+        return result[1]
+    }
+    
+    /// Convert mnemonic to keypair
+    public func mnemonicToKeypair(_ mnemonic: String) throws -> (secretKey: String, publicKey: String, uri: String) {
+        let result = mnemonicPhraseToKeypair(mnemonicPhrase: mnemonic)
+        try checkResult(result)
+        
+        let data = try parseJSON(result[1])
+        return (
+            secretKey: data["secret_key"] as? String ?? "",
+            publicKey: data["public_key"] as? String ?? "",
+            uri: data["uri"] as? String ?? ""
+        )
+    }
+    
+    /// Validate mnemonic phrase
+    public func validateMnemonic(_ mnemonic: String) -> Bool {
+        let result = validateMnemonicPhrase(mnemonicPhrase: mnemonic)
+        return result[1] == "true"
     }
     
     // MARK: - Session Persistence
@@ -362,7 +343,7 @@ public final class PubkySDKService {
         for key in sessionKeys {
             do {
                 guard let data = keychainStorage.get(key: key) else { continue }
-                let session = try JSONDecoder().decode(LegacyPubkySession.self, from: data)
+                let session = try JSONDecoder().decode(PubkyCoreSession.self, from: data)
                 
                 // Check if session is expired
                 if let expiresAt = session.expiresAt, expiresAt < Date() {
@@ -371,14 +352,14 @@ public final class PubkySDKService {
                     continue
                 }
                 
-                legacySessionCache[session.pubkey] = session
+                sessionCache[session.pubkey] = session
                 Logger.info("Restored session for \(session.pubkey.prefix(12))...", context: "PubkySDKService")
             } catch {
                 Logger.error("Failed to restore session from \(key): \(error)", context: "PubkySDKService")
             }
         }
         
-        Logger.info("Restored \(legacySessionCache.count) sessions from keychain", context: "PubkySDKService")
+        Logger.info("Restored \(sessionCache.count) sessions from keychain", context: "PubkySDKService")
     }
     
     /// Clear all cached sessions
@@ -386,32 +367,19 @@ public final class PubkySDKService {
         lock.lock()
         defer { lock.unlock() }
         
-        for pubkey in legacySessionCache.keys {
+        for pubkey in sessionCache.keys {
             keychainStorage.deleteQuietly(key: "pubky.session.\(pubkey)")
         }
-        legacySessionCache.removeAll()
         sessionCache.removeAll()
         
         Logger.info("Cleared all sessions", context: "PubkySDKService")
     }
     
     /// Sign out a specific session
-    public func signout(pubkey: String) async throws {
-        lock.lock()
-        let ffiSession = sessionCache[pubkey]
-        lock.unlock()
-        
-        if let session = ffiSession {
-            try session.signout()
-        }
-        
-        lock.lock()
-        sessionCache.removeValue(forKey: pubkey)
-        legacySessionCache.removeValue(forKey: pubkey)
-        keychainStorage.deleteQuietly(key: "pubky.session.\(pubkey)")
-        lock.unlock()
-        
-        Logger.info("Signed out \(pubkey.prefix(12))...", context: "PubkySDKService")
+    public func signout(sessionSecret: String) async throws {
+        let result = signOut(sessionSecret: sessionSecret)
+        try checkResult(result)
+        Logger.info("Signed out", context: "PubkySDKService")
     }
     
     /// Clear caches
@@ -423,7 +391,7 @@ public final class PubkySDKService {
     
     // MARK: - Private Helpers
     
-    private func persistSession(_ session: LegacyPubkySession) {
+    private func persistSession(_ session: PubkyCoreSession) {
         do {
             let data = try JSONEncoder().encode(session)
             keychainStorage.set(key: "pubky.session.\(session.pubkey)", value: data)
@@ -432,12 +400,26 @@ public final class PubkySDKService {
             Logger.error("Failed to persist session: \(error)", context: "PubkySDKService")
         }
     }
+    
+    private func checkResult(_ result: [String]) throws {
+        if result[0] == "error" {
+            throw PubkySDKError.fetchFailed(result[1])
+        }
+    }
+    
+    private func parseJSON(_ jsonString: String) throws -> [String: Any] {
+        guard let data = jsonString.data(using: .utf8),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PubkySDKError.invalidData("Failed to parse JSON")
+        }
+        return json
+    }
 }
 
-// MARK: - Legacy Session (for compatibility with existing code)
+// MARK: - Session Model
 
-/// Legacy session struct for compatibility with existing Paykit code
-public struct LegacyPubkySession: Codable {
+/// Pubky Core session
+public struct PubkyCoreSession: Codable {
     public let pubkey: String
     public let sessionSecret: String
     public let capabilities: [String]
@@ -448,24 +430,6 @@ public struct LegacyPubkySession: Codable {
         self.sessionSecret = sessionSecret
         self.capabilities = capabilities
         self.expiresAt = expiresAt
-    }
-}
-
-// MARK: - Key Provider
-
-/// Key provider implementation for FFI
-private class SecretKeyProvider: KeyProvider {
-    private let key: Data
-    
-    init(secretKey: Data) {
-        self.key = secretKey
-    }
-    
-    func secretKey() throws -> [UInt8] {
-        guard key.count == 32 else {
-            throw PubkyError.InvalidInput(message: "Secret key must be 32 bytes")
-        }
-        return [UInt8](key)
     }
 }
 
