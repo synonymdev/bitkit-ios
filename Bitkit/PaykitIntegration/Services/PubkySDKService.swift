@@ -152,6 +152,66 @@ public final class PubkySDKService {
         return sessionCache.values.first
     }
     
+    // MARK: - Session Expiration & Refresh
+    
+    /// Check if a session is expired or will expire soon
+    public func isSessionExpired(_ session: PubkyCoreSession, bufferSeconds: TimeInterval = 300) -> Bool {
+        guard let expiresAt = session.expiresAt else {
+            return false // No expiration set
+        }
+        return Date().addingTimeInterval(bufferSeconds) >= expiresAt
+    }
+    
+    /// Refresh a session before it expires
+    public func refreshSession(for pubkey: String) async throws -> PubkyCoreSession {
+        guard let session = getSession(for: pubkey) else {
+            throw PubkySDKError.noSession
+        }
+        
+        Logger.info("Refreshing session for \(pubkey.prefix(12))...", context: "PubkySDKService")
+        
+        do {
+            let refreshedSession = try await revalidateSession(sessionSecret: session.sessionSecret)
+            Logger.info("Session refreshed successfully for \(pubkey.prefix(12))...", context: "PubkySDKService")
+            return refreshedSession
+        } catch {
+            Logger.error("Failed to refresh session for \(pubkey.prefix(12))...: \(error)", context: "PubkySDKService")
+            throw error
+        }
+    }
+    
+    /// Get a valid session, refreshing if needed
+    public func getValidSession(for pubkey: String) async throws -> PubkyCoreSession {
+        guard let session = getSession(for: pubkey) else {
+            throw PubkySDKError.noSession
+        }
+        
+        // Check if session needs refresh (5 minutes buffer)
+        if isSessionExpired(session, bufferSeconds: 300) {
+            Logger.info("Session expiring soon for \(pubkey.prefix(12))..., refreshing", context: "PubkySDKService")
+            return try await refreshSession(for: pubkey)
+        }
+        
+        return session
+    }
+    
+    /// Check all sessions and refresh those expiring soon
+    public func refreshExpiringSessions() async {
+        lock.lock()
+        let sessions = Array(sessionCache.values)
+        lock.unlock()
+        
+        for session in sessions {
+            if isSessionExpired(session, bufferSeconds: 600) { // 10 minute buffer
+                do {
+                    _ = try await refreshSession(for: session.pubkey)
+                } catch {
+                    Logger.error("Failed to refresh expiring session for \(session.pubkey.prefix(12))...: \(error)", context: "PubkySDKService")
+                }
+            }
+        }
+    }
+    
     // MARK: - Profile Operations
     
     /// Fetch a user's profile from their homeserver
