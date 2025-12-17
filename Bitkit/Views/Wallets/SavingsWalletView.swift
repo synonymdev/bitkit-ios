@@ -35,7 +35,7 @@ struct SavingsWalletView: View {
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .onchain)
 
-                    CustomButton(title: tTodo("Show All"), variant: .tertiary) {
+                    CustomButton(title: t("common__show_all"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
                     /// Leave some space for TabBar
@@ -75,7 +75,7 @@ struct SavingsWalletView: View {
 
     var transferButton: some View {
         CustomButton(
-            title: tTodo("Transfer To Spending"),
+            title: t("wallet__transfer_to_spending"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

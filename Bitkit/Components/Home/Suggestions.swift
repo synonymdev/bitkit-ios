@@ -82,7 +82,7 @@ let cards: [SuggestionCardData] = [
     SuggestionCardData(
         id: "notifications",
         title: t("cards__notifications__title"),
-        description: tTodo("When Bitkit is closed"),
+        description: t("cards__notifications__description"),
         imageName: "bell-figure",
         color: .purple24,
         action: .notifications

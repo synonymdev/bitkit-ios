@@ -41,11 +41,11 @@ struct ReceiveCjitLearnMore: View {
 
             Spacer()
 
-            BodyMText(tTodo("Enable background setup to safely exit Bitkit while your balance is being configured."))
+            BodyMText(t("wallet__receive_background_setup_text"))
                 .padding(.bottom, 16)
 
             HStack(alignment: .center, spacing: 0) {
-                BodyMText(tTodo("Enable background setup"), textColor: .textPrimary)
+                BodyMText(t("wallet__receive_background_setup"), textColor: .textPrimary)
 
                 Spacer()
 

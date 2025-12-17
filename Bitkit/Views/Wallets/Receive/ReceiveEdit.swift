@@ -149,8 +149,8 @@ struct ReceiveEdit: View {
             // Show error if node is not running or timed out
             app.toast(
                 type: .warning,
-                title: "Lightning not ready",
-                description: "Lightning node must be running to create an invoice"
+                title: t("wallet__receive_lightning_not_ready_title"),
+                description: t("wallet__receive_lightning_not_ready_description")
             )
         }
     }
@@ -167,7 +167,7 @@ struct ReceiveEdit: View {
                 tagManager.removeTagFromSelection(tag)
             }
         } catch {
-            app.toast(type: .error, title: "Failed to delete tag", description: error.localizedDescription)
+            app.toast(type: .error, title: t("wallet__tags_delete_error_header"), description: error.localizedDescription)
         }
     }
 

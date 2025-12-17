@@ -6,7 +6,7 @@ struct WidgetsIntroView: View {
 
     var body: some View {
         OnboardingView(
-            navTitle: tTodo("Widgets"),
+            navTitle: t("widgets__widgets"),
             title: t("widgets__onboarding__title"),
             description: t("widgets__onboarding__description"),
             imageName: "puzzle",

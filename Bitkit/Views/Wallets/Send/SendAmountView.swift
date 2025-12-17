@@ -178,8 +178,8 @@ struct SendAmountView: View {
                 if UInt64(wallet.maxSendLightningSats) < amountSats {
                     app.toast(
                         type: .error,
-                        title: "Insufficient Funds",
-                        description: "You do not have enough funds in the selected wallet."
+                        title: t("wallet__send_insufficient_funds_title"),
+                        description: t("wallet__send_insufficient_funds_description")
                     )
                     return
                 }
@@ -195,8 +195,8 @@ struct SendAmountView: View {
                 if wallet.availableUtxos.isEmpty {
                     app.toast(
                         type: .error,
-                        title: "No UTXOs",
-                        description: "You do not have any UTXOs to spend."
+                        title: t("wallet__send_no_utxos_title"),
+                        description: t("wallet__send_no_utxos_description")
                     )
                     return
                 }
@@ -204,8 +204,8 @@ struct SendAmountView: View {
                 if wallet.availableUtxos.reduce(0, { $0 + $1.valueSats }) < amountSats {
                     app.toast(
                         type: .error,
-                        title: "Insufficient Funds",
-                        description: "You do not have enough funds in the selected wallet."
+                        title: t("wallet__send_insufficient_funds_title"),
+                        description: t("wallet__send_insufficient_funds_description")
                     )
                     return
                 }
@@ -218,8 +218,8 @@ struct SendAmountView: View {
                 if totalSelectedSats < amountSats {
                     app.toast(
                         type: .error,
-                        title: "Insufficient Funds",
-                        description: "You do not have enough funds in the selected wallet."
+                        title: t("wallet__send_insufficient_funds_title"),
+                        description: t("wallet__send_insufficient_funds_description")
                     )
                     return
                 }
@@ -228,7 +228,7 @@ struct SendAmountView: View {
             }
         } catch {
             Logger.error(error, context: "Failed to set fee rate or send amount")
-            app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
+            app.toast(type: .error, title: t("wallet__send_error"), description: error.localizedDescription)
         }
     }
 

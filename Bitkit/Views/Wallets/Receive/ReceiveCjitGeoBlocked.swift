@@ -21,7 +21,7 @@ struct ReceiveCjitGeoBlocked: View {
 
             Spacer()
 
-            CustomButton(title: tTodo("Advanced Setup")) {
+            CustomButton(title: t("onboarding__advanced_setup")) {
                 sheets.hideSheet()
                 navigation.navigate(.fundingAdvanced)
             }

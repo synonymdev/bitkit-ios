@@ -58,7 +58,7 @@ struct GeneralSettingsView: View {
                     NavigationLink(value: Route.widgetsSettings) {
                         SettingsListLabel(
                             title: t("settings__widgets__nav_title"),
-                            rightText: settings.showWidgets ? tTodo("On") : tTodo("Off")
+                            rightText: settings.showWidgets ? t("common__on") : t("common__off")
                         )
                     }
                     .accessibilityIdentifier("WidgetsSettings")
@@ -66,7 +66,7 @@ struct GeneralSettingsView: View {
                     NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
                         SettingsListLabel(
                             title: t("settings__quickpay__nav_title"),
-                            rightText: settings.enableQuickpay ? tTodo("On") : tTodo("Off")
+                            rightText: settings.enableQuickpay ? t("common__on") : t("common__off")
                         )
                     }
                     .accessibilityIdentifier("QuickpaySettings")
@@ -74,7 +74,7 @@ struct GeneralSettingsView: View {
                     NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
                         SettingsListLabel(
                             title: t("settings__notifications__nav_title"),
-                            rightText: settings.enableNotifications ? tTodo("On") : tTodo("Off")
+                            rightText: settings.enableNotifications ? t("common__on") : t("common__off")
                         )
                     }
                     .accessibilityIdentifier("NotificationsSettings")

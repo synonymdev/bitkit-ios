@@ -42,10 +42,10 @@ struct LanguageSettingsScreen: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .alert("Language Changed", isPresented: $showAlert) {
-            Button("OK", role: .cancel) {}
+        .alert(t("settings__general__language_changed_title"), isPresented: $showAlert) {
+            Button(t("common__ok"), role: .cancel) {}
         } message: {
-            Text("The app needs to be restarted for the language change to take full effect.")
+            Text(t("settings__general__language_changed_message"))
         }
     }
 }

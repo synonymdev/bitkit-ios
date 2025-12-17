@@ -63,7 +63,7 @@ struct AddTagSheet: View {
             try await activityListViewModel.appendTags(toActivity: config.activityId, tags: [tag])
             sheets.hideSheet()
         } catch {
-            app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
+            app.toast(type: .error, title: t("wallet__tags_add_error_header"), description: error.localizedDescription)
         }
     }
 }
