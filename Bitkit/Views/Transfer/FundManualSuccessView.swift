@@ -41,8 +41,11 @@ struct FundManualSuccessView: View {
                 ) {
                     navigation.reset()
                 }
+                .accessibilityIdentifier("ExternalSuccess-button")
             }
             .padding(.horizontal, 16)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("ExternalSuccess")
         }
         .navigationBarHidden(true)
         .interactiveDismissDisabled()

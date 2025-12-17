@@ -5,13 +5,13 @@ struct LnurlWithdrawConfirm: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [LnurlWithdrawRoute]
+    let onFailure: (UInt64) -> Void
     @State private var isLoading = false
 
     var amount: UInt64 {
         // Fixed amount
         if app.lnurlWithdrawData!.maxWithdrawable == app.lnurlWithdrawData!.minWithdrawable {
-            return app.lnurlWithdrawData!.maxWithdrawable / 1000
+            return app.lnurlWithdrawData!.maxWithdrawable
         }
 
         // For variable amount, use the amount from the previous screen
@@ -22,7 +22,7 @@ struct LnurlWithdrawConfirm: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
-            MoneyStack(sats: Int(amount), showSymbol: true)
+            MoneyStack(sats: Int(amount), showSymbol: true, testIdPrefix: "WithdrawAmount")
                 .padding(.top, 16)
                 .padding(.bottom, 42)
 
@@ -42,6 +42,7 @@ struct LnurlWithdrawConfirm: View {
             CustomButton(title: t("wallet__lnurl_w_button"), isLoading: isLoading) {
                 performWithdraw()
             }
+            .accessibilityIdentifier("WithdrawConfirmButton")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -77,12 +78,13 @@ struct LnurlWithdrawConfirm: View {
                         description: t("other__lnurl_withdr_success_msg")
                     )
                     isLoading = false
-                    sheets.hideSheet()
+                    sheets.hideSheetIfActive(.send, reason: "LNURL withdraw completed")
+                    sheets.hideSheetIfActive(.lnurlWithdraw, reason: "LNURL withdraw completed")
                 }
 
             } catch {
                 await MainActor.run {
-                    navigationPath.append(.failure(amount: amount))
+                    onFailure(amount)
                     isLoading = false
                 }
             }

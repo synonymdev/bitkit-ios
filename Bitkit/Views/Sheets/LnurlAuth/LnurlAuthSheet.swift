@@ -85,16 +85,19 @@ struct LnurlAuthSheet: View {
                     ) {
                         onCancel()
                     }
+                    .accessibilityIdentifier("LnurlAuthCancel")
 
                     CustomButton(title: actionText) {
                         Task {
                             await onContinue()
                         }
                     }
+                    .accessibilityIdentifier("LnurlAuthContinue")
                 }
                 .padding(.top, 32)
             }
             .padding(.horizontal, 16)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("LnurlAuth")
         }
     }

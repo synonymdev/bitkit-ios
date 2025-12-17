@@ -103,6 +103,14 @@ struct PaymentNavigationHelper {
         currency: CurrencyViewModel,
         settings: SettingsViewModel
     ) -> SendRoute {
+        if let lnurlWithdrawData = app.lnurlWithdrawData {
+            if lnurlWithdrawData.minWithdrawable == lnurlWithdrawData.maxWithdrawable {
+                return .lnurlWithdrawConfirm
+            } else {
+                return .lnurlWithdrawAmount
+            }
+        }
+
         let shouldUseQuickpay = shouldUseQuickpay(app: app, settings: settings, currency: currency)
 
         // Handle Lightning address / LNURL pay

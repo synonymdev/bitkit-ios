@@ -252,9 +252,13 @@ extension AppViewModel {
             return
         }
 
+        var normalizedData = data
+        normalizedData.minSendable = max(1, normalizedData.minSendable / Env.msatsPerSat)
+        normalizedData.maxSendable = max(normalizedData.minSendable, normalizedData.maxSendable / Env.msatsPerSat)
+
         // Check if user has enough lightning balance to pay the minimum amount
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < data.minSendable {
+        if lightningBalance < normalizedData.minSendable {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
@@ -264,7 +268,7 @@ extension AppViewModel {
         }
 
         selectedWalletToPayFrom = .lightning
-        lnurlPayData = data
+        lnurlPayData = normalizedData
     }
 
     private func handleLnurlWithdraw(_ data: LnurlWithdrawData) {
@@ -274,8 +278,11 @@ extension AppViewModel {
             return
         }
 
+        let minMsats = data.minWithdrawable ?? Env.msatsPerSat
+        let maxMsats = data.maxWithdrawable
+
         // Check if minWithdrawable > maxWithdrawable
-        if (data.minWithdrawable ?? 1000) > data.maxWithdrawable {
+        if minMsats > maxMsats {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -284,9 +291,15 @@ extension AppViewModel {
             return
         }
 
+        var normalizedData = data
+        let minSats = max(1, minMsats / Env.msatsPerSat)
+        let maxSats = max(minSats, maxMsats / Env.msatsPerSat)
+        normalizedData.minWithdrawable = minSats
+        normalizedData.maxWithdrawable = maxSats
+
         // Check if we have enough receiving capacity
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < (data.minWithdrawable ?? 1000) / 1000 {
+        if lightningBalance < minSats {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -295,7 +308,7 @@ extension AppViewModel {
             return
         }
 
-        lnurlWithdrawData = data
+        lnurlWithdrawData = normalizedData
     }
 
     private func handleLnurlChannel(_ data: LnurlChannelData) {
@@ -415,7 +428,8 @@ extension AppViewModel {
                             type: .lightning,
                             title: t("lightning__channel_opened_title"),
                             description: t("lightning__channel_opened_msg"),
-                            visibilityTime: 5.0
+                            visibilityTime: 5.0,
+                            accessibilityIdentifier: "SpendingBalanceReadyToast"
                         )
                     }
                 }
@@ -424,7 +438,8 @@ extension AppViewModel {
                     type: .lightning,
                     title: t("lightning__channel_opened_title"),
                     description: t("lightning__channel_opened_msg"),
-                    visibilityTime: 5.0
+                    visibilityTime: 5.0,
+                    accessibilityIdentifier: "SpendingBalanceReadyToast"
                 )
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):

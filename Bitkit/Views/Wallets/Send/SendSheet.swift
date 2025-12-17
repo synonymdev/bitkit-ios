@@ -14,6 +14,9 @@ enum SendRoute: Hashable {
     case failure
     case lnurlPayAmount
     case lnurlPayConfirm
+    case lnurlWithdrawAmount
+    case lnurlWithdrawConfirm
+    case lnurlWithdrawFailure(amount: UInt64)
 }
 
 struct SendConfig {
@@ -96,6 +99,16 @@ struct SendSheet: View {
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
             LnurlPayConfirm(navigationPath: $navigationPath)
+        case .lnurlWithdrawAmount:
+            LnurlWithdrawAmount {
+                navigationPath.append(.lnurlWithdrawConfirm)
+            }
+        case .lnurlWithdrawConfirm:
+            LnurlWithdrawConfirm { amount in
+                navigationPath.append(.lnurlWithdrawFailure(amount: amount))
+            }
+        case let .lnurlWithdrawFailure(amount):
+            LnurlWithdrawFailure(amount: amount)
         }
     }
 }

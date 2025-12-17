@@ -4,16 +4,16 @@ struct LnurlWithdrawAmount: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var wallet: WalletViewModel
-    @Binding var navigationPath: [LnurlWithdrawRoute]
+    let onContinue: () -> Void
 
     @StateObject private var amountViewModel = AmountInputViewModel()
 
     var minAmount: Int {
-        Int((app.lnurlWithdrawData!.minWithdrawable ?? 1000) / 1000)
+        Int(app.lnurlWithdrawData!.minWithdrawable ?? 1)
     }
 
     var maxAmount: Int {
-        Int((app.lnurlWithdrawData!.maxWithdrawable) / 1000)
+        Int(app.lnurlWithdrawData!.maxWithdrawable)
     }
 
     var amount: UInt64 {
@@ -29,7 +29,7 @@ struct LnurlWithdrawAmount: View {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel)
+                NumberPadTextField(viewModel: amountViewModel, testIdentifier: "SendNumberField")
                     .onTapGesture {
                         amountViewModel.togglePrimaryDisplay(currency: currency)
                     }
@@ -65,16 +65,22 @@ struct LnurlWithdrawAmount: View {
                 }
 
                 CustomButton(title: t("common__continue"), isDisabled: !isValid) {
-                    onContinue()
+                    handleContinue()
                 }
+                .accessibilityIdentifier("ContinueAmount")
             }
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .sheetBackground()
+        .onAppear {
+            if amountViewModel.amountSats == 0 {
+                amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
+            }
+        }
     }
 
-    private func onContinue() {
+    private func handleContinue() {
         // If minimum is above the amount the user entered, automatically set amount to that minimum
         if amount < minAmount {
             amountViewModel.updateFromSats(UInt64(minAmount), currency: currency)
@@ -82,6 +88,6 @@ struct LnurlWithdrawAmount: View {
 
         wallet.lnurlWithdrawAmount = amount
 
-        navigationPath.append(.confirm)
+        onContinue()
     }
 }
