@@ -1,10 +1,10 @@
 import Foundation
 
-enum LnurlAmountConversion {
-    /// LNURL `minSendable` / `maxSendable` values are expressed in millisatoshis (msat).
+enum LightningAmountConversion {
+    /// Lightning amounts are commonly expressed in millisatoshis (msat).
     ///
     /// The UI and amount input operate in whole sats. When converting a minimum bound to sats we must round up:
-    /// `minSendable = 100500 msat` means the minimum payable amount is `101 sat` (not `100 sat`).
+    /// `100500 msat` means the minimum payable amount is `101 sat` (not `100 sat`).
     static func satsCeil(fromMsats msats: UInt64) -> UInt64 {
         let quotient = msats / Env.msatsPerSat
         let remainder = msats % Env.msatsPerSat
