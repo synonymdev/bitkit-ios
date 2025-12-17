@@ -209,7 +209,7 @@ public final class DirectoryService {
         // Try PubkySDKService first (preferred, direct homeserver access)
         do {
             let profile = try await PubkySDKService.shared.fetchProfile(pubkey: pubkey)
-            return DirectoryProfile(from: profile)
+            return profile // Already returns PubkyProfile
         } catch {
             Logger.debug("PubkySDKService profile fetch failed: \(error)", context: "DirectoryService")
         }
@@ -245,14 +245,13 @@ public final class DirectoryService {
         do {
             if let data = try await pubkyStorage.readFile(path: profilePath, adapter: adapter, ownerPubkey: pubkey) {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    return DirectoryProfile(
+                    let links = (json["links"] as? [String]) ?? []
+                    return PubkyProfile(
                         name: json["name"] as? String,
                         bio: json["bio"] as? String,
-                        avatar: json["avatar"] as? String,
-                        links: (json["links"] as? [[String: String]])?.compactMap { dict in
-                            guard let title = dict["title"], let url = dict["url"] else { return nil }
-                            return PubkyProfileLink(title: title, url: url)
-                        }
+                        image: json["image"] as? String,
+                        links: links,
+                        status: json["status"] as? String
                     )
                 }
             }
@@ -275,9 +274,10 @@ public final class DirectoryService {
         var profileDict: [String: Any] = [:]
         if let name = profile.name { profileDict["name"] = name }
         if let bio = profile.bio { profileDict["bio"] = bio }
-        if let avatar = profile.avatar { profileDict["avatar"] = avatar }
-        if let links = profile.links {
-            profileDict["links"] = links.map { ["title": $0.title, "url": $0.url] }
+        if let image = profile.image { profileDict["image"] = image }
+        if let status = profile.status { profileDict["status"] = status }
+        if !profile.links.isEmpty {
+            profileDict["links"] = profile.links
         }
         
         let data = try JSONSerialization.data(withJSONObject: profileDict)
@@ -536,36 +536,25 @@ public struct DirectoryDiscoveredContact: Identifiable {
     }
 }
 
-/// Profile from Pubky directory (local app type)
-public struct DirectoryProfile: Codable {
-    public let name: String?
-    public let bio: String?
-    public let avatar: String?
-    public let links: [PubkyProfileLink]?
-    
-    public init(name: String? = nil, bio: String? = nil, avatar: String? = nil, links: [PubkyProfileLink]? = nil) {
-        self.name = name
-        self.bio = bio
-        self.avatar = avatar
-        self.links = links
-    }
-    
-    /// Convert from BitkitCore's PubkyProfile
-    public init(from profile: BitkitCore.PubkyProfile) {
-        self.name = profile.name
-        self.bio = profile.bio
-        self.avatar = profile.image
-        self.links = profile.links.map { PubkyProfileLink(title: "", url: $0) }
-    }
-}
+/// Type alias for profile from Pubky directory - using BitkitCore's canonical PubkyProfile type
+public typealias DirectoryProfile = BitkitCore.PubkyProfile
 
-public struct PubkyProfileLink: Codable {
-    public let title: String
-    public let url: String
-    
-    public init(title: String, url: String) {
-        self.title = title
-        self.url = url
+/// Helper extension for constructing PubkyProfile from various sources
+extension PubkyProfile {
+    /// Create from Pubky-ring URL callback parameters
+    public static func fromRingCallback(
+        name: String?,
+        bio: String?,
+        avatar: String?,
+        status: String? = nil
+    ) -> PubkyProfile {
+        return PubkyProfile(
+            name: name,
+            bio: bio,
+            image: avatar,
+            links: [],
+            status: status
+        )
     }
 }
 

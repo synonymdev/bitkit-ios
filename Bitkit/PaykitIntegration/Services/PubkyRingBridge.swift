@@ -642,12 +642,13 @@ public final class PubkyRingBridge {
             return true
         }
         
-        // Build profile from response
-        let profile = DirectoryProfile(
+        // Build profile from response using PubkyProfile (DirectoryProfile is typealias)
+        let profile = PubkyProfile(
             name: params["name"]?.removingPercentEncoding,
             bio: params["bio"]?.removingPercentEncoding,
-            avatar: params["avatar"]?.removingPercentEncoding,
-            links: nil // Links would need JSON parsing, simplified for now
+            image: params["avatar"]?.removingPercentEncoding,
+            links: [],
+            status: params["status"]?.removingPercentEncoding
         )
         
         Logger.debug("Received profile from Pubky-ring: \(profile.name ?? "unknown")", context: "PubkyRingBridge")

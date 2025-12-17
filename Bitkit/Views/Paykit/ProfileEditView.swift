@@ -249,13 +249,12 @@ struct ProfileEditView: View {
     // MARK: - Computed Properties
     
     private var currentProfile: DirectoryProfile {
-        DirectoryProfile(
+        PubkyProfile(
             name: name.isEmpty ? nil : name,
             bio: bio.isEmpty ? nil : bio,
-            avatar: nil,
-            links: links.isEmpty ? nil : links.filter { !$0.title.isEmpty && !$0.url.isEmpty }.map {
-                PubkyProfileLink(title: $0.title, url: $0.url)
-            }
+            image: nil, // Image editing not yet implemented
+            links: links.filter { !$0.title.isEmpty && !$0.url.isEmpty }.map { $0.url },
+            status: nil
         )
     }
     
