@@ -147,19 +147,19 @@ public extension Error {
             }
         }
         
-        // Pubky Ring Bridge errors
-        if let bridgeError = self as? PubkyRingBridgeError {
-            switch bridgeError {
-            case .pubkyRingNotInstalled:
+        // Pubky Ring errors
+        if let ringError = self as? PubkyRingError {
+            switch ringError {
+            case .appNotInstalled:
                 return "Pubky-ring app is not installed. Please install it to use this feature."
             case .timeout:
                 return "Request timed out. Please try again."
             case .cancelled:
                 return "Request was cancelled."
-            case .invalidResponse:
+            case .invalidCallback, .invalidUrl, .missingParameters:
                 return "Received invalid response. Please try again."
-            case .crossDeviceTimeout:
-                return "Cross-device authentication timed out. Please try again."
+            case .failedToOpenApp:
+                return "Failed to open Pubky-ring app. Please try again."
             case .crossDeviceFailed(let msg):
                 return "Cross-device authentication failed: \(msg)"
             }
