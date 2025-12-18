@@ -718,12 +718,12 @@ class ContactDiscoveryViewModel: ObservableObject {
     func checkEndpointHealth(for contact: DirectoryDiscoveredContact) async {
         // Health check: verify the contact's endpoints are reachable by re-fetching their profile
         do {
-            if let _ = try await directoryService.fetchProfile(pubkey: contact.pubkey) {
+            if let _ = try await directoryService.fetchProfile(for: contact.pubkey) {
                 // Profile exists and is reachable - update health status
                 await MainActor.run {
                     if let index = discoveredContacts.firstIndex(where: { $0.pubkey == contact.pubkey }) {
-                        discoveredContacts[index].lastHealthCheck = Date()
-                        discoveredContacts[index].isHealthy = true
+                        discoveredContacts[index].lastHealthCheckDates["profile"] = Date()
+                        discoveredContacts[index].endpointHealth["profile"] = true
                     }
                 }
             }
@@ -731,8 +731,8 @@ class ContactDiscoveryViewModel: ObservableObject {
             Logger.warn("Health check failed for \(contact.pubkey): \(error)")
             await MainActor.run {
                 if let index = discoveredContacts.firstIndex(where: { $0.pubkey == contact.pubkey }) {
-                    discoveredContacts[index].lastHealthCheck = Date()
-                    discoveredContacts[index].isHealthy = false
+                    discoveredContacts[index].lastHealthCheckDates["profile"] = Date()
+                    discoveredContacts[index].endpointHealth["profile"] = false
                 }
             }
         }

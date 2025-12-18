@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import BitkitCore
 // PaykitMobile types are available from FFI/PaykitMobile.swift
 
 // MARK: - Pubky Homeserver Configuration

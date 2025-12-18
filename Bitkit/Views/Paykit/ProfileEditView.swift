@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import BitkitCore
 
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
@@ -249,7 +250,7 @@ struct ProfileEditView: View {
     // MARK: - Computed Properties
     
     private var currentProfile: DirectoryProfile {
-        PubkyProfile(
+        BitkitCore.PubkyProfile(
             name: name.isEmpty ? nil : name,
             bio: bio.isEmpty ? nil : bio,
             image: nil, // Image editing not yet implemented
@@ -290,9 +291,9 @@ struct ProfileEditView: View {
                     self.originalProfile = profile
                     self.name = profile.name ?? ""
                     self.bio = profile.bio ?? ""
-                    self.links = profile.links?.map {
-                        EditableLink(title: $0.title, url: $0.url)
-                    } ?? []
+                    self.links = profile.links.map {
+                        EditableLink(title: "", url: $0)
+                    }
                     self.isLoading = false
                 }
             } else {

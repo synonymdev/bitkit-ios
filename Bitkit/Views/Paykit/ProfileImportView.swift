@@ -210,7 +210,7 @@ struct ProfilePreviewCard: View {
             }
             
             // Links
-            if let links = profile.links, !links.isEmpty {
+            if !profile.links.isEmpty {
                 Divider()
                     .background(Color.white16)
                 
@@ -218,19 +218,15 @@ struct ProfilePreviewCard: View {
                     BodySText("Links")
                         .foregroundColor(.textSecondary)
                     
-                    ForEach(links, id: \.url) { link in
+                    ForEach(profile.links, id: \.self) { link in
                         HStack {
                             Image(systemName: "link")
                                 .foregroundColor(.brandAccent)
                                 .frame(width: 20)
                             
-                            VStack(alignment: .leading) {
-                                BodySText(link.title)
-                                    .foregroundColor(.white)
-                                Text(link.url)
-                                    .font(.caption)
-                                    .foregroundColor(.textSecondary)
-                            }
+                            Text(link)
+                                .font(.caption)
+                                .foregroundColor(.white)
                         }
                     }
                 }

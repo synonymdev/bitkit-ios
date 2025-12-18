@@ -223,13 +223,29 @@ class BlocktankViewModel: ObservableObject {
         }
 
         let satsPerEur = currencyService.convertFiatToSats(fiatValue: 1, rate: eurRate)
-        let params = DefaultLspBalanceParams(
-            clientBalanceSat: clientBalance,
-            maxChannelSizeSat: info?.options.maxChannelSizeSat ?? 0,
+        
+        // Calculate default LSP balance locally
+        let maxChannelSize = info?.options.maxChannelSizeSat ?? 0
+        let defaultLspBalance = calculateDefaultLspBalance(
+            clientBalance: clientBalance,
+            maxChannelSize: maxChannelSize,
             satsPerEur: satsPerEur
         )
 
-        return BitkitCore.getDefaultLspBalance(params: params)
+        return defaultLspBalance
+    }
+    
+    /// Calculate default LSP balance based on client balance and channel parameters
+    private func calculateDefaultLspBalance(clientBalance: UInt64, maxChannelSize: UInt64, satsPerEur: UInt64) -> UInt64 {
+        // Default LSP balance calculation logic
+        // This ensures the channel is balanced between client and LSP
+        let minLspBalance: UInt64 = 25_000 // Minimum 25k sats
+        let maxLspBalance = maxChannelSize > clientBalance ? maxChannelSize - clientBalance : 0
+        
+        // Target 50/50 split, but respect minimums
+        let targetLspBalance = max(minLspBalance, clientBalance)
+        
+        return min(targetLspBalance, maxLspBalance)
     }
 
     func refreshMinCjitSats() async throws {

@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import CoreImage
+import BitkitCore
 
 // MARK: - PubkyRingBridge
 
@@ -622,7 +623,7 @@ public final class PubkyRingBridge {
     private func handleProfileCallback(url: URL) -> Bool {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let queryItems = components.queryItems else {
-            pendingProfileContinuation?.resume(returning: nil)
+            pendingProfileContinuation?.resume(returning: nil as DirectoryProfile?)
             pendingProfileContinuation = nil
             return true
         }
@@ -637,13 +638,13 @@ public final class PubkyRingBridge {
         // Check for error response
         if let error = params["error"] {
             Logger.warn("Profile request returned error: \(error)", context: "PubkyRingBridge")
-            pendingProfileContinuation?.resume(returning: nil)
+            pendingProfileContinuation?.resume(returning: nil as DirectoryProfile?)
             pendingProfileContinuation = nil
             return true
         }
         
         // Build profile from response using PubkyProfile (DirectoryProfile is typealias)
-        let profile = PubkyProfile(
+        let profile = BitkitCore.PubkyProfile(
             name: params["name"]?.removingPercentEncoding,
             bio: params["bio"]?.removingPercentEncoding,
             image: params["avatar"]?.removingPercentEncoding,
