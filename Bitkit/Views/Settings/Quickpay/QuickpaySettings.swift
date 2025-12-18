@@ -15,7 +15,8 @@ struct QuickpaySettings: View {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsListLabel(
                             title: t("settings__quickpay__settings__toggle"),
-                            toggle: $settings.enableQuickpay
+                            toggle: $settings.enableQuickpay,
+                            testIdentifier: "QuickpayToggle"
                         )
 
                         BodyMText(
