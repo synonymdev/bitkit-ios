@@ -45,7 +45,7 @@ struct ScannerScreen: View {
 
             if Env.isE2E {
                 CustomButton(
-                    title: "Enter QR Code String",
+                    title: t("other__scan__manual_prompt"),
                     variant: .secondary,
                     shouldExpand: true
                 ) {

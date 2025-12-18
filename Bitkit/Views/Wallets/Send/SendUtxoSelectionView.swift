@@ -73,7 +73,7 @@ struct SendUtxoSelectionView: View {
                     navigationPath.append(.confirm)
                 } catch {
                     Logger.error(error, context: "Failed to set fee rate")
-                    app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
+                    app.toast(type: .error, title: t("wallet__send_error"), description: error.localizedDescription)
                 }
             }
             .padding(.bottom, 16)

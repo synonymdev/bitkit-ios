@@ -15,8 +15,8 @@ struct BackupMnemonicView: View {
 
     private var note: String {
         showMnemonic
-            ? "<accent>Bitkit cannot access your funds and cannot help recover them</accent> if you lose your recovery phrase. Keep it safe!"
-            : "Make sure no one can see your screen. <accent>Never share your recovery phrase</accent> with anyone, as it may result in loss of funds."
+            ? t("security__mnemonic_cannot_recover")
+            : t("security__mnemonic_never_share")
     }
 
     private var mnemonicAccessibilityLabel: String {
@@ -77,11 +77,11 @@ struct BackupMnemonicView: View {
                     if Env.isDebug || Env.isTestFlight {
                         let mnemonicString = mnemonic.joined(separator: " ")
                         UIPasteboard.general.string = mnemonicString
-                        app.toast(type: .success, title: t("common__copied"), description: "Mnemonic copied to clipboard")
+                        app.toast(type: .success, title: t("common__copied"))
                     }
                 }
 
-                BodySText(tTodo(note), textColor: .brandAccent, accentFont: Fonts.bold)
+                BodySText(note, textColor: .brandAccent, accentFont: Fonts.bold)
 
                 Spacer()
 

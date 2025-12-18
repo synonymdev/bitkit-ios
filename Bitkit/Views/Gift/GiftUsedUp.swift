@@ -6,10 +6,10 @@ struct GiftUsedUp: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("Out of Gifts"))
+            SheetHeader(title: t("other__gift__used_up__title"))
 
             VStack(spacing: 0) {
-                BodyMText(tTodo("Sorry, you’re too late! All gifts for this code have already been claimed."))
+                BodyMText(t("other__gift__used_up__text"))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()
