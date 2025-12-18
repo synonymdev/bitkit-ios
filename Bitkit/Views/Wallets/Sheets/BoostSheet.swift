@@ -146,7 +146,7 @@ struct BoostSheet: View {
                                 .accessibilityIdentifier("Plus")
                             }
 
-                            CustomButton(title: "Use Suggested Fee", size: .small) {
+                            CustomButton(title: t("wallet__send_fee_use_suggested"), size: .small) {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }

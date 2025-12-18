@@ -17,7 +17,7 @@ struct ScannerManualEntryPrompt: View {
                 .accessibilityIdentifier("DialogCancel")
             }
 
-            BodyMSBText("Enter QR Code String")
+            BodyMSBText(t("other__scan__manual_prompt"))
 
             SwiftUI.TextField("", text: $text)
                 .textInputAutocapitalization(.never)

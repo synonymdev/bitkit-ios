@@ -5,7 +5,7 @@ struct FundReceiveView: View {
     @EnvironmentObject var app: AppViewModel
 
     var body: some View {
-        Text("FundReceiveView")
+        Text(t("wallet__fund_receive_title"))
             .navigationBarTitleDisplayMode(.inline)
     }
 }

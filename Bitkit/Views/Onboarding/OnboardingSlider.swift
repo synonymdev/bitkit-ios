@@ -67,7 +67,7 @@ struct OnboardingSlider: View {
                     OnboardingTab(
                         imageName: "keyring",
                         title: t("onboarding__slide0_header"),
-                        text: tTodo("Bitkit hands you the keys to control your money, profile, and contacts. Take charge and become borderless."),
+                        text: t("onboarding__slide0_text"),
                         accentColor: .blueAccent
                     )
                     .tag(0)
@@ -76,7 +76,7 @@ struct OnboardingSlider: View {
                     OnboardingTab(
                         imageName: "lightning",
                         title: t("onboarding__slide1_header"),
-                        text: tTodo("Enjoy instant and cheap payments with friends, family, and merchants on the Lightning Network."),
+                        text: t("onboarding__slide1_text"),
                         disclaimerText: GeoService.shared.isGeoBlocked ? t("onboarding__slide1_note") : nil,
                         accentColor: .purpleAccent
                     )
@@ -86,9 +86,7 @@ struct OnboardingSlider: View {
                     OnboardingTab(
                         imageName: "shield-figure",
                         title: t("onboarding__slide3_header"),
-                        text: tTodo(
-                            "Your money, your privacy. Swipe to hide your balance and spend more privately, with no data tracking and zero KYC."
-                        ),
+                        text: t("onboarding__slide3_text"),
                         accentColor: .greenAccent
                     )
                     .tag(2)
