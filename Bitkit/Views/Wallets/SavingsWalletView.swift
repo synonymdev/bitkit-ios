@@ -89,6 +89,7 @@ struct SavingsWalletView: View {
                 navigation.navigate(.spendingIntro)
             }
         }
+        .accessibilityIdentifier("TransferToSpending")
     }
 }
 

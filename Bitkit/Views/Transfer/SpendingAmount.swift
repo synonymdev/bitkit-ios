@@ -71,6 +71,7 @@ struct SpendingAmount: View {
             ) {
                 await onContinue()
             }
+            .accessibilityIdentifier("SpendingAmountContinue")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -96,6 +97,7 @@ struct SpendingAmount: View {
                 let quarter = UInt64(wallet.spendableOnchainBalanceSats) / 4
                 amountViewModel.updateFromSats(min(quarter, max), currency: currency)
             }
+            .accessibilityIdentifier("SpendingAmountQuarter")
 
             NumberPadActionButton(text: t("common__max")) {
                 guard let max = maxTransferAmount else { return }

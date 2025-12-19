@@ -109,6 +109,7 @@ struct SavingsProgressContentView: View {
             ) {
                 navigation.reset()
             }
+            .accessibilityIdentifierIfPresent(progressState == .success ? "TransferSuccess-button" : nil)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

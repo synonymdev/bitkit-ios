@@ -36,6 +36,7 @@ struct TransferLearnMoreView: View {
                 dismiss()
             }
             .padding(.top, 32)
+            .accessibilityIdentifier("LiquidityContinue")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

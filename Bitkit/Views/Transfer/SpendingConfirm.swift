@@ -68,6 +68,8 @@ struct SpendingConfirm: View {
                     status: .open,
                     showLabels: true
                 )
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("SpendingConfirmChannel")
                 .padding(.vertical, 16)
             }
 
@@ -89,15 +91,18 @@ struct SpendingConfirm: View {
                 CustomButton(title: t("common__learn_more"), size: .small) {
                     navigation.navigate(.transferLearnMore(order: order))
                 }
+                .accessibilityIdentifier("SpendingConfirmMore")
 
                 if transfer.uiState.isAdvanced {
                     CustomButton(title: t("lightning__spending_confirm__default"), size: .small) {
                         transfer.onDefaultClick()
                     }
+                    .accessibilityIdentifier("SpendingConfirmDefault")
                 } else {
                     CustomButton(title: t("common__advanced"), size: .small) {
                         navigation.navigate(.spendingAdvanced(order: order))
                     }
+                    .accessibilityIdentifier("SpendingConfirmAdvanced")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
