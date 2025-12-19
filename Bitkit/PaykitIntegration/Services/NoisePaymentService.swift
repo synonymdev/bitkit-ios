@@ -18,6 +18,8 @@ public struct NoisePaymentRequest {
     public let amount: String?
     public let currency: String?
     public let description: String?
+    /// Invoice number for cross-referencing
+    public let invoiceNumber: String?
     
     public init(
         payerPubkey: String,
@@ -25,7 +27,8 @@ public struct NoisePaymentRequest {
         methodId: String,
         amount: String? = nil,
         currency: String? = nil,
-        description: String? = nil
+        description: String? = nil,
+        invoiceNumber: String? = nil
     ) {
         self.receiptId = "rcpt_\(UUID().uuidString)"
         self.payerPubkey = payerPubkey
@@ -34,6 +37,7 @@ public struct NoisePaymentRequest {
         self.amount = amount
         self.currency = currency
         self.description = description
+        self.invoiceNumber = invoiceNumber
     }
 }
 
@@ -131,6 +135,205 @@ public final class NoisePaymentService {
         // 4. Return request for processing
         
         return nil
+    }
+    
+    // MARK: - Background Server Mode
+    
+    private var serverConnection: NWListener?
+    private var isServerRunning = false
+    private var onRequestCallback: ((NoisePaymentRequest) -> Void)?
+    
+    /// Start a background Noise server to receive incoming payment requests.
+    /// This is called when the app is woken by a push notification indicating
+    /// an incoming Noise connection.
+    ///
+    /// - Parameters:
+    ///   - port: Port to listen on
+    ///   - onRequest: Callback invoked when a payment request is received
+    public func startBackgroundServer(
+        port: UInt16,
+        onRequest: @escaping (NoisePaymentRequest) -> Void
+    ) async throws {
+        guard !isServerRunning else {
+            Logger.warn("NoisePaymentService: Background server already running", context: "NoisePaymentService")
+            return
+        }
+        
+        self.onRequestCallback = onRequest
+        
+        do {
+            // Create NWListener for incoming connections
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            
+            let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: port)!)
+            self.serverConnection = listener
+            self.isServerRunning = true
+            
+            Logger.info("NoisePaymentService: Starting Noise server on port \(port)", context: "NoisePaymentService")
+            
+            listener.newConnectionHandler = { [weak self] connection in
+                self?.handleServerConnection(connection)
+            }
+            
+            listener.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    Logger.info("NoisePaymentService: Server ready on port \(port)", context: "NoisePaymentService")
+                case .failed(let error):
+                    Logger.error("NoisePaymentService: Server failed: \(error)", context: "NoisePaymentService")
+                    self?.stopBackgroundServer()
+                case .cancelled:
+                    Logger.info("NoisePaymentService: Server cancelled", context: "NoisePaymentService")
+                default:
+                    break
+                }
+            }
+            
+            listener.start(queue: DispatchQueue.global(qos: .userInitiated))
+            
+            // Wait for connection with timeout
+            try await withTimeout(seconds: 30) { [weak self] in
+                // Keep server running until connection is handled
+                while self?.isServerRunning == true {
+                    try await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                }
+            }
+            
+        } catch {
+            Logger.error("NoisePaymentService: Server error: \(error)", context: "NoisePaymentService")
+            stopBackgroundServer()
+            throw error
+        }
+    }
+    
+    /// Stop the background server
+    public func stopBackgroundServer() {
+        serverConnection?.cancel()
+        serverConnection = nil
+        isServerRunning = false
+        onRequestCallback = nil
+        Logger.info("NoisePaymentService: Background server stopped", context: "NoisePaymentService")
+    }
+    
+    /// Handle an incoming server connection
+    private func handleServerConnection(_ connection: NWConnection) {
+        Logger.info("NoisePaymentService: Received incoming connection", context: "NoisePaymentService")
+        
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .ready:
+                self?.receiveFromConnection(connection)
+            case .failed(let error):
+                Logger.error("NoisePaymentService: Connection failed: \(error)", context: "NoisePaymentService")
+                self?.stopBackgroundServer()
+            default:
+                break
+            }
+        }
+        
+        connection.start(queue: DispatchQueue.global(qos: .userInitiated))
+    }
+    
+    /// Receive data from connection and process as payment request
+    private func receiveFromConnection(_ connection: NWConnection) {
+        // Read length prefix (4 bytes)
+        connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { [weak self] data, _, _, error in
+            guard let lengthData = data, error == nil else {
+                Logger.error("NoisePaymentService: Failed to receive length: \(error?.localizedDescription ?? "unknown")", context: "NoisePaymentService")
+                self?.stopBackgroundServer()
+                return
+            }
+            
+            let length = lengthData.withUnsafeBytes { $0.load(as: UInt32.self).bigEndian }
+            
+            // Read message body
+            connection.receive(minimumIncompleteLength: Int(length), maximumLength: Int(length)) { data, _, _, error in
+                guard let messageData = data, error == nil else {
+                    Logger.error("NoisePaymentService: Failed to receive message: \(error?.localizedDescription ?? "unknown")", context: "NoisePaymentService")
+                    self?.stopBackgroundServer()
+                    return
+                }
+                
+                // Parse the payment request
+                self?.parseAndHandleRequest(messageData, connection: connection)
+            }
+        }
+    }
+    
+    /// Parse incoming message and handle as payment request
+    private func parseAndHandleRequest(_ data: Data, connection: NWConnection) {
+        do {
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw NoisePaymentError.invalidResponse("Invalid JSON structure")
+            }
+            
+            guard let type = json["type"] as? String, type == "request_receipt" else {
+                throw NoisePaymentError.invalidResponse("Unexpected message type")
+            }
+            
+            let request = NoisePaymentRequest(
+                payerPubkey: json["payer"] as? String ?? "",
+                payeePubkey: json["payee"] as? String ?? "",
+                methodId: json["method_id"] as? String ?? "",
+                amount: json["amount"] as? String,
+                currency: json["currency"] as? String,
+                description: json["description"] as? String,
+                invoiceNumber: json["invoice_number"] as? String
+            )
+            
+            // Send confirmation response
+            let response: [String: Any] = [
+                "type": "confirm_receipt",
+                "receipt_id": request.receiptId,
+                "confirmed_at": Int(Date().timeIntervalSince1970)
+            ]
+            
+            if let responseData = try? JSONSerialization.data(withJSONObject: response) {
+                // Length prefix
+                var length = UInt32(responseData.count).bigEndian
+                var lengthData = Data(bytes: &length, count: 4)
+                lengthData.append(responseData)
+                
+                connection.send(content: lengthData, completion: .contentProcessed { error in
+                    if let error = error {
+                        Logger.error("NoisePaymentService: Failed to send response: \(error)", context: "NoisePaymentService")
+                    }
+                })
+            }
+            
+            // Notify callback
+            onRequestCallback?(request)
+            Logger.info("NoisePaymentService: Successfully received payment request: \(request.receiptId)", context: "NoisePaymentService")
+            
+            // Stop server after handling request
+            stopBackgroundServer()
+            
+        } catch {
+            Logger.error("NoisePaymentService: Failed to parse request: \(error)", context: "NoisePaymentService")
+            stopBackgroundServer()
+        }
+    }
+    
+    /// Helper to run async operation with timeout
+    private func withTimeout<T>(seconds: Double, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NoisePaymentError.timeout
+            }
+            
+            guard let result = try await group.next() else {
+                throw NoisePaymentError.timeout
+            }
+            
+            group.cancelAll()
+            return result
+        }
     }
 }
 

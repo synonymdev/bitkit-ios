@@ -69,7 +69,7 @@ public enum PaykitIntegrationHelper {
         amountSats: UInt64?
     ) async throws -> LightningPaymentResultFfi {
         guard isReady else {
-            throw PaykitError.notInitialized
+            throw PaykitManagerError.notInitialized
         }
         
         let executor = BitkitLightningExecutor()
@@ -95,7 +95,7 @@ public enum PaykitIntegrationHelper {
         feeRate: Double?
     ) async throws -> BitcoinTxResultFfi {
         guard isReady else {
-            throw PaykitError.notInitialized
+            throw PaykitManagerError.notInitialized
         }
         
         let executor = BitkitBitcoinExecutor()
@@ -149,7 +149,7 @@ public enum AsyncBridge {
         let waitResult = semaphore.wait(timeout: .now() + timeout)
         
         if waitResult == .timedOut {
-            throw PaykitError.timeout
+            throw PaykitManagerError.timeout
         }
         
         switch result {
@@ -158,7 +158,7 @@ public enum AsyncBridge {
         case .failure(let error):
             throw error
         case .none:
-            throw PaykitError.unknown("No result returned")
+            throw PaykitManagerError.unknown("No result returned")
         }
     }
 }

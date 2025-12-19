@@ -21,6 +21,12 @@ public struct BitkitPaymentRequest: Identifiable, Codable {
     public var status: PaymentRequestStatus
     public let direction: RequestDirection
     
+    /// Optional invoice number for cross-referencing with receipts
+    public var invoiceNumber: String?
+    
+    /// ID of the receipt that fulfilled this request (if paid)
+    public var receiptId: String?
+    
     /// Display name for the counterparty
     public var counterpartyName: String {
         let key = direction == .incoming ? fromPubkey : toPubkey
@@ -28,6 +34,16 @@ public struct BitkitPaymentRequest: Identifiable, Codable {
             return String(key.prefix(6)) + "..." + String(key.suffix(4))
         }
         return key
+    }
+    
+    /// Display invoice number - returns invoiceNumber if set, otherwise request id
+    public var displayInvoiceNumber: String {
+        invoiceNumber ?? id
+    }
+    
+    /// Check if this request has been fulfilled
+    public var isFulfilled: Bool {
+        status == .paid && receiptId != nil
     }
 }
 

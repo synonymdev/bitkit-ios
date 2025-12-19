@@ -6,6 +6,7 @@
 
 import Foundation
 import LDKNode
+import BitkitCore
 
 // MARK: - PaykitPaymentService
 
@@ -413,8 +414,9 @@ public final class PaykitPaymentService {
     // MARK: - Error Mapping
     
     private func mapError(_ error: Error) -> PaykitPaymentError {
-        if let paykitError = error as? PaykitError {
-            switch paykitError {
+        // Handle PaykitManagerError (local app errors)
+        if let managerError = error as? PaykitManagerError {
+            switch managerError {
             case .notInitialized:
                 return .notInitialized
             case .timeout:
@@ -424,6 +426,10 @@ public final class PaykitPaymentService {
             default:
                 return .unknown(error.localizedDescription)
             }
+        }
+        // Handle PaykitError (FFI errors)
+        if let paykitError = error as? BitkitCore.PaykitError {
+            return .unknown(paykitError.localizedDescription)
         }
         return .unknown(error.localizedDescription)
     }

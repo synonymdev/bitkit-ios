@@ -318,6 +318,26 @@ struct PaymentRequestRow: View {
                         }
                     }
                     
+                    // Invoice Number
+                    if let invoiceNumber = request.invoiceNumber {
+                        HStack(spacing: 4) {
+                            Image(systemName: "number")
+                                .font(.caption2)
+                            BodySText("Invoice: \(invoiceNumber)")
+                        }
+                        .foregroundColor(.textSecondary)
+                    }
+                    
+                    // Receipt Link (if paid)
+                    if request.isFulfilled, let receiptId = request.receiptId {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption2)
+                            BodySText("Receipt: \(receiptId.prefix(8))...")
+                        }
+                        .foregroundColor(.greenAccent)
+                    }
+                    
                     // Description preview (metadata-like)
                     if !request.description.isEmpty {
                         HStack(spacing: 4) {
@@ -517,6 +537,7 @@ struct PaymentRequestDetailSheet: View {
                     statusSection
                     peerSection
                     methodSection
+                    invoiceSection
                     
                     if !request.description.isEmpty {
                         descriptionSection
@@ -657,6 +678,57 @@ struct PaymentRequestDetailSheet: View {
                     .foregroundColor(.white)
                 
                 Spacer()
+            }
+        }
+        .padding(16)
+        .background(Color.gray6)
+        .cornerRadius(12)
+    }
+    
+    @ViewBuilder
+    private var invoiceSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            BodyMBoldText("Invoice Details")
+                .foregroundColor(.textSecondary)
+            
+            HStack {
+                BodyMText("Invoice Number")
+                    .foregroundColor(.textSecondary)
+                Spacer()
+                BodyMText(request.displayInvoiceNumber)
+                    .foregroundColor(.white)
+            }
+            
+            HStack {
+                BodyMText("Request ID")
+                    .foregroundColor(.textSecondary)
+                Spacer()
+                BodySText(request.id)
+                    .foregroundColor(.textSecondary)
+                    .lineLimit(1)
+            }
+            
+            // Receipt link if paid
+            if let receiptId = request.receiptId {
+                HStack {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundColor(.greenAccent)
+                    BodyMText("Paid")
+                        .foregroundColor(.greenAccent)
+                    Spacer()
+                    Button {
+                        // Navigate to receipt (could show in sheet or navigate)
+                        UIPasteboard.general.string = receiptId
+                        app.toast(type: .success, title: "Receipt ID copied")
+                    } label: {
+                        HStack(spacing: 4) {
+                            BodySText("View Receipt")
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                        }
+                        .foregroundColor(.brandAccent)
+                    }
+                }
             }
         }
         .padding(16)
@@ -844,6 +916,7 @@ struct CreatePaymentRequestView: View {
     @State private var amount: Int64 = 1000
     @State private var methodId = "lightning"
     @State private var description = ""
+    @State private var invoiceNumber = ""
     @State private var expiresInDays: Int = 7
     
     var body: some View {
@@ -895,6 +968,13 @@ struct CreatePaymentRequestView: View {
                             .background(Color.gray6)
                             .cornerRadius(8)
                         
+                        TextField("Invoice Number (optional)", text: $invoiceNumber)
+                            .foregroundColor(.white)
+                            .autocapitalization(.none)
+                            .padding(12)
+                            .background(Color.gray6)
+                            .cornerRadius(8)
+                        
                         HStack {
                             BodyMText("Expires in:")
                                 .foregroundColor(.textSecondary)
@@ -912,7 +992,7 @@ struct CreatePaymentRequestView: View {
                         let expiresAt = Calendar.current.date(byAdding: .day, value: expiresInDays, to: Date())
                         let fromPubkey = PaykitKeyManager.shared.getCurrentPublicKeyZ32() ?? ""
                         
-                        let request = BitkitPaymentRequest(
+                        var request = BitkitPaymentRequest(
                             id: UUID().uuidString,
                             fromPubkey: fromPubkey,
                             toPubkey: toPubkey,
@@ -925,6 +1005,9 @@ struct CreatePaymentRequestView: View {
                             status: .pending,
                             direction: .outgoing
                         )
+                        if !invoiceNumber.isEmpty {
+                            request.invoiceNumber = invoiceNumber
+                        }
                         
                         do {
                             try viewModel.addRequest(request)

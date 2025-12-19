@@ -8,16 +8,16 @@ struct AddressStats: Codable {
     let tx_count: Int
 }
 
-struct AddressInfo: Codable {
+struct EsploraAddressInfo: Codable {
     let address: String
     let chain_stats: AddressStats
     let mempool_stats: AddressStats
 }
 
-struct TxInput: Codable {
+struct EsploraTxInput: Codable {
     let txid: String?
     let vout: Int?
-    let prevout: TxOutput?
+    let prevout: EsploraTxOutput?
     let scriptsig: String?
     let scriptsig_asm: String?
     let witness: [String]?
@@ -25,7 +25,7 @@ struct TxInput: Codable {
     let sequence: Int64?
 }
 
-struct TxOutput: Codable {
+struct EsploraTxOutput: Codable {
     let scriptpubkey: String
     let scriptpubkey_asm: String?
     let scriptpubkey_type: String?
@@ -34,18 +34,18 @@ struct TxOutput: Codable {
     let n: Int?
 }
 
-struct TxStatus: Codable {
+struct EsploraTxStatus: Codable {
     let confirmed: Bool
     let block_height: Int?
     let block_hash: String?
     let block_time: Int64?
 }
 
-struct TxDetails: Codable {
+struct EsploraTxDetails: Codable {
     let txid: String
-    let vin: [TxInput]
-    let vout: [TxOutput]
-    let status: TxStatus
+    let vin: [EsploraTxInput]
+    let vout: [EsploraTxOutput]
+    let status: EsploraTxStatus
 }
 
 enum AddressCheckerError: Error {
@@ -59,7 +59,7 @@ enum AddressCheckerError: Error {
 /// Eventually, this will be replaced by similar features in bitkit-core or ldk-node
 /// when they support native address lookup.
 class AddressChecker {
-    static func getAddressInfo(address: String) async throws -> AddressInfo {
+    static func getAddressInfo(address: String) async throws -> EsploraAddressInfo {
         guard let url = URL(string: "\(Env.esploraServerUrl)/address/\(address)") else {
             throw AddressCheckerError.invalidUrl
         }
@@ -74,7 +74,7 @@ class AddressChecker {
             }
 
             let decoder = JSONDecoder()
-            return try decoder.decode(AddressInfo.self, from: data)
+            return try decoder.decode(EsploraAddressInfo.self, from: data)
         } catch let error as DecodingError {
             throw AddressCheckerError.invalidResponse
         } catch {
@@ -84,7 +84,7 @@ class AddressChecker {
 
     /// Fetches full transaction details from the Esplora endpoint for the given txid.
     /// - Parameter txid: Hex transaction identifier.
-    static func getTransaction(txid: String) async throws -> TxDetails {
+    static func getTransaction(txid: String) async throws -> EsploraTxDetails {
         guard let url = URL(string: "\(Env.esploraServerUrl)/tx/\(txid)") else {
             throw AddressCheckerError.invalidUrl
         }
@@ -99,7 +99,7 @@ class AddressChecker {
             }
 
             let decoder = JSONDecoder()
-            return try decoder.decode(TxDetails.self, from: data)
+            return try decoder.decode(EsploraTxDetails.self, from: data)
         } catch let error as DecodingError {
             Logger.error("decoding error \(error)")
             throw AddressCheckerError.invalidResponse

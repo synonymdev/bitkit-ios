@@ -96,7 +96,7 @@ final class PaykitE2ETests: XCTestCase {
     
     func testNoiseKeyDerivation_Flow() throws {
         // This test requires a session first
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         
@@ -136,7 +136,7 @@ final class PaykitE2ETests: XCTestCase {
     // MARK: - 3.4 Profile & Contacts E2E Tests
     
     func testProfileFetching() throws {
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         
@@ -154,7 +154,7 @@ final class PaykitE2ETests: XCTestCase {
     }
     
     func testFollowsSync() throws {
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         
@@ -182,7 +182,7 @@ final class PaykitE2ETests: XCTestCase {
     // MARK: - 3.5 Backup & Restore E2E Tests
     
     func testBackupExport() throws {
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         
@@ -235,7 +235,7 @@ final class PaykitE2ETests: XCTestCase {
     }
     
     func testEndToEndPaymentFlow() throws {
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         
@@ -264,7 +264,7 @@ final class PaykitE2ETests: XCTestCase {
     }
     
     func testEndToEndContactDiscovery() throws {
-        guard WalletTestHelper.hasActiveSession(app: app) else {
+        if !WalletTestHelper.hasActiveSession(app: app) {
             try testSessionFlow_RequestAndReceive()
         }
         

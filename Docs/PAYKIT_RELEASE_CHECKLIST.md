@@ -184,9 +184,83 @@ _Add any release-specific notes here_
 
 ---
 
+## Accessibility Verification
+
+### VoiceOver (iOS) / TalkBack (Android)
+
+- [ ] All buttons have accessibility labels
+- [ ] All icons have accessibility descriptions
+- [ ] Focus order is logical
+- [ ] Custom views announce correctly
+- [ ] Payment amounts read correctly
+- [ ] Error messages are announced
+
+### Visual Accessibility
+
+- [ ] Text meets minimum contrast ratio (4.5:1)
+- [ ] Touch targets are at least 44x44 points
+- [ ] Dynamic Type support works
+- [ ] Dark mode displays correctly
+- [ ] Reduced motion is respected
+
+## Cross-App Testing Verification
+
+### Pubky-ring Integration
+
+- [ ] Session request works when Pubky-ring installed
+- [ ] Session request shows QR fallback when not installed
+- [ ] Callback URL handling works correctly
+- [ ] Session refresh from Pubky-ring works
+- [ ] Error handling for Pubky-ring unavailable
+
+### Cross-Device Scenarios
+
+- [ ] QR code authentication works
+- [ ] Deep link callback works
+- [ ] Timeout handling works
+- [ ] Retry logic works
+
+## Backup/Restore Verification
+
+### Export
+
+- [ ] Backup file is created
+- [ ] Password protection works
+- [ ] File can be shared via system share
+- [ ] Multiple exports create unique files
+
+### Import
+
+- [ ] Correct password decrypts successfully
+- [ ] Wrong password shows clear error
+- [ ] Expired sessions are skipped
+- [ ] Contacts merge correctly
+- [ ] Progress indicator shows during import
+
+## Telemetry Verification
+
+### Logging
+
+- [ ] No sensitive data in production logs
+- [ ] Error events log correctly
+- [ ] Structured logging format correct
+- [ ] Log level appropriate for release
+
+### Analytics
+
+- [ ] Events track correctly
+- [ ] User opt-out respected
+- [ ] Crashlytics integration working
+- [ ] Custom keys set correctly
+
 ## Related Documentation
 
 - [Setup Guide](PAYKIT_SETUP.md)
 - [Architecture Overview](PAYKIT_ARCHITECTURE.md)
 - [Testing Guide](PAYKIT_TESTING.md)
+- [Security Audit Report](SECURITY_AUDIT_REPORT.md)
+- [Cross-App Testing](CROSS_APP_TESTING.md)
+- [Backup/Restore Guide](BACKUP_RESTORE.md)
+- [Telemetry Guide](TELEMETRY_MONITORING.md)
+- [User Guide](USER_GUIDE.md)
 

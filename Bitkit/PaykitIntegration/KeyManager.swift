@@ -67,6 +67,17 @@ public final class PaykitKeyManager {
         return keypair
     }
     
+    /// Store an existing identity (e.g., from Pubky Ring session)
+    public func storeIdentity(secretKeyHex: String, publicKeyZ32: String) throws {
+        // Store in keychain
+        try keychain.store(key: Keys.secretKey, data: secretKeyHex.data(using: .utf8)!)
+        try keychain.store(key: Keys.publicKeyZ32, data: publicKeyZ32.data(using: .utf8)!)
+        
+        // Derive and store publicKeyHex from secret
+        let keypair = try ed25519KeypairFromSecret(secretKeyHex: secretKeyHex)
+        try keychain.store(key: Keys.publicKey, data: keypair.publicKeyHex.data(using: .utf8)!)
+    }
+    
     /// Get current public key in z-base32 format
     public func getCurrentPublicKeyZ32() -> String? {
         guard let data = try? keychain.retrieve(key: Keys.publicKeyZ32),

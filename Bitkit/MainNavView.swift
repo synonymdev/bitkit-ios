@@ -290,8 +290,7 @@ struct MainNavView: View {
                 }
             case .profile:
                 if app.hasSeenProfileIntro {
-                    // ProfileView()
-                    Text("Coming Soon")
+                    ProfileView()
                 } else {
                     ProfileIntroView()
                 }
@@ -340,7 +339,7 @@ struct MainNavView: View {
             case .savingsConfirm: SavingsConfirmView()
             case .savingsAdvanced: SavingsAdvancedView()
             case .savingsProgress: SavingsProgressView()
-            case .profile: Text("Coming Soon")
+            case .profile: ProfileView()
             case .profileIntro: ProfileIntroView()
             case .scanner: ScannerScreen()
 

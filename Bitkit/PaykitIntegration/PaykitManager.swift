@@ -81,7 +81,7 @@ public final class PaykitManager {
     /// Register Bitcoin and Lightning executors with the Paykit client.
     public func registerExecutors() throws {
         guard isInitialized else {
-            throw PaykitError.notInitialized
+            throw PaykitManagerError.notInitialized
         }
         
         guard !hasExecutors else {
@@ -95,7 +95,7 @@ public final class PaykitManager {
         lightningExecutor = BitkitLightningExecutor()
         
         guard let client = client else {
-            throw PaykitError.notInitialized
+            throw PaykitManagerError.notInitialized
         }
         try client.registerBitcoinExecutor(executor: bitcoinExecutor!)
         try client.registerLightningExecutor(executor: lightningExecutor!)
@@ -123,7 +123,7 @@ public final class PaykitManager {
             Logger.info("Requesting session from Pubky-ring", context: "PaykitManager")
             return try await PubkyRingBridge.shared.requestSession()
         }
-        throw PaykitError.pubkyRingNotInstalled
+        throw PaykitManagerError.pubkyRingNotInstalled
     }
     
     /// Get a cached session or request a new one from Pubky-ring.
@@ -190,9 +190,9 @@ public enum LightningNetworkConfig: String {
     }
 }
 
-// MARK: - Paykit Errors
+// MARK: - Paykit Manager Errors
 
-public enum PaykitError: LocalizedError {
+public enum PaykitManagerError: LocalizedError {
     case notInitialized
     case executorRegistrationFailed(String)
     case paymentFailed(String)

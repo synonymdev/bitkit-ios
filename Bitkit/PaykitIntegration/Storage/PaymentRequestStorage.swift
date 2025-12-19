@@ -74,6 +74,16 @@ public class PaymentRequestStorage {
         return listRequests().first { $0.id == id }
     }
     
+    /// Get a request by invoice number
+    public func getRequestByInvoiceNumber(_ invoiceNumber: String) -> BitkitPaymentRequest? {
+        return listRequests().first { $0.invoiceNumber == invoiceNumber }
+    }
+    
+    /// Get a request that was fulfilled by a specific receipt
+    public func getRequestByReceiptId(_ receiptId: String) -> BitkitPaymentRequest? {
+        return listRequests().first { $0.receiptId == receiptId }
+    }
+    
     /// Add a new request
     public func addRequest(_ request: BitkitPaymentRequest) throws {
         var requests = listRequests()
@@ -109,6 +119,30 @@ public class PaymentRequestStorage {
         var updatedRequest = request
         updatedRequest.status = status
         try updateRequest(updatedRequest)
+    }
+    
+    /// Fulfill a request with a receipt (marks as paid and links receipt)
+    public func fulfillRequest(id: String, receiptId: String) throws {
+        guard var request = getRequest(id: id) else {
+            throw PaykitStorageError.loadFailed(key: id)
+        }
+        var updatedRequest = request
+        updatedRequest.status = .paid
+        updatedRequest.receiptId = receiptId
+        try updateRequest(updatedRequest)
+        Logger.info("PaymentRequestStorage: Fulfilled request \(id) with receipt \(receiptId)", context: "PaymentRequestStorage")
+    }
+    
+    /// Fulfill a request by invoice number with a receipt
+    public func fulfillRequestByInvoiceNumber(_ invoiceNumber: String, receiptId: String) throws {
+        guard var request = getRequestByInvoiceNumber(invoiceNumber) else {
+            throw PaykitStorageError.loadFailed(key: "invoiceNumber:\(invoiceNumber)")
+        }
+        var updatedRequest = request
+        updatedRequest.status = .paid
+        updatedRequest.receiptId = receiptId
+        try updateRequest(updatedRequest)
+        Logger.info("PaymentRequestStorage: Fulfilled request by invoice \(invoiceNumber) with receipt \(receiptId)", context: "PaymentRequestStorage")
     }
     
     /// Delete a request

@@ -45,6 +45,17 @@ class AppViewModel: ObservableObject {
     @AppStorage("highBalanceIgnoreCount") var highBalanceIgnoreCount: Int = 0
     @AppStorage("highBalanceIgnoreTimestamp") var highBalanceIgnoreTimestamp: TimeInterval = 0
 
+    // Profile data (persisted locally)
+    @AppStorage("profileName") var profileName: String = ""
+    @AppStorage("profileBio") var profileBio: String = ""
+    @AppStorage("profileAvatarUrl") var profileAvatarUrl: String = ""
+    @AppStorage("profilePubkyId") var profilePubkyId: String = ""
+    
+    // Computed property for display name
+    var displayName: String {
+        profileName.isEmpty ? "Your Name" : profileName
+    }
+    
     // Drawer menu
     @Published var showDrawer = false
 
@@ -115,6 +126,12 @@ class AppViewModel: ObservableObject {
         backupIgnoreTimestamp = 0
         highBalanceIgnoreCount = 0
         highBalanceIgnoreTimestamp = 0
+        
+        // Clear profile data
+        profileName = ""
+        profileBio = ""
+        profileAvatarUrl = ""
+        profilePubkyId = ""
     }
 }
 

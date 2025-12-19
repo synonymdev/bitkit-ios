@@ -247,7 +247,7 @@ public final class DirectoryService {
             if let data = try await pubkyStorage.readFile(path: profilePath, adapter: adapter, ownerPubkey: pubkey) {
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
                     let links = (json["links"] as? [String]) ?? []
-                    return PubkyProfile(
+                    return BitkitCore.PubkyProfile(
                         name: json["name"] as? String,
                         bio: json["bio"] as? String,
                         image: json["image"] as? String,
@@ -396,9 +396,116 @@ public final class DirectoryService {
         return discovered
     }
     
-    // MARK: - Pending Requests Discovery
+    // MARK: - Push Notification Endpoints
     
     private static let paykitPathPrefix = "/pub/paykit.app/v0/"
+    
+    /// Push endpoint for receiving wake notifications
+    public struct PushNotificationEndpoint: Codable {
+        public let deviceToken: String
+        public let platform: String  // "ios" or "android"
+        public let noiseHost: String?
+        public let noisePort: Int?
+        public let noisePubkey: String?
+        public let createdAt: Int64
+        
+        public init(
+            deviceToken: String,
+            platform: String,
+            noiseHost: String? = nil,
+            noisePort: Int? = nil,
+            noisePubkey: String? = nil
+        ) {
+            self.deviceToken = deviceToken
+            self.platform = platform
+            self.noiseHost = noiseHost
+            self.noisePort = noisePort
+            self.noisePubkey = noisePubkey
+            self.createdAt = Int64(Date().timeIntervalSince1970)
+        }
+    }
+    
+    /// Publish our push notification endpoint to the directory.
+    /// This allows other users to discover how to wake our device for Noise connections.
+    ///
+    /// - Parameters:
+    ///   - deviceToken: APNs/FCM device token
+    ///   - platform: Platform identifier ("ios" or "android")
+    ///   - noiseHost: Host for our Noise server
+    ///   - noisePort: Port for our Noise server
+    ///   - noisePubkey: Our Noise public key
+    public func publishPushNotificationEndpoint(
+        deviceToken: String,
+        platform: String,
+        noiseHost: String? = nil,
+        noisePort: Int? = nil,
+        noisePubkey: String? = nil
+    ) async throws {
+        guard let transport = authenticatedTransport else {
+            throw DirectoryError.notConfigured
+        }
+        
+        let endpoint = PushNotificationEndpoint(
+            deviceToken: deviceToken,
+            platform: platform,
+            noiseHost: noiseHost,
+            noisePort: noisePort,
+            noisePubkey: noisePubkey
+        )
+        
+        let pushPath = "\(Self.paykitPathPrefix)push"
+        
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(endpoint)
+        
+        let pubkyStorage = PubkyStorageAdapter.shared
+        try await pubkyStorage.writeFile(path: pushPath, data: data, transport: transport)
+        Logger.info("Published push notification endpoint to directory", context: "DirectoryService")
+    }
+    
+    /// Discover push notification endpoint for a recipient.
+    /// Used to send wake notifications before attempting Noise connections.
+    ///
+    /// - Parameter recipientPubkey: The public key of the recipient
+    /// - Returns: Push notification endpoint if found
+    public func discoverPushNotificationEndpoint(for recipientPubkey: String) async throws -> PushNotificationEndpoint? {
+        let adapter = unauthenticatedTransport ?? {
+            let adapter = PubkyUnauthenticatedStorageAdapter(homeserverBaseURL: homeserverBaseURL)
+            let transport = UnauthenticatedTransportFfi.fromCallback(callback: adapter)
+            unauthenticatedTransport = transport
+            return transport
+        }()
+        
+        let pushPath = "\(Self.paykitPathPrefix)push"
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        do {
+            guard let data = try await pubkyStorage.readFile(path: pushPath, adapter: adapter, ownerPubkey: recipientPubkey) else {
+                return nil
+            }
+            
+            let decoder = JSONDecoder()
+            return try decoder.decode(PushNotificationEndpoint.self, from: data)
+        } catch {
+            Logger.error("Failed to discover push endpoint for \(recipientPubkey): \(error)", context: "DirectoryService")
+            return nil
+        }
+    }
+    
+    /// Remove our push notification endpoint from the directory.
+    public func removePushNotificationEndpoint() async throws {
+        guard let transport = authenticatedTransport else {
+            throw DirectoryError.notConfigured
+        }
+        
+        let pushPath = "\(Self.paykitPathPrefix)push"
+        let pubkyStorage = PubkyStorageAdapter.shared
+        
+        try await pubkyStorage.deleteFile(path: pushPath, transport: transport)
+        Logger.info("Removed push notification endpoint from directory", context: "DirectoryService")
+    }
+    
+    // MARK: - Pending Requests Discovery
     
     /// Discover pending payment requests from the Pubky directory
     public func discoverPendingRequests(for ownerPubkey: String) async throws -> [DiscoveredRequest] {
@@ -541,15 +648,15 @@ public struct DirectoryDiscoveredContact: Identifiable {
 public typealias DirectoryProfile = BitkitCore.PubkyProfile
 
 /// Helper extension for constructing PubkyProfile from various sources
-extension PubkyProfile {
+extension BitkitCore.PubkyProfile {
     /// Create from Pubky-ring URL callback parameters
     public static func fromRingCallback(
         name: String?,
         bio: String?,
         avatar: String?,
         status: String? = nil
-    ) -> PubkyProfile {
-        return PubkyProfile(
+    ) -> BitkitCore.PubkyProfile {
+        return BitkitCore.PubkyProfile(
             name: name,
             bio: bio,
             image: avatar,

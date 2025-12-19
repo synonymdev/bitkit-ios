@@ -39,13 +39,21 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
     public var proofVerified: Bool = false
     public var proofVerifiedAt: Date?
     
+    /// ID of the payment request this receipt fulfills (if any)
+    public var requestId: String?
+    
+    /// Invoice number from the original request (for cross-referencing)
+    public var invoiceNumber: String?
+    
     public init(
         direction: ReceiptPaymentDirection,
         counterpartyKey: String,
         counterpartyName: String? = nil,
         amountSats: UInt64,
         paymentMethod: String,
-        memo: String? = nil
+        memo: String? = nil,
+        requestId: String? = nil,
+        invoiceNumber: String? = nil
     ) {
         self.id = UUID().uuidString
         self.direction = direction
@@ -61,6 +69,8 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
         self.proof = nil
         self.proofVerified = false
         self.proofVerifiedAt = nil
+        self.requestId = requestId
+        self.invoiceNumber = invoiceNumber
     }
     
     init(
@@ -77,7 +87,9 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
         txId: String?,
         proof: String?,
         proofVerified: Bool,
-        proofVerifiedAt: Date?
+        proofVerifiedAt: Date?,
+        requestId: String? = nil,
+        invoiceNumber: String? = nil
     ) {
         self.id = id
         self.direction = direction
@@ -93,6 +105,8 @@ public struct PaymentReceipt: Identifiable, Codable, Equatable, Hashable {
         self.proof = proof
         self.proofVerified = proofVerified
         self.proofVerifiedAt = proofVerifiedAt
+        self.requestId = requestId
+        self.invoiceNumber = invoiceNumber
     }
     
     mutating func complete(txId: String? = nil) {

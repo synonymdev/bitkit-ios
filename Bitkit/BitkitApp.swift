@@ -29,6 +29,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // Register Paykit background tasks
         SubscriptionBackgroundService.shared.registerBackgroundTask()
         SessionRefreshService.shared.registerBackgroundTask()
+        NoiseBackgroundService.shared.registerBackgroundTask()
 
         return true
     }
@@ -103,6 +104,28 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 
         // TODO: if user tapped on an incoming tx we should open it on that tx view
         completionHandler()
+    }
+    
+    // Handle silent push notifications for Noise requests
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        Logger.debug("🔔 AppDelegate: didReceiveRemoteNotification with userInfo: \(userInfo)", context: "AppDelegate")
+        
+        // Check if this is a Noise request notification
+        if NoiseBackgroundService.isNoiseRequestNotification(userInfo) {
+            if let payload = PaykitNoiseNotification.Payload(userInfo: userInfo) {
+                NoiseBackgroundService.shared.handleNoiseRequestNotification(payload)
+                completionHandler(.newData)
+                return
+            }
+        }
+        
+        // Handle other silent push notifications
+        PushNotificationManager.shared.handleNotification(userInfo)
+        completionHandler(.noData)
     }
 }
 

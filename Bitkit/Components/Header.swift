@@ -14,13 +14,38 @@ struct Header: View {
                 }
             } label: {
                 HStack(alignment: .center, spacing: 16) {
-                    Image(systemName: "person.circle.fill")
-                        .resizable()
-                        .font(.title2)
-                        .foregroundColor(.gray1)
+                    // Avatar - show profile image if available, otherwise default icon
+                    if !app.profileAvatarUrl.isEmpty, let url = URL(string: app.profileAvatarUrl) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            Image(systemName: "person.circle.fill")
+                                .resizable()
+                                .foregroundColor(.gray1)
+                        }
                         .frame(width: 32, height: 32)
+                        .clipShape(Circle())
+                    } else if !app.profileName.isEmpty {
+                        // Show initial if we have a name but no avatar
+                        ZStack {
+                            Circle()
+                                .fill(Color.brandAccent.opacity(0.2))
+                            Text(String(app.profileName.prefix(1)).uppercased())
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.brandAccent)
+                        }
+                        .frame(width: 32, height: 32)
+                    } else {
+                        Image(systemName: "person.circle.fill")
+                            .resizable()
+                            .font(.title2)
+                            .foregroundColor(.gray1)
+                            .frame(width: 32, height: 32)
+                    }
 
-                    TitleText(t("slashtags__your_name_capital"))
+                    TitleText(app.displayName)
                 }
             }
 

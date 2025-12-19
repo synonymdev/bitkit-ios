@@ -67,6 +67,7 @@ public final class PubkyRingBridge {
         public static let profile = "paykit-profile"
         public static let follows = "paykit-follows"
         public static let crossDeviceSession = "paykit-cross-session"
+        public static let paykitSetup = "paykit-setup"  // Combined session + noise keys
     }
     
     // MARK: - State
@@ -76,6 +77,9 @@ public final class PubkyRingBridge {
     
     /// Pending keypair request continuation
     private var pendingKeypairContinuation: CheckedContinuation<NoiseKeypair, Error>?
+    
+    /// Pending paykit setup request continuation (combined session + noise keys)
+    private var pendingPaykitSetupContinuation: CheckedContinuation<PaykitSetupResult, Error>?
     
     /// Pending cross-device request ID
     private var pendingCrossDeviceRequestId: String?
@@ -181,6 +185,72 @@ public final class PubkyRingBridge {
                 }
             }
         }
+    }
+    
+    /// Request complete Paykit setup from Pubky-ring (session + noise keys in one request)
+    ///
+    /// This is the preferred method for initial Paykit setup as it:
+    /// - Gets everything in a single user interaction
+    /// - Ensures noise keys are available even if Ring is later unavailable
+    /// - Includes both epoch 0 and epoch 1 keypairs for key rotation
+    ///
+    /// - Returns: PaykitSetupResult containing session and noise keypairs
+    /// - Throws: PubkyRingError if request fails or app not installed
+    public func requestPaykitSetup() async throws -> PaykitSetupResult {
+        guard isPubkyRingInstalled else {
+            throw PubkyRingError.appNotInstalled
+        }
+        
+        let actualDeviceId = self.deviceId
+        let callbackUrl = "\(bitkitScheme)://\(CallbackPaths.paykitSetup)"
+        let requestUrl = "\(pubkyRingScheme)://paykit-connect?deviceId=\(actualDeviceId)&callback=\(callbackUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? callbackUrl)"
+        
+        guard let url = URL(string: requestUrl) else {
+            throw PubkyRingError.invalidUrl
+        }
+        
+        Logger.info("Requesting Paykit setup from Pubky Ring", context: "PubkyRingBridge")
+        
+        let result = try await withCheckedThrowingContinuation { continuation in
+            self.pendingPaykitSetupContinuation = continuation
+            
+            DispatchQueue.main.async {
+                UIApplication.shared.open(url) { success in
+                    if !success {
+                        self.pendingPaykitSetupContinuation?.resume(throwing: PubkyRingError.failedToOpenApp)
+                        self.pendingPaykitSetupContinuation = nil
+                    }
+                }
+            }
+        }
+        
+        // Cache session
+        sessionCache[result.session.pubkey] = result.session
+        
+        // Cache and persist noise keypairs
+        let noiseKeyCache = NoiseKeyCache.shared
+        
+        if let keypair0 = result.noiseKeypair0 {
+            let cacheKey = "\(keypair0.deviceId):\(keypair0.epoch)"
+            keypairCache[cacheKey] = keypair0
+            if let secretKeyData = keypair0.secretKey.data(using: .utf8) {
+                noiseKeyCache.setKey(secretKeyData, deviceId: keypair0.deviceId, epoch: UInt32(keypair0.epoch))
+            }
+            Logger.debug("Stored noise keypair for epoch 0", context: "PubkyRingBridge")
+        }
+        
+        if let keypair1 = result.noiseKeypair1 {
+            let cacheKey = "\(keypair1.deviceId):\(keypair1.epoch)"
+            keypairCache[cacheKey] = keypair1
+            if let secretKeyData = keypair1.secretKey.data(using: .utf8) {
+                noiseKeyCache.setKey(secretKeyData, deviceId: keypair1.deviceId, epoch: UInt32(keypair1.epoch))
+            }
+            Logger.debug("Stored noise keypair for epoch 1", context: "PubkyRingBridge")
+        }
+        
+        Logger.info("Paykit setup complete for \(result.session.pubkey.prefix(12))...", context: "PubkyRingBridge")
+        
+        return result
     }
     
     /// Request a noise keypair derivation from Pubky-ring
@@ -522,6 +592,8 @@ public final class PubkyRingBridge {
             return handleFollowsCallback(url: url)
         case CallbackPaths.crossDeviceSession:
             return handleCrossDeviceSessionCallback(url: url)
+        case CallbackPaths.paykitSetup:
+            return handlePaykitSetupCallback(url: url)
         default:
             return false
         }
@@ -620,6 +692,81 @@ public final class PubkyRingBridge {
         return true
     }
     
+    private func handlePaykitSetupCallback(url: URL) -> Bool {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItems = components.queryItems else {
+            pendingPaykitSetupContinuation?.resume(throwing: PubkyRingError.invalidCallback)
+            pendingPaykitSetupContinuation = nil
+            return true
+        }
+        
+        var params: [String: String] = [:]
+        for item in queryItems {
+            if let value = item.value {
+                params[item.name] = value
+            }
+        }
+        
+        // Required session parameters
+        guard let pubkey = params["pubky"],
+              let sessionSecret = params["session_secret"],
+              let deviceId = params["device_id"] else {
+            pendingPaykitSetupContinuation?.resume(throwing: PubkyRingError.missingParameters)
+            pendingPaykitSetupContinuation = nil
+            return true
+        }
+        
+        // Parse capabilities
+        let capabilities = params["capabilities"]?.split(separator: ",").map(String.init) ?? []
+        
+        // Create session
+        let session = PubkySession(
+            pubkey: pubkey,
+            sessionSecret: sessionSecret,
+            capabilities: capabilities,
+            createdAt: Date(),
+            expiresAt: nil  // Sessions from paykit-connect don't expire
+        )
+        
+        // Parse noise keypair epoch 0 (optional but expected)
+        var keypair0: NoiseKeypair? = nil
+        if let publicKey0 = params["noise_public_key_0"],
+           let secretKey0 = params["noise_secret_key_0"] {
+            keypair0 = NoiseKeypair(
+                publicKey: publicKey0,
+                secretKey: secretKey0,
+                deviceId: deviceId,
+                epoch: 0
+            )
+        }
+        
+        // Parse noise keypair epoch 1 (optional)
+        var keypair1: NoiseKeypair? = nil
+        if let publicKey1 = params["noise_public_key_1"],
+           let secretKey1 = params["noise_secret_key_1"] {
+            keypair1 = NoiseKeypair(
+                publicKey: publicKey1,
+                secretKey: secretKey1,
+                deviceId: deviceId,
+                epoch: 1
+            )
+        }
+        
+        let result = PaykitSetupResult(
+            session: session,
+            deviceId: deviceId,
+            noiseKeypair0: keypair0,
+            noiseKeypair1: keypair1
+        )
+        
+        Logger.info("Paykit setup callback received for \(pubkey.prefix(12))...", context: "PubkyRingBridge")
+        
+        pendingPaykitSetupContinuation?.resume(returning: result)
+        pendingPaykitSetupContinuation = nil
+        
+        return true
+    }
+    
     private func handleProfileCallback(url: URL) -> Bool {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let queryItems = components.queryItems else {
@@ -644,7 +791,7 @@ public final class PubkyRingBridge {
         }
         
         // Build profile from response using PubkyProfile (DirectoryProfile is typealias)
-        let profile = BitkitCore.PubkyProfile(
+        let profile: DirectoryProfile = BitkitCore.PubkyProfile(
             name: params["name"]?.removingPercentEncoding,
             bio: params["bio"]?.removingPercentEncoding,
             image: params["avatar"]?.removingPercentEncoding,
@@ -956,6 +1103,27 @@ public struct NoiseKeypair: Codable {
     public let secretKey: String
     public let deviceId: String
     public let epoch: UInt64
+}
+
+/// Result from combined Paykit setup request
+/// Contains everything needed to operate Paykit: session + noise keys
+public struct PaykitSetupResult {
+    /// Homeserver session for authenticated storage access
+    public let session: PubkySession
+    
+    /// Device ID used for noise key derivation
+    public let deviceId: String
+    
+    /// X25519 keypair for epoch 0 (current)
+    public let noiseKeypair0: NoiseKeypair?
+    
+    /// X25519 keypair for epoch 1 (for rotation)
+    public let noiseKeypair1: NoiseKeypair?
+    
+    /// Check if noise keys are available
+    public var hasNoiseKeys: Bool {
+        noiseKeypair0 != nil
+    }
 }
 
 // MARK: - Errors
