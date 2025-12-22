@@ -14,12 +14,16 @@ struct SpendingConfirm: View {
     @State private var hideSwipeButton = false
     @State private var transactionFee: UInt64 = 0
 
+    private var currentOrder: IBtOrder {
+        transfer.uiState.order ?? order
+    }
+
     var lspFee: UInt64 {
-        order.feeSat - order.clientBalanceSat
+        currentOrder.feeSat - currentOrder.clientBalanceSat
     }
 
     var total: UInt64 {
-        order.feeSat + transactionFee
+        currentOrder.feeSat + transactionFee
     }
 
     var body: some View {
@@ -47,7 +51,7 @@ struct SpendingConfirm: View {
                 HStack {
                     FeeDisplayRow(
                         label: t("lightning__spending_confirm__amount"),
-                        amount: order.clientBalanceSat
+                        amount: currentOrder.clientBalanceSat
                     )
                     .frame(maxWidth: .infinity)
 
@@ -62,9 +66,9 @@ struct SpendingConfirm: View {
 
             if transfer.uiState.isAdvanced {
                 LightningChannel(
-                    capacity: order.lspBalanceSat + order.clientBalanceSat,
-                    localBalance: order.clientBalanceSat,
-                    remoteBalance: order.lspBalanceSat,
+                    capacity: currentOrder.lspBalanceSat + currentOrder.clientBalanceSat,
+                    localBalance: currentOrder.clientBalanceSat,
+                    remoteBalance: currentOrder.lspBalanceSat,
                     status: .open,
                     showLabels: true
                 )
@@ -89,7 +93,7 @@ struct SpendingConfirm: View {
 
             HStack(spacing: 16) {
                 CustomButton(title: t("common__learn_more"), size: .small) {
-                    navigation.navigate(.transferLearnMore(order: order))
+                    navigation.navigate(.transferLearnMore(order: currentOrder))
                 }
                 .accessibilityIdentifier("SpendingConfirmMore")
 
@@ -100,7 +104,7 @@ struct SpendingConfirm: View {
                     .accessibilityIdentifier("SpendingConfirmDefault")
                 } else {
                     CustomButton(title: t("common__advanced"), size: .small) {
-                        navigation.navigate(.spendingAdvanced(order: order))
+                        navigation.navigate(.spendingAdvanced(order: currentOrder))
                     }
                     .accessibilityIdentifier("SpendingConfirmAdvanced")
                 }
@@ -130,7 +134,7 @@ struct SpendingConfirm: View {
         isPaying = true
 
         do {
-            try await transfer.payOrder(order: order, speed: .fast)
+            try await transfer.payOrder(order: currentOrder, speed: .fast)
             try await Task.sleep(nanoseconds: 1_000_000_000)
 
             navigation.navigate(.settingUp)
@@ -153,13 +157,13 @@ struct SpendingConfirm: View {
             if let feeRates = try await coreService.blocktank.fees(refresh: true) {
                 let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
 
-                guard let address = order.payment?.onchain?.address else {
+                guard let address = currentOrder.payment?.onchain?.address else {
                     throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
                 }
 
                 let fee = try await wallet.calculateTotalFee(
                     address: address,
-                    amountSats: order.feeSat,
+                    amountSats: currentOrder.feeSat,
                     satsPerVByte: fastFeeRate
                 )
 
