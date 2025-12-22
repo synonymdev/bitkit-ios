@@ -147,10 +147,10 @@ class ChannelDetailsViewModel: ObservableObject {
             return connections
         }
 
-        let pendingOrders = orders.filter { order in
-            // Include orders that are created or paid but not yet opened
-            (order.state2 == .created || order.state2 == .paid) && paidOrderIds.contains(order.id)
-        }
+        let pendingOrders = Self.pendingOrders(
+            orders: orders,
+            paidOrderIds: paidOrderIds
+        )
 
         for order in pendingOrders {
             let fakeChannel = createFakeChannel(from: order)
@@ -158,6 +158,12 @@ class ChannelDetailsViewModel: ObservableObject {
         }
 
         return connections
+    }
+
+    static func pendingOrders(orders: [IBtOrder], paidOrderIds: Set<String>) -> [IBtOrder] {
+        orders.filter { order in
+            paidOrderIds.contains(order.id) && (order.state2 == .created || order.state2 == .paid)
+        }
     }
 
     /// Creates a fake channel from a Blocktank order for UI display purposes
