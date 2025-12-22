@@ -34,11 +34,15 @@ struct SpendingAdvancedView: View {
                 DisplayText(t("lightning__spending_advanced__title"), accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
 
-                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                    .onTapGesture {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
-                    }
-                    .padding(.top, 32)
+                NumberPadTextField(
+                    viewModel: amountViewModel,
+                    showConversion: false,
+                    testIdentifier: "SpendingAdvancedNumberField"
+                )
+                .onTapGesture {
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
+                }
+                .padding(.top, 32)
 
                 // Fee estimate
                 HStack(spacing: 4) {

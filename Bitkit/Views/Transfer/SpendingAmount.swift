@@ -103,6 +103,7 @@ struct SpendingAmount: View {
                 guard let max = maxTransferAmount else { return }
                 amountViewModel.updateFromSats(max, currency: currency)
             }
+            .accessibilityIdentifier("SpendingAmountMax")
         }
     }
 
