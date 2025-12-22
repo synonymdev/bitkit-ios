@@ -20,6 +20,10 @@ struct DevSettingsView: View {
                         }
                     }
 
+                    NavigationLink(value: Route.ldkDebug) {
+                        SettingsListLabel(title: "LDK")
+                    }
+
                     NavigationLink(value: Route.orders) {
                         SettingsListLabel(title: "Orders")
                     }
@@ -58,23 +62,6 @@ struct DevSettingsView: View {
 
                     Button {
                         Task {
-                            do {
-                                try await notificationManager.sendTestNotification()
-                            } catch {
-                                Logger.error(error, context: "failed to test push notification")
-                                app.toast(
-                                    type: .error,
-                                    title: "Error",
-                                    description: "Failed to send test notification: \(error)"
-                                )
-                            }
-                        }
-                    } label: {
-                        SettingsListLabel(title: "Test Push Notification", rightIcon: nil)
-                    }
-
-                    Button {
-                        Task {
                             guard let zipURL = LogService.shared.zipLogs() else {
                                 app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
                                 return
@@ -96,6 +83,23 @@ struct DevSettingsView: View {
                         }
                     } label: {
                         SettingsListLabel(title: "Export Logs", rightIcon: nil)
+                    }
+
+                    Button {
+                        Task {
+                            do {
+                                try await notificationManager.sendTestNotification()
+                            } catch {
+                                Logger.error(error, context: "failed to test push notification")
+                                app.toast(
+                                    type: .error,
+                                    title: "Error",
+                                    description: "Failed to send test notification: \(error)"
+                                )
+                            }
+                        }
+                    } label: {
+                        SettingsListLabel(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {

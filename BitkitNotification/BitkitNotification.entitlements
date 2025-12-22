@@ -9,6 +9,9 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)to.bitkit</string>
+		<string>$(AppIdentifierPrefix)to.bitkit.signet</string>
+		<string>$(AppIdentifierPrefix)to.bitkit.testnet</string>
+		<string>$(AppIdentifierPrefix)to.bitkit.regtest</string>
 	</array>
 </dict>
 </plist>

@@ -85,7 +85,6 @@ class BackupService {
 
             guard shouldStart == true else { return }
 
-            try? await vssBackupClient.setup()
             Logger.debug("Start observing backup statuses and data store changes", context: "BackupService")
             startBackupStatusObservers()
             startDataStoreListeners()
@@ -130,8 +129,6 @@ class BackupService {
             }
 
             do {
-                try await vssBackupClient.setup()
-
                 let data = try await getBackupDataBytes(category: category)
                 let _ = try await vssBackupClient.putObject(key: category.rawValue, data: data)
 

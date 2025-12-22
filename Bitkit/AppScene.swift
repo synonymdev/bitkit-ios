@@ -239,7 +239,7 @@ struct AppScene: View {
             // Schedule full backup after wallet create/restore to prevent epoch dates in backup status
             await BackupService.shared.scheduleFullBackup()
         } catch {
-            Logger.error("Failed to start wallet")
+            Logger.error(error, context: "Failed to start wallet")
             Haptics.notify(.error)
         }
     }

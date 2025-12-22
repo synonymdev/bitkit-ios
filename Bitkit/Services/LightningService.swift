@@ -41,9 +41,11 @@ class LightningService {
 
         Logger.debug("Using LDK storage path: \(ldkStoragePath)")
 
-        config.trustedPeers0conf = Env.trustedLnPeers.map(\.nodeId)
+        let trustedPeersIds = Env.trustedLnPeers.map(\.nodeId)
+
+        config.trustedPeers0conf = trustedPeersIds
         config.anchorChannelsConfig = .init(
-            trustedPeersNoReserve: Env.trustedLnPeers.map(\.nodeId),
+            trustedPeersNoReserve: trustedPeersIds,
             perChannelReserveSats: 1
         )
         config.includeUntrustedPendingInSpendable = true
@@ -569,6 +571,27 @@ class LightningService {
         } catch {
             Logger.error(error, context: "failed to load ldk log file: \(logFilePath)")
         }
+    }
+
+    func logNetworkGraphInfo() async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let nodeStatus = node.status()
+        let networkGraph = node.networkGraph()
+        let allNodes = networkGraph.listNodes()
+        let lastRgsSync = nodeStatus.latestRgsSnapshotTimestamp
+
+        var lastRgsSyncString = "Never"
+        if let lastRgsSync {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
+            lastRgsSyncString = dateFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(lastRgsSync)))
+        }
+
+        return "Nodes: \(allNodes.count), Last Synced: \(lastRgsSyncString)"
     }
 
     // MARK: Logging helpers
