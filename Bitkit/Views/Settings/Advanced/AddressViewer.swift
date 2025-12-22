@@ -331,7 +331,11 @@ struct AddressViewer: View {
             await MainActor.run {
                 addressBalances = balances
                 isLoadingBalances = false
-                app.toast(type: .success, title: t("settings__addr__balances_updated_title"), description: t("settings__addr__balances_updated_description"))
+                app.toast(
+                    type: .success,
+                    title: t("settings__addr__balances_updated_title"),
+                    description: t("settings__addr__balances_updated_description")
+                )
             }
         } catch {
             await MainActor.run {

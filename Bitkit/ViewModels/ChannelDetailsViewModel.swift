@@ -14,10 +14,12 @@ class ChannelDetailsViewModel: ObservableObject {
     @Published var error: Error? = nil
 
     private let coreService: CoreService
+    private let transferStorage: TransferStorage
 
     /// Private initializer for the singleton instance
-    private init(coreService: CoreService = .shared) {
+    private init(coreService: CoreService = .shared, transferStorage: TransferStorage = .shared) {
         self.coreService = coreService
+        self.transferStorage = transferStorage
     }
 
     /// Find a channel by ID, checking open channels, pending channels, pending orders, then closed channels
@@ -124,6 +126,22 @@ class ChannelDetailsViewModel: ObservableObject {
             connections.append(contentsOf: channels.filter { !$0.isChannelReady })
         }
 
+        // Only show pending orders that have been paid (aligns with Android/RN behavior)
+        let paidOrderIds: Set<String> = {
+            guard let activeTransfers = try? transferStorage.getActiveTransfers() else {
+                return []
+            }
+            return Set(
+                activeTransfers
+                    .filter { $0.type.isToSpending() }
+                    .compactMap(\.lspOrderId)
+            )
+        }()
+
+        if paidOrderIds.isEmpty {
+            return connections
+        }
+
         // Create fake channels from pending orders
         guard let orders = try? await coreService.blocktank.orders(refresh: false) else {
             return connections
@@ -131,7 +149,7 @@ class ChannelDetailsViewModel: ObservableObject {
 
         let pendingOrders = orders.filter { order in
             // Include orders that are created or paid but not yet opened
-            order.state2 == .created || order.state2 == .paid
+            (order.state2 == .created || order.state2 == .paid) && paidOrderIds.contains(order.id)
         }
 
         for order in pendingOrders {
