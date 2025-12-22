@@ -105,7 +105,7 @@ struct RecoveryScreen: View {
     private func onExportLogs() {
         Task {
             guard let zipURL = LogService.shared.zipLogs() else {
-                app.toast(type: .error, title: t("common__error"), description: t("settings__logs__zip_failed"))
+                app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
                 return
             }
 
@@ -215,8 +215,8 @@ struct RecoveryScreen: View {
             } catch {
                 app.toast(
                     type: .error,
-                    title: t("security__wipe_failed_title"),
-                    description: t("security__wipe_failed_description")
+                    title: "Wipe Failed",
+                    description: "Bitkit was unable to reset your wallet data. Please try again."
                 )
             }
         }

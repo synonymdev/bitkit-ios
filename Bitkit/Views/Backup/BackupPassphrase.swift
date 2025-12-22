@@ -33,7 +33,7 @@ struct BackupPassphrase: View {
                 .frame(maxWidth: .infinity)
 
                 BodySText(
-                    t("security__pass_never_share"),
+                    tTodo("<accent>Never share your passphrase</accent> with anyone, as it may result in loss of funds. Keep it secret!"),
                     accentColor: .brandAccent,
                     accentFont: Fonts.bold
                 )

@@ -6,15 +6,17 @@ struct LnurlWithdrawFailure: View {
     @EnvironmentObject var sheets: SheetViewModel
     let amount: UInt64
 
+    // TODO: add localized strings
+
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("other__lnurl_withdr_failure_title"), showBackButton: true)
+            SheetHeader(title: "Withdrawal Failed", showBackButton: true)
 
             MoneyStack(sats: Int(amount), showSymbol: true)
                 .padding(.top, 16)
                 .padding(.bottom, 42)
 
-            BodyMText(t("other__lnurl_withdr_failure_text"))
+            BodyMText("Your withdrawal was unsuccessful. Please scan the QR code again or contact support.")
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Spacer()
@@ -28,11 +30,11 @@ struct LnurlWithdrawFailure: View {
             Spacer()
 
             HStack(alignment: .center, spacing: 16) {
-                CustomButton(title: t("lightning__support"), variant: .secondary) {
+                CustomButton(title: "Support", variant: .secondary) {
                     onSupport()
                 }
 
-                CustomButton(title: t("wallet__recipient_scan")) {
+                CustomButton(title: "Scan QR") {
                     onScan()
                 }
             }

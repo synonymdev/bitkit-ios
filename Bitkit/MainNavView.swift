@@ -189,8 +189,8 @@ struct MainNavView: View {
                         Logger.error("Failed to sync push notifications with backend: \(error)")
                         app.toast(
                             type: .error,
-                            title: t("other__notification_registration_failed_title"),
-                            description: t("other__notification_registration_failed_description")
+                            title: tTodo("Notification Registration Failed"),
+                            description: tTodo("Bitkit was unable to register for push notifications.")
                         )
                     }
                 }
@@ -210,8 +210,8 @@ struct MainNavView: View {
                             Logger.error("Failed to sync push notifications: \(error)")
                             app.toast(
                                 type: .error,
-                                title: t("other__notification_registration_failed_title"),
-                                description: t("other__notification_registration_failed_description")
+                                title: tTodo("Notification Registration Failed"),
+                                description: tTodo("Bitkit was unable to register for push notifications.")
                             )
                         }
                     }
@@ -271,14 +271,14 @@ struct MainNavView: View {
             case .contacts:
                 if app.hasSeenContactsIntro {
                     // ContactsView()
-                    Text(t("common__coming_soon"))
+                    Text("Coming Soon")
                 } else {
                     ContactsIntroView()
                 }
             case .profile:
                 if app.hasSeenProfileIntro {
                     // ProfileView()
-                    Text(t("common__coming_soon"))
+                    Text("Coming Soon")
                 } else {
                     ProfileIntroView()
                 }
@@ -306,7 +306,7 @@ struct MainNavView: View {
             case let .activityDetail(activity): ActivityItemView(item: activity)
             case let .activityExplorer(activity): ActivityExplorerView(item: activity)
             case .buyBitcoin: BuyBitcoinView()
-            case .contacts: Text(t("common__coming_soon"))
+            case .contacts: Text("Coming Soon")
             case .contactsIntro: ContactsIntroView()
             case .savingsWallet: SavingsWalletView()
             case .spendingWallet: SpendingWalletView()
@@ -327,7 +327,7 @@ struct MainNavView: View {
             case .savingsConfirm: SavingsConfirmView()
             case .savingsAdvanced: SavingsAdvancedView()
             case .savingsProgress: SavingsProgressView()
-            case .profile: Text(t("common__coming_soon"))
+            case .profile: Text("Coming Soon")
             case .profileIntro: ProfileIntroView()
             case .scanner: ScannerScreen()
 
