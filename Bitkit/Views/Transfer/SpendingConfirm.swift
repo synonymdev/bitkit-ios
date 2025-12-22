@@ -15,7 +15,7 @@ struct SpendingConfirm: View {
     @State private var transactionFee: UInt64 = 0
 
     private var currentOrder: IBtOrder {
-        transfer.uiState.order ?? order
+        transfer.displayOrder(for: order)
     }
 
     var lspFee: UInt64 {
