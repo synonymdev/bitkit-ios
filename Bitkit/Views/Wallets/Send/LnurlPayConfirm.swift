@@ -74,7 +74,7 @@ struct LnurlPayConfirm: View {
                                 .padding(.trailing, 6)
 
                             // TODO: get actual fee
-                            BodySSBText(t("wallet__lnurl_pay_confirm__fee_instant"))
+                            BodySSBText("Instant (±$0.02)")
                         }
                     }
                     .padding(.vertical)

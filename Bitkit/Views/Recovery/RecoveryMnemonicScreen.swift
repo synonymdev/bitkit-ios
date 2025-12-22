@@ -97,8 +97,8 @@ struct RecoveryMnemonicScreen: View {
             } else {
                 app.toast(
                     type: .error,
-                    title: t("security__recovery_mnemonic_error_title"),
-                    description: t("security__recovery_mnemonic_error_text")
+                    title: "Mnemonic Error",
+                    description: "Unable to load mnemonic phrase"
                 )
             }
 
@@ -106,8 +106,8 @@ struct RecoveryMnemonicScreen: View {
         } catch {
             app.toast(
                 type: .error,
-                title: t("security__recovery_mnemonic_error_title"),
-                description: t("security__recovery_mnemonic_error_text")
+                title: "Mnemonic Error",
+                description: "Unable to load mnemonic phrase"
             )
         }
 

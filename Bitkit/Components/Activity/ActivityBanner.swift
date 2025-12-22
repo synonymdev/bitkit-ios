@@ -26,7 +26,7 @@ struct ActivityBanner: View {
                 .frame(width: 20, height: 20)
                 .foregroundColor(accentColor)
 
-            Text(t("wallet__activity_transfer_in_progress"))
+            Text(tTodo("TRANSFER IN PROGRESS"))
                 .font(Fonts.black(size: 20))
                 .foregroundColor(.textPrimary)
                 .kerning(0)

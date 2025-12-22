@@ -150,7 +150,7 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
-        toast(type: .error, title: t("common__error"), description: error.localizedDescription)
+        toast(type: .error, title: "Error", description: error.localizedDescription)
     }
 
     func hideToast() {
@@ -172,7 +172,7 @@ extension AppViewModel {
         case let .onChain(invoice):
             if let lnInvoice = invoice.params?["lightning"] {
                 guard lightningService.status?.isRunning == true else {
-                    toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+                    toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                     return
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
@@ -188,7 +188,7 @@ extension AppViewModel {
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
             guard lightningService.status?.isRunning == true else {
-                toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
 
@@ -196,7 +196,7 @@ extension AppViewModel {
             if lightningService.canSend(amountSats: invoice.amountSatoshis) {
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
-                toast(type: .error, title: t("wallet__send_insufficient_funds_title"), description: t("wallet__send_insufficient_funds_description"))
+                toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
             }
         case let .lnurlPay(data: lnurlPayData):
             Logger.debug("LNURL: \(lnurlPayData)")
@@ -212,7 +212,7 @@ extension AppViewModel {
             handleLnurlAuth(lnurlAuthData, lnurl: uri)
         case let .nodeId(url, network):
             guard lightningService.status?.isRunning == true else {
-                toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
 
@@ -223,7 +223,7 @@ extension AppViewModel {
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
             Logger.warn("Unhandled invoice type: \(data)")
-            toast(type: .error, title: t("other__unsupported_invoice_title"), description: t("other__unsupported_invoice_description"))
+            toast(type: .error, title: "Unsupported", description: "This type of invoice is not supported yet")
         }
     }
 
@@ -248,7 +248,7 @@ extension AppViewModel {
     private func handleLnurlPayInvoice(_ data: LnurlPayData) {
         // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
-            toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
@@ -274,7 +274,7 @@ extension AppViewModel {
     private func handleLnurlWithdraw(_ data: LnurlWithdrawData) {
         // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
-            toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
@@ -314,7 +314,7 @@ extension AppViewModel {
     private func handleLnurlChannel(_ data: LnurlChannelData) {
         // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
-            toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
@@ -325,7 +325,7 @@ extension AppViewModel {
     private func handleLnurlAuth(_ data: LnurlAuthData, lnurl: String) {
         // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
-            toast(type: .error, title: t("other__lightning_not_running_title"), description: t("other__lightning_not_running_description"))
+            toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 

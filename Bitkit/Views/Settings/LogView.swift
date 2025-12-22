@@ -32,12 +32,12 @@ struct LogView: View {
             .disabled(logFiles.isEmpty)
         )
         .alert("Delete All Logs", isPresented: $showingDeleteConfirmation) {
-            Button(t("common__cancel"), role: .cancel) {}
-            Button(t("common__delete"), role: .destructive) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
                 deleteAllLogs()
             }
         } message: {
-            Text(t("settings__logs__delete_confirm"))
+            Text("Are you sure you want to delete all log files? This action cannot be undone.")
         }
         .task {
             loadLogFiles()

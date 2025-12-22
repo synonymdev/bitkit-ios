@@ -41,7 +41,7 @@ struct ReceiveTag: View {
 
         do {
             guard let paymentId = await wallet.paymentId(), !paymentId.isEmpty else {
-                app.toast(type: .error, title: t("wallet__tags_add_error_header"), description: t("wallet__tags_add_error_no_payment_id"))
+                app.toast(type: .error, title: "Failed to add tag", description: "Payment ID not available")
                 return
             }
 
@@ -57,7 +57,7 @@ struct ReceiveTag: View {
                 navigationPath.removeLast()
             }
         } catch {
-            app.toast(type: .error, title: t("wallet__tags_add_error_header"), description: error.localizedDescription)
+            app.toast(type: .error, title: "Failed to add tag", description: error.localizedDescription)
         }
     }
 }

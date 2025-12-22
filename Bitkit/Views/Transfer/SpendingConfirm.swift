@@ -72,7 +72,7 @@ struct SpendingConfirm: View {
             }
 
             HStack(alignment: .center, spacing: 0) {
-                BodyMText(t("lightning__spending_confirm__background_setup"), textColor: .textPrimary)
+                BodyMText(tTodo("Set up in background"), textColor: .textPrimary)
 
                 Spacer()
 

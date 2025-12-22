@@ -46,7 +46,7 @@ struct LnurlChannel: View {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    BodyMText(t("other__lnurl_channel_loading"), textColor: .textSecondary)
+                    BodyMText("Loading channel information...", textColor: .textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if channelInfo != nil {
@@ -95,7 +95,7 @@ struct LnurlChannel: View {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
                         .foregroundColor(.orange)
-                    BodyMText(t("other__lnurl_channel_load_failed"), textColor: .textSecondary)
+                    BodyMText("Failed to load channel information", textColor: .textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -136,8 +136,8 @@ struct LnurlChannel: View {
         guard let nodeId = wallet.nodeId else {
             app.toast(
                 type: .error,
-                title: t("common__error"),
-                description: t("other__lnurl_channel_node_id_missing")
+                title: "Error",
+                description: "Node ID is missing"
             )
             return
         }

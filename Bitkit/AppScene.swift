@@ -187,7 +187,7 @@ struct AppScene: View {
 
     private func handleCurrencyStaleData(_: Bool) {
         if currency.hasStaleData {
-            app.toast(type: .error, title: t("other__rates_unavailable_title"), description: t("other__rates_unavailable_description"))
+            app.toast(type: .error, title: "Rates currently unavailable", description: "An error has occurred. Please try again later.")
         }
     }
 
