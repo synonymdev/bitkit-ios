@@ -91,11 +91,7 @@ struct ReceiveCjitAmount: View {
             }
         } else {
             // Show error if node is not running or timed out
-            app.toast(
-                type: .warning,
-                title: t("wallet__receive_lightning_not_ready_title"),
-                description: t("wallet__receive_lightning_not_ready_description")
-            )
+            app.toast(type: .warning, title: "Lightning not ready", description: "Lightning node must be running to create an invoice")
         }
     }
 }

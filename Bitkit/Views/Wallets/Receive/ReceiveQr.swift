@@ -116,7 +116,7 @@ struct ReceiveQr: View {
                             }
                         }
                     } else {
-                        CustomButton(title: showDetails ? t("common__qr_code") : t("common__show_details")) {
+                        CustomButton(title: showDetails ? tTodo("QR Code") : tTodo("Show Details")) {
                             showDetails.toggle()
                         }
                         .accessibilityIdentifier(showDetails ? "QRCode" : "ShowDetails")
@@ -210,10 +210,10 @@ struct ReceiveQr: View {
 
     var cjitOnboarding: some View {
         VStack(alignment: .leading, spacing: 0) {
-            DisplayText(t("wallet__receive_spending_title"), accentColor: .purpleAccent)
+            DisplayText(tTodo("Receive on <accent>spending balance</accent>"), accentColor: .purpleAccent)
                 .padding(.bottom, 12)
 
-            BodyMText(t("wallet__receive_spending_description"))
+            BodyMText(tTodo("Enjoy instant and cheap\ntransactions with friends, family,\nand merchants."))
 
             Spacer()
 

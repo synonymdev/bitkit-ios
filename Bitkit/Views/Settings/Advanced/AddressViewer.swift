@@ -223,7 +223,7 @@ struct AddressViewer: View {
                             // Load More Button
                             if !addresses.isEmpty {
                                 CustomButton(
-                                    title: t("settings__addr__gen_20"),
+                                    title: "Generate 20 More",
                                     variant: .secondary,
                                     size: .small,
                                     isLoading: isLoading,
@@ -282,7 +282,7 @@ struct AddressViewer: View {
 
         } catch {
             await MainActor.run {
-                app.toast(type: .error, title: t("settings__addr__error_loading_title"), description: error.localizedDescription)
+                app.toast(type: .error, title: "Error Loading Addresses", description: error.localizedDescription)
                 isLoading = false
             }
         }
@@ -313,7 +313,7 @@ struct AddressViewer: View {
 
         } catch {
             await MainActor.run {
-                app.toast(type: .error, title: t("settings__addr__error_loading_more_title"), description: error.localizedDescription)
+                app.toast(type: .error, title: "Error Loading More Addresses", description: error.localizedDescription)
                 isLoading = false
             }
         }
@@ -331,15 +331,11 @@ struct AddressViewer: View {
             await MainActor.run {
                 addressBalances = balances
                 isLoadingBalances = false
-                app.toast(
-                    type: .success,
-                    title: t("settings__addr__balances_updated_title"),
-                    description: t("settings__addr__balances_updated_description")
-                )
+                app.toast(type: .success, title: "Balances Updated", description: "Address balances have been refreshed")
             }
         } catch {
             await MainActor.run {
-                app.toast(type: .error, title: t("settings__addr__error_checking_balances_title"), description: error.localizedDescription)
+                app.toast(type: .error, title: "Error Checking Balances", description: error.localizedDescription)
                 isLoadingBalances = false
             }
         }

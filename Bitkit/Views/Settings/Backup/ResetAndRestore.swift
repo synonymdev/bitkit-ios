@@ -69,8 +69,8 @@ struct ResetAndRestore: View {
             } catch {
                 app.toast(
                     type: .error,
-                    title: t("security__wipe_failed_title"),
-                    description: t("security__wipe_failed_description")
+                    title: "Wipe Failed",
+                    description: "Bitkit was unable to reset your wallet data. Please try again."
                 )
             }
         }

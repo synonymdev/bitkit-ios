@@ -319,7 +319,7 @@ struct LightningConnectionsView: View {
     private func onExportLogs() {
         Task {
             guard let zipURL = LogService.shared.zipLogs() else {
-                app.toast(type: .error, title: t("common__error"), description: t("settings__logs__zip_failed"))
+                app.toast(type: .error, title: "Error", description: "Failed to create log zip file")
                 return
             }
 

@@ -49,7 +49,7 @@ struct SendEnterManuallyView: View {
 
             Spacer(minLength: 16)
 
-            CustomButton(title: t("common__continue"), isDisabled: !app.isManualEntryInputValid) {
+            CustomButton(title: "Continue", isDisabled: !app.isManualEntryInputValid) {
                 await handleContinue()
             }
             .buttonBottomPadding(isFocused: isTextEditorFocused)
