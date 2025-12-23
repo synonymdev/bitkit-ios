@@ -92,7 +92,7 @@ struct OnboardingSlider: View {
                         accentColor: .greenAccent
                     )
                     .tag(2)
-                    .accessibilityIdentifier("Slide3")
+                    .accessibilityIdentifier("Slide2")
 
                     CreateWalletView()
                         .tag(3)
