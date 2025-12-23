@@ -99,6 +99,7 @@ struct SavingsProgressContentView: View {
                     .frame(width: 256, height: 256)
                     .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityIdentifierIfPresent(progressState == .success ? "TransferSuccess" : nil)
             }
 
             Spacer()

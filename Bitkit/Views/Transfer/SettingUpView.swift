@@ -177,6 +177,7 @@ struct SettingUpView: View {
                         .frame(width: 256, height: 256)
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityIdentifier("TransferSuccess")
                 }
 
                 Spacer()
