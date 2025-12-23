@@ -179,6 +179,33 @@ final class NumberPadTests: XCTestCase {
         XCTAssertEqual(viewModel.amountSats, 0)
     }
 
+    func testDeleteAfterMaxAmountModernBitcoin() {
+        let viewModel = AmountInputViewModel()
+        let currency = mockCurrency(primaryDisplay: .bitcoin, displayUnit: .modern)
+
+        // Set max amount using updateFromSats (simulates tapping max button)
+        // This creates formatted text with spaces (e.g., "100 000 000")
+        viewModel.updateFromSats(100_000_000, currency: currency)
+        XCTAssertEqual(viewModel.displayText, "100 000 000")
+        XCTAssertEqual(viewModel.amountSats, 100_000_000)
+
+        // Delete should remove digits, not spaces
+        // After first delete, should be "10 000 000" (one digit removed)
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.displayText, "10 000 000")
+        XCTAssertEqual(viewModel.amountSats, 10_000_000)
+
+        // Delete again
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.displayText, "1 000 000")
+        XCTAssertEqual(viewModel.amountSats, 1_000_000)
+
+        // Delete again
+        viewModel.handleNumberPadInput("delete", currency: currency)
+        XCTAssertEqual(viewModel.displayText, "100 000")
+        XCTAssertEqual(viewModel.amountSats, 100_000)
+    }
+
     // MARK: - Leading Zero Tests
 
     func testLeadingZeroBehavior() {
