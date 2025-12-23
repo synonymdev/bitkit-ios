@@ -9,33 +9,6 @@ enum Env {
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
     static let isUnitTest = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    #if E2E_BUILD
-        static let isE2E = true
-    #else
-        static let isE2E = ProcessInfo.processInfo.environment["E2E"] == "true"
-    #endif
-    static let dustLimit = 547
-    static let msatsPerSat: UInt64 = 1000
-
-    #if CHECK_GEOBLOCK
-        static let isGeoblockingEnabled = true
-    #else
-        static let isGeoblockingEnabled = ProcessInfo.processInfo.environment["GEO"] == "true"
-    #endif
-
-    /// The current execution context of the app
-    static var currentExecutionContext: ExecutionContext {
-        return Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true ? .pushNotificationExtension : .foregroundApp
-    }
-
-    // {Team ID}.{Keychain Group}
-    static let keychainGroup = "KYH47R284B.to.bitkit" // TODO: needs to change for regtest/mainnet so we don't use same group
-
-    #if targetEnvironment(simulator)
-        static let isSim = true
-    #else
-        static let isSim = false
-    #endif
 
     #if DEBUG
         static let isDebug = true
@@ -43,22 +16,60 @@ enum Env {
         static let isDebug = false
     #endif
 
+    static var isE2E: Bool {
+        #if E2E_BUILD
+            return true
+        #else
+            return ProcessInfo.processInfo.environment["E2E"] == "true"
+        #endif
+    }
+
+    static var isGeoblockingEnabled: Bool {
+        #if CHECK_GEOBLOCK
+            return true
+        #else
+            return ProcessInfo.processInfo.environment["GEO"] == "true"
+        #endif
+    }
+
+    /// The current execution context of the app
+    static var currentExecutionContext: ExecutionContext {
+        let isNotificationExtension = Bundle.main.bundleIdentifier?.lowercased().contains("notification") == true
+        return isNotificationExtension ? .pushNotificationExtension : .foregroundApp
+    }
+
+    // {Team ID}.{Keychain Group}
+    /// Returns the keychain access group based on the current network
+    static var keychainGroup: String {
+        let base = "KYH47R284B.to.bitkit"
+        let networkSuffix = networkName(network)
+        return networkSuffix == "bitcoin" ? base : "\(base).\(networkSuffix)"
+    }
+
     // MARK: wallet services
 
-    static let network: LDKNode.Network = .regtest
+    static let network: LDKNode.Network = (isE2E || isUnitTest) ? .regtest : .bitcoin
+    static let ldkLogLevel = LDKNode.LogLevel.trace
+
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this
 
     /// Converts the LDKNode.Network to BitkitCore.Network for use with bitkitcore functions
     static var bitkitCoreNetwork: BitkitCore.Network {
         switch network {
-        case .bitcoin:
-            return .bitcoin
-        case .testnet:
-            return .testnet
-        case .signet:
-            return .signet
-        case .regtest:
-            return .regtest
+        case .bitcoin: .bitcoin
+        case .testnet: .testnet
+        case .signet: .signet
+        case .regtest: .regtest
+        }
+    }
+
+    /// Returns the lowercase name of the network (e.g., "bitcoin", "testnet", "signet", "regtest")
+    private static func networkName(_ network: LDKNode.Network) -> String {
+        switch network {
+        case .bitcoin: "bitcoin"
+        case .testnet: "testnet"
+        case .signet: "signet"
+        case .regtest: "regtest"
         }
     }
 
@@ -74,27 +85,10 @@ enum Env {
         }
 
         switch network {
-        case .bitcoin:
-            return "ssl://35.187.18.233:8900"
-        case .signet:
-            fatalError("Signet network not implemented")
-        case .testnet:
-            return "ssl://electrum.blockstream.info:60002"
-        case .regtest:
-            return "tcp://34.65.252.32:18483"
-        }
-    }
-
-    static var esploraServerUrl: String {
-        switch network {
-        case .regtest:
-            return "https://bitkit.stag0.blocktank.to/electrs"
-        case .bitcoin:
-            fatalError("Bitcoin network not implemented")
-        case .testnet:
-            fatalError("Testnet network not implemented")
-        case .signet:
-            fatalError("Signet network not implemented")
+        case .bitcoin: return "ssl://fulcrum.bitkit.blocktank.to:8900"
+        case .signet: return "ssl://mempool.space:60602"
+        case .testnet: return "ssl://electrum.blockstream.info:60002"
+        case .regtest: return "ssl://fulcrum.bitkit.stag0.blocktank.to:18484"
         }
     }
 
@@ -112,83 +106,50 @@ enum Env {
     }
 
     static func ldkStorage(walletIndex: Int) -> URL {
-        switch network {
-        case .regtest:
-            return
-                appStorageUrl
-                    .appendingPathComponent("regtest")
-                    .appendingPathComponent("wallet\(walletIndex)/ldk")
-        case .bitcoin:
-            return
-                appStorageUrl
-                    .appendingPathComponent("bitcoin")
-                    .appendingPathComponent("wallet\(walletIndex)/ldk")
-        case .testnet:
-            fatalError("Testnet network not implemented")
-        case .signet:
-            fatalError("Signet network not implemented")
-        }
+        appStorageUrl
+            .appendingPathComponent(networkName(network))
+            .appendingPathComponent("wallet\(walletIndex)/ldk")
     }
 
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
-        switch network {
-        case .regtest:
-            return
-                appStorageUrl
-                    .appendingPathComponent("regtest")
-                    .appendingPathComponent("wallet\(walletIndex)/core")
-        case .bitcoin:
-            return
-                appStorageUrl
-                    .appendingPathComponent("bitcoin")
-                    .appendingPathComponent("wallet\(walletIndex)/core")
-        case .testnet:
-            fatalError("Testnet network not implemented")
-        case .signet:
-            fatalError("Signet network not implemented")
-        }
+        appStorageUrl
+            .appendingPathComponent(networkName(network))
+            .appendingPathComponent("wallet\(walletIndex)/core")
     }
 
     static var ldkRgsServerUrl: String? {
         switch network {
-        case .regtest:
-            return "https://bitkit.stag0.blocktank.to/rgs/snapshot"
-        case .bitcoin:
-            return "https://rgs.blocktank.to/snapshot"
-        case .testnet:
-            return "https://rapidsync.lightningdevkit.org/testnet/snapshot"
-        case .signet:
-            return nil
+        case .bitcoin: "https://rgs.blocktank.to/snapshot"
+        case .signet: "https://rapidsync.lightningdevkit.org/signet/snapshot"
+        case .testnet: "https://rapidsync.lightningdevkit.org/testnet/snapshot"
+        case .regtest: "https://bitkit.stag0.blocktank.to/rgs/snapshot"
         }
     }
 
     // TODO: remove this to load from BT API instead
     static var trustedLnPeers: [LnPeer] {
         switch network {
-        case .regtest:
-            return [
-                // Staging Blocktank node
-                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400),
-            ]
         case .bitcoin:
+            return [
+                .init(nodeId: "039b8b4dd1d88c2c5db374290cda397a8f5d79f312d6ea5d5bfdfc7c6ff363eae3", host: "34.65.111.104", port: 9735),
+                .init(nodeId: "03816141f1dce7782ec32b66a300783b1d436b19777e7c686ed00115bd4b88ff4b", host: "34.65.191.64", port: 9735),
+                .init(nodeId: "02a371038863605300d0b3fc9de0cf5ccb57728b7f8906535709a831b16e311187", host: "34.65.186.40", port: 9735),
+            ]
+        case .signet:
             return []
         case .testnet:
             return []
-        case .signet:
-            return []
+        case .regtest:
+            return [
+                .init(nodeId: "028a8910b0048630d4eb17af25668cdd7ea6f2d8ae20956e7a06e2ae46ebcb69fc", host: "34.65.86.104", port: 9400),
+            ]
         }
     }
 
     static var blocktankBaseUrl: String {
         switch network {
-        case .regtest:
-            return "https://api.stag0.blocktank.to"
-        case .bitcoin:
-            fatalError("Bitcoin network not implemented")
-        case .testnet:
-            fatalError("Testnet network not implemented")
-        case .signet:
-            fatalError("Signet network not implemented")
+        case .bitcoin: "https://api1.blocktank.to/api"
+        default: "https://api.stag0.blocktank.to/"
         }
     }
 
@@ -197,11 +158,19 @@ enum Env {
     }
 
     static var blocktankClientServer: String {
-        "\(blocktankBaseUrl)/blocktank/api/v2"
+        switch network {
+        case .bitcoin: "\(blocktankBaseUrl)"
+        default: "\(blocktankBaseUrl)/blocktank/api/v2"
+        }
     }
 
     static var btcRatesServer: String {
-        "https://bitkit.stag0.blocktank.to/fx/rates/btc" // TODO: switch to prod when available
+        switch network {
+        case .bitcoin: "https://blocktank.synonym.to/fx/rates/btc"
+        case .signet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
+        case .testnet: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
+        case .regtest: "https://bitkit.stag0.blocktank.to/fx/rates/btc"
+        }
     }
 
     static let fxRateRefreshInterval: TimeInterval = 2 * 60 // 2 minutes
@@ -217,45 +186,39 @@ enum Env {
         .wakeToTimeout,
     ]
 
-    static var vssServerUrl: String {
-        switch network {
-        case .bitcoin:
-            fatalError("Bitcoin network not implemented")
-        default:
-            return "https://bitkit.stag0.blocktank.to/vss_rs_auth"
-        }
+    static var vssStoreIdPrefix: String {
+        "bitkit_v1_\(networkName(network))"
     }
 
-    static var vssStoreIdPrefix: String {
+    static var vssServerUrl: String {
         switch network {
-        case .bitcoin:
-            fatalError("Bitcoin network not implemented")
-        case .regtest:
-            return "bitkit_v1_regtest"
-        case .testnet:
-            return "bitkit_v1_testnet"
-        case .signet:
-            return "bitkit_v1_signet"
+        case .bitcoin: "https://bitkit.to/vss_rs_auth"
+        default: "https://bitkit.stag0.blocktank.to/vss_rs_auth"
         }
     }
 
     static var lnurlAuthServerUrl: String {
         switch network {
-        case .bitcoin:
-            fatalError("LNURL-auth server not implemented for mainnet")
-        default:
-            return "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
+        case .bitcoin: "https://bitkit.to/lnurl_auth/auth"
+        default: "https://bitkit.stag0.blocktank.to/lnurl_auth/auth"
+        }
+    }
+
+    static var blockExplorerUrl: String {
+        switch network {
+        case .bitcoin: "https://mempool.space"
+        case .signet: "https://mutinynet.com"
+        case .testnet: "https://mempool.space/testnet"
+        case .regtest: "https://mempool.bitkit.stag0.blocktank.to"
         }
     }
 
     static var logDirectory: String {
-        return appStorageUrl.appendingPathComponent("logs").path
+        appStorageUrl.appendingPathComponent("logs").path
     }
 
-    static var ldkLogLevel: LDKNode.LogLevel {
-        return .trace
-    }
-
+    static let dustLimit = 547
+    static let msatsPerSat: UInt64 = 1000
     static let appStoreUrl = "https://apps.apple.com/app/bitkit-wallet/id6502440655"
     static let playStoreUrl = "https://play.google.com/store/apps/details?id=to.bitkit"
     static let githubUrl = "https://www.github.com/synonymdev/bitkit"
