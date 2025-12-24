@@ -113,6 +113,10 @@ class TransferViewModel: ObservableObject {
         uiState.isAdvanced = true
     }
 
+    func displayOrder(for order: IBtOrder) -> IBtOrder {
+        uiState.order ?? order
+    }
+
     func payOrder(order: IBtOrder, speed: TransactionSpeed) async throws {
         var fees = try? await coreService.blocktank.fees(refresh: true)
         if fees == nil {

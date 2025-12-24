@@ -33,6 +33,7 @@ struct SavingsAvailabilityView: View {
                 CustomButton(title: t("common__continue")) {
                     navigation.navigate(.savingsConfirm)
                 }
+                .accessibilityIdentifier("AvailabilityContinue")
             }
         }
         .navigationBarHidden(true)

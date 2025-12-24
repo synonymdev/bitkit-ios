@@ -26,16 +26,19 @@ struct ReceiveEdit: View {
             SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
-                NumberPadTextField(viewModel: amountViewModel, isFocused: isAmountInputFocused)
-                    .padding(.bottom, isAmountInputFocused ? 0 : 32)
-                    .onTapGesture {
-                        if isAmountInputFocused {
-                            amountViewModel.togglePrimaryDisplay(currency: currency)
-                        } else {
-                            isAmountInputFocused = true
-                        }
+                NumberPadTextField(
+                    viewModel: amountViewModel,
+                    isFocused: isAmountInputFocused,
+                    testIdentifier: "ReceiveNumberPadTextField"
+                )
+                .padding(.bottom, isAmountInputFocused ? 0 : 32)
+                .onTapGesture {
+                    if isAmountInputFocused {
+                        amountViewModel.togglePrimaryDisplay(currency: currency)
+                    } else {
+                        isAmountInputFocused = true
                     }
-                    .accessibilityIdentifier("ReceiveNumberPadTextField")
+                }
 
                 if !isAmountInputFocused {
                     CaptionMText(t("wallet__note"))
