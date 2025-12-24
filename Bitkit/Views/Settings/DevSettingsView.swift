@@ -103,6 +103,12 @@ struct DevSettingsView: View {
                     }
 
                     Button {
+                        fatalError("Simulate Crash")
+                    } label: {
+                        SettingsListLabel(title: "Simulate Crash", rightIcon: nil)
+                    }
+
+                    Button {
                         Task {
                             do {
                                 try await AppReset.wipe(

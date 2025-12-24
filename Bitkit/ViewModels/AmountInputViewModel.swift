@@ -96,8 +96,12 @@ class AmountInputViewModel: ObservableObject {
         amountSats = newAmountSats
         displayText = formatDisplayTextFromAmount(newAmountSats, currency: currency)
         // Update raw input text based on the formatted display
+        // Remove formatting separators (spaces for modern Bitcoin, commas for fiat)
         if currency.primaryDisplay == .fiat {
             rawInputText = displayText.replacingOccurrences(of: ",", with: "")
+        } else if currency.displayUnit == .modern {
+            // Modern Bitcoin uses spaces as grouping separators
+            rawInputText = displayText.replacingOccurrences(of: " ", with: "")
         } else {
             rawInputText = displayText
         }
@@ -115,8 +119,12 @@ class AmountInputViewModel: ObservableObject {
         if amountSats > 0 {
             displayText = formatDisplayTextFromAmount(amountSats, currency: currency)
             // Update raw input text based on the formatted display
+            // Remove formatting separators (spaces for modern Bitcoin, commas for fiat)
             if currency.primaryDisplay == .fiat {
                 rawInputText = displayText.replacingOccurrences(of: ",", with: "")
+            } else if currency.displayUnit == .modern {
+                // Modern Bitcoin uses spaces as grouping separators
+                rawInputText = displayText.replacingOccurrences(of: " ", with: "")
             } else {
                 rawInputText = displayText
             }
@@ -135,8 +143,14 @@ class AmountInputViewModel: ObservableObject {
                 // First convert fiat to sats, then format for Bitcoin display
                 let cleanFiat = currentRawInput.replacingOccurrences(of: ",", with: "")
                 if let fiatValue = Double(cleanFiat), let sats = currency.convert(fiatAmount: fiatValue) {
-                    rawInputText = formatBitcoinFromSats(sats, isModern: currency.displayUnit == .modern)
-                    displayText = rawInputText
+                    let formatted = formatBitcoinFromSats(sats, isModern: currency.displayUnit == .modern)
+                    displayText = formatted
+                    // Remove spaces from rawInputText for modern Bitcoin
+                    if currency.displayUnit == .modern {
+                        rawInputText = formatted.replacingOccurrences(of: " ", with: "")
+                    } else {
+                        rawInputText = formatted
+                    }
                 }
             }
         }
