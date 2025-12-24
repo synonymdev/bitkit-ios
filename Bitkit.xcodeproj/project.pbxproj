@@ -92,6 +92,7 @@
 				Services/GeoService.swift,
 				Services/LightningService.swift,
 				Services/MigrationsService.swift,
+				Services/RNBackupClient.swift,
 				Services/ServiceQueue.swift,
 				Services/VssStoreIdProvider.swift,
 				Utilities/Crypto.swift,

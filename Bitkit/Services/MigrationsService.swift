@@ -116,7 +116,6 @@ struct RNSettings: Codable {
 struct RNMetadata: Codable {
     var tags: [String: [String]]?
     var lastUsedTags: [String]?
-    var comments: [String: String]?
 }
 
 struct RNActivityState: Codable {
@@ -290,8 +289,21 @@ class MigrationsService: ObservableObject {
     private static let rnMigrationCheckedKey = "rnMigrationChecked"
 
     @Published var isShowingMigrationLoading = false
+    var isRestoringFromRNRemoteBackup = false
 
     var pendingChannelMigration: PendingChannelMigration?
+
+    /// Stored activity data from RN remote backup for reapplying metadata after sync
+    private var pendingRemoteActivityData: [RNActivityItem]?
+
+    /// Stored transfer info from RN wallet backup for marking on-chain txs as transfers
+    private var pendingRemoteTransfers: [String: String]? // txId -> channelId
+
+    /// Stored boost info from RN wallet backup for applying boostTxIds to activities
+    private var pendingRemoteBoosts: [String: String]? // oldTxId -> newTxId
+
+    /// Stored metadata from RN backup for reapplying after on-chain activities are synced
+    private var pendingRemoteMetadata: RNMetadata?
 
     private init() {}
 
@@ -578,8 +590,7 @@ extension MigrationsService {
         do {
             let metadata = try JSONDecoder().decode(RNMetadata.self, from: metadataData)
             let tagCount = metadata.tags?.count ?? 0
-            let commentCount = metadata.comments?.count ?? 0
-            Logger.debug("Extracted RN metadata: \(tagCount) tagged txs, \(commentCount) comments", context: "Migration")
+            Logger.debug("Extracted RN metadata: \(tagCount) tagged txs", context: "Migration")
             return metadata
         } catch {
             Logger.error("Failed to decode RN metadata: \(error)", context: "Migration")
@@ -759,42 +770,6 @@ extension MigrationsService {
         Logger.info("Applied RN settings to UserDefaults", context: "Migration")
     }
 
-    func applyRNMetadata(_ metadata: RNMetadata) async {
-        if let tags = metadata.tags {
-            for (txId, tagList) in tags {
-                do {
-                    var activityId = txId
-                    if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId) {
-                        activityId = onchain.id
-                    }
-                    try await CoreService.shared.activity.upsertTags([
-                        ActivityTags(activityId: activityId, tags: tagList),
-                    ])
-                } catch {
-                    Logger.error("Failed to migrate tags for \(txId): \(error)", context: "Migration")
-                }
-            }
-            Logger.info("Migrated \(tags.count) activity tags", context: "Migration")
-        }
-
-        if let lastUsedTags = metadata.lastUsedTags {
-            UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
-        }
-
-        if let comments = metadata.comments, !comments.isEmpty {
-            var existingComments = UserDefaults.standard.dictionary(forKey: "activityComments") as? [String: String] ?? [:]
-            for (txId, comment) in comments {
-                var activityId = txId
-                if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId) {
-                    activityId = onchain.id
-                }
-                existingComments[activityId] = comment
-            }
-            UserDefaults.standard.set(existingComments, forKey: "activityComments")
-            Logger.info("Migrated \(comments.count) activity comments", context: "Migration")
-        }
-    }
-
     func applyRNWidgets(_ widgetsWithOptions: RNWidgetsWithOptions) {
         let widgets = widgetsWithOptions.widgets
         let widgetOptions = widgetsWithOptions.widgetOptions
@@ -947,7 +922,7 @@ extension MigrationsService {
 
         if let metadata = extractRNMetadata(from: mmkvData) {
             Logger.info("Migrating metadata", context: "Migration")
-            await applyRNMetadata(metadata)
+            await applyAllMetadata(metadata)
         } else {
             Logger.debug("No metadata found in MMKV", context: "Migration")
         }
@@ -965,18 +940,130 @@ extension MigrationsService {
     }
 
     func reapplyMetadataAfterSync() async {
-        guard hasRNMmkvData(), let mmkvData = loadRNMmkvData() else {
-            return
+        // Handle MMKV (local) migration data
+        if hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
+            if let metadata = extractRNMetadata(from: mmkvData) {
+                Logger.info("Re-applying MMKV metadata after sync", context: "Migration")
+                await applyAllMetadata(metadata)
+            }
+
+            if let activities = extractRNActivities(from: mmkvData) {
+                await applyOnchainMetadata(activities)
+            }
         }
 
-        if let metadata = extractRNMetadata(from: mmkvData) {
-            Logger.info("Re-applying metadata after sync", context: "Migration")
-            await applyRNMetadata(metadata)
+        // Handle remote backup data (for on-chain timestamps from RN backup)
+        if let remoteActivities = pendingRemoteActivityData {
+            Logger.info("Re-applying remote backup metadata after sync", context: "Migration")
+            await applyOnchainMetadata(remoteActivities)
+            pendingRemoteActivityData = nil
         }
 
-        if let activities = extractRNActivities(from: mmkvData) {
-            await applyOnchainMetadata(activities)
+        // Handle remote backup transfers (mark on-chain txs as transfers)
+        if let transfers = pendingRemoteTransfers {
+            Logger.info("Applying \(transfers.count) remote transfer markers", context: "Migration")
+            await applyRemoteTransfers(transfers)
+            pendingRemoteTransfers = nil
         }
+
+        // Handle remote backup boosts (apply boostTxIds to activities)
+        if let boosts = pendingRemoteBoosts {
+            Logger.info("Applying \(boosts.count) remote boost markers", context: "Migration")
+            await applyRemoteBoosts(boosts)
+            pendingRemoteBoosts = nil
+        }
+
+        // Apply stored metadata (all tags after sync when activities exist)
+        if let metadata = pendingRemoteMetadata {
+            Logger.info("Applying stored metadata after sync", context: "Migration")
+            await applyAllMetadata(metadata)
+            pendingRemoteMetadata = nil
+        }
+    }
+
+    private func applyRemoteTransfers(_ transfers: [String: String]) async {
+        var applied = 0
+
+        for (txId, channelId) in transfers {
+            guard var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId) else {
+                continue
+            }
+
+            onchain.isTransfer = true
+            onchain.channelId = channelId
+
+            do {
+                try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
+                applied += 1
+            } catch {
+                Logger.error("Failed to mark tx \(txId) as transfer: \(error)", context: "Migration")
+            }
+        }
+
+        Logger.info("Applied \(applied)/\(transfers.count) transfer markers", context: "Migration")
+    }
+
+    private func applyRemoteBoosts(_ boosts: [String: String]) async {
+        var applied = 0
+
+        for (oldTxId, newTxId) in boosts {
+            guard var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: newTxId) else {
+                continue
+            }
+
+            if !onchain.boostTxIds.contains(oldTxId) {
+                onchain.boostTxIds.append(oldTxId)
+            }
+            onchain.isBoosted = true
+
+            do {
+                try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
+                applied += 1
+            } catch {
+                Logger.error("Failed to apply boost for tx \(newTxId): \(error)", context: "Migration")
+            }
+        }
+
+        Logger.info("Applied \(applied)/\(boosts.count) boost markers", context: "Migration")
+    }
+
+    private func applyAllMetadata(_ metadata: RNMetadata) async {
+        if let tags = metadata.tags, !tags.isEmpty {
+            await applyPendingTags(tags)
+        }
+
+        if let lastUsedTags = metadata.lastUsedTags {
+            UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
+        }
+    }
+
+    private func applyPendingTags(_ tags: [String: [String]]) async {
+        var applied = 0
+        for (activityId, tagList) in tags {
+            do {
+                // Try on-chain first
+                if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
+                    try await CoreService.shared.activity.upsertTags([
+                        ActivityTags(activityId: onchain.id, tags: tagList),
+                    ])
+                    applied += 1
+                }
+                // Then try lightning
+                else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId),
+                        case .lightning = activity
+                {
+                    try await CoreService.shared.activity.upsertTags([
+                        ActivityTags(activityId: activityId, tags: tagList),
+                    ])
+                    applied += 1
+                } else {
+                    Logger.warn("Activity \(activityId) still not found after sync", context: "Migration")
+                }
+            } catch {
+                Logger.error("Failed to apply pending tag for \(activityId): \(error)", context: "Migration")
+            }
+        }
+        Logger.info("Applied \(applied)/\(tags.count) pending tags", context: "Migration")
     }
 
     private func applyOnchainMetadata(_ items: [RNActivityItem]) async {
@@ -1106,5 +1193,336 @@ extension MigrationsService {
         }
 
         return result
+    }
+}
+
+// MARK: - RN Remote Backup Restore
+
+extension MigrationsService {
+    func hasRNRemoteBackup(mnemonic: String, passphrase: String?) async -> Bool {
+        do {
+            let effectivePassphrase = passphrase?.isEmpty == true ? nil : passphrase
+            RNBackupClient.shared.reset()
+            try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: effectivePassphrase)
+            return try await RNBackupClient.shared.hasBackup()
+        } catch {
+            Logger.error("Failed to check RN remote backup: \(error)", context: "Migration")
+            return false
+        }
+    }
+
+    func restoreFromRNRemoteBackup(mnemonic: String, passphrase: String?) async throws {
+        let effectivePassphrase = passphrase?.isEmpty == true ? nil : passphrase
+        try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: effectivePassphrase)
+
+        isRestoringFromRNRemoteBackup = true
+        Logger.info("Starting RN remote backup restore", context: "Migration")
+
+        // Fetch LDK data (channel_manager and channel_monitors)
+        await fetchRNRemoteLdkData()
+
+        async let settingsData = RNBackupClient.shared.retrieve(label: "bitkit_settings", fileGroup: "bitkit")
+        async let widgetsData = RNBackupClient.shared.retrieve(label: "bitkit_widgets", fileGroup: "bitkit")
+        async let activityData = RNBackupClient.shared.retrieve(label: "bitkit_lightning_activity", fileGroup: "bitkit")
+        async let metadataData = RNBackupClient.shared.retrieve(label: "bitkit_metadata", fileGroup: "bitkit")
+        async let walletData = RNBackupClient.shared.retrieve(label: "bitkit_wallet", fileGroup: "bitkit")
+        async let blocktankData = RNBackupClient.shared.retrieve(label: "bitkit_blocktank_orders", fileGroup: "bitkit")
+
+        if let settings = try? await settingsData {
+            try await applyRNRemoteSettings(settings)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_settings from remote backup", context: "Migration")
+        }
+
+        if let widgets = try? await widgetsData {
+            try await applyRNRemoteWidgets(widgets)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_widgets from remote backup", context: "Migration")
+        }
+
+        if let activity = try? await activityData {
+            try await applyRNRemoteActivity(activity)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_lightning_activity from remote backup", context: "Migration")
+        }
+
+        if let metadata = try? await metadataData {
+            try await applyRNRemoteMetadata(metadata)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_metadata from remote backup", context: "Migration")
+        }
+
+        if let wallet = try? await walletData {
+            try await applyRNRemoteWallet(wallet)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_wallet from remote backup", context: "Migration")
+        }
+
+        if let blocktank = try? await blocktankData {
+            try await applyRNRemoteBlocktank(blocktank)
+        } else {
+            Logger.warn("Failed to retrieve bitkit_blocktank_orders from remote backup", context: "Migration")
+        }
+
+        Logger.info("RN remote backup restore completed", context: "Migration")
+    }
+
+    private func fetchRNRemoteLdkData() async {
+        do {
+            let files = try await RNBackupClient.shared.listFiles(fileGroup: "ldk")
+
+            guard let managerData = try? await RNBackupClient.shared.retrieve(label: "channel_manager", fileGroup: "ldk") else {
+                Logger.debug("No channel_manager found in remote LDK backup", context: "Migration")
+                return
+            }
+
+            let monitors = await withTaskGroup(of: Data?.self) { group in
+                var results: [Data] = []
+                for monitorFile in files.channel_monitors {
+                    group.addTask {
+                        let channelId = monitorFile.replacingOccurrences(of: ".bin", with: "")
+                        return try? await RNBackupClient.shared.retrieveChannelMonitor(channelId: channelId)
+                    }
+                }
+                for await monitor in group {
+                    if let monitor {
+                        results.append(monitor)
+                    }
+                }
+                return results
+            }
+
+            if !monitors.isEmpty {
+                pendingChannelMigration = PendingChannelMigration(
+                    channelManager: managerData,
+                    channelMonitors: monitors
+                )
+                Logger.info("Prepared \(monitors.count) channel monitors for migration", context: "Migration")
+            }
+        } catch {
+            Logger.error("Failed to fetch remote LDK data: \(error)", context: "Migration")
+        }
+    }
+
+    private func applyRNRemoteSettings(_ data: Data) async throws {
+        struct BackupEnvelope: Codable {
+            let data: RNSettings
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote settings backup", context: "Migration")
+            return
+        }
+
+        applyRNSettings(json.data)
+    }
+
+    private func applyRNRemoteWidgets(_ data: Data) async throws {
+        struct BackupEnvelope: Codable {
+            let data: RNWidgets
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote widgets backup", context: "Migration")
+            return
+        }
+
+        var widgetOptions: [String: Data] = [:]
+        if let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let dataDict = rawDict["data"] as? [String: Any]
+        {
+            widgetOptions = convertRNWidgetPreferences(dataDict)
+
+            if widgetOptions.isEmpty, let nestedDict = dataDict["widgets"] as? [String: Any] {
+                widgetOptions = convertRNWidgetPreferences(nestedDict)
+            }
+        }
+
+        let widgetsWithOptions = RNWidgetsWithOptions(widgets: json.data, widgetOptions: widgetOptions)
+        applyRNWidgets(widgetsWithOptions)
+    }
+
+    private func applyRNRemoteMetadata(_ data: Data) async throws {
+        struct BackupEnvelope: Codable {
+            let data: RNMetadata
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote metadata backup", context: "Migration")
+            return
+        }
+
+        // Store metadata for application after sync (on-chain activities don't exist yet)
+        pendingRemoteMetadata = json.data
+    }
+
+    private func applyRNRemoteActivity(_ data: Data) async throws {
+        struct ActivityItem: Codable {
+            var id: String
+            var activityType: String
+            var txType: String
+            var txId: String?
+            var value: Int64
+            var fee: Int64?
+            var feeRate: Int64?
+            var address: String?
+            var confirmed: Bool?
+            var timestamp: Int64
+            var isBoosted: Bool?
+            var isTransfer: Bool?
+            var exists: Bool?
+            var confirmTimestamp: Int64?
+            var channelId: String?
+            var transferTxId: String?
+            var status: String?
+            var message: String?
+            var preimage: String?
+        }
+
+        struct BackupEnvelope: Codable {
+            let data: [ActivityItem]
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote activity backup", context: "Migration")
+            return
+        }
+
+        let items: [RNActivityItem] = json.data.map { item in
+            RNActivityItem(
+                id: item.id,
+                activityType: item.activityType,
+                txType: item.txType,
+                txId: item.txId,
+                value: item.value,
+                fee: item.fee,
+                feeRate: item.feeRate,
+                address: item.address,
+                confirmed: item.confirmed,
+                timestamp: item.timestamp,
+                isBoosted: item.isBoosted,
+                isTransfer: item.isTransfer,
+                exists: item.exists,
+                confirmTimestamp: item.confirmTimestamp,
+                channelId: item.channelId,
+                transferTxId: item.transferTxId,
+                status: item.status,
+                message: item.message,
+                preimage: item.preimage
+            )
+        }
+
+        // Store for later reapplication after sync (for on-chain timestamps)
+        pendingRemoteActivityData = items
+
+        await applyRNActivities(items)
+    }
+
+    private func applyRNRemoteWallet(_ data: Data) async throws {
+        struct Transfer: Codable {
+            var txId: String?
+            var type: String?
+        }
+
+        struct BoostedTransaction: Codable {
+            var oldTxId: String?
+            var newTxId: String?
+        }
+
+        struct WalletBackup: Codable {
+            var transfers: [String: [Transfer]]?
+            var boostedTransactions: [String: [String: BoostedTransaction]]?
+        }
+
+        struct BackupEnvelope: Codable {
+            let data: WalletBackup
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote wallet backup", context: "Migration")
+            return
+        }
+
+        // Store transfers for later application (to mark on-chain txs as transfers)
+        if let transfers = json.data.transfers {
+            var transferMap: [String: String] = [:]
+            var totalTransfersFound = 0
+            for (_, networkTransfers) in transfers {
+                totalTransfersFound += networkTransfers.count
+                for transfer in networkTransfers {
+                    if let txId = transfer.txId, let type = transfer.type {
+                        // type contains the channelId for transfer identification
+                        transferMap[txId] = type
+                    }
+                }
+            }
+            Logger.info("Found \(totalTransfersFound) transfers in backup, \(transferMap.count) with valid txId/type", context: "Migration")
+            if !transferMap.isEmpty {
+                pendingRemoteTransfers = transferMap
+            }
+        } else {
+            Logger.debug("No transfers found in RN remote wallet backup", context: "Migration")
+        }
+
+        if let boostedTxs = json.data.boostedTransactions {
+            var boostMap: [String: String] = [:]
+            for (_, networkBoosts) in boostedTxs {
+                for (oldTxId, boost) in networkBoosts {
+                    if let newTxId = boost.newTxId {
+                        boostMap[oldTxId] = newTxId
+                    }
+                }
+            }
+            if !boostMap.isEmpty {
+                pendingRemoteBoosts = boostMap
+            }
+        }
+    }
+
+    private func applyRNRemoteBlocktank(_ data: Data) async throws {
+        struct BlocktankOrder: Codable {
+            var id: String
+            var state: String?
+            var lspBalanceSat: UInt64?
+            var clientBalanceSat: UInt64?
+            var channelExpiryWeeks: Int?
+            var createdAt: String?
+        }
+
+        struct BlocktankBackup: Codable {
+            var orders: [BlocktankOrder]?
+            var paidOrders: [String]?
+        }
+
+        struct BackupEnvelope: Codable {
+            let data: BlocktankBackup
+        }
+
+        guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
+            Logger.warn("Failed to decode RN remote blocktank backup", context: "Migration")
+            return
+        }
+
+        var orderIds: [String] = []
+
+        if let orders = json.data.orders {
+            orderIds.append(contentsOf: orders.map(\.id))
+        }
+
+        if let paidOrderIds = json.data.paidOrders {
+            orderIds.append(contentsOf: paidOrderIds)
+        }
+
+        if !orderIds.isEmpty {
+            do {
+                let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
+                if !fetchedOrders.isEmpty {
+                    try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
+                    Logger.info("Upserted \(fetchedOrders.count) Blocktank orders", context: "Migration")
+                }
+            } catch {
+                Logger.warn("Failed to fetch and upsert Blocktank orders: \(error)", context: "Migration")
+            }
+        }
     }
 }

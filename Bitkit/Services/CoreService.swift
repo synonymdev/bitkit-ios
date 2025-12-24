@@ -352,15 +352,16 @@ class ActivityService {
         let value = payment.amountSats ?? 0
 
         // Determine confirmation status from payment's txStatus
-        // Ensure confirmTimestamp is at least equal to paymentTimestamp when confirmed
-        // This handles cases where payment.latestUpdateTimestamp is more recent than blockTimestamp
-        let (isConfirmed, confirmedTimestamp): (Bool, UInt64?) =
-            if case let .onchain(_, txStatus) = payment.kind,
-            case let .confirmed(_, _, blockTimestamp) = txStatus {
-                (true, max(blockTimestamp, paymentTimestamp))
-            } else {
-                (false, nil)
-            }
+        var blockTimestamp: UInt64?
+        let isConfirmed: Bool
+        if case let .onchain(_, txStatus) = payment.kind,
+           case let .confirmed(_, _, bts) = txStatus
+        {
+            isConfirmed = true
+            blockTimestamp = bts
+        } else {
+            isConfirmed = false
+        }
 
         // Extract existing activity data
         let existingOnchain: OnchainActivity? = {
@@ -412,6 +413,12 @@ class ActivityService {
         // Build and save the activity
         let finalDoesExist = isConfirmed ? true : doesExist
 
+        let activityTimestamp: UInt64 = if existingActivity == nil, let bts = blockTimestamp, bts < paymentTimestamp {
+            bts
+        } else {
+            existingOnchain?.timestamp ?? paymentTimestamp
+        }
+
         let onchain = OnchainActivity(
             id: payment.id,
             txType: payment.direction == .outbound ? .sent : .received,
@@ -421,12 +428,12 @@ class ActivityService {
             feeRate: feeRate,
             address: address,
             confirmed: isConfirmed,
-            timestamp: paymentTimestamp,
+            timestamp: activityTimestamp,
             isBoosted: isBoosted,
             boostTxIds: boostTxIds,
             isTransfer: isTransfer,
             doesExist: finalDoesExist,
-            confirmTimestamp: confirmedTimestamp,
+            confirmTimestamp: blockTimestamp,
             channelId: channelId,
             transferTxId: transferTxId,
             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
