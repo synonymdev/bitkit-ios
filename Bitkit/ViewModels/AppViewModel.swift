@@ -549,6 +549,18 @@ extension AppViewModel {
         case let .syncCompleted(syncType, syncedBlockHeight):
             Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
 
+            if MigrationsService.shared.isShowingMigrationLoading {
+                Task { @MainActor in
+                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])
+                    await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
+                    await MigrationsService.shared.reapplyMetadataAfterSync()
+                    try? await LightningService.shared.restart()
+
+                    MigrationsService.shared.isShowingMigrationLoading = false
+                    self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
+                }
+            }
+
         // MARK: Balance Events
 
         case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):

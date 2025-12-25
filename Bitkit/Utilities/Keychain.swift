@@ -7,8 +7,6 @@ enum KeychainEntryType {
     case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
     case securityPin
 
-    // TODO: allow for reading keychain entries from RN wallet and then migrate them if needed
-
     var storageKey: String {
         switch self {
         case let .bip39Mnemonic(index):

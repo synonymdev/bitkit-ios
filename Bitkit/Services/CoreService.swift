@@ -154,6 +154,42 @@ class ActivityService {
         }
     }
 
+    func markAllUnseenActivitiesAsSeen() async {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+
+        do {
+            let activities = try await get()
+            var didMarkAny = false
+
+            for activity in activities {
+                let id: String
+                let isSeen: Bool
+
+                switch activity {
+                case let .onchain(onchain):
+                    id = onchain.id
+                    isSeen = onchain.seenAt != nil
+                case let .lightning(lightning):
+                    id = lightning.id
+                    isSeen = lightning.seenAt != nil
+                }
+
+                if !isSeen {
+                    try await ServiceQueue.background(.core) {
+                        try BitkitCore.markActivityAsSeen(activityId: id, seenAt: timestamp)
+                    }
+                    didMarkAny = true
+                }
+            }
+
+            if didMarkAny {
+                activitiesChangedSubject.send()
+            }
+        } catch {
+            Logger.error("Failed to mark all activities as seen: \(error)", context: "ActivityService")
+        }
+    }
+
     // MARK: - Transaction Status Checks
 
     func wasTransactionReplaced(txid: String) async -> Bool {
