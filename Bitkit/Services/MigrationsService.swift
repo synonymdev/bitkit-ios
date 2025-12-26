@@ -1199,9 +1199,13 @@ extension MigrationsService {
 // MARK: - RN Remote Backup Restore
 
 extension MigrationsService {
+    private func normalizePassphrase(_ passphrase: String?) -> String? {
+        passphrase?.isEmpty == true ? nil : passphrase
+    }
+
     func hasRNRemoteBackup(mnemonic: String, passphrase: String?) async -> Bool {
         do {
-            let effectivePassphrase = passphrase?.isEmpty == true ? nil : passphrase
+            let effectivePassphrase = normalizePassphrase(passphrase)
             RNBackupClient.shared.reset()
             try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: effectivePassphrase)
             return try await RNBackupClient.shared.hasBackup()
@@ -1212,7 +1216,7 @@ extension MigrationsService {
     }
 
     func restoreFromRNRemoteBackup(mnemonic: String, passphrase: String?) async throws {
-        let effectivePassphrase = passphrase?.isEmpty == true ? nil : passphrase
+        let effectivePassphrase = normalizePassphrase(passphrase)
         try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: effectivePassphrase)
 
         isRestoringFromRNRemoteBackup = true

@@ -220,7 +220,11 @@ class RNBackupClient {
             else { continue }
 
             let ts = UInt64(timestamp / 1000) // Convert ms to seconds
-            if latestTimestamp == nil || ts > latestTimestamp! {
+            if let latest = latestTimestamp {
+                if ts > latest {
+                    latestTimestamp = ts
+                }
+            } else {
                 latestTimestamp = ts
             }
         }
