@@ -448,6 +448,10 @@ extension MigrationsService {
             throw AppError(message: "Invalid mnemonic: \(words.count) words", debugMessage: nil)
         }
 
+        guard BitkitCore.validateMnemonic(mnemonic) else {
+            throw AppError(message: "Invalid BIP39 mnemonic", debugMessage: nil)
+        }
+
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
     }
 
