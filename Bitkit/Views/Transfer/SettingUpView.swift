@@ -169,6 +169,7 @@ struct SettingUpView: View {
 
                 if isTransferring {
                     SettingUpLoadingView()
+                        .accessibilityIdentifier("LightningSettingUp")
                 } else {
                     Image("check")
                         .resizable()
@@ -176,6 +177,7 @@ struct SettingUpView: View {
                         .frame(width: 256, height: 256)
                         .padding()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityIdentifier("TransferSuccess")
                 }
 
                 Spacer()
@@ -188,6 +190,7 @@ struct SettingUpView: View {
                 CustomButton(title: buttonTitle) {
                     navigation.reset()
                 }
+                .accessibilityIdentifier("TransferSuccess-button")
             }
         }
         .navigationBarHidden(true)

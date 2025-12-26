@@ -34,11 +34,15 @@ struct SpendingAdvancedView: View {
                 DisplayText(t("lightning__spending_advanced__title"), accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
 
-                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                    .onTapGesture {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
-                    }
-                    .padding(.top, 32)
+                NumberPadTextField(
+                    viewModel: amountViewModel,
+                    showConversion: false,
+                    testIdentifier: "SpendingAdvancedNumberField"
+                )
+                .onTapGesture {
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
+                }
+                .padding(.top, 32)
 
                 // Fee estimate
                 HStack(spacing: 4) {
@@ -91,6 +95,7 @@ struct SpendingAdvancedView: View {
                         app.toast(error)
                     }
                 }
+                .accessibilityIdentifier("SpendingAdvancedContinue")
             }
         }
         .navigationBarHidden(true)
@@ -118,18 +123,21 @@ struct SpendingAdvancedView: View {
             NumberPadActionButton(text: t("common__min")) {
                 amountViewModel.updateFromSats(transfer.transferValues.minLspBalance, currency: currency)
             }
+            .accessibilityIdentifier("SpendingAdvancedMin")
 
             Spacer()
 
             NumberPadActionButton(text: t("common__default")) {
                 amountViewModel.updateFromSats(transfer.transferValues.defaultLspBalance, currency: currency)
             }
+            .accessibilityIdentifier("SpendingAdvancedDefault")
 
             Spacer()
 
             NumberPadActionButton(text: t("common__max")) {
                 amountViewModel.updateFromSats(transfer.transferValues.maxLspBalance, currency: currency)
             }
+            .accessibilityIdentifier("SpendingAdvancedMax")
         }
     }
 
