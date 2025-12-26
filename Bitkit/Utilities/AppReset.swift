@@ -34,6 +34,9 @@ enum AppReset {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
 
+        // Prevent RN migration from triggering after wipe
+        MigrationsService.shared.markMigrationChecked()
+
         // Wipe logs
         if Env.network == .regtest {
             try wipeLogs()
