@@ -448,7 +448,9 @@ extension MigrationsService {
             throw AppError(message: "Invalid mnemonic: \(words.count) words", debugMessage: nil)
         }
 
-        guard BitkitCore.validateMnemonic(mnemonic) else {
+        do {
+            try validateMnemonic(mnemonicPhrase: mnemonic)
+        } catch {
             throw AppError(message: "Invalid BIP39 mnemonic", debugMessage: nil)
         }
 
