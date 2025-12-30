@@ -48,7 +48,7 @@ enum Env {
 
     // MARK: wallet services
 
-    static let network: LDKNode.Network = (isE2E || isUnitTest) ? .regtest : .bitcoin
+    static let network: LDKNode.Network = (isDebug || isUnitTest || isE2E) ? .regtest : .bitcoin
     static let ldkLogLevel = LDKNode.LogLevel.trace
 
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this

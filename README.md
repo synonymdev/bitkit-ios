@@ -17,6 +17,13 @@ This repository contains a **new native iOS app** which is **not ready for produ
 1. Open Bitkit.xcodeproj in XCode
 2. Build
 
+### Network Configuration
+
+The app automatically selects the network based on the build configuration:
+
+- **Debug builds** → Uses **Regtest** network (for local development and testing)
+- **Release builds** → Uses **Bitcoin Mainnet** network (for production)
+
 ### Building for E2E tests
 
 To produce an E2E build (uses the local Electrum backend), pass the `E2E_BUILD` compilation flag:
