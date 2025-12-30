@@ -57,6 +57,7 @@ struct FundManualAmountView: View {
                     isDisabled: amountSats == 0,
                     destination: FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
                 )
+                .accessibilityIdentifier("ExternalAmountContinue")
             }
         }
         .navigationBarHidden(true)

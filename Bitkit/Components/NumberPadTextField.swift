@@ -71,6 +71,8 @@ struct NumberPadTextField: View {
         }
         .contentShape(Rectangle())
         .animation(springAnimation, value: currency.primaryDisplay)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifierIfPresent(testIdentifier)
     }
 
     @ViewBuilder
@@ -87,7 +89,6 @@ struct NumberPadTextField: View {
                 + Text(viewModel.getPlaceholder(currency: currency))
                 .foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
-                .accessibilityIdentifierIfPresent(testIdentifier)
         }
     }
 }
