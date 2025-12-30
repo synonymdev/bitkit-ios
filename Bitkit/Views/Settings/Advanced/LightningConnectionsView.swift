@@ -70,12 +70,13 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(pendingConnections.enumerated()), id: \.element.channelId) { index, channel in
+                                    let labelIndex = pendingConnections.count - index
                                     Button {
                                         navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
                                     } label: {
                                         VStack(spacing: 0) {
                                             HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
                                                 Spacer()
                                                 Image("chevron")
                                                     .resizable()
@@ -109,12 +110,13 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                    let labelIndex = openChannels.count - index
                                     Button {
                                         navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
                                     } label: {
                                         VStack(spacing: 0) {
                                             HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
                                                 Spacer()
                                                 Image("chevron")
                                                     .resizable()
@@ -147,12 +149,13 @@ struct LightningConnectionsView: View {
                                     .padding(.top, 16)
 
                                 ForEach(Array(closedChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                    let labelIndex = closedChannels.count - index
                                     Button {
                                         navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
                                     } label: {
                                         VStack(spacing: 0) {
                                             HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(index + 1)")
+                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
                                                 Spacer()
                                                 Image("chevron")
                                                     .resizable()

@@ -139,12 +139,6 @@ class TimedSheetManager: ObservableObject {
             currentSheet.onDismissed()
             currentlyShowingSheet = nil
         }
-
-        // If still on home screen, restart timer to check for next sheet
-        // NOTE: could be annoying to show sheets immediately after one another, maybe remove
-        if isOnHomeScreen {
-            onHomeScreenEntered()
-        }
     }
 
     /// Check the queue and show the highest priority sheet that should be shown

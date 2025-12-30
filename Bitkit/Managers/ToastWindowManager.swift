@@ -35,13 +35,22 @@ class ToastWindowManager: ObservableObject {
     }
 
     func showToast(_ toast: Toast) {
+        // Ensure window is set up before showing toast
+        ensureWindowExists()
+
+        // If window still doesn't exist after trying to set it up, log and return
+        guard let window = toastWindow else {
+            Logger.error("ToastWindowManager: Cannot show toast - window not available")
+            return
+        }
+
         // Dismiss any existing toast first
         cancelAutoHide()
-        toastWindow?.hasToast = false
-        toastWindow?.toastFrame = .zero
+        window.hasToast = false
+        window.toastFrame = .zero
 
         // Update window's toast state for hit testing
-        toastWindow?.hasToast = true
+        window.hasToast = true
 
         // Show the toast with animation
         withAnimation(.easeInOut(duration: 0.4)) {
@@ -68,7 +77,7 @@ class ToastWindowManager: ObservableObject {
     }
 
     func pauseAutoHide() {
-        guard autoHideStartTime != nil else { return } // Already paused or no auto-hide
+        guard autoHideStartTime != nil else { return } // No active auto-hide to pause
         cancelAutoHide()
 
         // Calculate remaining time
@@ -124,9 +133,30 @@ class ToastWindowManager: ObservableObject {
         autoHideDuration = 0
     }
 
-    private func setupToastWindow() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+    private func ensureWindowExists() {
+        // Check if window already exists and is still valid
+        if let existingWindow = toastWindow,
+           existingWindow.windowScene != nil,
+           !existingWindow.isHidden
+        {
             return
+        }
+
+        // Window doesn't exist or is invalid, try to set it up
+        setupToastWindow()
+    }
+
+    private func setupToastWindow() {
+        // Try to find an active window scene
+        guard let windowScene = findActiveWindowScene() else {
+            Logger.warn("ToastWindowManager: No active window scene available")
+            return
+        }
+
+        // Clean up old window if it exists
+        if let oldWindow = toastWindow {
+            oldWindow.isHidden = true
+            oldWindow.rootViewController = nil
         }
 
         let window = PassThroughWindow(windowScene: windowScene)
@@ -142,6 +172,20 @@ class ToastWindowManager: ObservableObject {
 
         toastWindow = window
         toastHostingController = hostingController
+    }
+
+    private func findActiveWindowScene() -> UIWindowScene? {
+        // Try to find an active window scene from connected scenes
+        for scene in UIApplication.shared.connectedScenes {
+            if let windowScene = scene as? UIWindowScene,
+               windowScene.activationState == .foregroundActive || windowScene.activationState == .foregroundInactive
+            {
+                return windowScene
+            }
+        }
+
+        // Fallback to any window scene if no active one found
+        return UIApplication.shared.connectedScenes.first as? UIWindowScene
     }
 }
 

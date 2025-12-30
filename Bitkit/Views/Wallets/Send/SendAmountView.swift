@@ -174,6 +174,14 @@ struct SendAmountView: View {
                 maxSendableAmount = nil
             }
         }
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+            // Recalculate max sendable amount when fee rate becomes available or changes
+            if app.selectedWalletToPayFrom == .onchain {
+                Task {
+                    await calculateMaxSendableAmount()
+                }
+            }
+        }
     }
 
     private func onContinue() async {
@@ -258,8 +266,8 @@ struct SendAmountView: View {
         } catch {
             Logger.error("Failed to calculate max sendable amount: \(error)")
             await MainActor.run {
-                // Fall back to total balance if calculation fails
-                maxSendableAmount = UInt64(wallet.spendableOnchainBalanceSats)
+                // Keep as nil on error - availableAmount will fall back to total balance
+                maxSendableAmount = nil
             }
         }
     }
