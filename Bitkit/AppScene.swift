@@ -248,16 +248,18 @@ struct AppScene: View {
 
         if wallet.isRestoringWallet {
             Task {
-                await BackupService.shared.performFullRestoreFromLatestBackup()
+                await restoreFromMostRecentBackup()
 
                 await MainActor.run {
                     widgets.loadSavedWidgets()
                     widgets.objectWillChange.send()
                 }
-            }
-        }
 
-        Task { await startWallet() }
+                await startWallet()
+            }
+        } else {
+            Task { await startWallet() }
+        }
     }
 
     private func startWallet() async {
@@ -329,6 +331,44 @@ struct AppScene: View {
                 title: "Migration Failed",
                 description: "Please restore your wallet manually using your recovery phrase"
             )
+        }
+    }
+
+    private func restoreFromMostRecentBackup() async {
+        guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
+              let mnemonic = String(data: mnemonicData, encoding: .utf8)
+        else { return }
+
+        let passphrase: String? = {
+            guard let data = try? Keychain.load(key: .bip39Passphrase(index: 0)) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }()
+
+        // Check for RN backup and get its timestamp
+        let hasRNBackup = await MigrationsService.shared.hasRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+        let rnTimestamp: UInt64? = await hasRNBackup ? (try? RNBackupClient.shared.getLatestBackupTimestamp()) : nil
+
+        // Get VSS backup timestamp
+        let vssTimestamp = await BackupService.shared.getLatestBackupTime()
+
+        // Determine which backup is more recent
+        let shouldRestoreRN: Bool = {
+            guard hasRNBackup else { return false }
+            guard let vss = vssTimestamp, vss > 0 else { return true } // No VSS, use RN
+            guard let rn = rnTimestamp else { return false } // No RN timestamp, use VSS
+            return rn >= vss // RN is same or newer
+        }()
+
+        if shouldRestoreRN {
+            do {
+                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+            } catch {
+                Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
+                // Fall back to VSS
+                await BackupService.shared.performFullRestoreFromLatestBackup()
+            }
+        } else {
+            await BackupService.shared.performFullRestoreFromLatestBackup()
         }
     }
 
