@@ -71,11 +71,14 @@ enum Env {
     // MARK: wallet services
 
     static let network: LDKNode.Network = {
-        if (isUnitTest || isDebug) {
+        if isUnitTest {
             return .regtest
         }
         if isE2E {
             return e2eNetwork
+        }
+        if isDebug {
+            return .regtest
         }
         return .bitcoin
     }()
