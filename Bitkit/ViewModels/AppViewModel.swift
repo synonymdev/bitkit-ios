@@ -556,6 +556,8 @@ extension AppViewModel {
                     await MigrationsService.shared.reapplyMetadataAfterSync()
                     try? await LightningService.shared.restart()
 
+                    SettingsViewModel.shared.updatePinEnabledState()
+
                     MigrationsService.shared.isShowingMigrationLoading = false
                     self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
                 }
