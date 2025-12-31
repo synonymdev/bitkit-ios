@@ -21,8 +21,16 @@ This app integrates with:
 ```bash
 # Standard build - Open Bitkit.xcodeproj in Xcode and build
 
-# E2E test build (uses local Electrum backend)
+# E2E test build (uses local Electrum backend by default)
 xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+  -scheme Bitkit \
+  -configuration Debug \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
+  build
+
+# E2E test build with network Electrum and regtest (Info.plist build setting)
+E2E_BACKEND=network E2E_NETWORK=regtest \
+  xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
   -scheme Bitkit \
   -configuration Debug \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
@@ -197,7 +205,7 @@ New feature (`TransferTrackingManager`) tracks pending transfers to handle edge 
 - The app currently runs on **regtest only** (see `LightningService.swift:92` guard)
 - VSS (Versioned Storage Service) authentication is not yet implemented
 - Electrum/Esplora server URLs are configurable via `Env`
-- E2E builds use local Electrum backend via `E2E_BUILD` compilation flag
+- E2E builds use local Electrum backend via `E2E_BUILD` compilation flag (override with `E2E_BACKEND`/`E2E_NETWORK` build settings)
 
 ### Error Handling
 

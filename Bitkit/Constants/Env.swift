@@ -24,6 +24,28 @@ enum Env {
         #endif
     }
 
+    private static func infoPlistValue(_ key: String) -> String? {
+        let value = Bundle.main.object(forInfoDictionaryKey: key) as? String
+        return value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? value : nil
+    }
+
+    private static var e2eBackend: String {
+        (infoPlistValue("E2E_BACKEND") ?? "local").lowercased()
+    }
+
+    private static var e2eNetwork: LDKNode.Network {
+        switch (infoPlistValue("E2E_NETWORK") ?? "regtest").lowercased() {
+        case "bitcoin", "mainnet":
+            return .bitcoin
+        case "testnet":
+            return .testnet
+        case "signet":
+            return .signet
+        default:
+            return .regtest
+        }
+    }
+
     static var isGeoblockingEnabled: Bool {
         #if CHECK_GEOBLOCK
             return true
@@ -48,7 +70,16 @@ enum Env {
 
     // MARK: wallet services
 
-    static let network: LDKNode.Network = (isDebug || isUnitTest || isE2E) ? .regtest : .bitcoin
+    static let network: LDKNode.Network = {
+        if (isUnitTest || isDebug) {
+            return .regtest
+        }
+        if isE2E {
+            return e2eNetwork
+        }
+        return .bitcoin
+    }()
+
     static let ldkLogLevel = LDKNode.LogLevel.trace
 
     static let walletSyncIntervalSecs: UInt64 = 10 // TODO: play around with this
@@ -80,7 +111,7 @@ enum Env {
     // MARK: Server URLs
 
     static var electrumServerUrl: String {
-        if isE2E {
+        if isE2E, e2eBackend == "local" {
             return "tcp://127.0.0.1:60001"
         }
 
