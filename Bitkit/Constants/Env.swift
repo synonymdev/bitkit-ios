@@ -26,7 +26,8 @@ enum Env {
 
     private static func infoPlistValue(_ key: String) -> String? {
         let value = Bundle.main.object(forInfoDictionaryKey: key) as? String
-        return value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? value : nil
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 
     private static var e2eBackend: String {
