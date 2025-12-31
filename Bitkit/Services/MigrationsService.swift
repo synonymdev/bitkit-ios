@@ -476,6 +476,17 @@ extension MigrationsService {
         try Keychain.saveString(key: .securityPin, str: pin)
     }
 
+    private func clearPinSettings() {
+        try? Keychain.delete(key: .securityPin)
+
+        UserDefaults.standard.removeObject(forKey: "requirePinForPayments")
+        UserDefaults.standard.removeObject(forKey: "useBiometrics")
+        UserDefaults.standard.removeObject(forKey: "pinFailedAttempts")
+        UserDefaults.standard.removeObject(forKey: "pinOnLaunch")
+        UserDefaults.standard.removeObject(forKey: "pinOnIdle")
+        UserDefaults.standard.removeObject(forKey: "pin")
+    }
+
     private func migrateLdkData() async throws {
         let accountPath = rnLdkAccountPath
         let managerPath = accountPath.appendingPathComponent("channel_manager.bin")
@@ -756,6 +767,12 @@ extension MigrationsService {
         }
         if let useBiometrics = settings.biometrics {
             defaults.set(useBiometrics, forKey: "useBiometrics")
+        }
+        if let pinOnLaunch = settings.pinOnLaunch {
+            defaults.set(pinOnLaunch, forKey: "pinOnLaunch")
+        }
+        if let pinOnIdle = settings.pinOnIdle {
+            defaults.set(pinOnIdle, forKey: "pinOnIdle")
         }
         if let seen = settings.quickpayIntroSeen {
             defaults.set(seen, forKey: "hasSeenQuickpayIntro")
@@ -1228,6 +1245,8 @@ extension MigrationsService {
         isRestoringFromRNRemoteBackup = true
         Logger.info("Starting RN remote backup restore", context: "Migration")
 
+        clearPinSettings()
+
         // Fetch LDK data (channel_manager and channel_monitors)
         await fetchRNRemoteLdkData()
 
@@ -1324,7 +1343,12 @@ extension MigrationsService {
             return
         }
 
-        applyRNSettings(json.data)
+        var settings = json.data
+        settings.pinForPayments = nil
+        settings.biometrics = nil
+        settings.pinOnLaunch = nil
+        settings.pinOnIdle = nil
+        applyRNSettings(settings)
     }
 
     private func applyRNRemoteWidgets(_ data: Data) async throws {

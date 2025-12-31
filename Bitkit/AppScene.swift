@@ -74,7 +74,12 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
-                if !isLoading { widgets.loadSavedWidgets() }
+                if !isLoading {
+                    widgets.loadSavedWidgets()
+                    if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
+                        isPinVerified = false
+                    }
+                }
             }
             .environmentObject(app)
             .environmentObject(navigation)
