@@ -349,7 +349,7 @@ struct AppScene: View {
         let rnTimestamp: UInt64? = await hasRNBackup ? (try? RNBackupClient.shared.getLatestBackupTimestamp()) : nil
 
         // Get VSS backup timestamp
-        let vssTimestamp = BackupService.shared.getLatestBackupTime()
+        let vssTimestamp = await BackupService.shared.getLatestBackupTime()
 
         // Determine which backup is more recent
         let shouldRestoreRN: Bool = {
