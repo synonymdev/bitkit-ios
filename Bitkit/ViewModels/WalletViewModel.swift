@@ -591,13 +591,7 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        // When geoblocked, only create Lightning invoice if we have non-LSP channels
-        let isGeoblocked = GeoService.shared.isGeoBlocked
-        let hasUsableChannels: Bool = if isGeoblocked {
-            hasNonLspChannels()
-        } else {
-            channels?.count ?? 0 > 0
-        }
+        let hasUsableChannels = channels?.contains(where: \.isChannelReady) ?? false
 
         if hasUsableChannels {
             if forceRefreshBolt11 || bolt11.isEmpty {

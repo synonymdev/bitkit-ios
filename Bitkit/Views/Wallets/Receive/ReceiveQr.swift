@@ -43,11 +43,7 @@ struct ReceiveQr: View {
     }
 
     private var hasUsableChannels: Bool {
-        if GeoService.shared.isGeoBlocked {
-            return wallet.hasNonLspChannels()
-        } else {
-            return wallet.channelCount != 0
-        }
+        return wallet.channels?.contains(where: \.isChannelReady) ?? false
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
@@ -67,12 +63,7 @@ struct ReceiveQr: View {
     }
 
     var showingCjitOnboarding: Bool {
-        // Show CJIT onboarding when:
-        // 1. No channels at all, OR
-        // 2. Geoblocked with only Blocktank channels (treat as no usable channels)
-        let hasNoUsableChannels = (wallet.channelCount == 0) ||
-            (GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels())
-        return hasNoUsableChannels && cjitInvoice == nil && selectedTab == .spending
+        return !hasUsableChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -109,7 +100,7 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if GeoService.shared.isGeoBlocked && !wallet.hasNonLspChannels() {
+                            if GeoService.shared.isGeoBlocked && !hasUsableChannels {
                                 navigationPath.append(.cjitGeoBlocked)
                             } else {
                                 navigationPath.append(.cjitAmount)
