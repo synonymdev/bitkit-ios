@@ -26,10 +26,30 @@ The app automatically selects the network based on the build configuration:
 
 ### Building for E2E tests
 
-To produce an E2E build (uses the local Electrum backend), pass the `E2E_BUILD` compilation flag:
+To produce an E2E build (uses the local Electrum backend by default), pass the `E2E_BUILD` compilation flag:
 
 ```bash
 xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+  -scheme Bitkit \
+  -configuration Debug \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
+  build
+```
+
+You can also set the backend/network at build time via Info.plist substitutions:
+
+```bash
+# Use network Electrum with regtest
+E2E_BACKEND=network E2E_NETWORK=regtest \
+  xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+  -scheme Bitkit \
+  -configuration Debug \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
+  build
+
+# Use network Electrum with mainnet
+E2E_BACKEND=network E2E_NETWORK=bitcoin \
+  xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
   -scheme Bitkit \
   -configuration Debug \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
