@@ -268,7 +268,7 @@ class ActivityService {
         else {
             return false
         }
-        return activity.doesExist
+        return activity.doesExist && !activity.isBoosted
     }
 
     init(coreService: CoreService) {

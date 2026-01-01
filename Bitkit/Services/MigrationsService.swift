@@ -142,6 +142,35 @@ struct RNActivityItem: Codable {
     var status: String?
     var message: String?
     var preimage: String?
+    var boostedParents: [String]?
+}
+
+struct RNTransfer: Codable {
+    var txId: String?
+    var type: String?
+}
+
+struct RNBoostedTransaction: Codable {
+    var oldTxId: String?
+    var newTxId: String?
+    var childTransaction: String?
+    var parentTransactions: [String]?
+    var type: String?
+    var fee: Int64?
+}
+
+struct RNWalletBackup: Codable {
+    var transfers: [String: [RNTransfer]]?
+    var boostedTransactions: [String: [String: RNBoostedTransaction]]?
+}
+
+struct RNWalletState: Codable {
+    var wallets: [String: RNWalletData]?
+}
+
+struct RNWalletData: Codable {
+    var boostedTransactions: [String: [String: RNBoostedTransaction]]?
+    var transfers: [String: [RNTransfer]]?
 }
 
 struct RNLightningState: Codable {
@@ -709,6 +738,80 @@ extension MigrationsService {
         }
     }
 
+    func extractRNWalletBackup(from mmkvData: [String: String]) -> (transfers: [String: String], boosts: [String: String])? {
+        guard let rootJson = mmkvData["persist:root"],
+              let jsonStart = rootJson.firstIndex(of: "{")
+        else {
+            return nil
+        }
+
+        let jsonString = String(rootJson[jsonStart...])
+        guard let data = jsonString.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let walletJson = root["wallet"] as? String,
+              let walletData = walletJson.data(using: .utf8)
+        else {
+            return nil
+        }
+
+        func extractTransfers(_ transfers: [String: [RNTransfer]]?) -> [String: String] {
+            var transferMap: [String: String] = [:]
+            guard let transfers else { return transferMap }
+            for (_, networkTransfers) in transfers {
+                for transfer in networkTransfers {
+                    if let txId = transfer.txId, let type = transfer.type {
+                        transferMap[txId] = type
+                    }
+                }
+            }
+            return transferMap
+        }
+
+        func extractBoosts(_ boostedTxs: [String: [String: RNBoostedTransaction]]?) -> [String: String] {
+            var boostMap: [String: String] = [:]
+            guard let boostedTxs else { return boostMap }
+            for (_, networkBoosts) in boostedTxs {
+                for (parentTxId, boost) in networkBoosts {
+                    if let childTxId = boost.childTransaction ?? boost.newTxId {
+                        boostMap[parentTxId] = childTxId
+                    }
+                }
+            }
+            return boostMap
+        }
+
+        do {
+            if let walletState = try? JSONDecoder().decode(RNWalletState.self, from: walletData),
+               let wallets = walletState.wallets
+            {
+                var transferMap: [String: String] = [:]
+                var boostMap: [String: String] = [:]
+
+                for (_, walletData) in wallets {
+                    transferMap.merge(extractTransfers(walletData.transfers)) { _, new in new }
+                    boostMap.merge(extractBoosts(walletData.boostedTransactions)) { _, new in new }
+                }
+
+                if !transferMap.isEmpty || !boostMap.isEmpty {
+                    return (transfers: transferMap, boosts: boostMap)
+                }
+            }
+
+            let walletBackup = try JSONDecoder().decode(RNWalletBackup.self, from: walletData)
+            let transferMap = extractTransfers(walletBackup.transfers)
+            let boostMap = extractBoosts(walletBackup.boostedTransactions)
+
+            if !transferMap.isEmpty || !boostMap.isEmpty {
+                return (transfers: transferMap, boosts: boostMap)
+            }
+
+            return nil
+        } catch {
+            Logger.error("Failed to decode RN wallet backup: \(error)", context: "Migration")
+            return nil
+        }
+    }
+
     func applyRNSettings(_ settings: RNSettings) {
         let defaults = UserDefaults.standard
 
@@ -973,6 +1076,18 @@ extension MigrationsService {
             if let activities = extractRNActivities(from: mmkvData) {
                 await applyOnchainMetadata(activities)
             }
+
+            // Extract and apply wallet backup data (transfers and boosts)
+            if let walletBackup = extractRNWalletBackup(from: mmkvData) {
+                if !walletBackup.transfers.isEmpty {
+                    Logger.info("Applying \(walletBackup.transfers.count) local transfer markers", context: "Migration")
+                    await applyRemoteTransfers(walletBackup.transfers)
+                }
+                if !walletBackup.boosts.isEmpty {
+                    Logger.info("Applying \(walletBackup.boosts.count) local boost markers", context: "Migration")
+                    await applyBoostTransactions(walletBackup.boosts)
+                }
+            }
         }
 
         // Handle remote backup data (for on-chain timestamps from RN backup)
@@ -992,7 +1107,7 @@ extension MigrationsService {
         // Handle remote backup boosts (apply boostTxIds to activities)
         if let boosts = pendingRemoteBoosts {
             Logger.info("Applying \(boosts.count) remote boost markers", context: "Migration")
-            await applyRemoteBoosts(boosts)
+            await applyBoostTransactions(boosts)
             pendingRemoteBoosts = nil
         }
 
@@ -1026,24 +1141,42 @@ extension MigrationsService {
         Logger.info("Applied \(applied)/\(transfers.count) transfer markers", context: "Migration")
     }
 
-    private func applyRemoteBoosts(_ boosts: [String: String]) async {
+    private func applyBoostTransactions(_ boosts: [String: String]) async {
         var applied = 0
 
         for (oldTxId, newTxId) in boosts {
-            guard var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: newTxId) else {
-                continue
-            }
+            let oldOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: oldTxId)
+            let newOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: newTxId)
 
-            if !onchain.boostTxIds.contains(oldTxId) {
-                onchain.boostTxIds.append(oldTxId)
-            }
-            onchain.isBoosted = true
+            if let oldOnchain, var newOnchain {
+                var parentOnchain = oldOnchain
+                if !parentOnchain.boostTxIds.contains(newTxId) {
+                    parentOnchain.boostTxIds.append(newTxId)
+                }
+                parentOnchain.isBoosted = true
 
-            do {
-                try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
-                applied += 1
-            } catch {
-                Logger.error("Failed to apply boost for tx \(newTxId): \(error)", context: "Migration")
+                newOnchain.isBoosted = false
+                newOnchain.boostTxIds.removeAll { $0 == oldTxId }
+
+                do {
+                    try await CoreService.shared.activity.update(id: parentOnchain.id, activity: .onchain(parentOnchain))
+                    try await CoreService.shared.activity.update(id: newOnchain.id, activity: .onchain(newOnchain))
+                    applied += 1
+                } catch {
+                    Logger.error("Failed to apply CPFP boost for parent \(oldTxId) / child \(newTxId): \(error)", context: "Migration")
+                }
+            } else if var newOnchain {
+                if !newOnchain.boostTxIds.contains(oldTxId) {
+                    newOnchain.boostTxIds.append(oldTxId)
+                }
+                newOnchain.isBoosted = true
+
+                do {
+                    try await CoreService.shared.activity.update(id: newOnchain.id, activity: .onchain(newOnchain))
+                    applied += 1
+                } catch {
+                    Logger.error("Failed to apply RBF boost for tx \(newTxId): \(error)", context: "Migration")
+                }
             }
         }
 
@@ -1064,23 +1197,18 @@ extension MigrationsService {
         var applied = 0
         for (activityId, tagList) in tags {
             do {
-                // Try on-chain first
                 if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
                     try await CoreService.shared.activity.upsertTags([
                         ActivityTags(activityId: onchain.id, tags: tagList),
                     ])
                     applied += 1
-                }
-                // Then try lightning
-                else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId),
-                        case .lightning = activity
+                } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId),
+                          case .lightning = activity
                 {
                     try await CoreService.shared.activity.upsertTags([
                         ActivityTags(activityId: activityId, tags: tagList),
                     ])
                     applied += 1
-                } else {
-                    Logger.warn("Activity \(activityId) still not found after sync", context: "Migration")
                 }
             } catch {
                 Logger.error("Failed to apply pending tag for \(activityId): \(error)", context: "Migration")
@@ -1108,6 +1236,27 @@ extension MigrationsService {
                 onchain.isTransfer = true
                 onchain.channelId = item.channelId
                 onchain.transferTxId = item.transferTxId
+            }
+
+            if let boostedParents = item.boostedParents, !boostedParents.isEmpty {
+                for parentTxId in boostedParents {
+                    if var parentOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: parentTxId) {
+                        if !parentOnchain.boostTxIds.contains(txId) {
+                            parentOnchain.boostTxIds.append(txId)
+                        }
+                        parentOnchain.isBoosted = true
+
+                        do {
+                            try await CoreService.shared.activity.update(id: parentOnchain.id, activity: .onchain(parentOnchain))
+                        } catch {
+                            Logger.error("Failed to mark parent \(parentTxId) as boosted for CPFP: \(error)", context: "Migration")
+                        }
+                    }
+                }
+                onchain.isBoosted = false
+                onchain.boostTxIds.removeAll { boostedParents.contains($0) }
+            } else if item.isBoosted == true {
+                onchain.isBoosted = true
             }
 
             do {
@@ -1411,6 +1560,7 @@ extension MigrationsService {
             var status: String?
             var message: String?
             var preimage: String?
+            var boostedParents: [String]?
         }
 
         struct BackupEnvelope: Codable {
@@ -1442,7 +1592,8 @@ extension MigrationsService {
                 transferTxId: item.transferTxId,
                 status: item.status,
                 message: item.message,
-                preimage: item.preimage
+                preimage: item.preimage,
+                boostedParents: item.boostedParents
             )
         }
 
@@ -1453,23 +1604,8 @@ extension MigrationsService {
     }
 
     private func applyRNRemoteWallet(_ data: Data) async throws {
-        struct Transfer: Codable {
-            var txId: String?
-            var type: String?
-        }
-
-        struct BoostedTransaction: Codable {
-            var oldTxId: String?
-            var newTxId: String?
-        }
-
-        struct WalletBackup: Codable {
-            var transfers: [String: [Transfer]]?
-            var boostedTransactions: [String: [String: BoostedTransaction]]?
-        }
-
         struct BackupEnvelope: Codable {
-            let data: WalletBackup
+            let data: RNWalletBackup
         }
 
         guard let json = try? JSONDecoder().decode(BackupEnvelope.self, from: data) else {
@@ -1502,14 +1638,17 @@ extension MigrationsService {
             var boostMap: [String: String] = [:]
             for (_, networkBoosts) in boostedTxs {
                 for (oldTxId, boost) in networkBoosts {
-                    if let newTxId = boost.newTxId {
-                        boostMap[oldTxId] = newTxId
+                    if let childTxId = boost.childTransaction ?? boost.newTxId {
+                        boostMap[oldTxId] = childTxId
                     }
                 }
             }
+            Logger.info("Found \(boostMap.count) boosted transactions in remote backup", context: "Migration")
             if !boostMap.isEmpty {
                 pendingRemoteBoosts = boostMap
             }
+        } else {
+            Logger.debug("No boosted transactions found in RN remote wallet backup", context: "Migration")
         }
     }
 
