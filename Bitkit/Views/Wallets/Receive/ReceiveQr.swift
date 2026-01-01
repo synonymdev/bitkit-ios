@@ -96,10 +96,10 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if GeoService.shared.isGeoBlocked && !wallet.hasUsableChannels {
-                                navigationPath.append(.cjitGeoBlocked)
-                            } else {
+                            if !wallet.hasUsableChannels && !GeoService.shared.isGeoBlocked {
                                 navigationPath.append(.cjitAmount)
+                            } else if GeoService.shared.isGeoBlocked {
+                                navigationPath.append(.cjitGeoBlocked)
                             }
                         }
                     } else {
