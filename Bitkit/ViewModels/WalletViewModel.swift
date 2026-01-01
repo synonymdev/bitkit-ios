@@ -544,29 +544,8 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
-    /// Total inbound Lightning capacity excluding LSP (Blocktank) channels
-    /// Used when geoblocked to show only non-Blocktank receiving capacity
-    var totalNonLspInboundLightningSats: UInt64? {
-        let nonLspChannels = lightningService.getNonLspChannels()
-        guard !nonLspChannels.isEmpty else {
-            return nil
-        }
-
-        var capacity: UInt64 = 0
-        for channel in nonLspChannels {
-            capacity += channel.inboundCapacityMsat / 1000
-        }
-        return capacity
-    }
-
     var hasUsableChannels: Bool {
         return channels?.contains(where: \.isChannelReady) ?? false
-    }
-
-    /// Check if there are non-LSP (non-Blocktank) channels available
-    /// Used for geoblocking to determine if Lightning operations can proceed
-    func hasNonLspChannels() -> Bool {
-        return !lightningService.getNonLspChannels().isEmpty
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
