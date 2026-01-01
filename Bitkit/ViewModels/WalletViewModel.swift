@@ -559,6 +559,10 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    var hasUsableChannels: Bool {
+        return channels?.contains(where: \.isChannelReady) ?? false
+    }
+
     /// Check if there are non-LSP (non-Blocktank) channels available
     /// Used for geoblocking to determine if Lightning operations can proceed
     func hasNonLspChannels() -> Bool {
@@ -590,8 +594,6 @@ class WalletViewModel: ObservableObject {
         var newBip21 = "bitcoin:\(onchainAddress)"
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
-
-        let hasUsableChannels = channels?.contains(where: \.isChannelReady) ?? false
 
         if hasUsableChannels {
             if forceRefreshBolt11 || bolt11.isEmpty {

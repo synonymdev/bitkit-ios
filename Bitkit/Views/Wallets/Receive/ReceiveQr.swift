@@ -42,13 +42,9 @@ struct ReceiveQr: View {
         }
     }
 
-    private var hasUsableChannels: Bool {
-        return wallet.channels?.contains(where: \.isChannelReady) ?? false
-    }
-
     private var availableTabItems: [TabItem<ReceiveTab>] {
         // Only show unified tab if there are usable channels
-        if hasUsableChannels {
+        if wallet.hasUsableChannels {
             return [
                 TabItem(.savings),
                 TabItem(.unified, activeColor: .white),
@@ -63,7 +59,7 @@ struct ReceiveQr: View {
     }
 
     var showingCjitOnboarding: Bool {
-        return !hasUsableChannels && cjitInvoice == nil && selectedTab == .spending
+        return !wallet.hasUsableChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -79,7 +75,7 @@ struct ReceiveQr: View {
                 TabView(selection: $selectedTab) {
                     tabContent(for: .savings)
 
-                    if hasUsableChannels {
+                    if wallet.hasUsableChannels {
                         tabContent(for: .unified)
                     }
 
@@ -100,7 +96,7 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if GeoService.shared.isGeoBlocked && !hasUsableChannels {
+                            if GeoService.shared.isGeoBlocked && !wallet.hasUsableChannels {
                                 navigationPath.append(.cjitGeoBlocked)
                             } else {
                                 navigationPath.append(.cjitAmount)
