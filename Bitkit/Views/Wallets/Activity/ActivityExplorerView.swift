@@ -190,15 +190,9 @@ struct ActivityExplorerView: View {
                     Divider()
                         .padding(.bottom, 16)
                     ForEach(Array(onchain.boostTxIds.enumerated()), id: \.offset) { index, boostTxId in
-                        // Determine if this is RBF (doesExist = false, replaced) or CPFP (doesExist = true, child transaction)
-                        let boostTxDoesExistValue = boostTxDoesExist[boostTxId] ?? true
-                        let isRBF = !boostTxDoesExistValue
-                        let key = isRBF
-                            ? "wallet__activity_boosted_rbf"
-                            : "wallet__activity_boosted_cpfp"
-
+                        let isRBF = onchain.txType == .sent || !(boostTxDoesExist[boostTxId] ?? true)
                         InfoSection(
-                            title: t(key, variables: ["num": String(index + 1)]),
+                            title: t(isRBF ? "wallet__activity_boosted_rbf" : "wallet__activity_boosted_cpfp", variables: ["num": String(index + 1)]),
                             content: boostTxId,
                             testId: isRBF ? "RBFBoosted" : "CPFPBoosted"
                         )

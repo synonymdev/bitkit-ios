@@ -129,14 +129,11 @@ struct ActivityItemView: View {
                 return true
             }
             if activity.isBoosted && !activity.boostTxIds.isEmpty {
-                let hasCPFP = activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
-                if hasCPFP {
-                    return true
-                }
-
                 if activity.txType == .sent {
-                    let hasRBF = activity.boostTxIds.contains { boostTxDoesExist[$0] == false }
-                    return hasRBF
+                    return true
+                } else {
+                    let hasCPFP = activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
+                    return hasCPFP
                 }
             }
 

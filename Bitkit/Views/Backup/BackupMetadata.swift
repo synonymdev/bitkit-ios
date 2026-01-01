@@ -46,7 +46,7 @@ struct BackupMetadata: View {
     }
 
     private func loadLastBackupTime() async {
-        if let timestamp = BackupService.shared.getLatestBackupTime() {
+        if let timestamp = await BackupService.shared.getLatestBackupTime() {
             let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
             let formatter = DateFormatter()
             formatter.dateStyle = .medium
