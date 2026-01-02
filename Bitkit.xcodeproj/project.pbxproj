@@ -97,6 +97,7 @@
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
+				Utilities/KeychainCrypto.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -120,6 +121,7 @@
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
+				Utilities/KeychainCrypto.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
