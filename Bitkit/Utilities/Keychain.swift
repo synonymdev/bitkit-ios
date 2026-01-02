@@ -27,12 +27,15 @@ class Keychain {
     class func save(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
 
+        // Encrypt data before storage
+        let encryptedData = try KeychainCrypto.encrypt(data)
+
         let query =
             [
                 kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock as String,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
                 kSecAttrAccount as String: key.storageKey,
-                kSecValueData as String: data,
+                kSecValueData as String: encryptedData,
                 kSecAttrAccessGroup as String: Env.keychainGroup,
             ] as [String: Any]
 
@@ -51,7 +54,7 @@ class Keychain {
             throw KeychainError.failedToSave
         }
 
-        // Sanity check on save
+        // Sanity check on save - compare decrypted data with original
         guard var storedValue = try load(key: key) else {
             Logger.error("Failed to load \(key.storageKey) after saving", context: "Keychain")
             throw KeychainError.failedToSave
@@ -124,8 +127,29 @@ class Keychain {
             throw KeychainError.failedToLoad
         }
 
-        Logger.debug("\(key.storageKey) loaded from keychain")
-        return dataTypeRef as! Data?
+        guard let encryptedData = dataTypeRef as? Data else {
+            throw KeychainError.failedToLoad
+        }
+
+        // Decrypt data after retrieval
+        // Migration: Check if encryption key exists BEFORE attempting decryption
+        // (decrypt() will create the key if it doesn't exist, breaking migration detection)
+        if !KeychainCrypto.keyExists() {
+            // No encryption key → this is legacy plaintext data from before encryption
+            Logger.warn("\(key.storageKey) appears to be legacy unencrypted data, returning as-is", context: "Keychain")
+            return encryptedData // Actually plaintext, will be encrypted on next save
+        }
+
+        // Encryption key exists, attempt decryption
+        do {
+            let decryptedData = try KeychainCrypto.decrypt(encryptedData)
+            Logger.debug("\(key.storageKey) loaded and decrypted from keychain")
+            return decryptedData
+        } catch {
+            // Decryption failed with existing key → truly corrupted/orphaned data
+            Logger.error("Failed to decrypt \(key.storageKey): \(error)", context: "Keychain")
+            throw KeychainError.failedToDecrypt
+        }
     }
 
     class func loadString(key: KeychainEntryType) throws -> String? {

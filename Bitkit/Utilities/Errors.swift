@@ -21,6 +21,7 @@ enum KeychainError: Error {
     case failedToSaveAlreadyExists
     case failedToDelete
     case failedToLoad
+    case failedToDecrypt
     case keychainWipeNotAllowed
 }
 
