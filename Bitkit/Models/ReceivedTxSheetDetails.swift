@@ -9,7 +9,7 @@ struct ReceivedTxSheetDetails: Codable {
     let type: ReceivedTxType
     let sats: UInt64
 
-    private static let appGroupUserDefaults = UserDefaults(suiteName: "group.bitkit")
+    private static let appGroupUserDefaults = UserDefaults(suiteName: Env.appGroupIdentifier)
 
     func save() {
         do {

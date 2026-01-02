@@ -38,8 +38,8 @@ enum AppReset {
         }
 
         // Wipe App Group UserDefaults
-        if let appGroupDefaults = UserDefaults(suiteName: "group.bitkit") {
-            appGroupDefaults.removePersistentDomain(forName: "group.bitkit")
+        if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+            appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
             Logger.info("Wiped App Group UserDefaults", context: "AppReset")
         }
 

@@ -270,15 +270,12 @@ struct AppScene: View {
         let encryptionKeyExists = KeychainCrypto.keyExists()
 
         if keychainHasMnemonic, !encryptionKeyExists {
-            // ORPHANED STATE: Keychain has data but encryption key is missing
             Logger.warn("Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.", context: "AppScene")
 
-            // Wipe keychain silently (no user toast needed per requirements)
             try Keychain.wipeEntireKeychain()
 
-            // Clean App Group UserDefaults
-            if let appGroupDefaults = UserDefaults(suiteName: "group.bitkit") {
-                appGroupDefaults.removePersistentDomain(forName: "group.bitkit")
+            if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+                appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
             }
 
             Logger.info("Orphaned keychain wiped. App will show onboarding.", context: "AppScene")
