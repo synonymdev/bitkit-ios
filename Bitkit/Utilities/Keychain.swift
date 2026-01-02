@@ -132,18 +132,21 @@ class Keychain {
         }
 
         // Decrypt data after retrieval
+        // Migration: Check if encryption key exists BEFORE attempting decryption
+        // (decrypt() will create the key if it doesn't exist, breaking migration detection)
+        if !KeychainCrypto.keyExists() {
+            // No encryption key → this is legacy plaintext data from before encryption
+            Logger.warn("\(key.storageKey) appears to be legacy unencrypted data, returning as-is", context: "Keychain")
+            return encryptedData // Actually plaintext, will be encrypted on next save
+        }
+
+        // Encryption key exists, attempt decryption
         do {
             let decryptedData = try KeychainCrypto.decrypt(encryptedData)
             Logger.debug("\(key.storageKey) loaded and decrypted from keychain")
             return decryptedData
         } catch {
-            // Migration: If decryption fails and no encryption key exists, this is legacy plaintext data
-            if !KeychainCrypto.keyExists() {
-                Logger.warn("\(key.storageKey) appears to be legacy unencrypted data, returning as-is", context: "Keychain")
-                return encryptedData // Actually plaintext, will be encrypted on next save
-            }
-
-            // Encryption key exists but decryption failed → truly corrupted/orphaned
+            // Decryption failed with existing key → truly corrupted/orphaned data
             Logger.error("Failed to decrypt \(key.storageKey): \(error)", context: "Keychain")
             throw KeychainError.failedToDecrypt
         }

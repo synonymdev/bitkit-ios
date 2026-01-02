@@ -81,22 +81,36 @@ final class KeychainTests: XCTestCase {
         XCTAssertEqual(retrieved, testMnemonic, "Retrieved data should match original")
     }
 
-    func testKeychainWithoutEncryptionKeyFails() throws {
+    func testKeychainWithoutEncryptionKeyReturnsEncryptedData() throws {
         // Given: A saved mnemonic with encryption
         let testMnemonic = "test mnemonic with encryption"
         try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: testMnemonic)
 
-        // When: Deleting the encryption key
+        // Get the encrypted data for comparison
+        var encryptedData: Data?
+        var dataTypeRef: AnyObject?
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "bip39_mnemonic_0",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+        encryptedData = dataTypeRef as? Data
+
+        // When: Deleting the encryption key (simulating orphaned scenario)
         try KeychainCrypto.deleteKey()
 
-        // Then: Loading should fail with decryption error
-        XCTAssertThrowsError(try Keychain.loadString(key: .bip39Mnemonic(index: 0))) { error in
-            guard let keychainError = error as? KeychainError else {
-                XCTFail("Should throw KeychainError")
-                return
-            }
-            XCTAssertEqual(keychainError, .failedToDecrypt, "Should fail with decryption error")
-        }
+        // Then: Loading returns the encrypted data as-is (migration path)
+        // Note: This is encrypted garbage, but AppScene.handleOrphanedKeychainScenario()
+        // will detect this scenario and wipe the keychain before the app starts
+        let loaded = try Keychain.load(key: .bip39Mnemonic(index: 0))
+        XCTAssertEqual(loaded, encryptedData, "Should return encrypted data as-is when no key exists")
+
+        // And: The loaded data should NOT equal the original plaintext
+        let loadedString = String(data: loaded!, encoding: .utf8)
+        XCTAssertNotEqual(loadedString, testMnemonic, "Returned data should be encrypted, not plaintext")
     }
 
     func testMultipleKeychainItemsUseSameEncryptionKey() throws {
@@ -191,5 +205,110 @@ final class KeychainTests: XCTestCase {
         // And: Both old and new items work (new one is retrievable)
         XCTAssertNil(try Keychain.loadString(key: .bip39Mnemonic(index: 0))) // Deleted
         XCTAssertEqual(try Keychain.loadString(key: .bip39Mnemonic(index: 1)), "second")
+    }
+
+    // MARK: - Migration Tests
+
+    func testMigrationFromUnencryptedData() throws {
+        // Given: Plaintext data directly in keychain (simulating master branch)
+        let testMnemonic = "test mnemonic from master"
+        let plaintextData = testMnemonic.data(using: .utf8)!
+
+        // Manually insert plaintext into keychain (bypass Keychain.save)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccount as String: "bip39_mnemonic_0",
+            kSecValueData as String: plaintextData,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        XCTAssertEqual(status, errSecSuccess)
+
+        // Ensure no encryption key exists
+        XCTAssertFalse(KeychainCrypto.keyExists())
+
+        // When: Loading the data using new code
+        let loaded = try Keychain.loadString(key: .bip39Mnemonic(index: 0))
+
+        // Then: Should successfully load plaintext
+        XCTAssertEqual(loaded, testMnemonic)
+    }
+
+    func testMigrationAutoEncryptsOnNextSave() throws {
+        // Given: Legacy plaintext in keychain
+        let plaintextData = "legacy".data(using: .utf8)!
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecAttrAccount as String: "bip39_mnemonic_1",
+            kSecValueData as String: plaintextData,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        SecItemAdd(query as CFDictionary, nil)
+
+        // Load legacy data (does not create encryption key, just returns plaintext)
+        let loaded = try Keychain.loadString(key: .bip39Mnemonic(index: 1))
+        XCTAssertEqual(loaded, "legacy")
+
+        // When: Deleting and re-saving
+        try Keychain.delete(key: .bip39Mnemonic(index: 1))
+        try Keychain.saveString(key: .bip39Mnemonic(index: 1), str: "new encrypted")
+
+        // Then: Data should now be encrypted
+        XCTAssertTrue(KeychainCrypto.keyExists())
+
+        // Verify by trying to read raw keychain data - it should be encrypted
+        var dataTypeRef: AnyObject?
+        let loadQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "bip39_mnemonic_1",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        SecItemCopyMatching(loadQuery as CFDictionary, &dataTypeRef)
+        let rawData = dataTypeRef as! Data
+
+        // Raw data should NOT be plaintext "new encrypted"
+        let plaintextAttempt = String(data: rawData, encoding: .utf8)
+        XCTAssertNotEqual(plaintextAttempt, "new encrypted", "Data should be encrypted")
+    }
+
+    func testDecryptionFailsWithCorruptedDataWhenKeyExists() throws {
+        // Given: Encryption key exists and encrypted data is saved
+        try Keychain.saveString(key: .bip39Mnemonic(index: 2), str: "test")
+        XCTAssertTrue(KeychainCrypto.keyExists())
+
+        // When: Manually corrupting the encrypted data in keychain
+        var dataTypeRef: AnyObject?
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "bip39_mnemonic_2",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+        var corruptedData = dataTypeRef as! Data
+        corruptedData[corruptedData.count - 1] ^= 0xFF // Flip bits
+
+        // Update keychain with corrupted data
+        let updateQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: "bip39_mnemonic_2",
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ]
+        let updateAttrs: [String: Any] = [kSecValueData as String: corruptedData]
+        SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
+
+        // Then: Should throw failedToDecrypt (not return plaintext)
+        XCTAssertThrowsError(try Keychain.loadString(key: .bip39Mnemonic(index: 2))) { error in
+            guard let keychainError = error as? KeychainError else {
+                XCTFail("Should throw KeychainError")
+                return
+            }
+            XCTAssertEqual(keychainError, .failedToDecrypt)
+        }
     }
 }
