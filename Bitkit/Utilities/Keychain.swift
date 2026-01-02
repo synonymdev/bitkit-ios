@@ -55,7 +55,7 @@ class Keychain {
         }
 
         // Sanity check on save - compare decrypted data with original
-        guard let storedValue = try load(key: key) else {
+        guard var storedValue = try load(key: key) else {
             Logger.error("Failed to load \(key.storageKey) after saving", context: "Keychain")
             throw KeychainError.failedToSave
         }
