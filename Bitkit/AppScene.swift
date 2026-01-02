@@ -1,3 +1,4 @@
+import BitkitCore
 import Combine
 import LDKNode
 import SwiftUI
@@ -270,15 +271,49 @@ struct AppScene: View {
         let encryptionKeyExists = KeychainCrypto.keyExists()
 
         if keychainHasMnemonic, !encryptionKeyExists {
-            Logger.warn("Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.", context: "AppScene")
+            // Could be either:
+            // 1. Orphaned scenario (encrypted → uninstall → reinstall): keychain has encrypted data, key deleted
+            // 2. Migration scenario (legacy → encrypted): keychain has plaintext data, key never created
+            // We differentiate by checking if the data is valid plaintext
 
-            try Keychain.wipeEntireKeychain()
+            do {
+                guard let data = try Keychain.load(key: .bip39Mnemonic(index: 0)) else {
+                    Logger.warn("Keychain exists check returned true but load returned nil", context: "AppScene")
+                    return
+                }
 
-            if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
-                appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
+                // Check if data is valid UTF-8 plaintext (migration scenario)
+                // Could be: mnemonic (validated via BitkitCore) or passphrase (any valid UTF-8 string)
+                if let plaintext = String(data: data, encoding: .utf8) {
+                    // Try to validate as BIP39 mnemonic using BitkitCore
+                    let isValidMnemonic = (try? validateMnemonic(mnemonicPhrase: plaintext)) != nil
+
+                    // Passphrase: any valid UTF-8 string without null bytes
+                    let isValidPassphrase = !plaintext.contains("\0")
+
+                    if isValidMnemonic || isValidPassphrase {
+                        // This is plaintext data from master - migration scenario
+                        Logger.info("Detected legacy unencrypted keychain - migration will proceed normally", context: "AppScene")
+                        return // Don't wipe, let migration happen
+                    }
+                }
+
+                // Data is encrypted gibberish (not valid plaintext) - orphaned scenario
+                Logger.warn(
+                    "Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.",
+                    context: "AppScene"
+                )
+
+                try Keychain.wipeEntireKeychain()
+
+                if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+                    appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
+                }
+
+                Logger.info("Orphaned keychain wiped. App will show onboarding.", context: "AppScene")
+            } catch {
+                Logger.error("Failed to load keychain during orphaned check: \(error).", context: "AppScene")
             }
-
-            Logger.info("Orphaned keychain wiped. App will show onboarding.", context: "AppScene")
         }
     }
 
