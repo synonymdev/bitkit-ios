@@ -137,6 +137,13 @@ class Keychain {
             Logger.debug("\(key.storageKey) loaded and decrypted from keychain")
             return decryptedData
         } catch {
+            // Migration: If decryption fails and no encryption key exists, this is legacy plaintext data
+            if !KeychainCrypto.keyExists() {
+                Logger.warn("\(key.storageKey) appears to be legacy unencrypted data, returning as-is", context: "Keychain")
+                return encryptedData // Actually plaintext, will be encrypted on next save
+            }
+
+            // Encryption key exists but decryption failed → truly corrupted/orphaned
             Logger.error("Failed to decrypt \(key.storageKey): \(error)", context: "Keychain")
             throw KeychainError.failedToDecrypt
         }
