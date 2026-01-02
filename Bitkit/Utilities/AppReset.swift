@@ -29,9 +29,18 @@ enum AppReset {
         // Wipe keychain
         try Keychain.wipeEntireKeychain()
 
+        // Wipe encryption key
+        try KeychainCrypto.deleteKey()
+
         // Wipe user defaults
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+
+        // Wipe App Group UserDefaults
+        if let appGroupDefaults = UserDefaults(suiteName: "group.bitkit") {
+            appGroupDefaults.removePersistentDomain(forName: "group.bitkit")
+            Logger.info("Wiped App Group UserDefaults", context: "AppReset")
         }
 
         // Wipe logs
