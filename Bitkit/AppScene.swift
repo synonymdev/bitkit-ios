@@ -247,6 +247,9 @@ struct AppScene: View {
     @Sendable
     private func setupTask() async {
         do {
+            // CRITICAL: Check for orphaned keychain scenario BEFORE wallet exists check
+            try await handleOrphanedKeychainScenario()
+
             try wallet.setWalletExistsState()
 
             // Setup TimedSheetManager with all timed sheets
@@ -259,6 +262,26 @@ struct AppScene: View {
             )
         } catch {
             app.toast(error)
+        }
+    }
+
+    private func handleOrphanedKeychainScenario() async throws {
+        let keychainHasMnemonic = try Keychain.exists(key: .bip39Mnemonic(index: 0))
+        let encryptionKeyExists = KeychainCrypto.keyExists()
+
+        if keychainHasMnemonic, !encryptionKeyExists {
+            // ORPHANED STATE: Keychain has data but encryption key is missing
+            Logger.warn("Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.", context: "AppScene")
+
+            // Wipe keychain silently (no user toast needed per requirements)
+            try Keychain.wipeEntireKeychain()
+
+            // Clean App Group UserDefaults
+            if let appGroupDefaults = UserDefaults(suiteName: "group.bitkit") {
+                appGroupDefaults.removePersistentDomain(forName: "group.bitkit")
+            }
+
+            Logger.info("Orphaned keychain wiped. App will show onboarding.", context: "AppScene")
         }
     }
 
