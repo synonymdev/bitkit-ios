@@ -47,13 +47,6 @@ final class KeychainiCloudSyncTests: XCTestCase {
             // kSecAttrAccessibleAfterFirstUnlock allows iCloud sync by default
             // We should be using kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly instead
             if let accessibility = attributes[kSecAttrAccessible as String] as? String {
-                let thisDeviceOnlyAttributes = [
-                    kSecAttrAccessibleWhenUnlocked as String,
-                    kSecAttrAccessibleAfterFirstUnlock as String,
-                    kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
-                    kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
-                ]
-
                 // Items with "ThisDeviceOnly" suffix do NOT sync to iCloud
                 let isThisDeviceOnly = accessibility.contains("ThisDeviceOnly")
                     || accessibility == (kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String)
