@@ -24,6 +24,7 @@ struct AppScene: View {
     @StateObject private var tagManager = TagManager()
     @StateObject private var transferTracking: TransferTrackingManager
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
+    @StateObject private var migrations = MigrationsService.shared
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -73,6 +74,14 @@ struct AppScene: View {
             .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
+            .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
+                if !isLoading {
+                    widgets.loadSavedWidgets()
+                    if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
+                        isPinVerified = false
+                    }
+                }
+            }
             .environmentObject(app)
             .environmentObject(navigation)
             .environmentObject(network)
@@ -112,7 +121,9 @@ struct AppScene: View {
     @ViewBuilder
     private var mainContent: some View {
         ZStack {
-            if showRecoveryScreen {
+            if migrations.isShowingMigrationLoading {
+                migrationLoadingContent
+            } else if showRecoveryScreen {
                 RecoveryRouter()
                     .accentColor(.white)
             } else if hasCriticalUpdate {
@@ -126,6 +137,32 @@ struct AppScene: View {
                     .opacity(hideSplash ? 0 : 1)
             }
         }
+    }
+
+    @ViewBuilder
+    private var migrationLoadingContent: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            ProgressView()
+                .scaleEffect(1.5)
+                .tint(.white)
+
+            VStack(spacing: 8) {
+                Text("Updating Wallet")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(.white)
+
+                Text("Please wait while we update the app...")
+                    .font(.system(size: 16))
+                    .foregroundColor(.white.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 
     @ViewBuilder
@@ -217,16 +254,18 @@ struct AppScene: View {
 
         if wallet.isRestoringWallet {
             Task {
-                await BackupService.shared.performFullRestoreFromLatestBackup()
+                await restoreFromMostRecentBackup()
 
                 await MainActor.run {
                     widgets.loadSavedWidgets()
                     widgets.objectWillChange.send()
                 }
-            }
-        }
 
-        Task { await startWallet() }
+                await startWallet()
+            }
+        } else {
+            Task { await startWallet() }
+        }
     }
 
     private func startWallet() async {
@@ -248,9 +287,10 @@ struct AppScene: View {
     @Sendable
     private func setupTask() async {
         do {
+            await checkAndPerformRNMigration()
+
             // CRITICAL: Check for orphaned keychain scenario BEFORE wallet exists check
             try await handleOrphanedKeychainScenario()
-
             try wallet.setWalletExistsState()
 
             // Setup TimedSheetManager with all timed sheets
@@ -263,6 +303,81 @@ struct AppScene: View {
             )
         } catch {
             app.toast(error)
+        }
+    }
+
+    private func checkAndPerformRNMigration() async {
+        let migrations = MigrationsService.shared
+
+        guard !migrations.isMigrationChecked else {
+            Logger.debug("RN migration already checked, skipping", context: "AppScene")
+            return
+        }
+
+        guard !migrations.hasNativeWalletData() else {
+            Logger.info("Native wallet data exists, skipping RN migration", context: "AppScene")
+            migrations.markMigrationChecked()
+            return
+        }
+
+        guard migrations.hasRNWalletData() else {
+            Logger.info("No RN wallet data found, skipping migration", context: "AppScene")
+            migrations.markMigrationChecked()
+            return
+        }
+
+        await MainActor.run { migrations.isShowingMigrationLoading = true }
+        Logger.info("RN wallet data found, starting migration...", context: "AppScene")
+
+        do {
+            try await migrations.migrateFromReactNative()
+        } catch {
+            Logger.error("RN migration failed: \(error)", context: "AppScene")
+            migrations.markMigrationChecked()
+            await MainActor.run { migrations.isShowingMigrationLoading = false }
+            app.toast(
+                type: .error,
+                title: "Migration Failed",
+                description: "Please restore your wallet manually using your recovery phrase"
+            )
+        }
+    }
+
+    private func restoreFromMostRecentBackup() async {
+        guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
+              let mnemonic = String(data: mnemonicData, encoding: .utf8)
+        else { return }
+
+        let passphrase: String? = {
+            guard let data = try? Keychain.load(key: .bip39Passphrase(index: 0)) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }()
+
+        // Check for RN backup and get its timestamp
+        let hasRNBackup = await MigrationsService.shared.hasRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+        let rnTimestamp: UInt64? = await hasRNBackup ? (try? RNBackupClient.shared.getLatestBackupTimestamp()) : nil
+
+        // Get VSS backup timestamp
+        let vssTimestamp = await BackupService.shared.getLatestBackupTime()
+
+        // Determine which backup is more recent
+        let shouldRestoreRN: Bool = {
+            guard hasRNBackup else { return false }
+            guard let vss = vssTimestamp, vss > 0 else { return true } // No VSS, use RN
+            guard let rn = rnTimestamp else { return false } // No RN timestamp, use VSS
+            return rn >= vss // RN is same or newer
+        }()
+
+        if shouldRestoreRN {
+            do {
+                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+            } catch {
+                Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
+                // Fall back to VSS
+                await BackupService.shared.performFullRestoreFromLatestBackup()
+            }
+        } else {
+            await BackupService.shared.performFullRestoreFromLatestBackup()
         }
     }
 

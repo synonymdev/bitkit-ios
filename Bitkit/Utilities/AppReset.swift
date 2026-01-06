@@ -36,6 +36,8 @@ enum AppReset {
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
+        // Prevent RN migration from triggering after wipe
+        MigrationsService.shared.markMigrationChecked()
 
         // Wipe App Group UserDefaults
         if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
