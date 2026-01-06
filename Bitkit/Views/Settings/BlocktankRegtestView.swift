@@ -68,7 +68,7 @@ struct BlocktankRegtestView: View {
 
     var serverInfoSection: some View {
         Section {
-            Text(Env.blocktankBaseUrl)
+            Text(Env.blocktankClientServer)
         } footer: {
             Text("These actions are executed on the staging Blocktank server node.")
         }
