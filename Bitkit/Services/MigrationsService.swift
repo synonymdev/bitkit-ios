@@ -478,6 +478,10 @@ extension MigrationsService {
     func migrateFromReactNative(walletIndex: Int = 0) async throws {
         Logger.info("Starting RN migration", context: "Migration")
 
+        // Prevent backups from triggering during migration
+        BackupService.shared.setWiping(true)
+        defer { BackupService.shared.setWiping(false) }
+
         try migrateMnemonic(walletIndex: walletIndex)
         try migratePassphrase(walletIndex: walletIndex)
         try migratePin()
