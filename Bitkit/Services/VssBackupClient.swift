@@ -90,6 +90,7 @@ class VssBackupClient {
         if let existingSetup = isSetup {
             do {
                 try await existingSetup.value
+                return // ✅ Don't create another setup if one succeeded!
             } catch let error as CancellationError {
                 isSetup = nil
                 throw error
