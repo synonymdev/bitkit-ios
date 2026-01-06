@@ -102,6 +102,75 @@ class Crypto {
         return SHA256.hash(data: Data(sha256)).bytes
     }
 
+    /// Sign using Lightning Network message signing format
+    static func sign(message: String, privateKey: Data) throws -> String {
+        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
+            throw CryptoError.contextCreationFailed
+        }
+        defer { secp256k1_context_destroy(context) }
+
+        let lightningPrefix = "Lightning Signed Message:"
+        let prefixedMessage = lightningPrefix + message
+        let hash1 = SHA256.hash(data: Data(prefixedMessage.utf8))
+        let messageHash = SHA256.hash(data: Data(hash1))
+
+        var signature = secp256k1_ecdsa_recoverable_signature()
+
+        let result = messageHash.withUnsafeBytes { hashPtr in
+            privateKey.withUnsafeBytes { keyPtr in
+                secp256k1_ecdsa_sign_recoverable(
+                    context,
+                    &signature,
+                    hashPtr.bindMemory(to: UInt8.self).baseAddress!,
+                    keyPtr.bindMemory(to: UInt8.self).baseAddress!,
+                    nil,
+                    nil
+                )
+            }
+        }
+
+        guard result == 1 else {
+            throw CryptoError.signingFailed
+        }
+
+        var output = [UInt8](repeating: 0, count: 64)
+        var recId: Int32 = 0
+        secp256k1_ecdsa_recoverable_signature_serialize_compact(context, &output, &recId, &signature)
+
+        let recIdByte = UInt8(recId + 31)
+        var fullSig = [recIdByte]
+        fullSig.append(contentsOf: output)
+        return Data(fullSig).hex
+    }
+
+    static func getPublicKey(privateKey: Data) throws -> Data {
+        guard let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN)) else {
+            throw CryptoError.contextCreationFailed
+        }
+        defer { secp256k1_context_destroy(context) }
+
+        var publicKey = secp256k1_pubkey()
+        let createResult = privateKey.withUnsafeBytes { keyPtr in
+            secp256k1_ec_pubkey_create(
+                context,
+                &publicKey,
+                keyPtr.bindMemory(to: UInt8.self).baseAddress!
+            )
+        }
+
+        guard createResult == 1 else {
+            throw CryptoError.publicKeyCreationFailed
+        }
+
+        var serializedPubKey = [UInt8](repeating: 0, count: 33)
+        var outputLen = 33
+        guard secp256k1_ec_pubkey_serialize(context, &serializedPubKey, &outputLen, &publicKey, UInt32(SECP256K1_EC_COMPRESSED)) == 1 else {
+            throw CryptoError.publicKeySerializationFailed
+        }
+
+        return Data(serializedPubKey)
+    }
+
     enum CryptoError: Error {
         case sharedSecretGenerationFailed
         case invalidDerivationName
@@ -112,5 +181,6 @@ class Crypto {
         case publicKeySerializationFailed
         case decryptionFailed
         case invalidInputData
+        case signingFailed
     }
 }

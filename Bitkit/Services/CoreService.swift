@@ -154,6 +154,42 @@ class ActivityService {
         }
     }
 
+    func markAllUnseenActivitiesAsSeen() async {
+        let timestamp = UInt64(Date().timeIntervalSince1970)
+
+        do {
+            let activities = try await get()
+            var didMarkAny = false
+
+            for activity in activities {
+                let id: String
+                let isSeen: Bool
+
+                switch activity {
+                case let .onchain(onchain):
+                    id = onchain.id
+                    isSeen = onchain.seenAt != nil
+                case let .lightning(lightning):
+                    id = lightning.id
+                    isSeen = lightning.seenAt != nil
+                }
+
+                if !isSeen {
+                    try await ServiceQueue.background(.core) {
+                        try BitkitCore.markActivityAsSeen(activityId: id, seenAt: timestamp)
+                    }
+                    didMarkAny = true
+                }
+            }
+
+            if didMarkAny {
+                activitiesChangedSubject.send()
+            }
+        } catch {
+            Logger.error("Failed to mark all activities as seen: \(error)", context: "ActivityService")
+        }
+    }
+
     // MARK: - Transaction Status Checks
 
     func wasTransactionReplaced(txid: String) async -> Bool {
@@ -232,7 +268,7 @@ class ActivityService {
         else {
             return false
         }
-        return activity.doesExist
+        return activity.doesExist && !activity.isBoosted
     }
 
     init(coreService: CoreService) {
@@ -316,15 +352,16 @@ class ActivityService {
         let value = payment.amountSats ?? 0
 
         // Determine confirmation status from payment's txStatus
-        // Ensure confirmTimestamp is at least equal to paymentTimestamp when confirmed
-        // This handles cases where payment.latestUpdateTimestamp is more recent than blockTimestamp
-        let (isConfirmed, confirmedTimestamp): (Bool, UInt64?) =
-            if case let .onchain(_, txStatus) = payment.kind,
-            case let .confirmed(_, _, blockTimestamp) = txStatus {
-                (true, max(blockTimestamp, paymentTimestamp))
-            } else {
-                (false, nil)
-            }
+        var blockTimestamp: UInt64?
+        let isConfirmed: Bool
+        if case let .onchain(_, txStatus) = payment.kind,
+           case let .confirmed(_, _, bts) = txStatus
+        {
+            isConfirmed = true
+            blockTimestamp = bts
+        } else {
+            isConfirmed = false
+        }
 
         // Extract existing activity data
         let existingOnchain: OnchainActivity? = {
@@ -376,6 +413,12 @@ class ActivityService {
         // Build and save the activity
         let finalDoesExist = isConfirmed ? true : doesExist
 
+        let activityTimestamp: UInt64 = if existingActivity == nil, let bts = blockTimestamp, bts < paymentTimestamp {
+            bts
+        } else {
+            existingOnchain?.timestamp ?? paymentTimestamp
+        }
+
         let onchain = OnchainActivity(
             id: payment.id,
             txType: payment.direction == .outbound ? .sent : .received,
@@ -385,12 +428,12 @@ class ActivityService {
             feeRate: feeRate,
             address: address,
             confirmed: isConfirmed,
-            timestamp: paymentTimestamp,
+            timestamp: activityTimestamp,
             isBoosted: isBoosted,
             boostTxIds: boostTxIds,
             isTransfer: isTransfer,
             doesExist: finalDoesExist,
-            confirmTimestamp: confirmedTimestamp,
+            confirmTimestamp: blockTimestamp,
             channelId: channelId,
             transferTxId: transferTxId,
             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),

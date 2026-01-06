@@ -239,6 +239,20 @@ enum Env {
         }
     }
 
+    static var rnBackupServerHost: String {
+        switch network {
+        case .bitcoin: "https://blocktank.synonym.to/backups-ldk"
+        default: "https://bitkit.stag0.blocktank.to/backups-ldk"
+        }
+    }
+
+    static var rnBackupServerPubKey: String {
+        switch network {
+        case .bitcoin: "0236efd76e37f96cf2dced9d52ff84c97e5b3d4a75e7d494807291971783f38377"
+        default: "02c03b8b8c1b5500b622646867d99bf91676fac0f38e2182c91a9ff0d053a21d6d"
+        }
+    }
+
     static var blockExplorerUrl: String {
         switch network {
         case .bitcoin: "https://mempool.space"
