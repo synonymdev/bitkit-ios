@@ -22,7 +22,12 @@ class LightningService {
 
     private init() {}
 
-    func setup(walletIndex: Int, electrumServerUrl: String? = nil, rgsServerUrl: String? = nil) async throws {
+    func setup(
+        walletIndex: Int,
+        electrumServerUrl: String? = nil,
+        rgsServerUrl: String? = nil,
+        channelMigration: ChannelDataMigration? = nil
+    ) async throws {
         Logger.debug("Checking lightning process lock...")
         try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
@@ -80,7 +85,11 @@ class LightningService {
         Logger.debug("Building ldk-node with vssUrl: '\(vssUrl)'")
         Logger.debug("Building ldk-node with lnurlAuthServerUrl: '\(lnurlAuthServerUrl)'")
 
-        // Set entropy from mnemonic on builder
+        if let channelMigration {
+            builder.setChannelDataMigration(migration: channelMigration)
+            Logger.info("Applied channel migration: \(channelMigration.channelMonitors.count) monitors", context: "Migration")
+        }
+
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {

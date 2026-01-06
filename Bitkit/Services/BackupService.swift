@@ -499,14 +499,53 @@ class BackupService {
         return statuses[category] ?? BackupItemStatus()
     }
 
-    func getLatestBackupTime() -> UInt64? {
-        let statuses = getAllBackupStatuses()
-        let syncedTimestamps = BackupCategory.allCases.compactMap { category -> UInt64? in
-            let status = statuses[category] ?? BackupItemStatus()
-            return status.synced > 0 ? status.synced : nil
-        }
+    func getLatestBackupTime() async -> UInt64? {
+        do {
+            try await vssBackupClient.setup()
 
-        return syncedTimestamps.max()
+            let timestamps = await withTaskGroup(of: UInt64?.self) { group in
+                for category in BackupCategory.allCases where category != .lightningConnections {
+                    group.addTask {
+                        await self.getRemoteBackupTimestamp(category: category)
+                    }
+                }
+
+                var results: [UInt64] = []
+                for await timestamp in group {
+                    if let ts = timestamp, ts > 0 {
+                        results.append(ts)
+                    }
+                }
+                return results
+            }
+
+            return timestamps.max()
+        } catch {
+            Logger.warn("Failed to get VSS backup timestamp: \(error)", context: "BackupService")
+            return nil
+        }
+    }
+
+    private func getRemoteBackupTimestamp(category: BackupCategory) async -> UInt64? {
+        do {
+            guard let item = try await vssBackupClient.getObject(key: category.rawValue) else {
+                return nil
+            }
+
+            struct BackupWithCreatedAt: Codable {
+                let createdAt: UInt64?
+            }
+
+            let backup = try JSONDecoder().decode(BackupWithCreatedAt.self, from: item.value)
+            guard let createdAtMillis = backup.createdAt, createdAtMillis > 0 else {
+                return nil
+            }
+            // Convert from milliseconds to seconds (matching Android behavior)
+            return createdAtMillis / 1000
+        } catch {
+            Logger.debug("Failed to get remote backup timestamp for \(category.rawValue): \(error)", context: "BackupService")
+            return nil
+        }
     }
 
     func scheduleFullBackup() async {
@@ -576,7 +615,7 @@ class BackupService {
             let settingsDict = await SettingsViewModel.shared.getSettingsDictionary()
             let payload = SettingsBackupV1(
                 version: 1,
-                createdAt: UInt64(Date().timeIntervalSince1970),
+                createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 settings: settingsDict
             )
             return try payload.encode()
@@ -592,7 +631,7 @@ class BackupService {
 
             let payload = WidgetsBackupV1(
                 version: 1,
-                createdAt: UInt64(Date().timeIntervalSince1970),
+                createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 widgets: androidWidgetsDict
             )
             let encoded = try payload.encode()
@@ -603,13 +642,13 @@ class BackupService {
             let transfers = try TransferStorage.shared.getAll()
             let payload = WalletBackupV1(
                 version: 1,
-                createdAt: UInt64(Date().timeIntervalSince1970),
+                createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 transfers: transfers
             )
             return try JSONEncoder().encode(payload)
 
         case .metadata:
-            let currentTime = UInt64(Date().timeIntervalSince1970)
+            let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
             let cache = await SettingsViewModel.shared.getAppCacheData()
 
             let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
@@ -629,7 +668,7 @@ class BackupService {
 
             let payload = BlocktankBackupV1(
                 version: 1,
-                createdAt: UInt64(Date().timeIntervalSince1970),
+                createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 orders: orders,
                 cjitEntries: cjitEntries,
                 info: info
@@ -644,7 +683,7 @@ class BackupService {
 
             let payload = ActivityBackupV1(
                 version: 1,
-                createdAt: UInt64(Date().timeIntervalSince1970),
+                createdAt: UInt64(Date().timeIntervalSince1970 * 1000),
                 activities: activities,
                 activityTags: activityTags,
                 closedChannels: closedChannels
