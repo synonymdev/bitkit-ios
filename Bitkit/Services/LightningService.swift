@@ -503,6 +503,17 @@ class LightningService {
 
         Logger.debug("closeChannel called to channel=\(channel), force=\(force)", context: "LightningService")
 
+        // Prevent force closing channels with trusted peers (LSP nodes)
+        if force {
+            let trustedPeerIds = Set(getLspPeerNodeIds())
+            if trustedPeerIds.contains(channel.counterpartyNodeId.description) {
+                throw AppError(
+                    message: "Cannot force close channel with trusted peer",
+                    debugMessage: "Force close is disabled for Blocktank LSP channels. Please use cooperative close instead."
+                )
+            }
+        }
+
         return try await closeChannel(
             userChannelId: channel.userChannelId,
             counterpartyNodeId: channel.counterpartyNodeId,
@@ -690,6 +701,18 @@ extension LightningService {
         return channels.filter { channel in
             !lspNodeIds.contains(channel.counterpartyNodeId)
         }
+    }
+
+    /// Separates channels into trusted (LSP) and non-trusted peers
+    func separateTrustedChannels(_ channels: [ChannelDetails]) -> (trusted: [ChannelDetails], nonTrusted: [ChannelDetails]) {
+        let trustedPeerIds = Set(getLspPeerNodeIds())
+        let trusted = channels.filter { channel in
+            trustedPeerIds.contains(channel.counterpartyNodeId.description)
+        }
+        let nonTrusted = channels.filter { channel in
+            !trustedPeerIds.contains(channel.counterpartyNodeId.description)
+        }
+        return (trusted: trusted, nonTrusted: nonTrusted)
     }
 }
 

@@ -22,6 +22,7 @@ class TransferViewModel: ObservableObject {
     @Published var transferValues = TransferValues()
     @Published var selectedChannelIds: [String] = []
     @Published var channelsToClose: [ChannelDetails] = []
+    @Published var transferUnavailable = false
 
     private let coreService: CoreService
     private let lightningService: LightningService
@@ -598,26 +599,50 @@ class TransferViewModel: ObservableObject {
                 try? await Task.sleep(nanoseconds: UInt64(retryInterval * 1_000_000_000))
             }
 
-            Logger.info("Giving up on coop close. Showing force transfer UI.")
+            Logger.info("Giving up on coop close. Checking if force close is possible.")
 
-            // Show force transfer sheet
-            sheetViewModel.showSheet(.forceTransfer)
+            // Check if any channels can be force closed (filter out trusted peers)
+            let (_, nonTrustedChannels) = lightningService.separateTrustedChannels(channelsToClose)
+
+            if !nonTrustedChannels.isEmpty {
+                sheetViewModel.showSheet(.forceTransfer)
+            } else {
+                Logger.warn("All channels are with trusted peers. Cannot force close.")
+                channelsToClose.removeAll()
+                transferUnavailable = true
+            }
         }
     }
 
     /// Force close all channels that failed to cooperatively close
-    func forceCloseChannel() async throws {
+    /// Returns the number of trusted peer channels that were skipped
+    func forceCloseChannel() async throws -> Int {
         guard !channelsToClose.isEmpty else {
             Logger.warn("No channels to force close")
-            return
+            return 0
         }
 
-        Logger.info("Force closing \(channelsToClose.count) channel(s)")
+        // Filter out trusted peer channels (cannot force close LSP channels)
+        let (trustedChannels, nonTrustedChannels) = lightningService.separateTrustedChannels(channelsToClose)
+
+        if !trustedChannels.isEmpty {
+            Logger.warn("Skipping \(trustedChannels.count) trusted peer channel(s)")
+        }
+
+        guard !nonTrustedChannels.isEmpty else {
+            channelsToClose.removeAll()
+            throw AppError(
+                message: "Cannot force close channels with trusted peer",
+                debugMessage: "All channels are with trusted peers (LSP). Force close is disabled."
+            )
+        }
+
+        Logger.info("Force closing \(nonTrustedChannels.count) channel(s)")
 
         var errors: [(channelId: String, error: Error)] = []
         var successfulChannels: [ChannelDetails] = []
 
-        for channel in channelsToClose {
+        for channel in nonTrustedChannels {
             do {
                 // Force close the channel first
                 try await lightningService.closeChannel(
@@ -649,9 +674,10 @@ class TransferViewModel: ObservableObject {
             }
         }
 
-        // Remove successfully closed channels from the list
+        // Remove successfully closed channels and trusted peer channels from the list
         channelsToClose.removeAll { channel in
-            successfulChannels.contains { $0.channelId == channel.channelId }
+            successfulChannels.contains { $0.channelId == channel.channelId } ||
+                trustedChannels.contains { $0.channelId == channel.channelId }
         }
 
         try? await transferService.syncTransferStates()
@@ -664,6 +690,8 @@ class TransferViewModel: ObservableObject {
                 debugMessage: errorMessages
             )
         }
+
+        return trustedChannels.count
     }
 }
 
