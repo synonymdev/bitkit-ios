@@ -287,9 +287,11 @@ struct AppScene: View {
     @Sendable
     private func setupTask() async {
         do {
+            // CRITICAL: Check for RN migration BEFORE orphaned scenario
+            // If RN data exists, it's a migration (not orphaned)
             await checkAndPerformRNMigration()
 
-            // CRITICAL: Check for orphaned keychain scenario BEFORE wallet exists check
+            // Now check for orphaned keychain (after migration has run)
             try await handleOrphanedKeychainScenario()
             try wallet.setWalletExistsState()
 
@@ -314,8 +316,10 @@ struct AppScene: View {
             return
         }
 
-        guard !migrations.hasNativeWalletData() else {
-            Logger.info("Native wallet data exists, skipping RN migration", context: "AppScene")
+        // Check if native wallet data exists AND is encrypted
+        // If data exists but no encryption key, it's plaintext RN data that needs migration
+        if migrations.hasNativeWalletData() && KeychainCrypto.keyExists() {
+            Logger.info("Native encrypted wallet data exists, skipping RN migration", context: "AppScene")
             migrations.markMigrationChecked()
             return
         }
@@ -421,11 +425,14 @@ struct AppScene: View {
 
                 try Keychain.wipeEntireKeychain()
 
+                // ALSO wipe RN keychain to prevent migration from recovering orphaned wallet
+                MigrationsService.shared.wipeRNKeychain()
+
                 if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
                     appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
                 }
 
-                Logger.info("Orphaned keychain wiped. App will show onboarding.", context: "AppScene")
+                Logger.info("Orphaned keychain wiped (native + RN). App will show onboarding.", context: "AppScene")
             } catch {
                 Logger.error("Failed to load keychain during orphaned check: \(error).", context: "AppScene")
             }

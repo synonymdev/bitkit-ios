@@ -400,6 +400,37 @@ extension MigrationsService {
         }
         return String(data: data, encoding: .utf8)
     }
+
+    func wipeRNKeychain() {
+        // Delete RN mnemonic
+        deleteFromRNKeychain(key: .mnemonic(walletName: rnWalletName))
+
+        // Delete RN passphrase
+        deleteFromRNKeychain(key: .passphrase(walletName: rnWalletName))
+
+        // Delete RN PIN
+        deleteFromRNKeychain(key: .pin)
+
+        Logger.info("Wiped RN keychain", context: "Migration")
+    }
+
+    private func deleteFromRNKeychain(key: RNKeychainKey) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: key.service,
+            kSecAttrAccount as String: key.service, // RN uses service as account
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny, // Match RN keychain query
+        ]
+
+        let status = SecItemDelete(query as CFDictionary)
+        if status == errSecSuccess {
+            Logger.debug("Deleted RN keychain key '\(key.service)' from service '\(key.service)'", context: "Migration")
+        } else if status == errSecItemNotFound {
+            Logger.debug("RN keychain key '\(key.service)' not found (already deleted)", context: "Migration")
+        } else {
+            Logger.warn("Failed to delete RN keychain key '\(key.service)': \(status)", context: "Migration")
+        }
+    }
 }
 
 // MARK: - RN Migration Detection & Execution
@@ -464,7 +495,11 @@ extension MigrationsService {
 
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
-        Logger.info("RN migration completed", context: "Migration")
+
+        // Clean up RN keychain data after successful migration
+        wipeRNKeychain()
+
+        Logger.info("RN migration completed and cleaned up", context: "Migration")
     }
 
     private func migrateMnemonic(walletIndex: Int) throws {
