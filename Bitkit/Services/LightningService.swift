@@ -377,12 +377,8 @@ class LightningService {
             return false
         }
 
-        // When geoblocked, only count non-LSP channels
-        let isGeoblocked = GeoService.shared.isGeoBlocked
-        let channelsToUse = isGeoblocked ? getNonLspChannels() : channels
-
         let totalNextOutboundHtlcLimitSats =
-            channelsToUse
+            channels
                 .filter(\.isUsable)
                 .map(\.nextOutboundHtlcLimitMsat)
                 .reduce(0, +) / 1000
@@ -443,16 +439,6 @@ class LightningService {
     func send(bolt11: String, sats: UInt64? = nil, params: RouteParametersConfig? = nil) async throws -> PaymentHash {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
-        }
-
-        // When geoblocked, verify we have external (non-LSP) peers
-        let isGeoblocked = GeoService.shared.isGeoBlocked
-        if isGeoblocked && !hasExternalPeers() {
-            Logger.error("Cannot send Lightning payment when geoblocked without external peers")
-            throw AppError(
-                message: "Lightning send unavailable",
-                debugMessage: "You need channels with non-Blocktank nodes to send Lightning payments."
-            )
         }
 
         Logger.info("Paying bolt11: \(bolt11)")
@@ -664,31 +650,6 @@ extension LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.getAddressBalance(addressStr: address)
-        }
-    }
-
-    /// Returns LSP (Blocktank) peer node IDs
-    func getLspPeerNodeIds() -> [String] {
-        return Env.trustedLnPeers.map(\.nodeId)
-    }
-
-    /// Checks if there are connected peers other than LSP peers
-    /// Used for geoblocking to determine if Lightning operations can proceed
-    func hasExternalPeers() -> Bool {
-        guard let peers else { return false }
-        let lspNodeIds = Set(getLspPeerNodeIds())
-        return peers.contains { peer in
-            !lspNodeIds.contains(peer.nodeId)
-        }
-    }
-
-    /// Filters channels to exclude LSP channels
-    /// Used for geoblocking to only allow operations through non-Blocktank channels
-    func getNonLspChannels() -> [ChannelDetails] {
-        guard let channels else { return [] }
-        let lspNodeIds = Set(getLspPeerNodeIds())
-        return channels.filter { channel in
-            !lspNodeIds.contains(channel.counterpartyNodeId)
         }
     }
 }
