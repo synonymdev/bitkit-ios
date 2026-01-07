@@ -212,6 +212,10 @@ struct RNWidgets: Codable {
     var sortOrder: [String]?
 }
 
+struct RNTodos: Codable {
+    var hide: [String: Int64]?
+}
+
 struct RNWidgetsWithOptions {
     var widgets: RNWidgets
     var widgetOptions: [String: Data] // widget name -> JSON options data
@@ -678,6 +682,31 @@ extension MigrationsService {
         }
     }
 
+    func extractRNTodos(from mmkvData: [String: String]) -> RNTodos? {
+        guard let rootJson = mmkvData["persist:root"],
+              let jsonStart = rootJson.firstIndex(of: "{")
+        else { return nil }
+
+        let jsonString = String(rootJson[jsonStart...])
+        guard let data = jsonString.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let todosJson = root["todos"] as? String,
+              let todosData = todosJson.data(using: .utf8)
+        else {
+            return nil
+        }
+
+        do {
+            let todos = try JSONDecoder().decode(RNTodos.self, from: todosData)
+            let hideCount = todos.hide?.count ?? 0
+            Logger.debug("Extracted RN todos: \(hideCount) hidden suggestions", context: "Migration")
+            return todos
+        } catch {
+            Logger.error("Failed to decode RN todos: \(error)", context: "Migration")
+            return nil
+        }
+    }
+
     func extractRNActivities(from mmkvData: [String: String]) -> [RNActivityItem]? {
         guard let rootJson = mmkvData["persist:root"],
               let jsonStart = rootJson.firstIndex(of: "{")
@@ -935,6 +964,37 @@ extension MigrationsService {
         }
     }
 
+    func applyRNTodos(_ todos: RNTodos) {
+        // Map RN todo types to iOS suggestion IDs
+        let mapping: [String: String] = [
+            "backupSeedPhrase": "backupSeedPhrase",
+            "buyBitcoin": "buyBitcoin",
+            "lightning": "transferToSpending",
+            "quickpay": "quickpay",
+            "shop": "shop",
+            "slashtagsProfile": "profile",
+            "support": "support",
+            "invite": "invite",
+            "pin": "pin",
+        ]
+
+        guard let hide = todos.hide else { return }
+
+        var dismissedIds: [String] = []
+        for rnTodoType in hide.keys {
+            if let iosSuggestionId = mapping[rnTodoType] {
+                dismissedIds.append(iosSuggestionId)
+            }
+        }
+
+        if !dismissedIds.isEmpty {
+            let existing = UserDefaults.standard.stringArray(forKey: "dismissedSuggestions") ?? []
+            let merged = Array(Set(existing + dismissedIds))
+            UserDefaults.standard.set(merged, forKey: "dismissedSuggestions")
+            Logger.info("Migrated \(dismissedIds.count) dismissed suggestions", context: "Migration")
+        }
+    }
+
     func applyRNActivities(_ items: [RNActivityItem]) async {
         var activities: [Activity] = []
         let now = UInt64(Date().timeIntervalSince1970)
@@ -1058,6 +1118,13 @@ extension MigrationsService {
             applyRNWidgets(widgets)
         } else {
             Logger.debug("No widgets found in MMKV", context: "Migration")
+        }
+
+        if let todos = extractRNTodos(from: mmkvData) {
+            Logger.info("Migrating todos/dismissed suggestions", context: "Migration")
+            applyRNTodos(todos)
+        } else {
+            Logger.debug("No todos found in MMKV", context: "Migration")
         }
 
         UserDefaults.standard.set("", forKey: "onchainAddress")
