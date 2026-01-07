@@ -64,9 +64,9 @@ enum SettingsBackupConfig {
         "warnWhenSendingOver100": "enableSendAmountWarning",
         "bitcoinDisplayUnit": "displayUnit",
         "enableQuickpay": "isQuickPayEnabled",
-        "useBiometrics": "isBiometricEnabled",
-        "requirePinForPayments": "isPinForPaymentsEnabled",
         "enableNotifications": "notificationsGranted",
+        // Note: PIN settings are intentionally NOT backed up for security
+        // PIN itself cannot be backed up, so PIN settings shouldn't be either
     ]
 
     static let algorithmMapping: [String: String] = [
