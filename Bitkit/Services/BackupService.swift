@@ -244,6 +244,11 @@ class BackupService {
             }
 
             Logger.info("Full restore success", context: "BackupService")
+
+            // Always reset PIN settings after restore (PIN is never backed up for security)
+            Task { @MainActor in
+                SettingsViewModel.shared.resetPinSettings()
+            }
         } catch {
             Logger.warn("Full restore error: \(error)", context: "BackupService")
         }
