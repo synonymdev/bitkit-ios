@@ -183,18 +183,21 @@ enum Env {
 
     static var blocktankBaseUrl: String {
         switch network {
-        case .bitcoin: "https://api1.blocktank.to/api"
-        default: "https://api.stag0.blocktank.to/"
+        case .bitcoin: "https://api1.blocktank.to"
+        default: "https://api.stag0.blocktank.to"
         }
     }
 
     static var blocktankPushNotificationServer: String {
-        "\(blocktankBaseUrl)/notifications/api"
+        switch network {
+        case .bitcoin: "\(blocktankBaseUrl)/api/notifications"
+        default: "\(blocktankBaseUrl)/notifications/api"
+        }
     }
 
     static var blocktankClientServer: String {
         switch network {
-        case .bitcoin: "\(blocktankBaseUrl)"
+        case .bitcoin: "\(blocktankBaseUrl)/api"
         default: "\(blocktankBaseUrl)/blocktank/api/v2"
         }
     }
