@@ -1774,7 +1774,7 @@ class CoreService {
         } completion: { result in
             switch result {
             case .success():
-                Logger.info("Blocktank URL updated to \(Env.blocktankBaseUrl)", context: "CoreService")
+                Logger.info("Blocktank URL updated to \(Env.blocktankClientServer)", context: "CoreService")
             case let .failure(error):
                 Logger.error("Failed to update Blocktank URL: \(error)", context: "CoreService")
             }
