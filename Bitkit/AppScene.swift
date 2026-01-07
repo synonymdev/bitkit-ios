@@ -330,8 +330,21 @@ struct AppScene: View {
             return
         }
 
+        // Check if RN Documents folder exists (LDK or MMKV)
+        // If keychain exists but Documents is deleted, the RN app was uninstalled
+        let hasRNDocuments = migrations.hasRNLdkData() || migrations.hasRNMmkvData()
+        if !hasRNDocuments {
+            Logger.warn(
+                "RN keychain found but Documents folder missing - RN app was deleted. Skipping migration and cleaning up orphaned keychain.",
+                context: "AppScene"
+            )
+            migrations.markMigrationChecked()
+            MigrationsService.shared.wipeRNKeychain()
+            return
+        }
+
         await MainActor.run { migrations.isShowingMigrationLoading = true }
-        Logger.info("RN wallet data found, starting migration...", context: "AppScene")
+        Logger.info("RN wallet data verified (keychain + Documents exist), starting migration...", context: "AppScene")
 
         do {
             try await migrations.migrateFromReactNative()
