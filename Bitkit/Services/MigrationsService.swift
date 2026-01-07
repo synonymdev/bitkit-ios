@@ -479,8 +479,10 @@ extension MigrationsService {
         Logger.info("Starting RN migration", context: "Migration")
 
         // Prevent backups from triggering during migration
-        BackupService.shared.setWiping(true)
-        defer { BackupService.shared.setWiping(false) }
+        #if !UNIT_TESTING
+            BackupService.shared.setWiping(true)
+            defer { BackupService.shared.setWiping(false) }
+        #endif
 
         try migrateMnemonic(walletIndex: walletIndex)
         try migratePassphrase(walletIndex: walletIndex)
