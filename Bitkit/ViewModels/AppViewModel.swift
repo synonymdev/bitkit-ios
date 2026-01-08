@@ -423,6 +423,11 @@ extension AppViewModel {
                         )
 
                         try await CoreService.shared.activity.insert(.lightning(ln))
+
+                        // Show receivedTx sheet for CJIT payment
+                        await MainActor.run {
+                            sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
+                        }
                     } else {
                         toast(
                             type: .lightning,

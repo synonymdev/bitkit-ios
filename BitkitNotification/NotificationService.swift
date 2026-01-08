@@ -1,3 +1,4 @@
+import BitkitCore
 import LDKNode
 import os.log
 import UserNotifications
@@ -17,7 +18,7 @@ class NotificationService: UNNotificationServiceExtension {
     var notificationPayload: [String: Any]?
 
     private lazy var notificationLogger: OSLog = {
-        let bundleID = Bundle.main.bundleIdentifier ?? "to.bitkit-regtest.notification"
+        let bundleID = Bundle.main.bundleIdentifier ?? "to.bitkit.notification"
         return OSLog(subsystem: bundleID, category: "NotificationService")
     }()
 
@@ -57,10 +58,6 @@ class NotificationService: UNNotificationServiceExtension {
             }
 
             do {
-                // TODO: switch to electrum after syncing issues are fixed
-                // For notification extension, use default Electrum server URL for now
-                // try await LightningService.shared.setup(walletIndex: self.walletIndex, electrumServerUrl: Env.electrumServerUrl)
-
                 try await LightningService.shared.setup(walletIndex: self.walletIndex)
                 try await LightningService.shared.start { event in
                     self.lightningEventTime = CFAbsoluteTimeGetCurrent()
@@ -90,16 +87,31 @@ class NotificationService: UNNotificationServiceExtension {
                     return
                 }
 
-                os_log("🔔 NotificationService: Open channel request for order %{public}@", log: notificationLogger, type: .error, orderId)
+                guard let lspId = notificationPayload?["lspId"] as? String else {
+                    os_log("🔔 NotificationService: Missing lspId", log: notificationLogger, type: .error)
+                    return
+                }
+
+                os_log(
+                    "🔔 NotificationService: Open channel request for order %{public}@ with LSP %{public}@",
+                    log: notificationLogger,
+                    type: .error,
+                    orderId,
+                    lspId
+                )
 
                 do {
+                    // First, ensure we're connected to the LSP peer
+                    try await self.ensurePeerConnected(lspId: lspId)
+
+                    // Now open the channel
                     let order = try await CoreService.shared.blocktank.open(orderId: orderId)
                     os_log("🔔 NotificationService: Channel opened for order %{public}@", log: notificationLogger, type: .error, order.id)
                 } catch {
                     logError(error, context: "Failed to open channel")
 
-                    self.bestAttemptContent?.title = "Spending Balance Setup Failed"
-                    self.bestAttemptContent?.body = error.localizedDescription
+                    self.bestAttemptContent?.title = "Spending Balance Setup Ready"
+                    self.bestAttemptContent?.body = "Tap to finalize transfer to spending"
 
                     self.deliver()
                 }
@@ -164,11 +176,30 @@ class NotificationService: UNNotificationServiceExtension {
         os_log("🔔 New LDK event: %{public}@", log: notificationLogger, type: .error, String(describing: event))
 
         switch event {
-        case let .paymentReceived(_, _, amountMsat, _):
+        case let .paymentReceived(_, paymentHash, amountMsat, _):
+            // For incomingHtlc notifications, only show notification if payment hash matches
+            if notificationType == .incomingHtlc {
+                guard let expectedPaymentHash = notificationPayload?["paymentHash"] as? String else {
+                    os_log("🔔 NotificationService: Missing paymentHash in notification payload", log: notificationLogger, type: .error)
+                    return
+                }
+
+                // Only process if this is the payment we're waiting for
+                guard paymentHash == expectedPaymentHash else {
+                    os_log(
+                        "🔔 NotificationService: Payment hash mismatch. Expected: %{public}@, Got: %{public}@",
+                        log: notificationLogger,
+                        type: .error,
+                        expectedPaymentHash,
+                        paymentHash
+                    )
+                    return
+                }
+            }
+
             let sats = amountMsat / 1000
             bestAttemptContent?.title = "Payment Received"
             bestAttemptContent?.body = "₿ \(sats)"
-            ReceivedTxSheetDetails(type: .lightning, sats: sats).save() // Save for UI to pick up
 
             if notificationType == .incomingHtlc {
                 deliver()
@@ -190,6 +221,41 @@ class NotificationService: UNNotificationServiceExtension {
                     bestAttemptContent?.title = "Payment Received"
                     bestAttemptContent?.body = "₿ \(sats)"
                     ReceivedTxSheetDetails(type: .lightning, sats: sats).save() // Save for UI to pick up
+
+                    // Add activity item for CJIT payment
+                    Task {
+                        do {
+                            let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
+                            if let cjitOrder {
+                                let now = UInt64(Date().timeIntervalSince1970)
+
+                                let ln = LightningActivity(
+                                    id: channel.fundingTxo?.txid.description ?? "",
+                                    txType: .received,
+                                    status: .succeeded,
+                                    value: sats,
+                                    fee: 0,
+                                    invoice: cjitOrder.invoice.request,
+                                    message: "",
+                                    timestamp: now,
+                                    preimage: nil,
+                                    createdAt: now,
+                                    updatedAt: nil,
+                                    seenAt: nil
+                                )
+
+                                try await CoreService.shared.activity.insert(.lightning(ln))
+                                os_log("🔔 NotificationService: Added CJIT activity item", log: notificationLogger, type: .error)
+                            }
+                        } catch {
+                            os_log(
+                                "🔔 NotificationService: Failed to add CJIT activity: %{public}@",
+                                log: notificationLogger,
+                                type: .error,
+                                error.localizedDescription
+                            )
+                        }
+                    }
                 }
 
                 deliver()
@@ -224,7 +290,7 @@ class NotificationService: UNNotificationServiceExtension {
 
         // MARK: New Onchain Transaction Events
 
-        case let .onchainTransactionReceived(txid, details):
+        case let .onchainTransactionReceived(_, details):
             // Show notification for incoming onchain transactions
             if details.amountSats > 0 {
                 let sats = UInt64(abs(Int64(details.amountSats)))
@@ -233,14 +299,15 @@ class NotificationService: UNNotificationServiceExtension {
                 ReceivedTxSheetDetails(type: .onchain, sats: sats).save() // Save for UI to pick up
                 deliver()
             }
-        case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
-            // Transaction confirmed - could show notification if it was previously unconfirmed
-            if details.amountSats > 0 {
-                let sats = UInt64(abs(Int64(details.amountSats)))
-                bestAttemptContent?.title = "Payment Confirmed"
-                bestAttemptContent?.body = "₿ \(sats) confirmed at block \(blockHeight)"
-                deliver()
-            }
+        case .onchainTransactionConfirmed:
+            // // Transaction confirmed - could show notification if it was previously unconfirmed
+            // if details.amountSats > 0 {
+            //     let sats = UInt64(abs(Int64(details.amountSats)))
+            //     bestAttemptContent?.title = "Payment Confirmed"
+            //     bestAttemptContent?.body = "₿ \(sats) confirmed at block \(blockHeight)"
+            //     deliver()
+            // }
+            break
         case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
             // These events are less critical for notifications, but could be logged
             os_log("🔔 Onchain transaction state changed: %{public}@", log: notificationLogger, type: .error, String(describing: event))
@@ -329,6 +396,54 @@ class NotificationService: UNNotificationServiceExtension {
         if let contentHandler, let bestAttemptContent {
             contentHandler(bestAttemptContent)
         }
+    }
+
+    /// Ensures the peer is connected before attempting to open a channel
+    /// - Parameter lspId: The LSP node ID to connect to
+    private func ensurePeerConnected(lspId: String) async throws {
+        // Find the peer in trusted peers list
+        guard let peer = Env.trustedLnPeers.first(where: { $0.nodeId == lspId }) else {
+            os_log("🔔 NotificationService: LSP %{public}@ not found in trusted peers", log: notificationLogger, type: .error, lspId)
+            throw AppError(message: "LSP not found in trusted peers", debugMessage: "LSP ID: \(lspId)")
+        }
+
+        // Check if already connected
+        if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+            os_log("🔔 NotificationService: Already connected to LSP %{public}@", log: notificationLogger, type: .error, lspId)
+            return
+        }
+
+        // Connect to the peer
+        os_log("🔔 NotificationService: Connecting to LSP %{public}@ at %{public}@", log: notificationLogger, type: .error, lspId, peer.address)
+        try await LightningService.shared.connectPeer(peer: peer)
+
+        // Wait for connection to be established (with timeout)
+        let maxWaitTime: TimeInterval = 10.0
+        let pollInterval: TimeInterval = 0.5
+        let startTime = Date()
+
+        while Date().timeIntervalSince(startTime) < maxWaitTime {
+            if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+                os_log("🔔 NotificationService: Successfully connected to LSP %{public}@", log: notificationLogger, type: .error, lspId)
+                return
+            }
+
+            try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+        }
+
+        // Timeout - check one more time
+        if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+            os_log(
+                "🔔 NotificationService: Successfully connected to LSP %{public}@ (after timeout check)",
+                log: notificationLogger,
+                type: .error,
+                lspId
+            )
+            return
+        }
+
+        os_log("🔔 NotificationService: Timeout waiting for LSP connection %{public}@", log: notificationLogger, type: .error, lspId)
+        throw AppError(message: "Failed to connect to LSP", debugMessage: "Timeout after \(maxWaitTime)s waiting for peer \(lspId)")
     }
 
     /// Logs comprehensive error details

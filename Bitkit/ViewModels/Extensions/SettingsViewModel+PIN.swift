@@ -61,6 +61,7 @@ extension SettingsViewModel {
         pinFailedAttempts = 0
     }
 
+    @MainActor
     func resetPinSettings() {
         pinEnabled = false
         pinFailedAttempts = 0

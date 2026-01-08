@@ -177,10 +177,7 @@ struct ReceiveEdit: View {
     private func needsAdditionalCjit() -> Bool {
         let isGeoBlocked = GeoService.shared.isGeoBlocked
         let minimumAmount = blocktank.minCjitSats ?? 0
-        // When geoblocked, only count non-LSP inbound capacity
-        let inboundCapacity = isGeoBlocked
-            ? (wallet.totalNonLspInboundLightningSats ?? 0)
-            : (wallet.totalInboundLightningSats ?? 0)
+        let inboundCapacity = wallet.totalInboundLightningSats ?? 0
         let invoiceAmount = amountViewModel.amountSats
 
         // Calculate maxClientBalance using TransferViewModel

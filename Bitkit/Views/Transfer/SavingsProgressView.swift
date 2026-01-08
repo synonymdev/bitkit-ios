@@ -122,6 +122,7 @@ struct SavingsProgressContentView: View {
 struct SavingsProgressView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @State private var progressState: SavingsProgressState = .inProgress
 
     var body: some View {
@@ -143,12 +144,26 @@ struct SavingsProgressView: View {
                             progressState = .success
                         }
                     } else {
-                        withAnimation {
-                            progressState = .failed
-                        }
+                        // Check if any channels can be retried (filter out trusted peers)
+                        let (_, nonTrustedChannels) = LightningService.shared.separateTrustedChannels(channelsFailedToCoopClose)
 
-                        // Start retrying the cooperative close
-                        transfer.startCoopCloseRetries(channels: channelsFailedToCoopClose)
+                        if nonTrustedChannels.isEmpty {
+                            // All channels are trusted peers - show error and navigate back
+                            UIApplication.shared.isIdleTimerDisabled = false
+                            app.toast(
+                                type: .error,
+                                title: t("lightning__close_error"),
+                                description: t("lightning__close_error_msg")
+                            )
+                            navigation.reset()
+                        } else {
+                            withAnimation {
+                                progressState = .failed
+                            }
+
+                            // Start retrying the cooperative close for non-trusted channels
+                            transfer.startCoopCloseRetries(channels: nonTrustedChannels)
+                        }
                     }
                 } catch {
                     app.toast(error)
@@ -157,6 +172,16 @@ struct SavingsProgressView: View {
             .onDisappear {
                 // Ensure we re-enable screen timeout when view disappears
                 UIApplication.shared.isIdleTimerDisabled = false
+            }
+            .onChange(of: transfer.transferUnavailable) { unavailable in
+                if unavailable {
+                    transfer.transferUnavailable = false
+                    app.toast(
+                        type: .error,
+                        title: t("lightning__close_error"),
+                        description: t("lightning__close_error_msg")
+                    )
+                }
             }
     }
 }
