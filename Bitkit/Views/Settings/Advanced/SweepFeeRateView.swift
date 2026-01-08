@@ -47,8 +47,9 @@ struct SweepFeeRateView: View {
     private var currentCustomFeeRate: UInt32 {
         if case let .custom(rate) = viewModel.selectedSpeed {
             return rate
+        } else {
+            return viewModel.selectedFeeRate ?? 0
         }
-        return viewModel.selectedFeeRate
     }
 
     private var isCustomSelected: Bool {

@@ -68,13 +68,10 @@ struct SweepFeeCustomView: View {
     }
 
     private func initializeFromCurrentFee() {
-        // Get current custom rate if set, otherwise use default
         if case let .custom(rate) = viewModel.selectedSpeed {
             feeRate = rate
-        } else if let rates = viewModel.feeRates {
-            feeRate = viewModel.selectedSpeed.getFeeRate(from: rates)
         } else {
-            feeRate = viewModel.selectedFeeRate
+            feeRate = viewModel.selectedFeeRate ?? 0
         }
     }
 

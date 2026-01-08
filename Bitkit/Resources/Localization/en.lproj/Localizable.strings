@@ -739,6 +739,7 @@
 "sweep__no_funds_description" = "Bitkit checked unsupported address types and found no funds to sweep.";
 "sweep__error_title" = "Error";
 "sweep__error_destination_address" = "Failed to get destination address";
+"sweep__error_fee_rate_not_set" = "Fee rate not set";
 "sweep__confirm_title" = "Confirm Sweep";
 "sweep__amount" = "Amount to Receive";
 "sweep__destination" = "Destination";

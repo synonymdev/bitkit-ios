@@ -17,7 +17,7 @@ class SweepViewModel: ObservableObject {
     @Published var transactionPreview: SweepTransactionPreview?
 
     /// Selected fee rate in sats/vbyte
-    @Published var selectedFeeRate: UInt32 = 1
+    @Published var selectedFeeRate: UInt32?
 
     /// Available fee rates
     @Published var feeRates: FeeRates?
@@ -140,6 +140,14 @@ class SweepViewModel: ObservableObject {
         isPreparingTransaction = true
         errorMessage = nil
 
+        guard let selectedFeeRate, selectedFeeRate > 0 else {
+            let error = t("sweep__error_fee_rate_not_set")
+            sweepState = .error(error)
+            errorMessage = error
+            isPreparingTransaction = false
+            return
+        }
+
         do {
             let mnemonic = try getMnemonic()
             let passphrase = try getPassphrase()
@@ -239,7 +247,7 @@ class SweepViewModel: ObservableObject {
         transactionPreview = nil
         sweepResult = nil
         errorMessage = nil
-        selectedFeeRate = 1
+        selectedFeeRate = nil
         selectedSpeed = .normal
         destinationAddress = nil
     }
