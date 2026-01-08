@@ -214,19 +214,20 @@ class SweepViewModel: ObservableObject {
     }
 
     /// Load current fee estimates
-    func loadFeeEstimates() async {
-        do {
-            if let rates = try await CoreService.shared.blocktank.fees() {
-                feeRates = rates
+    func loadFeeEstimates() async throws {
+        var rates = try? await CoreService.shared.blocktank.fees(refresh: true)
 
-                // Update selected fee rate based on current speed
-                selectedFeeRate = selectedSpeed.getFeeRate(from: rates)
-            }
-        } catch {
-            Logger.error("Failed to load fee estimates: \(error)", context: "SweepViewModel")
-            // Use defaults
-            selectedFeeRate = 1
+        if rates == nil {
+            Logger.warn("Failed to fetch fresh fee rate, using cached rate.", context: "SweepViewModel")
+            rates = try await CoreService.shared.blocktank.fees(refresh: false)
         }
+
+        guard let rates else {
+            throw AppError(message: "Fee rates unavailable", debugMessage: nil)
+        }
+
+        feeRates = rates
+        selectedFeeRate = selectedSpeed.getFeeRate(from: rates)
     }
 
     /// Reset the view model state

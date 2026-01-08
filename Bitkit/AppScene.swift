@@ -183,6 +183,12 @@ struct AppScene: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
+        .onAppear {
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
     }
 
     @ViewBuilder

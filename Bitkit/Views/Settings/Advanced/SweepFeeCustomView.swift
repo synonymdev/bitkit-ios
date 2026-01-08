@@ -20,7 +20,7 @@ struct SweepFeeCustomView: View {
 
     private var totalFeeText: String {
         let fee = UInt64(feeRate) * estimatedTxVbytes
-        return "\(fee) sats total fee"
+        return t("sweep__fee_total", variables: ["fee": String(fee)])
     }
 
     var body: some View {

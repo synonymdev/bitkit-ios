@@ -33,8 +33,8 @@ struct SweepFeeRateView: View {
     private func isDisabled(for speed: TransactionSpeed) -> Bool {
         let fee = getFee(for: speed)
         let totalBalance = viewModel.totalBalance
-        // Disable if fee would consume entire balance (leave at least some dust)
-        return fee >= totalBalance
+        // Disable if fee would leave less than dust limit
+        return fee + UInt64(Env.dustLimit) > totalBalance
     }
 
     private func selectFee(_ speed: TransactionSpeed) {
@@ -136,7 +136,12 @@ struct SweepFeeRateView: View {
 
     private func loadFeeEstimates() async {
         isLoading = true
-        await viewModel.loadFeeEstimates()
+        do {
+            try await viewModel.loadFeeEstimates()
+        } catch {
+            Logger.error("Failed to load fee estimates: \(error)", context: "SweepFeeRateView")
+            viewModel.errorMessage = error.localizedDescription
+        }
         isLoading = false
     }
 }

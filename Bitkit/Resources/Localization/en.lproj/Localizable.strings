@@ -737,6 +737,7 @@
 "sweep__no_funds_title" = "No Funds To Sweep";
 "sweep__no_funds_description" = "Bitkit checked unsupported address types and found no funds to sweep.";
 "sweep__error_title" = "Error";
+"sweep__error_destination_address" = "Failed to get destination address";
 "sweep__confirm_title" = "Confirm Sweep";
 "sweep__amount" = "Amount to Receive";
 "sweep__destination" = "Destination";
@@ -744,6 +745,7 @@
 "sweep__preparing" = "Preparing transaction...";
 "sweep__broadcasting" = "Broadcasting...";
 "sweep__swipe" = "Swipe to Sweep";
+"sweep__fee_total" = "{fee} sats total fee";
 "sweep__complete_title" = "Sweep Complete";
 "sweep__complete_description" = "Your funds have been swept and will be added to your wallet balance.";
 "sweep__wallet_overview" = "Wallet Overview";

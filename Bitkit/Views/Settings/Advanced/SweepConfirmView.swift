@@ -185,7 +185,12 @@ struct SweepConfirmView: View {
         .bottomSafeAreaPadding()
         .task {
             await loadDestinationAddress()
-            await viewModel.loadFeeEstimates()
+            do {
+                try await viewModel.loadFeeEstimates()
+            } catch {
+                Logger.error("Failed to load fee estimates: \(error)", context: "SweepConfirmView")
+                viewModel.errorMessage = error.localizedDescription
+            }
             if let address = viewModel.destinationAddress {
                 await viewModel.prepareSweep(destinationAddress: address)
             }
@@ -227,7 +232,7 @@ struct SweepConfirmView: View {
             viewModel.destinationAddress = try await LightningService.shared.newAddress()
         } catch {
             Logger.error("Failed to get destination address: \(error)", context: "SweepConfirmView")
-            viewModel.errorMessage = "Failed to get destination address"
+            viewModel.errorMessage = t("sweep__error_destination_address")
         }
         isLoadingAddress = false
     }
