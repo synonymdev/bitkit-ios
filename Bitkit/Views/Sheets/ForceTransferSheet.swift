@@ -40,13 +40,13 @@ struct ForceTransferSheet: View {
 
         Task { @MainActor in
             do {
-                try await transfer.forceCloseChannel()
+                let skippedCount = try await transfer.forceCloseChannel()
                 sheets.hideSheet()
-                app.toast(
-                    type: .success,
-                    title: t("lightning__force_init_title"),
-                    description: t("lightning__force_init_msg")
-                )
+
+                let description = skippedCount > 0
+                    ? "\(t("lightning__force_init_msg")) \(t("lightning__force_channels_skipped"))"
+                    : t("lightning__force_init_msg")
+                app.toast(type: .success, title: t("lightning__force_init_title"), description: description)
             } catch {
                 Logger.error("Force transfer failed", context: error.localizedDescription)
                 app.toast(

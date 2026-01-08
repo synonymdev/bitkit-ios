@@ -66,43 +66,68 @@ struct CloseConnectionConfirmation: View {
                     )
                 }
             } else {
-                // Failed to close - store failed channels and show force close dialog
+                // Failed to close - check if we can force close
                 DispatchQueue.main.async {
                     dismiss()
 
-                    // Show error toast
-                    app.toast(
-                        type: .error,
-                        title: t("lightning__close_error"),
-                        description: t("lightning__close_error_msg")
-                    )
+                    // Check if failed channels are trusted peers (cannot force close)
+                    let (_, nonTrustedFailedChannels) = LightningService.shared.separateTrustedChannels(failedChannels)
 
-                    // Store the failed channels for force close
-                    transfer.channelsToClose = failedChannels
+                    if !nonTrustedFailedChannels.isEmpty {
+                        // Show error toast
+                        app.toast(
+                            type: .error,
+                            title: t("lightning__close_error"),
+                            description: t("lightning__close_error_msg")
+                        )
 
-                    // Show force transfer sheet
-                    sheets.showSheet(.forceTransfer)
+                        // Store the failed non-trusted channels for force close
+                        transfer.channelsToClose = nonTrustedFailedChannels
+
+                        // Show force transfer sheet
+                        sheets.showSheet(.forceTransfer)
+                    } else {
+                        // All failed channels are trusted peers - cannot force close
+                        app.toast(
+                            type: .error,
+                            title: t("lightning__close_error"),
+                            description: t("lightning__close_error_msg")
+                        )
+                    }
                 }
             }
         } catch {
             Logger.error("Failed to close channel: \(error)")
 
-            // On error, also offer force close option
+            // On error, check if we can force close
             DispatchQueue.main.async {
                 dismiss()
 
-                // Show error toast
-                app.toast(
-                    type: .error,
-                    title: t("lightning__close_error"),
-                    description: error.localizedDescription
-                )
+                // Check if channel is a trusted peer (cannot force close)
+                let (trustedChannels, _) = LightningService.shared.separateTrustedChannels([channel])
+                let isTrustedPeer = !trustedChannels.isEmpty
 
-                // Store the channel for force close
-                transfer.channelsToClose = [channel]
+                if isTrustedPeer {
+                    // Cannot force close trusted peer channel
+                    app.toast(
+                        type: .error,
+                        title: t("lightning__close_error"),
+                        description: t("lightning__close_error_msg")
+                    )
+                } else {
+                    // Show error toast
+                    app.toast(
+                        type: .error,
+                        title: t("lightning__close_error"),
+                        description: error.localizedDescription
+                    )
 
-                // Show force transfer sheet
-                sheets.showSheet(.forceTransfer)
+                    // Store the channel for force close
+                    transfer.channelsToClose = [channel]
+
+                    // Show force transfer sheet
+                    sheets.showSheet(.forceTransfer)
+                }
             }
         }
 

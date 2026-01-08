@@ -77,6 +77,7 @@ struct AppScene: View {
             .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
                 if !isLoading {
                     widgets.loadSavedWidgets()
+                    suggestionsManager.reloadDismissed()
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
