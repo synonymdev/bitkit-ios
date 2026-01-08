@@ -559,7 +559,6 @@ extension AppViewModel {
                     SettingsViewModel.shared.updatePinEnabledState()
 
                     MigrationsService.shared.isShowingMigrationLoading = false
-                    self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
                 }
             } else if MigrationsService.shared.isRestoringFromRNRemoteBackup {
                 Task {

@@ -79,6 +79,12 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
+                    checkForSweepableFunds()
+                }
+            }
+            .onChange(of: migrations.isRestoringFromRNRemoteBackup) { isRestoring in
+                if !isRestoring {
+                    checkForSweepableFunds()
                 }
             }
             .environmentObject(app)
@@ -140,28 +146,43 @@ struct AppScene: View {
 
     @ViewBuilder
     private var migrationLoadingContent: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        VStack(spacing: 0) {
+            NavigationBar(title: t("migration__title"), showBackButton: false, showMenuButton: false)
 
-            ProgressView()
-                .scaleEffect(1.5)
-                .tint(.white)
+            VStack(spacing: 0) {
+                VStack {
+                    Spacer()
 
-            VStack(spacing: 8) {
-                Text("Updating Wallet")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.white)
+                    Image("wallet")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity)
+                        .aspectRatio(1, contentMode: .fit)
 
-                Text("Please wait while we update the app...")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white.opacity(0.7))
-                    .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .frame(maxHeight: .infinity)
+                .layoutPriority(1)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    DisplayText(t("migration__headline"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                    BodyMText(t("migration__description"))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ActivityIndicator(size: 32)
+                    .padding(.top, 32)
             }
-
-            Spacer()
+            .padding(.horizontal, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .padding(.horizontal, 16)
+        .bottomSafeAreaPadding()
+        .background(Color.customBlack)
     }
 
     @ViewBuilder
@@ -336,6 +357,17 @@ struct AppScene: View {
                 title: "Migration Failed",
                 description: "Please restore your wallet manually using your recovery phrase"
             )
+        }
+    }
+
+    private func checkForSweepableFunds() {
+        Task {
+            let hasSweepableFunds = await SweepViewModel.checkForSweepableFundsAfterMigration()
+            if hasSweepableFunds {
+                await MainActor.run {
+                    sheets.showSheet(.sweepPrompt)
+                }
+            }
         }
     }
 

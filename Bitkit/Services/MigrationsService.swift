@@ -318,7 +318,7 @@ class MigrationsService: ObservableObject {
     private static let rnMigrationCheckedKey = "rnMigrationChecked"
 
     @Published var isShowingMigrationLoading = false
-    var isRestoringFromRNRemoteBackup = false
+    @Published var isRestoringFromRNRemoteBackup = false
 
     var pendingChannelMigration: PendingChannelMigration?
 
