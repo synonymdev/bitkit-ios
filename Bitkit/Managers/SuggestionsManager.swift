@@ -8,7 +8,7 @@ final class SuggestionsManager: ObservableObject {
     private let userDefaultsKey = "dismissedSuggestions"
 
     init() {
-        loadDismissed()
+        reloadDismissed()
     }
 
     func dismiss(_ suggestionId: String) {
@@ -25,7 +25,7 @@ final class SuggestionsManager: ObservableObject {
         dismissedIds.contains(suggestionId)
     }
 
-    private func loadDismissed() {
+    func reloadDismissed() {
         let dismissedArray = UserDefaults.standard.stringArray(forKey: userDefaultsKey) ?? []
         dismissedIds = Set(dismissedArray)
     }

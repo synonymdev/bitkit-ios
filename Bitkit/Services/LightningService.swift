@@ -377,12 +377,8 @@ class LightningService {
             return false
         }
 
-        // When geoblocked, only count non-LSP channels
-        let isGeoblocked = GeoService.shared.isGeoBlocked
-        let channelsToUse = isGeoblocked ? getNonLspChannels() : channels
-
         let totalNextOutboundHtlcLimitSats =
-            channelsToUse
+            channels
                 .filter(\.isUsable)
                 .map(\.nextOutboundHtlcLimitMsat)
                 .reduce(0, +) / 1000
@@ -445,16 +441,6 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        // When geoblocked, verify we have external (non-LSP) peers
-        let isGeoblocked = GeoService.shared.isGeoBlocked
-        if isGeoblocked && !hasExternalPeers() {
-            Logger.error("Cannot send Lightning payment when geoblocked without external peers")
-            throw AppError(
-                message: "Lightning send unavailable",
-                debugMessage: "You need channels with non-Blocktank nodes to send Lightning payments."
-            )
-        }
-
         Logger.info("Paying bolt11: \(bolt11)")
 
         do {
@@ -502,6 +488,17 @@ class LightningService {
         }
 
         Logger.debug("closeChannel called to channel=\(channel), force=\(force)", context: "LightningService")
+
+        // Prevent force closing channels with trusted peers (LSP nodes)
+        if force {
+            let trustedPeerIds = Set(getLspPeerNodeIds())
+            if trustedPeerIds.contains(channel.counterpartyNodeId.description) {
+                throw AppError(
+                    message: "Cannot force close channel with trusted peer",
+                    debugMessage: "Force close is disabled for Blocktank LSP channels. Please use cooperative close instead."
+                )
+            }
+        }
 
         return try await closeChannel(
             userChannelId: channel.userChannelId,
@@ -672,24 +669,16 @@ extension LightningService {
         return Env.trustedLnPeers.map(\.nodeId)
     }
 
-    /// Checks if there are connected peers other than LSP peers
-    /// Used for geoblocking to determine if Lightning operations can proceed
-    func hasExternalPeers() -> Bool {
-        guard let peers else { return false }
-        let lspNodeIds = Set(getLspPeerNodeIds())
-        return peers.contains { peer in
-            !lspNodeIds.contains(peer.nodeId)
+    /// Separates channels into trusted (LSP) and non-trusted peers
+    func separateTrustedChannels(_ channels: [ChannelDetails]) -> (trusted: [ChannelDetails], nonTrusted: [ChannelDetails]) {
+        let trustedPeerIds = Set(getLspPeerNodeIds())
+        let trusted = channels.filter { channel in
+            trustedPeerIds.contains(channel.counterpartyNodeId.description)
         }
-    }
-
-    /// Filters channels to exclude LSP channels
-    /// Used for geoblocking to only allow operations through non-Blocktank channels
-    func getNonLspChannels() -> [ChannelDetails] {
-        guard let channels else { return [] }
-        let lspNodeIds = Set(getLspPeerNodeIds())
-        return channels.filter { channel in
-            !lspNodeIds.contains(channel.counterpartyNodeId)
+        let nonTrusted = channels.filter { channel in
+            !trustedPeerIds.contains(channel.counterpartyNodeId.description)
         }
+        return (trusted: trusted, nonTrusted: nonTrusted)
     }
 }
 
