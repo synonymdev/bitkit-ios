@@ -936,6 +936,7 @@ extension MigrationsService {
                 "blocks": .blocks,
                 "weather": .weather,
                 "facts": .facts,
+                "calculator": .calculator,
             ]
 
             var savedWidgets: [MigrationSavedWidget] = []
