@@ -277,6 +277,18 @@ class SweepViewModel: ObservableObject {
 
     // MARK: - Static Methods
 
+    /// Check for sweepable funds after migration/restore and show prompt sheet if funds found
+    static func checkAndPromptForSweepableFunds(sheets: SheetViewModel) {
+        Task {
+            let hasSweepableFunds = await checkForSweepableFundsAfterMigration()
+            if hasSweepableFunds {
+                await MainActor.run {
+                    sheets.showSheet(.sweepPrompt)
+                }
+            }
+        }
+    }
+
     /// Check for sweepable funds after migration and return true if funds were found
     static func checkForSweepableFundsAfterMigration(walletIndex: Int = 0) async -> Bool {
         do {

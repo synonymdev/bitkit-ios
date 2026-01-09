@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WalletRestoreSuccess: View {
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var sheets: SheetViewModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +27,7 @@ struct WalletRestoreSuccess: View {
             CustomButton(title: t("onboarding__get_started")) {
                 Haptics.play(.light)
                 wallet.isRestoringWallet = false
+                SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
             }
             .accessibilityIdentifier("GetStartedButton")
         }

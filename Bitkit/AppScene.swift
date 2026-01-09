@@ -80,12 +80,7 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
-                    checkForSweepableFunds()
-                }
-            }
-            .onChange(of: migrations.isRestoringFromRNRemoteBackup) { isRestoring in
-                if !isRestoring {
-                    checkForSweepableFunds()
+                    SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
                 }
             }
             .environmentObject(app)
@@ -364,17 +359,6 @@ struct AppScene: View {
                 title: "Migration Failed",
                 description: "Please restore your wallet manually using your recovery phrase"
             )
-        }
-    }
-
-    private func checkForSweepableFunds() {
-        Task {
-            let hasSweepableFunds = await SweepViewModel.checkForSweepableFundsAfterMigration()
-            if hasSweepableFunds {
-                await MainActor.run {
-                    sheets.showSheet(.sweepPrompt)
-                }
-            }
         }
     }
 
