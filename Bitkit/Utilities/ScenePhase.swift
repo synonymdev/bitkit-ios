@@ -8,6 +8,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
+    @EnvironmentObject var pushManager: PushNotificationManager
 
     let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
 
@@ -41,17 +42,28 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                             Logger.debug("Ended background task on app becoming active")
                         }
 
-                        if let transaction = ReceivedTxSheetDetails.load() {
-                            // Background extension received a transaction
+                        // Check for pending incoming payment from notification extension
+                        // This takes priority over other processing
+                        let pendingPayment = pushManager.checkForPendingPayment()
+
+                        // Also check for legacy received tx sheets
+                        if pendingPayment == nil, let transaction = ReceivedTxSheetDetails.load() {
                             ReceivedTxSheetDetails.clear()
                             sheets.showSheet(.receivedTx, data: transaction)
                         }
 
+                        // Start node (priority for pending payments)
                         do {
                             try await startNodeIfNeeded()
                         } catch {
                             Logger.error(error, context: "Failed to start LN")
                         }
+
+                        // Process incoming payment after node is running
+                        if let payment = pendingPayment {
+                            await handleIncomingPayment(payment)
+                        }
+
                         Task {
                             await currency.refresh()
                         }
@@ -62,6 +74,26 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     }
                 }
             }
+    }
+
+    /// Handles an incoming payment with priority processing
+    private func handleIncomingPayment(_ paymentInfo: IncomingPaymentInfo) async {
+        Logger.info("📩 Handling incoming payment: \(paymentInfo.paymentType.rawValue)")
+
+        // If payment is expired, clear it and show appropriate message
+        if paymentInfo.isExpired {
+            Logger.warn("📩 Payment expired, showing toast")
+            pushManager.clearPendingPayment()
+            app.toast(
+                type: .error,
+                title: "Payment Expired",
+                description: "The payment window has closed. Ask the sender to try again."
+            )
+            return
+        }
+
+        // Process the payment
+        await pushManager.processIncomingPayment(paymentInfo, walletViewModel: wallet)
     }
 
     func stopNodeIfNeeded() async throws {

@@ -392,6 +392,9 @@ extension AppViewModel {
                     await CoreService.shared.activity.markActivityAsSeen(id: paymentId)
                 }
 
+                // Clear any pending incoming payment from push notification
+                PushNotificationManager.shared.markPaymentCompleted()
+
                 await MainActor.run {
                     sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
                 }
@@ -400,6 +403,9 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
+            // Clear any pending incoming payment (for channel opening or CJIT)
+            PushNotificationManager.shared.markPaymentCompleted()
+
             if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
                 Task {
                     let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
