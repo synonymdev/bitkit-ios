@@ -1327,6 +1327,14 @@ extension MigrationsService {
                 onchain.isBoosted = true
             }
 
+            if let feeRate = item.feeRate, feeRate > 0 {
+                onchain.feeRate = UInt64(feeRate)
+            }
+
+            if let address = item.address, !address.isEmpty {
+                onchain.address = address
+            }
+
             do {
                 try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
             } catch {
