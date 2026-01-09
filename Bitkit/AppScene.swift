@@ -77,6 +77,7 @@ struct AppScene: View {
                 if !isLoading {
                     widgets.loadSavedWidgets()
                     suggestionsManager.reloadDismissed()
+                    tagManager.reloadLastUsedTags()
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }

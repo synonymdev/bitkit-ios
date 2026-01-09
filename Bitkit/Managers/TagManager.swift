@@ -10,7 +10,7 @@ final class TagManager: ObservableObject {
     private let maxLastUsedTags = 10
 
     init() {
-        loadLastUsedTags()
+        reloadLastUsedTags()
     }
 
     // MARK: - Tag Selection Management
@@ -63,7 +63,7 @@ final class TagManager: ObservableObject {
     }
 
     /// Load last used tags from UserDefaults
-    private func loadLastUsedTags() {
+    func reloadLastUsedTags() {
         lastUsedTags = UserDefaults.standard.stringArray(forKey: userDefaultsKey) ?? []
     }
 
