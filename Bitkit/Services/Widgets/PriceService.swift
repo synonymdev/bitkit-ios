@@ -12,6 +12,21 @@ public struct TradingPair {
 struct PriceResponse: Codable {
     let price: Double
     let timestamp: Double
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decode(Double.self, forKey: .timestamp)
+
+        // Handle price as either String or Double
+        if let priceString = try? container.decode(String.self, forKey: .price) {
+            guard let priceValue = Double(priceString) else {
+                throw DecodingError.dataCorruptedError(forKey: .price, in: container, debugDescription: "Price string is not a valid number")
+            }
+            price = priceValue
+        } else {
+            price = try container.decode(Double.self, forKey: .price)
+        }
+    }
 }
 
 struct CandleResponse: Codable {
@@ -47,6 +62,7 @@ enum PriceServiceError: Error {
     case invalidPair
     case networkError
     case decodingError
+    case noPriceDataAvailable
 }
 
 // MARK: - Trading Pairs Constants
@@ -140,22 +156,34 @@ class PriceService {
     }
 
     /// Fetches fresh data from API (always hits the network)
+    /// Individual pair failures are logged but don't fail the entire request - only fails if ALL pairs fail
     @discardableResult
     private func fetchFreshData(pairs: [String], period: GraphPeriod) async throws -> [PriceData] {
-        let priceDataArray = try await withThrowingTaskGroup(of: PriceData.self) { group in
+        let priceDataArray = await withTaskGroup(of: PriceData?.self) { group in
             var results: [PriceData] = []
 
             for pairName in pairs {
                 group.addTask {
-                    try await self.fetchPairData(pairName: pairName, period: period)
+                    do {
+                        return try await self.fetchPairData(pairName: pairName, period: period)
+                    } catch {
+                        Logger.warn("Failed to fetch price data for \(pairName): \(error.localizedDescription)")
+                        return nil
+                    }
                 }
             }
 
-            for try await priceData in group {
-                results.append(priceData)
+            for await priceData in group {
+                if let data = priceData {
+                    results.append(data)
+                }
             }
 
             return results
+        }
+
+        guard !priceDataArray.isEmpty else {
+            throw PriceServiceError.noPriceDataAvailable
         }
 
         return priceDataArray
