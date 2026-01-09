@@ -1,5 +1,22 @@
 import Foundation
 
+// MARK: - StateLocker
+//
+// This utility manages cross-process locking for LDK node operations.
+//
+// NOTE: As of the push notification refactor (pnwd_001/pnwd_002), the notification
+// service extension no longer starts the LDK node. Instead, it only decrypts the
+// notification payload and displays an urgent notification. The main app handles
+// all Lightning operations when the user opens the app.
+//
+// This means StateLocker is now primarily used for:
+// 1. Preventing the app from starting the node while it's still stopping
+// 2. Coordinating between foreground and background states within the main app
+//
+// Future consideration (pnwd_005): The background timing logic could be optimized
+// to maximize the time the app stays alive in background while ensuring proper
+// node shutdown. This would reduce node restart times when switching between apps.
+
 enum StateLockerError: Error, Equatable {
     case alreadyLocked(processName: String)
     case differentEnvironmentLocked
