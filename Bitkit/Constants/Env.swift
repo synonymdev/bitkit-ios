@@ -5,6 +5,7 @@ import LocalAuthentication
 
 enum Env {
     static let appName = "bitkit"
+    static let appGroupIdentifier = "group.bitkit"
 
     static let isPreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     static let isTestFlight = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
@@ -129,7 +130,7 @@ enum Env {
 
     static var appStorageUrl: URL {
         // App group so files can be shared with extensions
-        guard let documentsDirectory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.bitkit") else {
+        guard let documentsDirectory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
             fatalError("Could not find documents directory")
         }
 

@@ -1,3 +1,4 @@
+import BitkitCore
 import Combine
 import LDKNode
 import SwiftUI
@@ -288,7 +289,12 @@ struct AppScene: View {
     @Sendable
     private func setupTask() async {
         do {
+            // CRITICAL: Check for RN migration BEFORE orphaned scenario
+            // If RN data exists, it's a migration (not orphaned)
             await checkAndPerformRNMigration()
+
+            // Now check for orphaned keychain (after migration has run)
+            try await handleOrphanedKeychainScenario()
             try wallet.setWalletExistsState()
 
             // Setup TimedSheetManager with all timed sheets
@@ -312,8 +318,10 @@ struct AppScene: View {
             return
         }
 
-        guard !migrations.hasNativeWalletData() else {
-            Logger.info("Native wallet data exists, skipping RN migration", context: "AppScene")
+        // Check if native wallet data exists AND is encrypted
+        // If data exists but no encryption key, it's plaintext RN data that needs migration
+        if migrations.hasNativeWalletData() && KeychainCrypto.keyExists() {
+            Logger.info("Native encrypted wallet data exists, skipping RN migration", context: "AppScene")
             migrations.markMigrationChecked()
             return
         }
@@ -324,8 +332,21 @@ struct AppScene: View {
             return
         }
 
+        // Check if RN Documents folder exists (LDK or MMKV)
+        // If keychain exists but Documents is deleted, the RN app was uninstalled
+        let hasRNDocuments = migrations.hasRNLdkData() || migrations.hasRNMmkvData()
+        if !hasRNDocuments {
+            Logger.warn(
+                "RN keychain found but Documents folder missing - RN app was deleted. Skipping migration and cleaning up orphaned keychain.",
+                context: "AppScene"
+            )
+            migrations.markMigrationChecked()
+            MigrationsService.shared.wipeRNKeychain()
+            return
+        }
+
         await MainActor.run { migrations.isShowingMigrationLoading = true }
-        Logger.info("RN wallet data found, starting migration...", context: "AppScene")
+        Logger.info("RN wallet data verified (keychain + Documents exist), starting migration...", context: "AppScene")
 
         do {
             try await migrations.migrateFromReactNative()
@@ -376,6 +397,60 @@ struct AppScene: View {
             }
         } else {
             await BackupService.shared.performFullRestoreFromLatestBackup()
+        }
+    }
+
+    private func handleOrphanedKeychainScenario() async throws {
+        let keychainHasMnemonic = try Keychain.exists(key: .bip39Mnemonic(index: 0))
+        let encryptionKeyExists = KeychainCrypto.keyExists()
+
+        if keychainHasMnemonic, !encryptionKeyExists {
+            // Could be either:
+            // 1. Orphaned scenario (encrypted → uninstall → reinstall): keychain has encrypted data, key deleted
+            // 2. Migration scenario (legacy → encrypted): keychain has plaintext data, key never created
+            // We differentiate by checking if the data is valid plaintext
+
+            do {
+                guard let data = try Keychain.load(key: .bip39Mnemonic(index: 0)) else {
+                    Logger.warn("Keychain exists check returned true but load returned nil", context: "AppScene")
+                    return
+                }
+
+                // Check if data is valid UTF-8 plaintext (migration scenario)
+                // Could be: mnemonic (validated via BitkitCore) or passphrase (any valid UTF-8 string)
+                if let plaintext = String(data: data, encoding: .utf8) {
+                    // Try to validate as BIP39 mnemonic using BitkitCore
+                    let isValidMnemonic = (try? validateMnemonic(mnemonicPhrase: plaintext)) != nil
+
+                    // Passphrase: any valid UTF-8 string without null bytes
+                    let isValidPassphrase = !plaintext.contains("\0")
+
+                    if isValidMnemonic || isValidPassphrase {
+                        // This is plaintext data from master - migration scenario
+                        Logger.info("Detected legacy unencrypted keychain - migration will proceed normally", context: "AppScene")
+                        return // Don't wipe, let migration happen
+                    }
+                }
+
+                // Data is encrypted gibberish (not valid plaintext) - orphaned scenario
+                Logger.warn(
+                    "Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.",
+                    context: "AppScene"
+                )
+
+                try Keychain.wipeEntireKeychain()
+
+                // ALSO wipe RN keychain to prevent migration from recovering orphaned wallet
+                MigrationsService.shared.wipeRNKeychain()
+
+                if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+                    appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
+                }
+
+                Logger.info("Orphaned keychain wiped (native + RN). App will show onboarding.", context: "AppScene")
+            } catch {
+                Logger.error("Failed to load keychain during orphaned check: \(error).", context: "AppScene")
+            }
         }
     }
 
