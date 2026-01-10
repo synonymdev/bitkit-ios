@@ -977,6 +977,7 @@ extension MigrationsService {
                 "blocks": .blocks,
                 "weather": .weather,
                 "facts": .facts,
+                "calculator": .calculator,
             ]
 
             var savedWidgets: [MigrationSavedWidget] = []
@@ -1365,6 +1366,14 @@ extension MigrationsService {
                 onchain.boostTxIds.removeAll { boostedParents.contains($0) }
             } else if item.isBoosted == true {
                 onchain.isBoosted = true
+            }
+
+            if let feeRate = item.feeRate, feeRate > 0 {
+                onchain.feeRate = UInt64(feeRate)
+            }
+
+            if let address = item.address, !address.isEmpty {
+                onchain.address = address
             }
 
             do {
