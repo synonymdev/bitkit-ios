@@ -608,6 +608,50 @@ extension MigrationsService {
         fileManager.fileExists(atPath: rnMmkvPath.path)
     }
 
+    func hasNativeLdkData() -> Bool {
+        let networkName = switch Env.network {
+        case .bitcoin:
+            "bitcoin"
+        case .testnet:
+            "testnet"
+        case .signet:
+            "signet"
+        case .regtest:
+            "regtest"
+        }
+
+        let ldkPath = Env.appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet0")
+            .appendingPathComponent("ldk")
+
+        let exists = fileManager.fileExists(atPath: ldkPath.path)
+        Logger.debug("Native LDK path: \(ldkPath.path), exists: \(exists)", context: "Migration")
+        return exists
+    }
+
+    func hasNativeCoreData() -> Bool {
+        let networkName = switch Env.network {
+        case .bitcoin:
+            "bitcoin"
+        case .testnet:
+            "testnet"
+        case .signet:
+            "signet"
+        case .regtest:
+            "regtest"
+        }
+
+        let corePath = Env.appStorageUrl
+            .appendingPathComponent(networkName)
+            .appendingPathComponent("wallet0")
+            .appendingPathComponent("core")
+
+        let exists = fileManager.fileExists(atPath: corePath.path)
+        Logger.debug("Native Core path: \(corePath.path), exists: \(exists)", context: "Migration")
+        return exists
+    }
+
     func loadRNMmkvData() -> [String: String]? {
         guard hasRNMmkvData() else {
             Logger.debug("No MMKV data found at \(rnMmkvPath.path)", context: "Migration")

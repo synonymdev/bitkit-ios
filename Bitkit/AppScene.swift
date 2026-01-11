@@ -408,8 +408,30 @@ struct AppScene: View {
             // Could be either:
             // 1. Orphaned scenario (encrypted → uninstall → reinstall): keychain has encrypted data, key deleted
             // 2. Migration scenario (legacy → encrypted): keychain has plaintext data, key never created
-            // We differentiate by checking if the data is valid plaintext
 
+            // If keychain exists but app storage is gone, the app was uninstalled
+            let hasNativeStorage = MigrationsService.shared.hasNativeLdkData() ||
+                MigrationsService.shared.hasNativeCoreData()
+
+            if !hasNativeStorage {
+                Logger.warn(
+                    "Detected orphaned native keychain - keychain exists but app storage missing. App was uninstalled. Forcing fresh start.",
+                    context: "AppScene"
+                )
+
+                try Keychain.wipeEntireKeychain()
+                MigrationsService.shared.wipeRNKeychain()
+
+                if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+                    appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
+                }
+
+                Logger.info("Orphaned native keychain wiped. App will show onboarding.", context: "AppScene")
+                return
+            }
+
+            // Storage exists - this might be a migration scenario (legacy plaintext data)
+            // Proceed with plaintext validation
             do {
                 guard let data = try Keychain.load(key: .bip39Mnemonic(index: 0)) else {
                     Logger.warn("Keychain exists check returned true but load returned nil", context: "AppScene")
@@ -417,37 +439,30 @@ struct AppScene: View {
                 }
 
                 // Check if data is valid UTF-8 plaintext (migration scenario)
-                // Could be: mnemonic (validated via BitkitCore) or passphrase (any valid UTF-8 string)
                 if let plaintext = String(data: data, encoding: .utf8) {
-                    // Try to validate as BIP39 mnemonic using BitkitCore
+                    // Only allow valid BIP39 mnemonics for migration
                     let isValidMnemonic = (try? validateMnemonic(mnemonicPhrase: plaintext)) != nil
 
-                    // Passphrase: any valid UTF-8 string without null bytes
-                    let isValidPassphrase = !plaintext.contains("\0")
-
-                    if isValidMnemonic || isValidPassphrase {
-                        // This is plaintext data from master - migration scenario
-                        Logger.info("Detected legacy unencrypted keychain - migration will proceed normally", context: "AppScene")
-                        return // Don't wipe, let migration happen
+                    if isValidMnemonic {
+                        Logger.info("Detected valid legacy plaintext mnemonic - migration will proceed normally", context: "AppScene")
+                        return
                     }
                 }
 
-                // Data is encrypted gibberish (not valid plaintext) - orphaned scenario
+                // Data is not a valid mnemonic and storage exists → possible corruption or encrypted orphaned data
                 Logger.warn(
-                    "Detected orphaned keychain state - keychain exists but encryption key missing. Forcing fresh start.",
+                    "Keychain data exists but is not a valid mnemonic and app storage exists. Possible corruption. Wiping keychain.",
                     context: "AppScene"
                 )
 
                 try Keychain.wipeEntireKeychain()
-
-                // ALSO wipe RN keychain to prevent migration from recovering orphaned wallet
                 MigrationsService.shared.wipeRNKeychain()
 
                 if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
                     appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
                 }
 
-                Logger.info("Orphaned keychain wiped (native + RN). App will show onboarding.", context: "AppScene")
+                Logger.info("Corrupted keychain wiped. App will show onboarding.", context: "AppScene")
             } catch {
                 Logger.error("Failed to load keychain during orphaned check: \(error).", context: "AppScene")
             }
