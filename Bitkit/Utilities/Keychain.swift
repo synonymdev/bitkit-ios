@@ -125,7 +125,7 @@ class Keychain {
             throw KeychainError.failedToLoad
         }
 
-        guard let encryptedData = dataTypeRef as? Data else {
+        guard let keychainData = dataTypeRef as? Data else {
             throw KeychainError.failedToLoad
         }
 
@@ -135,12 +135,12 @@ class Keychain {
         if !KeychainCrypto.keyExists() {
             // No encryption key → this is legacy plaintext data from before encryption
             Logger.warn("\(key.storageKey) appears to be legacy unencrypted data, returning as-is", context: "Keychain")
-            return encryptedData // Actually plaintext, will be encrypted on next save
+            return keychainData // Actually plaintext, will be encrypted on next save
         }
 
         // Encryption key exists, attempt decryption
         do {
-            let decryptedData = try KeychainCrypto.decrypt(encryptedData)
+            let decryptedData = try KeychainCrypto.decrypt(keychainData)
             Logger.debug("\(key.storageKey) loaded and decrypted from keychain")
             return decryptedData
         } catch {
