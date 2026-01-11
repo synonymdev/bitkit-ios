@@ -59,9 +59,9 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                             Logger.error(error, context: "Failed to start LN")
                         }
 
-                        // Process incoming payment after node is running
+                        // Show incoming payment UI after node is running
                         if let payment = pendingPayment {
-                            await handleIncomingPayment(payment)
+                            handleIncomingPayment(payment)
                         }
 
                         Task {
@@ -76,8 +76,8 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             }
     }
 
-    /// Handles an incoming payment with priority processing
-    private func handleIncomingPayment(_ paymentInfo: IncomingPaymentInfo) async {
+    /// Handles an incoming payment by showing the dedicated UI
+    private func handleIncomingPayment(_ paymentInfo: IncomingPaymentInfo) {
         Logger.info("📩 Handling incoming payment: \(paymentInfo.paymentType.rawValue)")
 
         // If payment is expired, clear it and show appropriate message
@@ -86,14 +86,14 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             pushManager.clearPendingPayment()
             app.toast(
                 type: .error,
-                title: "Payment Expired",
-                description: "The payment window has closed. Ask the sender to try again."
+                title: tTodo("Payment Expired"),
+                description: tTodo("The payment window has closed. Ask the sender to try again.")
             )
             return
         }
 
-        // Process the payment
-        await pushManager.processIncomingPayment(paymentInfo, walletViewModel: wallet)
+        // Show dedicated incoming payment UI (processing happens inside the sheet)
+        sheets.showSheet(.incomingPayment, data: paymentInfo)
     }
 
     func stopNodeIfNeeded() async throws {

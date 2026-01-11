@@ -14,6 +14,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     {
         UNUserNotificationCenter.current().delegate = self
 
+        // Register notification categories for custom actions
+        registerNotificationCategories()
+
         // Check notification authorization status at launch and re-register with APN if granted
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             if settings.authorizationStatus == .authorized {
@@ -43,6 +46,25 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     func applicationWillTerminate(_ application: UIApplication) {
         try? StateLocker.unlock(.lightning)
+    }
+
+    // MARK: - Notification Categories
+
+    private func registerNotificationCategories() {
+        let openAction = UNNotificationAction(
+            identifier: "OPEN_NOW",
+            title: "Open Now",
+            options: [.foreground]
+        )
+
+        let incomingPayment = UNNotificationCategory(
+            identifier: "INCOMING_PAYMENT",
+            actions: [openAction],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+
+        UNUserNotificationCenter.current().setNotificationCategories([incomingPayment])
     }
 }
 

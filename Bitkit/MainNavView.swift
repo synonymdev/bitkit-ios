@@ -73,6 +73,14 @@ struct MainNavView: View {
             config in HighBalanceSheet(config: config)
         }
         .sheet(
+            item: $sheets.incomingPaymentSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in IncomingPaymentSheet(config: config)
+        }
+        .sheet(
             item: $sheets.lnurlAuthSheetItem,
             onDismiss: {
                 sheets.hideSheet()
