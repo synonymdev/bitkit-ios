@@ -180,7 +180,7 @@ class BackupService {
         }
 
         VssStoreIdProvider.shared.clearCache()
-        VssBackupClient.shared.reset()
+        await VssBackupClient.shared.reset()
 
         Logger.debug("Full restore starting", context: "BackupService")
 

@@ -20,9 +20,10 @@ private actor VssSetupCoordinator {
 
         do {
             try await task.value
-        } catch is CancellationError {
+        } catch {
+            // Reset on any error to allow retry attempts
             setupTask = nil
-            throw CancellationError()
+            throw error
         }
     }
 
@@ -39,10 +40,8 @@ class VssBackupClient {
 
     private init() {}
 
-    func reset() {
-        Task {
-            await setupCoordinator.reset()
-        }
+    func reset() async {
+        await setupCoordinator.reset()
     }
 
     func setup(walletIndex: Int = 0) async throws {
