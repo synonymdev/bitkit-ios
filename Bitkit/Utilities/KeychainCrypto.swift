@@ -42,6 +42,7 @@ class KeychainCrypto {
         // Create new key
         let newKey = SymmetricKey(size: .bits256)
         try saveKey(newKey)
+        try createDocumentsMarker()
         cachedKey = newKey
         Logger.info("Created new encryption key", context: "KeychainCrypto")
         return newKey
@@ -71,6 +72,7 @@ class KeychainCrypto {
             cachedKey = nil
             Logger.info("Deleted encryption key", context: "KeychainCrypto")
         }
+        deleteDocumentsMarker()
     }
 
     // Encrypt data before keychain storage
@@ -119,5 +121,32 @@ class KeychainCrypto {
         case invalidEncryptedData
         case keyNotFound
         case decryptionFailed
+    }
+
+    // MARK: - Documents Marker (for orphaned keychain detection)
+
+    private static var documentsMarkerPath: URL {
+        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+        return paths[0].appendingPathComponent(".wallet_setup_marker")
+    }
+
+    /// Check if the Documents marker exists (indicates valid wallet setup on this install)
+    static func documentsMarkerExists() -> Bool {
+        return FileManager.default.fileExists(atPath: documentsMarkerPath.path)
+    }
+
+    /// Create the Documents marker (called when encryption key is created)
+    private static func createDocumentsMarker() throws {
+        let markerData = Data("bitkit_wallet_v1".utf8)
+        try markerData.write(to: documentsMarkerPath, options: .atomic)
+        Logger.debug("Created wallet setup marker in Documents", context: "KeychainCrypto")
+    }
+
+    /// Delete the Documents marker (called during wallet wipe)
+    static func deleteDocumentsMarker() {
+        if FileManager.default.fileExists(atPath: documentsMarkerPath.path) {
+            try? FileManager.default.removeItem(at: documentsMarkerPath)
+            Logger.debug("Deleted wallet setup marker", context: "KeychainCrypto")
+        }
     }
 }

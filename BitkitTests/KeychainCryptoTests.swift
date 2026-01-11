@@ -301,4 +301,38 @@ final class KeychainCryptoTests: XCTestCase {
             "Encrypted data should not contain plaintext"
         )
     }
+
+    // MARK: - Documents Marker Tests
+
+    func testDocumentsMarkerCreatedWithKey() throws {
+        // Given: No key exists
+        XCTAssertFalse(KeychainCrypto.keyExists())
+        XCTAssertFalse(KeychainCrypto.documentsMarkerExists())
+
+        // When: Creating a key
+        _ = try KeychainCrypto.getOrCreateKey()
+
+        // Then: Both key and marker should exist
+        XCTAssertTrue(KeychainCrypto.keyExists())
+        XCTAssertTrue(KeychainCrypto.documentsMarkerExists())
+    }
+
+    func testDocumentsMarkerDeletedWithKey() throws {
+        // Given: Key and marker exist
+        _ = try KeychainCrypto.getOrCreateKey()
+        XCTAssertTrue(KeychainCrypto.documentsMarkerExists())
+
+        // When: Deleting the key
+        try KeychainCrypto.deleteKey()
+
+        // Then: Both should be deleted
+        XCTAssertFalse(KeychainCrypto.keyExists())
+        XCTAssertFalse(KeychainCrypto.documentsMarkerExists())
+    }
+
+    func testDocumentsMarkerExistsReturnsFalseInitially() {
+        // Given: Clean state (setUp deletes any existing key and marker)
+        // Then: Marker should not exist
+        XCTAssertFalse(KeychainCrypto.documentsMarkerExists())
+    }
 }

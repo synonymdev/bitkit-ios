@@ -405,17 +405,15 @@ struct AppScene: View {
         let encryptionKeyExists = KeychainCrypto.keyExists()
 
         if keychainHasMnemonic, !encryptionKeyExists {
-            // Could be either:
-            // 1. Orphaned scenario (encrypted → uninstall → reinstall): keychain has encrypted data, key deleted
-            // 2. Migration scenario (legacy → encrypted): keychain has plaintext data, key never created
+            // Check if Documents marker exists (reliably deleted on uninstall)
+            let hasDocumentsMarker = KeychainCrypto.documentsMarkerExists()
 
-            // If keychain exists but app storage is gone, the app was uninstalled
-            let hasNativeStorage = MigrationsService.shared.hasNativeLdkData() ||
-                MigrationsService.shared.hasNativeCoreData()
-
-            if !hasNativeStorage {
+            if !hasDocumentsMarker {
+                // Fresh install detected - keychain persisted but Documents was cleared
+                // This is orphaned data from a previous install
                 Logger.warn(
-                    "Detected orphaned native keychain - keychain exists but app storage missing. App was uninstalled. Forcing fresh start.",
+                    "Detected orphaned native keychain - keychain exists but Documents marker missing. " +
+                        "App was uninstalled. Forcing fresh start.",
                     context: "AppScene"
                 )
 
@@ -430,42 +428,23 @@ struct AppScene: View {
                 return
             }
 
-            // Storage exists - this might be a migration scenario (legacy plaintext data)
-            // Proceed with plaintext validation
-            do {
-                guard let data = try Keychain.load(key: .bip39Mnemonic(index: 0)) else {
-                    Logger.warn("Keychain exists check returned true but load returned nil", context: "AppScene")
-                    return
-                }
+            // Documents marker exists but encryption key is missing
+            // This is a corrupted state - marker and key should exist together
+            Logger.warn(
+                "Detected corrupted state - Documents marker exists but encryption key missing. " +
+                    "Forcing fresh start.",
+                context: "AppScene"
+            )
 
-                // Check if data is valid UTF-8 plaintext (migration scenario)
-                if let plaintext = String(data: data, encoding: .utf8) {
-                    // Only allow valid BIP39 mnemonics for migration
-                    let isValidMnemonic = (try? validateMnemonic(mnemonicPhrase: plaintext)) != nil
+            try Keychain.wipeEntireKeychain()
+            MigrationsService.shared.wipeRNKeychain()
+            KeychainCrypto.deleteDocumentsMarker()
 
-                    if isValidMnemonic {
-                        Logger.info("Detected valid legacy plaintext mnemonic - migration will proceed normally", context: "AppScene")
-                        return
-                    }
-                }
-
-                // Data is not a valid mnemonic and storage exists → possible corruption or encrypted orphaned data
-                Logger.warn(
-                    "Keychain data exists but is not a valid mnemonic and app storage exists. Possible corruption. Wiping keychain.",
-                    context: "AppScene"
-                )
-
-                try Keychain.wipeEntireKeychain()
-                MigrationsService.shared.wipeRNKeychain()
-
-                if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
-                    appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
-                }
-
-                Logger.info("Corrupted keychain wiped. App will show onboarding.", context: "AppScene")
-            } catch {
-                Logger.error("Failed to load keychain during orphaned check: \(error).", context: "AppScene")
+            if let appGroupDefaults = UserDefaults(suiteName: Env.appGroupIdentifier) {
+                appGroupDefaults.removePersistentDomain(forName: Env.appGroupIdentifier)
             }
+
+            Logger.info("Corrupted state cleaned. App will show onboarding.", context: "AppScene")
         }
     }
 
