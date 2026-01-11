@@ -38,24 +38,21 @@ final class KeychainCryptoTests: XCTestCase {
         XCTAssertTrue(KeychainCrypto.keyExists())
     }
 
-    func testKeyLoadingFromFile() throws {
-        // Given: A key has been created and saved
+    func testKeyCreationAfterDeletion() throws {
+        // Given: A key has been created
         let originalKey = try KeychainCrypto.getOrCreateKey()
-
-        // When: Deleting the cached key and loading again
-        try KeychainCrypto.deleteKey()
-        let loadedKey = try KeychainCrypto.getOrCreateKey()
-
-        // Then: Loaded key should match original
         var originalData = Data()
-        var loadedData = Data()
-
         originalKey.withUnsafeBytes { originalData = Data($0) }
-        loadedKey.withUnsafeBytes { loadedData = Data($0) }
 
-        // Note: Keys are different after deletion since a new key is created
-        // This test verifies that getOrCreateKey works after deletion
-        XCTAssertEqual(loadedData.count, 32)
+        // When: Deleting the key and creating a new one
+        try KeychainCrypto.deleteKey()
+        let newKey = try KeychainCrypto.getOrCreateKey()
+        var newData = Data()
+        newKey.withUnsafeBytes { newData = Data($0) }
+
+        // Then: A new 256-bit key should be created (different from original)
+        XCTAssertEqual(newData.count, 32, "New key should be 256 bits")
+        XCTAssertNotEqual(newData, originalData, "New key should be different from deleted key")
     }
 
     func testKeyCaching() throws {
