@@ -504,8 +504,6 @@ class BackupService {
 
     func getLatestBackupTime() async -> UInt64? {
         do {
-            try await vssBackupClient.setup()
-
             let timestamps = await withTaskGroup(of: UInt64?.self) { group in
                 for category in BackupCategory.allCases where category != .lightningConnections {
                     group.addTask {

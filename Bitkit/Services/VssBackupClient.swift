@@ -3,33 +3,52 @@ import VssRustClientFfi
 
 /// Actor to coordinate VSS client setup (ensures only one setup runs at a time)
 private actor VssSetupCoordinator {
-    private var setupTask: Task<Void, Error>?
+    private enum SetupState {
+        case idle
+        case inProgress(Task<Void, Error>)
+        case completed
+    }
+
+    private var state: SetupState = .idle
 
     func awaitSetup(setupAction: @escaping () async throws -> Void) async throws {
-        // If setup is already in progress or completed, wait for it
-        if let existingTask = setupTask {
-            try await existingTask.value
+        switch state {
+        case .completed:
+            Logger.debug("VssSetupCoordinator: already completed, returning", context: "VssBackupClient")
             return
-        }
 
-        // Create and store the setup task
-        let task = Task {
-            try await setupAction()
-        }
-        setupTask = task
+        case let .inProgress(existingTask):
+            Logger.debug("VssSetupCoordinator: setup in progress, waiting for existing task", context: "VssBackupClient")
+            try await existingTask.value
+            Logger.debug("VssSetupCoordinator: existing task completed", context: "VssBackupClient")
+            return
 
-        do {
-            try await task.value
-        } catch {
-            // Reset on any error to allow retry attempts
-            setupTask = nil
-            throw error
+        case .idle:
+            Logger.debug("VssSetupCoordinator: idle, starting new setup", context: "VssBackupClient")
+            let task = Task {
+                try await setupAction()
+            }
+            state = .inProgress(task)
+
+            do {
+                try await task.value
+                state = .completed
+                Logger.debug("VssSetupCoordinator: setup completed successfully", context: "VssBackupClient")
+            } catch {
+                // Reset on any error to allow retry attempts
+                state = .idle
+                Logger.debug("VssSetupCoordinator: setup failed, resetting to idle", context: "VssBackupClient")
+                throw error
+            }
         }
     }
 
     func reset() {
-        setupTask?.cancel()
-        setupTask = nil
+        Logger.debug("VssSetupCoordinator: reset called", context: "VssBackupClient")
+        if case let .inProgress(task) = state {
+            task.cancel()
+        }
+        state = .idle
     }
 }
 
@@ -44,7 +63,7 @@ class VssBackupClient {
         await setupCoordinator.reset()
     }
 
-    func setup(walletIndex: Int = 0) async throws {
+    private func setup(walletIndex: Int = 0) async throws {
         do {
             try await withTimeout(seconds: 30) {
                 Logger.debug("VSS client setting up…", context: "VssBackupClient")
