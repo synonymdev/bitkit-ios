@@ -100,7 +100,7 @@ enum Env {
     }
 
     /// Returns the lowercase name of the network (e.g., "bitcoin", "testnet", "signet", "regtest")
-    private static func networkName(_ network: LDKNode.Network) -> String {
+    static func networkName(_ network: LDKNode.Network = Env.network) -> String {
         switch network {
         case .bitcoin: "bitcoin"
         case .testnet: "testnet"

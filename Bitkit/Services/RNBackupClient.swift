@@ -79,12 +79,7 @@ class RNBackupClient {
     }
 
     private func networkString() -> String {
-        switch Env.network {
-        case .bitcoin: "bitcoin"
-        case .testnet: "testnet"
-        case .regtest: "regtest"
-        case .signet: "signet"
-        }
+        Env.networkName()
     }
 
     private func deriveSeed(mnemonic: String, passphrase: String?) throws -> Data {

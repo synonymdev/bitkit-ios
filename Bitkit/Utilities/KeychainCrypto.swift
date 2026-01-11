@@ -7,19 +7,8 @@ class KeychainCrypto {
 
     // Network-specific key path (matches existing patterns)
     private static var keyFilePath: URL {
-        let networkName = switch Env.network {
-        case .bitcoin:
-            "bitcoin"
-        case .testnet:
-            "testnet"
-        case .signet:
-            "signet"
-        case .regtest:
-            "regtest"
-        }
-
-        return Env.appStorageUrl
-            .appendingPathComponent(networkName)
+        Env.appStorageUrl
+            .appendingPathComponent(Env.networkName())
             .appendingPathComponent(keyFileName)
     }
 
