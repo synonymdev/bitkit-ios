@@ -319,7 +319,7 @@ struct AppScene: View {
         }
 
         // Check if native wallet data exists AND is encrypted
-        // If data exists but no encryption key, it's plaintext RN data that needs migration
+        // If both native wallet data AND encryption key exist, the wallet is already set up and encrypted - skip migration.
         if migrations.hasNativeWalletData() && KeychainCrypto.keyExists() {
             Logger.info("Native encrypted wallet data exists, skipping RN migration", context: "AppScene")
             migrations.markMigrationChecked()
