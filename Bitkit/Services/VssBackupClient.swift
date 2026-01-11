@@ -1,15 +1,48 @@
 import Foundation
 import VssRustClientFfi
 
+/// Actor to coordinate VSS client setup (ensures only one setup runs at a time)
+private actor VssSetupCoordinator {
+    private var setupTask: Task<Void, Error>?
+
+    func awaitSetup(setupAction: @escaping () async throws -> Void) async throws {
+        // If setup is already in progress or completed, wait for it
+        if let existingTask = setupTask {
+            try await existingTask.value
+            return
+        }
+
+        // Create and store the setup task
+        let task = Task {
+            try await setupAction()
+        }
+        setupTask = task
+
+        do {
+            try await task.value
+        } catch is CancellationError {
+            setupTask = nil
+            throw CancellationError()
+        }
+    }
+
+    func reset() {
+        setupTask?.cancel()
+        setupTask = nil
+    }
+}
+
 class VssBackupClient {
     static let shared = VssBackupClient()
 
-    private var isSetup: Task<Void, Error>?
+    private let setupCoordinator = VssSetupCoordinator()
 
     private init() {}
 
     func reset() {
-        isSetup = nil
+        Task {
+            await setupCoordinator.reset()
+        }
     }
 
     func setup(walletIndex: Int = 0) async throws {
@@ -87,25 +120,8 @@ class VssBackupClient {
     }
 
     private func awaitSetup() async throws {
-        if let existingSetup = isSetup {
-            do {
-                try await existingSetup.value
-            } catch let error as CancellationError {
-                isSetup = nil
-                throw error
-            }
-        }
-
-        let setupTask = Task {
+        try await setupCoordinator.awaitSetup { [self] in
             try await setup()
-        }
-        isSetup = setupTask
-
-        do {
-            try await setupTask.value
-        } catch let error as CancellationError {
-            isSetup = nil
-            throw error
         }
     }
 
