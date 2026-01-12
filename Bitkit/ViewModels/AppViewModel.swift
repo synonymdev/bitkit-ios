@@ -177,14 +177,18 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
+                    if lightningInvoice.isExpired {
+                        toast(type: .info, title: t("other__scan__error__expired"), description: nil)
+                        // Fall through to on-chain handling below
+                    } else if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
+                    // If expired or insufficient funds -> proceed with on-chain
                 }
             }
 
-            // No LN invoice found, proceed with onchain payment
+            // No LN invoice found or LN not usable, proceed with onchain payment
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
             guard lightningService.status?.isRunning == true else {
