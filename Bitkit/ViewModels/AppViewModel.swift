@@ -177,7 +177,13 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
+                    // Check if Lightning invoice is expired - if so, fallback to on-chain if available
                     if lightningInvoice.isExpired {
+                        // Only fallback to on-chain if address is available, otherwise return
+                        guard !invoice.address.isEmpty else {
+                            toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+                            return
+                        }
                         toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                         // Fall through to on-chain handling below
                     } else if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
@@ -199,7 +205,7 @@ extension AppViewModel {
             Logger.debug("Lightning: \(invoice)")
 
             // Check if Lightning invoice is expired
-            if invoice.isExpired {
+            guard !invoice.isExpired else {
                 toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                 return
             }

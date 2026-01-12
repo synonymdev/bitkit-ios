@@ -72,12 +72,13 @@ struct SendEnterManuallyView: View {
         do {
             try await app.handleScannedData(uri)
 
-            let route = PaymentNavigationHelper.appropriateSendRoute(
+            if let route = PaymentNavigationHelper.appropriateSendRoute(
                 app: app,
                 currency: currency,
                 settings: settings
-            )
-            navigationPath.append(route)
+            ) {
+                navigationPath.append(route)
+            }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
             app.toast(error)
