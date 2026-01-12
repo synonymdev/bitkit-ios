@@ -178,7 +178,7 @@ extension AppViewModel {
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
                     if lightningInvoice.isExpired {
-                        toast(type: .info, title: t("other__scan__error__expired"), description: nil)
+                        toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                         // Fall through to on-chain handling below
                     } else if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
