@@ -197,6 +197,13 @@ extension AppViewModel {
             }
 
             Logger.debug("Lightning: \(invoice)")
+
+            // Check if Lightning invoice is expired
+            if invoice.isExpired {
+                toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+                return
+            }
+
             if lightningService.canSend(amountSats: invoice.amountSatoshis) {
                 handleScannedLightningInvoice(invoice, bolt11: uri)
             } else {
