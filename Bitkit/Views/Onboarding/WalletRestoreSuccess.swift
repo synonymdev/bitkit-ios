@@ -3,6 +3,8 @@ import SwiftUI
 struct WalletRestoreSuccess: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var tagManager: TagManager
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +28,10 @@ struct WalletRestoreSuccess: View {
 
             CustomButton(title: t("onboarding__get_started")) {
                 Haptics.play(.light)
+
+                suggestionsManager.reloadDismissed()
+                tagManager.reloadLastUsedTags()
+
                 wallet.isRestoringWallet = false
                 SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
             }

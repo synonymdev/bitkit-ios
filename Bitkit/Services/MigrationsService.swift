@@ -338,6 +338,9 @@ class MigrationsService: ObservableObject {
     /// Stored metadata from RN backup for reapplying after on-chain activities are synced
     private var pendingRemoteMetadata: RNMetadata?
 
+    /// Stored paid orders from RN backup for creating transfers after wallet starts
+    private var pendingRemotePaidOrders: [String: String]? // orderId -> txId
+
     private init() {}
 
     private var rnNetworkString: String {
@@ -707,6 +710,40 @@ extension MigrationsService {
         }
     }
 
+    func extractRNBlocktank(from mmkvData: [String: String]) -> (orders: [String], paidOrders: [String: String])? {
+        guard let rootJson = mmkvData["persist:root"],
+              let jsonStart = rootJson.firstIndex(of: "{")
+        else { return nil }
+
+        let jsonString = String(rootJson[jsonStart...])
+        guard let data = jsonString.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let blocktankJson = root["blocktank"] as? String,
+              let blocktankData = blocktankJson.data(using: .utf8),
+              let blocktankDict = try? JSONSerialization.jsonObject(with: blocktankData) as? [String: Any]
+        else {
+            return nil
+        }
+
+        var orderIds: [String] = []
+        var paidOrdersMap: [String: String] = [:]
+
+        if let orders = blocktankDict["orders"] as? [[String: Any]] {
+            orderIds = orders.compactMap { $0["id"] as? String }
+        }
+
+        if let paidOrders = blocktankDict["paidOrders"] as? [String: String] {
+            paidOrdersMap = paidOrders
+        }
+
+        if orderIds.isEmpty && paidOrdersMap.isEmpty {
+            return nil
+        }
+
+        Logger.debug("Extracted RN blocktank: \(orderIds.count) orders, \(paidOrdersMap.count) paid orders", context: "Migration")
+        return (orders: orderIds, paidOrders: paidOrdersMap)
+    }
+
     func extractRNActivities(from mmkvData: [String: String]) -> [RNActivityItem]? {
         guard let rootJson = mmkvData["persist:root"],
               let jsonStart = rootJson.firstIndex(of: "{")
@@ -936,6 +973,7 @@ extension MigrationsService {
                 "blocks": .blocks,
                 "weather": .weather,
                 "facts": .facts,
+                "calculator": .calculator,
             ]
 
             var savedWidgets: [MigrationSavedWidget] = []
@@ -1078,6 +1116,26 @@ extension MigrationsService {
         }
     }
 
+    func applyRNBlocktank(orderIds: [String], paidOrders: [String: String]) async {
+        let allOrderIds = Array(Set(orderIds + Array(paidOrders.keys)))
+
+        guard !allOrderIds.isEmpty else { return }
+
+        do {
+            let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: allOrderIds, filter: nil, refresh: true)
+            if !fetchedOrders.isEmpty {
+                try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
+                Logger.info("Upserted \(fetchedOrders.count) Blocktank orders", context: "Migration")
+            }
+
+            if !paidOrders.isEmpty {
+                await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
+            }
+        } catch {
+            Logger.warn("Failed to fetch and upsert Blocktank orders: \(error)", context: "Migration")
+        }
+    }
+
     func migrateMMKVData() async {
         guard let mmkvData = loadRNMmkvData() else {
             Logger.debug("No MMKV data to migrate", context: "Migration")
@@ -1125,6 +1183,13 @@ extension MigrationsService {
             applyRNTodos(todos)
         } else {
             Logger.debug("No todos found in MMKV", context: "Migration")
+        }
+
+        if let blocktank = extractRNBlocktank(from: mmkvData) {
+            Logger.info("Migrating blocktank orders", context: "Migration")
+            await applyRNBlocktank(orderIds: blocktank.orders, paidOrders: blocktank.paidOrders)
+        } else {
+            Logger.debug("No blocktank data found in MMKV", context: "Migration")
         }
 
         UserDefaults.standard.set("", forKey: "onchainAddress")
@@ -1184,6 +1249,13 @@ extension MigrationsService {
             await applyAllMetadata(metadata)
             pendingRemoteMetadata = nil
         }
+
+        // Handle remote backup paid orders (create transfers for pending channel orders)
+        if let paidOrders = pendingRemotePaidOrders {
+            Logger.info("Applying \(paidOrders.count) remote paid orders", context: "Migration")
+            await applyRemotePaidOrders(paidOrders)
+            pendingRemotePaidOrders = nil
+        }
     }
 
     private func applyRemoteTransfers(_ transfers: [String: String]) async {
@@ -1206,6 +1278,22 @@ extension MigrationsService {
         }
 
         Logger.info("Applied \(applied)/\(transfers.count) transfer markers", context: "Migration")
+    }
+
+    private func applyRemotePaidOrders(_ paidOrders: [String: String]) async {
+        let orderIds = Array(paidOrders.keys)
+        guard !orderIds.isEmpty else { return }
+
+        do {
+            let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
+            if !fetchedOrders.isEmpty {
+                try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
+                Logger.info("Upserted \(fetchedOrders.count) Blocktank orders from remote backup", context: "Migration")
+            }
+            await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
+        } catch {
+            Logger.warn("Failed to fetch Blocktank orders: \(error)", context: "Migration")
+        }
     }
 
     private func applyBoostTransactions(_ boosts: [String: String]) async {
@@ -1324,6 +1412,14 @@ extension MigrationsService {
                 onchain.boostTxIds.removeAll { boostedParents.contains($0) }
             } else if item.isBoosted == true {
                 onchain.isBoosted = true
+            }
+
+            if let feeRate = item.feeRate, feeRate > 0 {
+                onchain.feeRate = UInt64(feeRate)
+            }
+
+            if let address = item.address, !address.isEmpty {
+                onchain.address = address
             }
 
             do {
@@ -1731,7 +1827,6 @@ extension MigrationsService {
 
         struct BlocktankBackup: Codable {
             var orders: [BlocktankOrder]?
-            var paidOrders: [String]?
         }
 
         struct BackupEnvelope: Codable {
@@ -1749,19 +1844,57 @@ extension MigrationsService {
             orderIds.append(contentsOf: orders.map(\.id))
         }
 
-        if let paidOrderIds = json.data.paidOrders {
-            orderIds.append(contentsOf: paidOrderIds)
+        // paidOrders is a map of orderId -> txId
+        var paidOrdersMap: [String: String] = [:]
+        if let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let dataDict = rawDict["data"] as? [String: Any],
+           let paidOrders = dataDict["paidOrders"] as? [String: String]
+        {
+            paidOrdersMap = paidOrders
+            orderIds.append(contentsOf: paidOrders.keys)
+            Logger.info("Found \(paidOrders.count) paid orders in blocktank backup", context: "Migration")
         }
 
-        if !orderIds.isEmpty {
+        // Store paid orders for processing after wallet starts (CoreService not ready yet during restore)
+        if !paidOrdersMap.isEmpty {
+            pendingRemotePaidOrders = paidOrdersMap
+        }
+    }
+
+    private func createTransfersForPaidOrders(paidOrdersMap: [String: String], orders: [IBtOrder]) async {
+        let now = UInt64(Date().timeIntervalSince1970)
+        var transfers: [Transfer] = []
+
+        for (orderId, txId) in paidOrdersMap {
+            guard let order = orders.first(where: { $0.id == orderId }) else {
+                Logger.warn("Paid order \(orderId) not found in fetched orders", context: "Migration")
+                continue
+            }
+
+            if order.state2 == .executed {
+                continue
+            }
+
+            let transfer = Transfer(
+                id: txId,
+                type: .toSpending,
+                amountSats: order.clientBalanceSat + order.feeSat,
+                channelId: nil,
+                fundingTxId: nil,
+                lspOrderId: orderId,
+                isSettled: false,
+                createdAt: now,
+                settledAt: nil
+            )
+            transfers.append(transfer)
+        }
+
+        if !transfers.isEmpty {
             do {
-                let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
-                if !fetchedOrders.isEmpty {
-                    try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
-                    Logger.info("Upserted \(fetchedOrders.count) Blocktank orders", context: "Migration")
-                }
+                try TransferStorage.shared.upsertList(transfers)
+                Logger.info("Created \(transfers.count) transfers for paid Blocktank orders", context: "Migration")
             } catch {
-                Logger.warn("Failed to fetch and upsert Blocktank orders: \(error)", context: "Migration")
+                Logger.error("Failed to create transfers for paid orders: \(error)", context: "Migration")
             }
         }
     }
