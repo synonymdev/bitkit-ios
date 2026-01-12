@@ -12,28 +12,23 @@ on:
 
 jobs:
   claude:
-    # Only allow trusted actors (OWNER, MEMBER, COLLABORATOR) to trigger Claude with write permissions
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude') &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude') &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')) &&
-       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
-      contents: write      # Allow creating branches/commits
-      pull-requests: write # Allow pushing to PR branches
-      issues: write        # Allow updating issue comments
+      contents: read
+      pull-requests: read
+      issues: read
       id-token: write
-      actions: read        # Required for Claude to read CI results on PRs
+      actions: read # Required for Claude to read CI results on PRs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for git operations
+          fetch-depth: 1
 
       - name: Run Claude Code
         id: claude
@@ -52,3 +47,4 @@ jobs:
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options
           # claude_args: '--allowed-tools Bash(gh pr:*)'
+
