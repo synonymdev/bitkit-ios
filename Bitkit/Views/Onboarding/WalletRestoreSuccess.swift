@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WalletRestoreSuccess: View {
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var tagManager: TagManager
 
@@ -32,6 +33,7 @@ struct WalletRestoreSuccess: View {
                 tagManager.reloadLastUsedTags()
 
                 wallet.isRestoringWallet = false
+                SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
             }
             .accessibilityIdentifier("GetStartedButton")
         }
