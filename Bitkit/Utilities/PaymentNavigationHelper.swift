@@ -140,7 +140,7 @@ struct PaymentNavigationHelper {
         }
 
         // Handle onchain invoice
-        if app.scannedOnchainInvoice != nil {
+        if let _ = app.scannedOnchainInvoice {
             return .amount
         }
 
