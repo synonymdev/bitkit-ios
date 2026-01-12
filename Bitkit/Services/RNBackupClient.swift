@@ -1,7 +1,6 @@
-import CommonCrypto
 import CryptoKit
 import Foundation
-import LightningDevKit
+import LDKNode
 
 enum RNBackupError: Error, LocalizedError {
     case notSetup
@@ -63,9 +62,9 @@ class RNBackupClient {
     private init() {}
 
     func setup(mnemonic: String, passphrase: String?) async throws {
-        let seed = try deriveSeed(mnemonic: mnemonic, passphrase: passphrase)
-        secretKey = seed
-        publicKey = try Crypto.getPublicKey(privateKey: seed)
+        let secretKeyBytes = try deriveNodeSecretFromMnemonic(mnemonic: mnemonic, passphrase: passphrase)
+        secretKey = Data(secretKeyBytes)
+        publicKey = try Crypto.getPublicKey(privateKey: secretKey!)
         serverHost = Env.rnBackupServerHost
         network = networkString()
         cachedBearer = nil
@@ -85,66 +84,6 @@ class RNBackupClient {
         case .regtest: "regtest"
         case .signet: "signet"
         }
-    }
-
-    private func deriveSeed(mnemonic: String, passphrase: String?) throws -> Data {
-        let mnemonicData = Data(mnemonic.utf8)
-        let salt = "mnemonic" + (passphrase ?? "")
-        let saltData = Data(salt.utf8)
-
-        var bip39Seed = [UInt8](repeating: 0, count: 64)
-        let pbkdfResult = bip39Seed.withUnsafeMutableBytes { seedPtr in
-            mnemonicData.withUnsafeBytes { mnemonicPtr in
-                saltData.withUnsafeBytes { saltPtr in
-                    CCKeyDerivationPBKDF(
-                        CCPBKDFAlgorithm(kCCPBKDF2),
-                        mnemonicPtr.bindMemory(to: Int8.self).baseAddress!,
-                        mnemonicData.count,
-                        saltPtr.bindMemory(to: UInt8.self).baseAddress!,
-                        saltData.count,
-                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512),
-                        2048,
-                        seedPtr.bindMemory(to: UInt8.self).baseAddress!,
-                        64
-                    )
-                }
-            }
-        }
-
-        guard pbkdfResult == kCCSuccess else {
-            throw RNBackupError.authFailed
-        }
-
-        let hmacKey = Data("Bitcoin seed".utf8)
-        let seedData = Data(bip39Seed)
-
-        var hmacOutput = [UInt8](repeating: 0, count: Int(CC_SHA512_DIGEST_LENGTH))
-        hmacKey.withUnsafeBytes { keyPtr in
-            seedData.withUnsafeBytes { seedPtr in
-                CCHmac(
-                    CCHmacAlgorithm(kCCHmacAlgSHA512),
-                    keyPtr.baseAddress!,
-                    hmacKey.count,
-                    seedPtr.baseAddress!,
-                    seedData.count,
-                    &hmacOutput
-                )
-            }
-        }
-
-        let bip32Seed = [UInt8](hmacOutput.prefix(32))
-
-        let currentTime = Date()
-        let seconds = UInt64(currentTime.timeIntervalSince1970)
-        let nanoSeconds = UInt32((currentTime.timeIntervalSince1970.truncatingRemainder(dividingBy: 1)) * 1_000_000_000)
-
-        let keysManager = KeysManager(
-            seed: bip32Seed,
-            startingTimeSecs: seconds,
-            startingTimeNanos: nanoSeconds
-        )
-
-        return Data(keysManager.getNodeSecretKey())
     }
 
     // MARK: - Public API
