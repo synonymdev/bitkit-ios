@@ -491,6 +491,10 @@ extension MigrationsService {
 
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+
+        // Clean up RN data after successful migration
+        cleanupAfterMigration()
+
         Logger.info("RN migration completed", context: "Migration")
     }
 
