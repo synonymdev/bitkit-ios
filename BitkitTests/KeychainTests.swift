@@ -14,7 +14,7 @@ final class KeychainTests: XCTestCase {
     // MARK: - Security Attribute Tests
 
     func testKeychainSecurityAttributes() throws {
-        // Save a test item
+        // Save a test item (mnemonic should use WhenUnlockedThisDeviceOnly)
         let testValue = "test_mnemonic_for_security_check"
         try Keychain.saveString(key: .bip39Mnemonic(index: 0), str: testValue)
 
@@ -37,12 +37,12 @@ final class KeychainTests: XCTestCase {
             return
         }
 
-        // Verify accessibility is set to WhenUnlockedThisDeviceOnly
+        // Verify accessibility is set to WhenUnlockedThisDeviceOnly for mnemonic
         if let accessible = attributes[kSecAttrAccessible as String] as? String {
             XCTAssertEqual(
                 accessible,
                 kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
-                "Keychain item should use kSecAttrAccessibleWhenUnlockedThisDeviceOnly"
+                "Mnemonic should use kSecAttrAccessibleWhenUnlockedThisDeviceOnly for maximum security"
             )
         } else {
             XCTFail("Could not read kSecAttrAccessible attribute")
@@ -56,6 +56,43 @@ final class KeychainTests: XCTestCase {
             )
         }
         // Note: If synchronizable is nil/missing, that's also acceptable as the default is false
+    }
+
+    func testPushNotificationKeyAccessibility() throws {
+        // Save a push notification private key (should use AfterFirstUnlockThisDeviceOnly)
+        let testKey = Data([0x01, 0x02, 0x03, 0x04])
+        try Keychain.save(key: .pushNotificationPrivateKey, data: testKey)
+
+        // Query the item with attributes returned
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: KeychainEntryType.pushNotificationPrivateKey.storageKey,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+            kSecReturnAttributes as String: true,
+            kSecReturnData as String: false,
+        ]
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+        XCTAssertEqual(status, errSecSuccess, "Failed to query keychain item")
+
+        guard let attributes = result as? [String: Any] else {
+            XCTFail("Failed to get keychain attributes")
+            return
+        }
+
+        // Verify accessibility is set to AfterFirstUnlockThisDeviceOnly for push notification key
+        // This allows the notification service extension to decrypt payloads when device is locked
+        if let accessible = attributes[kSecAttrAccessible as String] as? String {
+            XCTAssertEqual(
+                accessible,
+                kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
+                "Push notification key should use kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly for background access"
+            )
+        } else {
+            XCTFail("Could not read kSecAttrAccessible attribute")
+        }
     }
 
     func testKeychainItemsAreDeviceOnly() throws {
