@@ -413,11 +413,14 @@ class ActivityService {
         // Build and save the activity
         let finalDoesExist = isConfirmed ? true : doesExist
 
-        let activityTimestamp: UInt64 = if existingActivity == nil, let bts = blockTimestamp, bts < paymentTimestamp {
-            bts
-        } else {
-            existingOnchain?.timestamp ?? paymentTimestamp
-        }
+        let activityTimestamp: UInt64 = {
+            let baseTimestamp = existingOnchain?.timestamp ?? paymentTimestamp
+
+            if let bts = blockTimestamp, bts < baseTimestamp {
+                return bts
+            }
+            return baseTimestamp
+        }()
 
         let onchain = OnchainActivity(
             id: payment.id,
