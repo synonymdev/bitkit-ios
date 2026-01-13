@@ -18,6 +18,7 @@ enum SheetID: String, CaseIterable {
     case scanner
     case security
     case send
+    case sweepPrompt
     case tagFilter
     case dateRangeSelector
 }
@@ -315,6 +316,18 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .forceTransfer else { return nil }
             return ForceTransferSheetItem()
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var sweepPromptSheetItem: SweepPromptSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .sweepPrompt else { return nil }
+            return SweepPromptSheetItem()
         }
         set {
             if newValue == nil {
