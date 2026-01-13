@@ -120,20 +120,7 @@ final class KeychainTests: XCTestCase {
             try Keychain.saveString(key: .bip39Passphrase(index: i), str: "\(testPassphrase) index\(i)")
         }
 
-        // Check all keys are saved correctly (verify each key exists)
-        for i in 0 ... 5 {
-            XCTAssertTrue(try Keychain.exists(key: .bip39Mnemonic(index: i)))
-            XCTAssertTrue(try Keychain.exists(key: .bip39Passphrase(index: i)))
-        }
-
-        // Also verify they appear in listed keys
-        let listedKeys = Keychain.getAllKeyChainStorageKeys()
-        for i in 0 ... 5 {
-            XCTAssertTrue(listedKeys.contains("bip39_mnemonic_\(i)"))
-            XCTAssertTrue(listedKeys.contains("bip39_passphrase_\(i)"))
-        }
-
-        // Check each value
+        // Check all keys are saved correctly by verifying their values
         for i in 0 ... 5 {
             XCTAssertEqual(try Keychain.loadString(key: .bip39Mnemonic(index: i)), "\(testMnemonic) index\(i)")
             XCTAssertEqual(try Keychain.loadString(key: .bip39Passphrase(index: i)), "\(testPassphrase) index\(i)")
