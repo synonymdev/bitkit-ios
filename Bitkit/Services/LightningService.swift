@@ -660,6 +660,24 @@ extension LightningService {
     var channels: [ChannelDetails]? { node?.listChannels() }
     var payments: [PaymentDetails]? { node?.listPayments() }
 
+    /// Checks if an on-chain transaction is confirmed
+    /// - Parameter txid: The transaction ID to check
+    /// - Returns: `true` if the transaction is confirmed, `false` if unconfirmed or not found
+    func isTransactionConfirmed(txid: String) -> Bool {
+        guard let payments else { return false }
+        for payment in payments {
+            if case let .onchain(paymentTxid, txStatus) = payment.kind,
+               paymentTxid == txid
+            {
+                if case .confirmed = txStatus {
+                    return true
+                }
+                return false
+            }
+        }
+        return false
+    }
+
     /// Get balance for a specific address in satoshis
     /// - Parameter address: The Bitcoin address to check
     /// - Returns: The current balance in satoshis
