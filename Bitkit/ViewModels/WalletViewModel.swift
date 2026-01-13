@@ -530,9 +530,9 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    /// Updates the balance state including pending transfers
     func updateBalanceState() async {
         do {
+            try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
             balanceInTransferToSpending = Int(state.balanceInTransferToSpending)

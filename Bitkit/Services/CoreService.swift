@@ -954,6 +954,19 @@ class ActivityService {
         }
     }
 
+    /// Checks if an on-chain activity exists for a given channel (e.g., close tx has been synced)
+    func hasOnchainActivityForChannel(channelId: String) async -> Bool {
+        guard let activities = try? await get(filter: .onchain, limit: 50, sortDirection: .desc) else {
+            return false
+        }
+        return activities.contains { activity in
+            if case let .onchain(onchain) = activity {
+                return onchain.channelId == channelId
+            }
+            return false
+        }
+    }
+
     func get(
         filter: ActivityFilter? = nil,
         txType: PaymentType? = nil,

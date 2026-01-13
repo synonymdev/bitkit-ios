@@ -41,17 +41,18 @@ class BalanceManager {
             balances: balanceDetails
         )
 
-        let toSavingsAmount = try await getTransferToSavingsSats(
+        let (lightningToSubtract, pendingCloseAmount) = await getCloseTransferAmounts(
             transfers: activeTransfers,
-            channels: channels,
             balanceDetails: balanceDetails
         )
+
+        let toSavingsAmount = pendingCloseAmount
         let toSpendingAmount = paidOrdersSats + pendingChannelsSats
 
         let totalOnchainSats = balanceDetails.totalOnchainBalanceSats
         let totalLightningSats = balanceDetails.totalLightningBalanceSats
             .minusOrZero(pendingChannelsSats)
-            .minusOrZero(toSavingsAmount)
+            .minusOrZero(lightningToSubtract)
 
         let maxSendLightningSats = calculateMaxSendLightning(channels: channels)
 
@@ -70,7 +71,7 @@ class BalanceManager {
             "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)"
         )
         Logger.debug(
-            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount)"
+            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract)"
         )
 
         return balanceState
@@ -78,9 +79,13 @@ class BalanceManager {
 
     // MARK: - Private Helper Methods
 
-    /// Calculates the total amount paid for LSP orders that are still pending
+    /// Calculates the total amount paid for LSP orders before their channel is assigned.
+    /// Once channelId is set, funds are tracked by getPendingChannelsSats instead.
     private func getOrderPaymentsSats(activeTransfers: [Transfer]) -> UInt64 {
-        let paidOrders = activeTransfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
+        // Only count orders that don't have a channel assigned yet
+        let paidOrders = activeTransfers.filter {
+            $0.type.isToSpending() && $0.lspOrderId != nil && $0.channelId == nil
+        }
 
         for transfer in paidOrders {
             Logger.debug(
@@ -91,10 +96,7 @@ class BalanceManager {
         return paidOrders.reduce(0) { $0 + $1.amountSats }
     }
 
-    /// Calculates the total balance in pending (not yet usable) channels
-    /// A channel is considered pending if it's not yet usable for payments,
-    /// even if LDK reports a balance for it. This ensures the balance shows
-    /// as "pending transfer to spending" until the channel funding is confirmed.
+    /// Calculates the total balance in pending (not yet usable) channels.
     private func getPendingChannelsSats(
         transfers: [Transfer],
         channels: [ChannelDetails],
@@ -123,7 +125,7 @@ class BalanceManager {
             // isUsable checks both that the channel is ready AND that it can actually be used
             if !channel.isUsable {
                 let channelBalance = balances.lightningBalances.first { balance in
-                    balance.channelId == channelId
+                    balance.channelIdString == channelId
                 }
                 let balanceAmount = channelBalance?.amountSats ?? 0
                 Logger.debug(
@@ -139,28 +141,29 @@ class BalanceManager {
         return amount
     }
 
-    /// Calculates the total amount being transferred to savings (closing channels)
-    private func getTransferToSavingsSats(
+    /// Calculates amounts for channel close transfers.
+    /// - Returns: lightningToSubtract (always subtract from display), pendingAmount (add to total only if on-chain hasn't arrived)
+    private func getCloseTransferAmounts(
         transfers: [Transfer],
-        channels: [ChannelDetails],
         balanceDetails: BalanceDetails
-    ) async throws -> UInt64 {
-        var toSavingsAmount: UInt64 = 0
-        let toSavings = transfers.filter { $0.type.isToSavings() }
+    ) async -> (lightningToSubtract: UInt64, pendingAmount: UInt64) {
+        var lightningToSubtract: UInt64 = 0
+        var pendingAmount: UInt64 = 0
 
-        for transfer in toSavings {
-            // Resolve channel ID through TransferService
-            let channelId = try await transferService.resolveChannelId(for: transfer, channels: channels)
+        for transfer in transfers.filter({ $0.type.isToSavings() }) {
+            guard let channelId = transfer.channelId else { continue }
 
-            if let channelId {
-                let channelBalance = balanceDetails.lightningBalances.first { balance in
-                    balance.channelId == channelId
-                }
-                toSavingsAmount += channelBalance?.amountSats ?? 0
+            let balanceAmount = balanceDetails.lightningBalances
+                .first { $0.channelIdString == channelId }?.amountSats ?? 0
+
+            lightningToSubtract += balanceAmount
+
+            if await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
+                pendingAmount += balanceAmount
             }
         }
 
-        return toSavingsAmount
+        return (lightningToSubtract, pendingAmount)
     }
 
     /// Calculates maximum sendable Lightning amount (outbound capacity)
