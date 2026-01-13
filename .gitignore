@@ -20,3 +20,7 @@ buildServer.json
 
 # VSCode
 .vscode/
+
+# AIs
+.ai/
+.claude/*.local*
