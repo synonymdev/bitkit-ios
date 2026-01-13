@@ -191,9 +191,9 @@ class WalletViewModel: ObservableObject {
         }
     }
 
-    func stopLightningNode() async throws {
+    func stopLightningNode(clearEventCallback: Bool = false) async throws {
         nodeLifecycleState = .stopping
-        try await lightningService.stop()
+        try await lightningService.stop(clearEventCallback: clearEventCallback)
         nodeLifecycleState = .stopped
         syncState()
     }
@@ -694,7 +694,7 @@ class WalletViewModel: ObservableObject {
         _ = await waitForNodeToRun(timeoutSeconds: 5.0)
 
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
-            try await stopLightningNode()
+            try await stopLightningNode(clearEventCallback: true)
         }
 
         try await lightningService.wipeStorage(walletIndex: 0)

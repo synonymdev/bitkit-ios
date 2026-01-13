@@ -14,6 +14,8 @@ class LightningService {
 
     private var channelCache: [String: ChannelDetails] = [:]
 
+    private var storedEventCallback: ((Event) -> Void)?
+
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
         syncStatusChangedSubject.eraseToAnyPublisher()
     }
@@ -187,7 +189,11 @@ class LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        listenForEvents(onEvent: onEvent)
+        if let onEvent {
+            storedEventCallback = onEvent
+        }
+
+        listenForEvents(onEvent: storedEventCallback)
 
         Logger.debug("Starting node...")
         try await ServiceQueue.background(.ldk) {
@@ -214,7 +220,7 @@ class LightningService {
         }
     }
 
-    func stop() async throws {
+    func stop(clearEventCallback: Bool = false) async throws {
         defer {
             // Always try to unlock, even if stopping fails
             try? StateLocker.unlock(.lightning)
@@ -230,6 +236,10 @@ class LightningService {
             try node.stop()
         }
         self.node = nil
+
+        if clearEventCallback {
+            storedEventCallback = nil
+        }
 
         await MainActor.run {
             channelCache.removeAll()
