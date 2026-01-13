@@ -29,6 +29,9 @@ enum AppReset {
         // Wipe keychain
         try Keychain.wipeEntireKeychain()
 
+        // Delete installation marker so next install can detect orphaned keychain
+        try? InstallationMarker.delete()
+
         // Wipe user defaults
         if let bundleID = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
