@@ -29,7 +29,7 @@ class Keychain {
             [
                 kSecClass as String: kSecClassGenericPassword as String,
                 kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
-                kSecAttrSynchronizable as String: kCFBooleanFalse!,
+                kSecAttrSynchronizable as String: false,
                 kSecAttrAccount as String: key.storageKey,
                 kSecValueData as String: data,
                 kSecAttrAccessGroup as String: Env.keychainGroup,
