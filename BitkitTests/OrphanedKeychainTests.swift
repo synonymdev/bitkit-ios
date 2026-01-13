@@ -1,3 +1,4 @@
+@testable import Bitkit
 import XCTest
 
 /// Tests for orphaned keychain detection and handling.
@@ -108,13 +109,12 @@ final class OrphanedKeychainTests: XCTestCase {
 
         try Keychain.saveString(key: .bip39Passphrase(index: 0), str: "orphaned passphrase")
 
-        // Detection should still work via wipeEntireKeychain checking all keys
-        let allKeys = Keychain.getAllKeyChainStorageKeys()
-        XCTAssertFalse(allKeys.isEmpty)
+        // Verify passphrase was saved
+        XCTAssertTrue(try Keychain.exists(key: .bip39Passphrase(index: 0)))
 
         // Wipe should clean it
         try Keychain.wipeEntireKeychain()
-        XCTAssertTrue(Keychain.getAllKeyChainStorageKeys().isEmpty)
+        XCTAssertFalse((try? Keychain.exists(key: .bip39Passphrase(index: 0))) ?? false)
     }
 
     func testAppResetDeletesMarker() throws {

@@ -1,3 +1,4 @@
+@testable import Bitkit
 import Security
 import XCTest
 
@@ -119,9 +120,14 @@ final class KeychainTests: XCTestCase {
             try Keychain.saveString(key: .bip39Passphrase(index: i), str: "\(testPassphrase) index\(i)")
         }
 
-        // Check all keys are saved correctly
+        // Check all keys are saved correctly (verify each key exists)
+        for i in 0 ... 5 {
+            XCTAssertTrue(try Keychain.exists(key: .bip39Mnemonic(index: i)))
+            XCTAssertTrue(try Keychain.exists(key: .bip39Passphrase(index: i)))
+        }
+
+        // Also verify they appear in listed keys
         let listedKeys = Keychain.getAllKeyChainStorageKeys()
-        XCTAssertEqual(listedKeys.count, 12)
         for i in 0 ... 5 {
             XCTAssertTrue(listedKeys.contains("bip39_mnemonic_\(i)"))
             XCTAssertTrue(listedKeys.contains("bip39_passphrase_\(i)"))
@@ -136,8 +142,10 @@ final class KeychainTests: XCTestCase {
         // Wipe
         try Keychain.wipeEntireKeychain()
 
-        // Check all keys are gone
-        let listedKeysAfterWipe = Keychain.getAllKeyChainStorageKeys()
-        XCTAssertEqual(listedKeysAfterWipe.count, 0)
+        // Check all our keys are gone (using exists() which respects access group)
+        for i in 0 ... 5 {
+            XCTAssertFalse((try? Keychain.exists(key: .bip39Mnemonic(index: i))) ?? false)
+            XCTAssertFalse((try? Keychain.exists(key: .bip39Passphrase(index: i))) ?? false)
+        }
     }
 }

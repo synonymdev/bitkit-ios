@@ -1,3 +1,4 @@
+@testable import Bitkit
 import Security
 import XCTest
 

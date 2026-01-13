@@ -1,3 +1,4 @@
+@testable import Bitkit
 import XCTest
 
 final class InstallationMarkerTests: XCTestCase {
