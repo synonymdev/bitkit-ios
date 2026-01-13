@@ -28,7 +28,8 @@ class Keychain {
         let query =
             [
                 kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock as String,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly as String,
+                kSecAttrSynchronizable as String: kCFBooleanFalse!,
                 kSecAttrAccount as String: key.storageKey,
                 kSecValueData as String: data,
                 kSecAttrAccessGroup as String: Env.keychainGroup,

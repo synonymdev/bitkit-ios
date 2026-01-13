@@ -451,6 +451,26 @@ extension MigrationsService {
         return exists
     }
 
+    /// Returns true if RN keychain has mnemonic but RN app files don't exist.
+    /// This indicates an orphaned keychain from a deleted RN app install.
+    func hasOrphanedRNKeychain() -> Bool {
+        // Check if RN keychain has mnemonic
+        guard hasRNWalletData() else {
+            return false
+        }
+
+        // If keychain has mnemonic, check if RN app files exist
+        // RN app would have created MMKV or LDK files if it was actually used
+        let hasRNFiles = hasRNMmkvData() || hasRNLdkData()
+
+        // Orphaned = has keychain data but no app files
+        let isOrphaned = !hasRNFiles
+        if isOrphaned {
+            Logger.warn("Detected orphaned RN keychain (mnemonic exists but no MMKV/LDK files)", context: "Migration")
+        }
+        return isOrphaned
+    }
+
     func migrateFromReactNative(walletIndex: Int = 0) async throws {
         Logger.info("Starting RN migration", context: "Migration")
 
