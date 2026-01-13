@@ -576,6 +576,61 @@ extension MigrationsService {
     func markMigrationChecked() {
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
     }
+
+    // MARK: - RN Data Cleanup
+
+    /// Delete RN keychain entries (mnemonic, passphrase, PIN)
+    func cleanupRNKeychain() {
+        let keysToDelete: [RNKeychainKey] = [
+            .mnemonic(walletName: rnWalletName),
+            .passphrase(walletName: rnWalletName),
+            .pin,
+        ]
+
+        for key in keysToDelete {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: key.service,
+            ]
+            let status = SecItemDelete(query as CFDictionary)
+            if status == noErr || status == errSecItemNotFound {
+                Logger.info("Deleted RN keychain key: \(key.service)", context: "Migration")
+            } else {
+                Logger.warn("Failed to delete RN keychain key \(key.service): \(status)", context: "Migration")
+            }
+        }
+    }
+
+    /// Delete RN MMKV and LDK files from Documents directory
+    func cleanupRNFiles() {
+        // Delete MMKV directory
+        let mmkvDir = rnMmkvPath.deletingLastPathComponent() // ~/Documents/mmkv/
+        if fileManager.fileExists(atPath: mmkvDir.path) {
+            do {
+                try fileManager.removeItem(at: mmkvDir)
+                Logger.info("Deleted RN MMKV directory", context: "Migration")
+            } catch {
+                Logger.warn("Failed to delete RN MMKV directory: \(error)", context: "Migration")
+            }
+        }
+
+        // Delete LDK directory
+        if fileManager.fileExists(atPath: rnLdkBasePath.path) {
+            do {
+                try fileManager.removeItem(at: rnLdkBasePath)
+                Logger.info("Deleted RN LDK directory", context: "Migration")
+            } catch {
+                Logger.warn("Failed to delete RN LDK directory: \(error)", context: "Migration")
+            }
+        }
+    }
+
+    /// Full cleanup after successful migration - removes all RN data
+    func cleanupAfterMigration() {
+        cleanupRNKeychain()
+        cleanupRNFiles()
+        Logger.info("RN cleanup completed", context: "Migration")
+    }
 }
 
 // MARK: - MMKV Data Migration
