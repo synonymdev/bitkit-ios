@@ -5,8 +5,6 @@ enum CustomServiceError: Error {
     case nodeNotSetup
     case nodeNotStarted
     case onchainWalletNotInitialized
-    case ldkNodeSqliteAlreadyExists
-    case ldkToLdkNodeMigration
     case mnemonicNotFound
     case nodeStillRunning
     case onchainWalletStillRunning
@@ -78,12 +76,6 @@ struct AppError: LocalizedError {
             debugMessage = nil
         case .onchainWalletNotInitialized:
             message = "Onchain wallet not created"
-            debugMessage = nil
-        case .ldkNodeSqliteAlreadyExists:
-            message = "LDK-node SQLite file already exists"
-            debugMessage = nil
-        case .ldkToLdkNodeMigration:
-            message = "LDK to LDK-node migration issue"
             debugMessage = nil
         case .mnemonicNotFound:
             message = "Mnemonic not found"
@@ -361,6 +353,9 @@ struct AppError: LocalizedError {
             debugMessage = ldkMessage
         case let .CoinSelectionFailed(ldkMessage):
             message = "Coin selection failed"
+            debugMessage = ldkMessage
+        case let .InvalidMnemonic(ldkMessage):
+            message = "Invalid mnemonic"
             debugMessage = ldkMessage
         }
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
