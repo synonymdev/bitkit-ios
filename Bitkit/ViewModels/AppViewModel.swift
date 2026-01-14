@@ -310,7 +310,7 @@ extension AppViewModel {
             }
 
             guard !invoice.isExpired else {
-                toast(type: .error, title: t("Decoding Error"), description: "This invoice has expired")
+                toast(type: .error, title: t("other__scan_err_decoding"), description: t("other__scan__error__expired"))
                 return
             }
 
