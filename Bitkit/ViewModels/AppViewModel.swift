@@ -177,19 +177,20 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    guard lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) else {
+                    let canSend = lightningService.canSend(amountSats: lightningInvoice.amountSatoshis)
+
+                    if !lightningInvoice.isExpired, canSend {
+                        handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
+                        return
+                    }
+
+                    if !canSend {
                         toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
-                        break // Fall through to on-chain
                     }
 
-                    // Then check expiry
-                    guard !lightningInvoice.isExpired else {
-                        toast(type: invoice.address.isEmpty ? .error : .info, title: t("other__scan__error__expired"), description: nil)
-                        break // Fall through to on-chain
+                    if lightningInvoice.isExpired, canSend {
+                        toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                     }
-
-                    handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
-                    return
                 }
             }
 
@@ -579,6 +580,7 @@ extension AppViewModel {
                     SettingsViewModel.shared.updatePinEnabledState()
 
                     MigrationsService.shared.isShowingMigrationLoading = false
+                    self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
                 }
             } else if MigrationsService.shared.isRestoringFromRNRemoteBackup {
                 Task {
