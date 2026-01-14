@@ -565,6 +565,9 @@ extension AppViewModel {
             if let lnInvoice = invoice.params?["lightning"],
                case let .lightning(lightningInvoice) = try? await decode(invoice: lnInvoice)
             {
+                // Check for stale request after async decode
+                guard currentSequence == manualEntryValidationSequence else { return }
+
                 // Check lightning invoice network too
                 let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                 let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
