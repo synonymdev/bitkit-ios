@@ -288,7 +288,11 @@ extension AppViewModel {
             }
 
             guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
-                toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
+                toast(
+                    type: .error,
+                    title: t("other__pay_insufficient_spending"),
+                    description: t("other__pay_insufficient_savings_description")
+                )
                 return
             }
 
