@@ -231,6 +231,17 @@ extension AppViewModel {
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
+            // Check network first - treat wrong network as decoding error
+            let addressNetwork = getAddressNetwork(invoice.address)
+            if isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic")
+                )
+                return
+            }
+
             if let lnInvoice = invoice.params?["lightning"] {
                 guard lightningService.status?.isRunning == true else {
                     toast(type: .error, title: "Lightning not running", description: "Please try again later.")
@@ -238,14 +249,18 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
+                    // Check lightning invoice network
+                    let lnNetwork = convertNetworkType(lightningInvoice.networkType)
+                    let lnNetworkMatch = !isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
+
                     let canSend = lightningService.canSend(amountSats: lightningInvoice.amountSatoshis)
 
-                    if !lightningInvoice.isExpired, canSend {
+                    if lnNetworkMatch, !lightningInvoice.isExpired, canSend {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
 
-                    if lightningInvoice.isExpired, canSend {
+                    if lnNetworkMatch, lightningInvoice.isExpired, canSend {
                         toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                     }
                 }
@@ -255,6 +270,18 @@ extension AppViewModel {
             guard !invoice.address.isEmpty else { return }
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
+            // Check network first - treat wrong network as decoding error
+            if let invoiceNetwork = convertNetworkType(invoice.networkType),
+               isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network)
+            {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic")
+                )
+                return
+            }
+
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
@@ -289,7 +316,17 @@ extension AppViewModel {
                 return
             }
 
-            // TODO: add network check
+            // Check network - treat wrong network as decoding error
+            if let nodeNetwork = convertNetworkType(network),
+               isNetworkMismatch(addressNetwork: nodeNetwork, currentNetwork: Env.network)
+            {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic")
+                )
+                return
+            }
 
             handleNodeUri(url, network)
         case let .gift(code, amount):
@@ -481,6 +518,14 @@ extension AppViewModel {
 
         switch decodedData {
         case let .lightning(invoice):
+            // Priority 0: Check network first - treat wrong network as invalid
+            if let invoiceNetwork = convertNetworkType(invoice.networkType),
+               isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network)
+            {
+                result = .invalid
+                break
+            }
+
             // Lightning-only invoice: check spending balance and expiry
             let amountSats = invoice.amountSatoshis
 
@@ -493,13 +538,24 @@ extension AppViewModel {
             }
 
         case let .onChain(invoice):
+            // Priority 0: Check network first - treat wrong network as invalid
+            let addressNetwork = getAddressNetwork(invoice.address)
+            if isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+                result = .invalid
+                break
+            }
+
             // BIP21 with potential lightning parameter
             var canPayLightning = false
             if let lnInvoice = invoice.params?["lightning"],
                case let .lightning(lightningInvoice) = try? await decode(invoice: lnInvoice)
             {
+                // Check lightning invoice network too
+                let lnNetwork = convertNetworkType(lightningInvoice.networkType)
+                let lnNetworkMatch = !isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
+
                 // Has lightning fallback - check if lightning is viable
-                canPayLightning = !lightningInvoice.isExpired &&
+                canPayLightning = lnNetworkMatch && !lightningInvoice.isExpired &&
                     (lightningInvoice.amountSatoshis == 0 || spendingBalanceSats >= Int(lightningInvoice.amountSatoshis))
             }
 
@@ -527,6 +583,50 @@ extension AppViewModel {
         if result != .valid && result != .empty {
             showValidationErrorToast(for: result)
         }
+    }
+
+    /// Infer the Bitcoin network from an on-chain address prefix
+    private func getAddressNetwork(_ address: String) -> LDKNode.Network? {
+        let lowercased = address.lowercased()
+
+        // Bech32/Bech32m addresses
+        if lowercased.hasPrefix("bc1") {
+            return .bitcoin
+        } else if lowercased.hasPrefix("bcrt1") {
+            return .regtest
+        } else if lowercased.hasPrefix("tb1") {
+            return .testnet
+        }
+
+        // Legacy addresses - check first character
+        guard let first = address.first else { return nil }
+        switch first {
+        case "1", "3": return .bitcoin
+        case "m", "n", "2": return .testnet // testnet and regtest share these
+        default: return nil
+        }
+    }
+
+    /// Convert BitkitCore.NetworkType to LDKNode.Network
+    private func convertNetworkType(_ networkType: NetworkType) -> LDKNode.Network? {
+        switch networkType {
+        case .bitcoin: return .bitcoin
+        case .testnet: return .testnet
+        case .signet: return .signet
+        case .regtest: return .regtest
+        }
+    }
+
+    /// Check if an address network matches the current app network
+    private func isNetworkMismatch(addressNetwork: LDKNode.Network?, currentNetwork: LDKNode.Network) -> Bool {
+        guard let addressNetwork else { return false }
+
+        // Special case: regtest uses testnet prefixes (m, n, 2, tb1)
+        if currentNetwork == .regtest && addressNetwork == .testnet {
+            return false
+        }
+
+        return addressNetwork != currentNetwork
     }
 }
 
