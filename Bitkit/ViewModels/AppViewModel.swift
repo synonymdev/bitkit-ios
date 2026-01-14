@@ -177,14 +177,19 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    if !lightningInvoice.isExpired, lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
-                        handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
-                        return
+                    guard lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) else {
+                        toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
+                        break // Fall through to on-chain
                     }
-                    // Lightning not usable (expired or insufficient funds) - fallback to on-chain if available
-                    if lightningInvoice.isExpired {
-                        toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+
+                    // Then check expiry
+                    guard !lightningInvoice.isExpired else {
+                        toast(type: invoice.address.isEmpty ? .error : .info, title: t("other__scan__error__expired"), description: nil)
+                        break // Fall through to on-chain
                     }
+
+                    handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
+                    return
                 }
             }
 
@@ -197,13 +202,13 @@ extension AppViewModel {
                 return
             }
 
-            guard !invoice.isExpired else {
-                toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+            guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+                toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
                 return
             }
 
-            guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
-                toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
+            guard !invoice.isExpired else {
+                toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                 return
             }
 
