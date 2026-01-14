@@ -208,12 +208,25 @@ class ActivityService {
             return false
         }
 
-        // Don't show sheet for channel closure transactions
+        // Don't show sheet for channel closure transactions (commitment tx)
         if await findClosedChannelForTransaction(txid: txid, transactionDetails: nil) != nil {
+            Logger.info("Skipping received sheet for channel close transaction \(txid)", context: "CoreService.shouldShowReceivedSheet")
             return false
         }
 
         let onchainActivity = try? await getOnchainActivityByTxId(txid: txid)
+
+        // Don't show sheet for transfer transactions (channel open/close)
+        if let onchainActivity, onchainActivity.isTransfer {
+            Logger.info("Skipping received sheet for transfer transaction \(txid)", context: "CoreService.shouldShowReceivedSheet")
+            return false
+        }
+
+        // Don't show sheet for transactions with a channel ID (part of a channel lifecycle)
+        if let onchainActivity, onchainActivity.channelId != nil {
+            Logger.info("Skipping received sheet for channel-related transaction \(txid)", context: "CoreService.shouldShowReceivedSheet")
+            return false
+        }
 
         if let onchainActivity, onchainActivity.seenAt != nil {
             return false
@@ -748,9 +761,36 @@ class ActivityService {
         }
     }
 
-    /// Check if a transaction spends a closed channel's funding UTXO
+    /// Check if a transaction spends a closed channel's funding UTXO or is a force close sweep
     private func findClosedChannelForTransaction(txid: String, transactionDetails: BitkitCore.TransactionDetails? = nil) async -> String? {
         do {
+            // First, check if this txid is a known sweep transaction using LDK's pending sweep balances
+            if let pendingSweeps = LightningService.shared.balances?.pendingBalancesFromChannelClosures {
+                for sweepBalance in pendingSweeps {
+                    switch sweepBalance {
+                    case let .broadcastAwaitingConfirmation(channelId, _, latestSpendingTxid, _):
+                        if latestSpendingTxid.description == txid, let channelId {
+                            Logger.info(
+                                "Matched sweep tx \(txid) to channel \(channelId) via pendingSweepBalance (awaiting confirmation)",
+                                context: "findClosedChannelForTransaction"
+                            )
+                            return channelId.description
+                        }
+                    case let .awaitingThresholdConfirmations(channelId, latestSpendingTxid, _, _, _):
+                        if latestSpendingTxid.description == txid, let channelId {
+                            Logger.info(
+                                "Matched sweep tx \(txid) to channel \(channelId) via pendingSweepBalance (threshold confirmations)",
+                                context: "findClosedChannelForTransaction"
+                            )
+                            return channelId.description
+                        }
+                    case .pendingBroadcast:
+                        // No txid yet, skip
+                        break
+                    }
+                }
+            }
+
             let closedChannels = try await getAllClosedChannels(sortDirection: .desc)
             guard !closedChannels.isEmpty else { return nil }
 
@@ -760,7 +800,7 @@ class ActivityService {
                 return nil
             }
 
-            // Check if any input spends a closed channel's funding UTXO
+            // Check if any input spends a closed channel's funding UTXO (commitment transaction)
             for input in details.inputs {
                 let inputTxid = input.txid
                 let inputVout = Int(input.vout)

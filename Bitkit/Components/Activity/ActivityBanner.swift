@@ -8,14 +8,28 @@ enum ActivityBannerType {
 
 struct ActivityBanner: View {
     let type: ActivityBannerType
+    let remainingDuration: String?
 
     @State private var innerShadowOpacity: Double = 0.32
     @State private var dropShadowOpacity: Double = 1.0
     @State private var radialGradientOpacity: Double = 0.4
     @State private var borderOpacity: Double = 0.32
 
+    init(type: ActivityBannerType, remainingDuration: String? = nil) {
+        self.type = type
+        self.remainingDuration = remainingDuration
+    }
+
     private var accentColor: Color {
         type == .spending ? .purpleAccent : .brandAccent
+    }
+
+    private var bannerText: String {
+        if let duration = remainingDuration {
+            return tTodo("TRANSFER READY IN \(duration)")
+        } else {
+            return tTodo("TRANSFER IN PROGRESS")
+        }
     }
 
     var body: some View {
@@ -26,7 +40,7 @@ struct ActivityBanner: View {
                 .frame(width: 20, height: 20)
                 .foregroundColor(accentColor)
 
-            Text(tTodo("TRANSFER IN PROGRESS"))
+            Text(bannerText)
                 .font(Fonts.black(size: 20))
                 .foregroundColor(.textPrimary)
                 .kerning(0)

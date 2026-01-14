@@ -47,23 +47,28 @@ class WalletViewModel: ObservableObject {
     private let rgsConfigService: RgsConfigService
     private let balanceManager: BalanceManager
     private let transferService: TransferService
+    private let sheetViewModel: SheetViewModel
 
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
+    @Published var forceCloseClaimableAtHeight: UInt32?
+    @Published var currentBlockHeight: UInt32 = 0
 
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
         rgsConfigService: RgsConfigService = RgsConfigService(),
-        transferService: TransferService
+        transferService: TransferService,
+        sheetViewModel: SheetViewModel
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
         self.electrumConfigService = electrumConfigService
         self.rgsConfigService = rgsConfigService
         self.transferService = transferService
+        self.sheetViewModel = sheetViewModel
         balanceManager = BalanceManager(
             lightningService: lightningService,
             transferService: transferService,
@@ -77,7 +82,7 @@ class WalletViewModel: ObservableObject {
             lightningService: .shared,
             blocktankService: CoreService.shared.blocktank
         )
-        self.init(transferService: transferService)
+        self.init(transferService: transferService, sheetViewModel: SheetViewModel())
     }
 
     func setWalletExistsState() throws {
@@ -127,10 +132,18 @@ class WalletViewModel: ObservableObject {
 
                     // Handle specific events for targeted UI updates
                     switch event {
-                    case .paymentReceived, .channelReady, .channelClosed:
+                    case .paymentReceived, .channelReady:
                         self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
+                            try? await self.refreshBip21()
+                        }
+
+                    case let .channelClosed(channelId, _, _, reason):
+                        self.syncChannelsAndPeers()
+                        self.bolt11 = ""
+                        Task {
+                            await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
                         }
 
@@ -144,11 +157,15 @@ class WalletViewModel: ObservableObject {
 
                     // MARK: Sync Events
 
-                    case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+                    case let .syncProgress(syncType, progressPercent, syncCurrentBlockHeight, targetBlockHeight):
                         self.isSyncingWallet = true
+                        if syncCurrentBlockHeight > self.currentBlockHeight {
+                            self.currentBlockHeight = syncCurrentBlockHeight
+                        }
                         Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
                     case let .syncCompleted(syncType, syncedBlockHeight):
                         self.isSyncingWallet = false
+                        self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
                         self.syncState()
                         Task {
@@ -542,6 +559,13 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(state.totalLightningSats)
             totalBalanceSats = Int(state.totalBalanceSats)
             maxSendLightningSats = Int(state.maxSendLightningSats)
+
+            // Get force close timelock from active transfers
+            let activeTransfers = try? transferService.getActiveTransfers()
+            let forceCloseTransfer = activeTransfers?.first {
+                $0.type == .forceClose && !$0.isSettled
+            }
+            forceCloseClaimableAtHeight = forceCloseTransfer?.claimableAtHeight
         } catch {
             Logger.error("Failed to update balance state: \(error)", context: "WalletViewModel")
         }
@@ -687,6 +711,83 @@ class WalletViewModel: ObservableObject {
         availableUtxos = []
         selectedSpeed = speed
         isMaxAmountSend = false
+    }
+
+    private func handleChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
+        let channelIdString = channelId.description
+        let reasonString = reason.map { String(describing: $0) } ?? ""
+
+        Logger.info("Handling channel close: channelId=\(channelIdString) reason=\(reasonString)", context: "WalletViewModel")
+
+        guard let reason else { return }
+
+        let (isCounterpartyClose, isForceClose) = classifyClosureReason(reason)
+
+        if isCounterpartyClose {
+            Logger.info("Detected counterparty-initiated channel close (force=\(isForceClose))", context: "WalletViewModel")
+
+            let transferType: TransferType = isForceClose ? .forceClose : .coopClose
+
+            // Find the lightning balance for this channel
+            // First try to get from lightningBalances (for already-claimed force closes)
+            let allBalances = lightningService.balances?.lightningBalances ?? []
+            let channelLightningBalance = allBalances.first { $0.channelIdString == channelIdString }
+            var channelBalance = channelLightningBalance?.amountSats ?? 0
+
+            // If no balance found in lightningBalances, get from closed channel record
+            if channelBalance == 0 {
+                if let closedChannels = try? await coreService.activity.closedChannels(sortDirection: .desc),
+                   let closedChannel = closedChannels.first(where: { $0.channelId == channelIdString })
+                {
+                    channelBalance = closedChannel.channelValueSats
+                }
+            }
+
+            // For force closes, get the timelock height
+            let claimableAtHeight: UInt32? = isForceClose ? channelLightningBalance?.claimableAtHeight : nil
+
+            if channelBalance > 0 {
+                do {
+                    let transferId = try await transferService.createTransfer(
+                        type: transferType,
+                        amountSats: channelBalance,
+                        channelId: channelIdString,
+                        claimableAtHeight: claimableAtHeight
+                    )
+                    Logger.info(
+                        "Created transfer for LSP-initiated close: \(transferId) claimableAtHeight=\(claimableAtHeight ?? 0)",
+                        context: "WalletViewModel"
+                    )
+                } catch {
+                    Logger.error("Failed to create transfer for LSP close: \(error)", context: "WalletViewModel")
+                }
+            }
+
+            sheetViewModel.showSheet(.connectionClosed)
+            await updateBalanceState()
+        }
+    }
+
+    private func classifyClosureReason(_ reason: LDKNode.ClosureReason) -> (isCounterpartyClose: Bool, isForceClose: Bool) {
+        let reasonString = String(describing: reason).lowercased()
+
+        if reasonString.contains("commitmenttxconfirmed") {
+            return (true, true)
+        }
+        if reasonString.contains("counterpartyforceclosed") {
+            return (true, true)
+        }
+        if reasonString.contains("counterpartyinitiatedcooperativeclosure") {
+            return (true, false)
+        }
+        if reasonString.contains("counterpartycopclosedunfundedchannel") {
+            return (true, false)
+        }
+        if reasonString.contains("counterparty") {
+            return (true, reasonString.contains("force"))
+        }
+
+        return (false, false)
     }
 
     func wipe() async throws {

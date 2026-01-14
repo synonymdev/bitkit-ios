@@ -46,6 +46,15 @@ class BalanceManager {
             balanceDetails: balanceDetails
         )
 
+        // Detect orphan closed channels: channels with lightning balance that are no longer
+        // in the channels list and don't have a Transfer record yet. This handles the race
+        // condition where the channel closes but Transfer hasn't been created yet.
+        let orphanClosedChannelBalance = getOrphanClosedChannelBalance(
+            transfers: activeTransfers,
+            channels: channels,
+            balances: balanceDetails
+        )
+
         let toSavingsAmount = pendingCloseAmount
         let toSpendingAmount = paidOrdersSats + pendingChannelsSats
 
@@ -53,6 +62,7 @@ class BalanceManager {
         let totalLightningSats = balanceDetails.totalLightningBalanceSats
             .minusOrZero(pendingChannelsSats)
             .minusOrZero(lightningToSubtract)
+            .minusOrZero(orphanClosedChannelBalance)
 
         let maxSendLightningSats = calculateMaxSendLightning(channels: channels)
 
@@ -153,8 +163,15 @@ class BalanceManager {
         for transfer in transfers.filter({ $0.type.isToSavings() }) {
             guard let channelId = transfer.channelId else { continue }
 
-            let balanceAmount = balanceDetails.lightningBalances
-                .first { $0.channelIdString == channelId }?.amountSats ?? 0
+            let balanceFromLdk = balanceDetails.lightningBalances
+                .first { $0.channelIdString == channelId }?.amountSats
+            let balanceAmount = balanceFromLdk ?? transfer.amountSats
+
+            if balanceFromLdk == nil {
+                Logger.debug(
+                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, using transfer amount \(transfer.amountSats)"
+                )
+            }
 
             lightningToSubtract += balanceAmount
 
@@ -164,6 +181,39 @@ class BalanceManager {
         }
 
         return (lightningToSubtract, pendingAmount)
+    }
+
+    /// Detects "orphan" closed channels - channels that have lightning balance in LDK
+    /// but are no longer in the channels list and don't have a Transfer record yet.
+    private func getOrphanClosedChannelBalance(
+        transfers: [Transfer],
+        channels: [ChannelDetails],
+        balances: BalanceDetails
+    ) -> UInt64 {
+        // Get all channelIds from current channels and active transfers
+        let activeChannelIds = Set(channels.map(\.channelId.description))
+        let transferChannelIds = Set(transfers.compactMap(\.channelId))
+
+        var orphanBalance: UInt64 = 0
+
+        for lightningBalance in balances.lightningBalances {
+            let channelId = lightningBalance.channelIdString
+
+            // If this channel is not in active channels AND not tracked by a Transfer,
+            // it's a closed channel that hasn't had its Transfer record created yet
+            let isInActiveChannels = activeChannelIds.contains(channelId)
+            let hasTransferRecord = transferChannelIds.contains(channelId)
+
+            if !isInActiveChannels && !hasTransferRecord {
+                Logger.debug(
+                    "Found orphan closed channel balance: channelId=\(channelId) amount=\(lightningBalance.amountSats)",
+                    context: "BalanceManager"
+                )
+                orphanBalance += lightningBalance.amountSats
+            }
+        }
+
+        return orphanBalance
     }
 
     /// Calculates maximum sendable Lightning amount (outbound capacity)
