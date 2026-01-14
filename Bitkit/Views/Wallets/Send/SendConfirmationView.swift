@@ -211,11 +211,6 @@ struct SendConfirmationView: View {
         var createdMetadataPaymentId: String? = nil
 
         do {
-            if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice, invoice.isExpired {
-                app.toast(type: .error, title: t("other__scan__error__expired"), description: nil)
-                return
-            }
-
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Set the amount for the success screen
