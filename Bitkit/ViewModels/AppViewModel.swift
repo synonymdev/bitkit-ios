@@ -260,19 +260,31 @@ extension AppViewModel {
                         return
                     }
 
-                    if lnNetworkMatch, lightningInvoice.isExpired, canSend {
-                        toast(type: .error, title: t("other__scan_err_decoding"), description: t("other__scan__error__expired"))
-                    }
+                    // If Lightning is expired or insufficient, fall back to on-chain silently (no toast)
                 }
             }
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
 
-            // Check on-chain balance if amount is specified
+            // Check on-chain balance
+            let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
             if invoice.amountSatoshis > 0 {
-                let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
                 guard onchainBalance >= invoice.amountSatoshis else {
+                    let amountNeeded = invoice.amountSatoshis - onchainBalance
+                    toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t(
+                            "other__pay_insufficient_savings_amount_description",
+                            variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)]
+                        )
+                    )
+                    return
+                }
+            } else {
+                // Zero-amount invoice: user must have some balance to proceed
+                guard onchainBalance > 0 else {
                     toast(
                         type: .error,
                         title: t("other__pay_insufficient_savings"),
@@ -301,10 +313,15 @@ extension AppViewModel {
             }
 
             guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+                let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+                let amountNeeded = invoice.amountSatoshis > spendingBalance ? invoice.amountSatoshis - spendingBalance : 0
+                let description = amountNeeded > 0
+                    ? t("other__pay_insufficient_spending_amount_description", variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)])
+                    : t("other__pay_insufficient_spending_description")
                 toast(
                     type: .error,
                     title: t("other__pay_insufficient_spending"),
-                    description: t("other__pay_insufficient_savings_description")
+                    description: description
                 )
                 return
             }
