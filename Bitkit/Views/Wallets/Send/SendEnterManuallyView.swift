@@ -45,6 +45,8 @@ struct SendEnterManuallyView: View {
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
                     .submitLabel(.done)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .dismissKeyboardOnReturn(text: manualEntryBinding, isFocused: $isTextEditorFocused)
                     .accessibilityValue(app.manualEntryInput)
                     .accessibilityIdentifier("RecipientInput")
