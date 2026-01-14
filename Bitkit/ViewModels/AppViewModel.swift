@@ -137,8 +137,8 @@ class AppViewModel: ObservableObject {
         case .expiredLightningOnly:
             toast(
                 type: .error,
-                title: t("other__scan__error__expired"),
-                description: nil
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__expired")
             )
         case .valid, .empty:
             break
@@ -261,7 +261,7 @@ extension AppViewModel {
                     }
 
                     if lnNetworkMatch, lightningInvoice.isExpired, canSend {
-                        toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+                        toast(type: .error, title: t("other__scan_err_decoding"), description: t("other__scan__error__expired"))
                     }
                 }
             }
