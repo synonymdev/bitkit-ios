@@ -1,6 +1,16 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
+
+enum ManualEntryValidationResult: Equatable {
+    case valid
+    case empty
+    case invalid
+    case insufficientSavings
+    case insufficientSpending
+    case expiredLightningOnly
+}
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -10,6 +20,7 @@ class AppViewModel: ObservableObject {
     @Published var selectedWalletToPayFrom: WalletType = .onchain
     @Published var manualEntryInput: String = ""
     @Published var isManualEntryInputValid: Bool = false
+    @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -63,6 +74,10 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
     private var manualEntryValidationSequence: UInt64 = 0
 
+    // Combine infrastructure for debounced validation
+    private var manualEntryValidationCancellable: AnyCancellable?
+    private let manualEntryValidationSubject = PassthroughSubject<(String, Int, Int), Never>()
+
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
@@ -77,10 +92,54 @@ class AppViewModel: ObservableObject {
         // Start app status initialization timer
         startAppStatusInitializationTimer()
 
+        setupManualEntryValidationDebounce()
+
         Task {
             await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
+        }
+    }
+
+    private func setupManualEntryValidationDebounce() {
+        manualEntryValidationCancellable = manualEntryValidationSubject
+            .debounce(for: .milliseconds(1000), scheduler: DispatchQueue.main)
+            .sink { [weak self] rawValue, savingsBalanceSats, spendingBalanceSats in
+                guard let self else { return }
+                Task {
+                    await self.performValidation(rawValue, savingsBalanceSats: savingsBalanceSats, spendingBalanceSats: spendingBalanceSats)
+                }
+            }
+    }
+
+    private func showValidationErrorToast(for result: ManualEntryValidationResult) {
+        switch result {
+        case .invalid:
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic")
+            )
+        case .insufficientSavings:
+            toast(
+                type: .error,
+                title: t("other__pay_insufficient_savings"),
+                description: t("other__pay_insufficient_savings_description")
+            )
+        case .insufficientSpending:
+            toast(
+                type: .error,
+                title: t("other__pay_insufficient_spending"),
+                description: t("other__pay_insufficient_savings_description")
+            )
+        case .expiredLightningOnly:
+            toast(
+                type: .error,
+                title: t("other__scan__error__expired"),
+                description: nil
+            )
+        case .valid, .empty:
+            break
         }
     }
 
@@ -370,23 +429,99 @@ extension AppViewModel {
         manualEntryValidationSequence &+= 1
         manualEntryInput = ""
         isManualEntryInputValid = false
+        manualEntryValidationResult = .empty
     }
 
-    func validateManualEntryInput(_ rawValue: String) async {
+    /// Queue validation with debounce
+    func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+        let normalized = normalizeManualEntry(rawValue)
+
+        // Immediately update state for empty input (no debounce needed)
+        guard !normalized.isEmpty else {
+            manualEntryValidationResult = .empty
+            isManualEntryInputValid = false
+            return
+        }
+
+        // Queue the validation with debounce
+        manualEntryValidationSubject.send((rawValue, savingsBalanceSats, spendingBalanceSats))
+    }
+
+    /// Perform the actual validation
+    private func performValidation(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) async {
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
 
         let normalized = normalizeManualEntry(rawValue)
 
         guard !normalized.isEmpty else {
+            manualEntryValidationResult = .empty
             isManualEntryInputValid = false
             return
         }
 
-        let isValid = await (try? decode(invoice: normalized)) != nil
+        // Try to decode the invoice
+        guard let decodedData = try? await decode(invoice: normalized) else {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .invalid
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .invalid)
+            return
+        }
 
         guard currentSequence == manualEntryValidationSequence else { return }
-        isManualEntryInputValid = isValid
+
+        // Determine validation result based on invoice type and balance
+        var result: ManualEntryValidationResult = .valid
+
+        switch decodedData {
+        case let .lightning(invoice):
+            // Lightning-only invoice: check spending balance and expiry
+            let amountSats = invoice.amountSatoshis
+
+            // Priority 1: Insufficient spending balance (only check if amount > 0)
+            if amountSats > 0 && spendingBalanceSats < Int(amountSats) {
+                result = .insufficientSpending
+            } else if invoice.isExpired {
+                // Priority 2: Expired invoice (only after balance check passes)
+                result = .expiredLightningOnly
+            }
+
+        case let .onChain(invoice):
+            // BIP21 with potential lightning parameter
+            var canPayLightning = false
+            if let lnInvoice = invoice.params?["lightning"],
+               case let .lightning(lightningInvoice) = try? await decode(invoice: lnInvoice)
+            {
+                // Has lightning fallback - check if lightning is viable
+                canPayLightning = !lightningInvoice.isExpired &&
+                    (lightningInvoice.amountSatoshis == 0 || spendingBalanceSats >= Int(lightningInvoice.amountSatoshis))
+            }
+
+            if !canPayLightning {
+                // On-chain: check savings balance (only if amount specified)
+                if invoice.amountSatoshis > 0 && savingsBalanceSats < Int(invoice.amountSatoshis) {
+                    result = .insufficientSavings
+                }
+            }
+
+        case .lnurlPay, .lnurlWithdraw, .lnurlChannel, .lnurlAuth, .nodeId, .gift:
+            // These types are valid if decoded successfully
+            result = .valid
+
+        default:
+            result = .invalid
+        }
+
+        guard currentSequence == manualEntryValidationSequence else { return }
+
+        manualEntryValidationResult = result
+        isManualEntryInputValid = (result == .valid)
+
+        // Show toast for error results
+        if result != .valid && result != .empty {
+            showValidationErrorToast(for: result)
+        }
     }
 }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SendEnterManuallyView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @Binding var navigationPath: [SendRoute]
@@ -12,7 +13,11 @@ struct SendEnterManuallyView: View {
             get: { app.manualEntryInput },
             set: { newValue in
                 app.manualEntryInput = newValue
-                Task { await app.validateManualEntryInput(newValue) }
+                app.validateManualEntryInput(
+                    newValue,
+                    savingsBalanceSats: wallet.spendableOnchainBalanceSats,
+                    spendingBalanceSats: wallet.maxSendLightningSats
+                )
             }
         )
     }
@@ -89,5 +94,6 @@ struct SendEnterManuallyView: View {
 #Preview {
     SendEnterManuallyView(navigationPath: .constant([]))
         .environmentObject(AppViewModel())
+        .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)
 }

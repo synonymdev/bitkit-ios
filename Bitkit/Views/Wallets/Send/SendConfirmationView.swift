@@ -528,7 +528,11 @@ struct SendConfirmationView: View {
     private func navigateToManual(with value: String) {
         guard !value.isEmpty else { return }
         app.manualEntryInput = value
-        Task { await app.validateManualEntryInput(value) }
+        app.validateManualEntryInput(
+            value,
+            savingsBalanceSats: wallet.spendableOnchainBalanceSats,
+            spendingBalanceSats: wallet.maxSendLightningSats
+        )
 
         if let manualIndex = navigationPath.firstIndex(of: .manual) {
             navigationPath = Array(navigationPath.prefix(manualIndex + 1))
