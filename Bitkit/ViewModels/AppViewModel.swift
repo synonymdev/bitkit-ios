@@ -76,7 +76,7 @@ class AppViewModel: ObservableObject {
 
     // Combine infrastructure for debounced validation
     private var manualEntryValidationCancellable: AnyCancellable?
-    private let manualEntryValidationSubject = PassthroughSubject<(String, Int, Int), Never>()
+    private let manualEntryValidationSubject = PassthroughSubject<(String, Int, Int, UInt64), Never>()
 
     init(
         lightningService: LightningService = .shared,
@@ -104,8 +104,10 @@ class AppViewModel: ObservableObject {
     private func setupManualEntryValidationDebounce() {
         manualEntryValidationCancellable = manualEntryValidationSubject
             .debounce(for: .milliseconds(1000), scheduler: DispatchQueue.main)
-            .sink { [weak self] rawValue, savingsBalanceSats, spendingBalanceSats in
+            .sink { [weak self] rawValue, savingsBalanceSats, spendingBalanceSats, queuedSequence in
                 guard let self else { return }
+                // Skip if sequence changed (reset was called or new validation queued)
+                guard queuedSequence == manualEntryValidationSequence else { return }
                 Task {
                     await self.performValidation(rawValue, savingsBalanceSats: savingsBalanceSats, spendingBalanceSats: spendingBalanceSats)
                 }
@@ -434,6 +436,10 @@ extension AppViewModel {
 
     /// Queue validation with debounce
     func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+        // Increment sequence first so any pending debounced requests become stale
+        manualEntryValidationSequence &+= 1
+        let currentSequence = manualEntryValidationSequence
+
         let normalized = normalizeManualEntry(rawValue)
 
         // Immediately update state for empty input (no debounce needed)
@@ -443,13 +449,12 @@ extension AppViewModel {
             return
         }
 
-        // Queue the validation with debounce
-        manualEntryValidationSubject.send((rawValue, savingsBalanceSats, spendingBalanceSats))
+        // Queue the validation with debounce, including the sequence to detect stale requests
+        manualEntryValidationSubject.send((rawValue, savingsBalanceSats, spendingBalanceSats, currentSequence))
     }
 
     /// Perform the actual validation
     private func performValidation(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) async {
-        manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
 
         let normalized = normalizeManualEntry(rawValue)
