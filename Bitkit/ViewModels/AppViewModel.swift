@@ -268,6 +268,20 @@ extension AppViewModel {
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
+
+            // Check on-chain balance if amount is specified
+            if invoice.amountSatoshis > 0 {
+                let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+                guard onchainBalance >= invoice.amountSatoshis else {
+                    toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t("other__pay_insufficient_savings_description")
+                    )
+                    return
+                }
+            }
+
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
             // Check network first - treat wrong network as decoding error
