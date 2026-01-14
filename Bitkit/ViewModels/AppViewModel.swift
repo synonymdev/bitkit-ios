@@ -184,10 +184,6 @@ extension AppViewModel {
                         return
                     }
 
-                    if !canSend {
-                        toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
-                    }
-
                     if lightningInvoice.isExpired, canSend {
                         toast(type: .error, title: t("other__scan__error__expired"), description: nil)
                     }
@@ -209,7 +205,7 @@ extension AppViewModel {
             }
 
             guard !invoice.isExpired else {
-                toast(type: .error, title: t("other__scan__error__expired"), description: nil)
+                toast(type: .error, title: t("Decoding Error"), description: "This invoice has expired")
                 return
             }
 
