@@ -87,7 +87,7 @@ struct LightningConnectionsView: View {
 
                                             LightningChannel(
                                                 capacity: channel.channelValueSats,
-                                                localBalance: channel.outboundCapacityMsat / 1000,
+                                                localBalance: channel.balanceOnCloseSats,
                                                 remoteBalance: channel.inboundCapacityMsat / 1000,
                                                 status: .pending
                                             )
@@ -127,7 +127,7 @@ struct LightningConnectionsView: View {
 
                                             LightningChannel(
                                                 capacity: channel.channelValueSats,
-                                                localBalance: channel.outboundCapacityMsat / 1000,
+                                                localBalance: channel.balanceOnCloseSats,
                                                 remoteBalance: channel.inboundCapacityMsat / 1000,
                                                 status: .open
                                             )
@@ -166,7 +166,7 @@ struct LightningConnectionsView: View {
 
                                             LightningChannel(
                                                 capacity: channel.channelValueSats,
-                                                localBalance: channel.outboundCapacityMsat / 1000,
+                                                localBalance: channel.balanceOnCloseSats,
                                                 remoteBalance: channel.inboundCapacityMsat / 1000,
                                                 status: .closed
                                             )

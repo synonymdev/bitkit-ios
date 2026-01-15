@@ -647,7 +647,7 @@ extension AppViewModel {
                 Task {
                     let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
                     if cjitOrder != nil {
-                        let amount = channel.spendableBalanceSats
+                        let amount = channel.balanceOnCloseSats
                         let now = UInt64(Date().timeIntervalSince1970)
 
                         let ln = LightningActivity(

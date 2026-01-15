@@ -17,9 +17,9 @@ struct BalanceState {
     /// Amount currently being transferred to spending (Lightning)
     let balanceInTransferToSpending: UInt64
 
-    /// Total balance combining on-chain and Lightning
+    /// Total balance combining on-chain, Lightning, and in-transit funds
     var totalBalanceSats: UInt64 {
-        return totalOnchainSats + totalLightningSats
+        return totalOnchainSats + totalLightningSats + balanceInTransferToSpending + balanceInTransferToSavings
     }
 
     init(

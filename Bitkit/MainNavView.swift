@@ -66,6 +66,14 @@ struct MainNavView: View {
             config in GiftSheet(config: config)
         }
         .sheet(
+            item: $sheets.connectionClosedSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in ConnectionClosedSheet(config: config)
+        }
+        .sheet(
             item: $sheets.highBalanceSheetItem,
             onDismiss: {
                 sheets.hideSheet()

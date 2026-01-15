@@ -4,6 +4,8 @@ import SwiftUI
 /// Shows when funds are being transferred (e.g., to savings from Lightning)
 struct IncomingTransfer: View {
     let amount: UInt64
+    /// Optional: remaining duration for force close transfers (e.g., "±14d")
+    var remainingDuration: String?
 
     @EnvironmentObject var currency: CurrencyViewModel
 
@@ -15,7 +17,12 @@ struct IncomingTransfer: View {
                 .foregroundColor(.textSecondary)
                 .padding(.trailing, 3)
 
-            CaptionBText(t("wallet__details_transfer_subtitle"))
+            // Show duration if available (force close scenario), otherwise standard transfer text
+            if let duration = remainingDuration {
+                CaptionBText(tTodo("From Spending (±\(duration)): "))
+            } else {
+                CaptionBText(t("wallet__details_transfer_subtitle"))
+            }
 
             if let converted = currency.convert(sats: amount) {
                 let formattedAmount = formatAmount(converted)

@@ -18,6 +18,18 @@ struct ActivityLatest: View {
         }
     }
 
+    /// Calculate remaining duration for force close transfers
+    private var remainingDuration: String? {
+        guard let claimableAtHeight = wallet.forceCloseClaimableAtHeight,
+              wallet.currentBlockHeight > 0
+        else {
+            return nil
+        }
+        let blocksRemaining = BlockTimeHelpers.blocksRemaining(until: claimableAtHeight, currentHeight: wallet.currentBlockHeight)
+        guard blocksRemaining > 0 else { return nil }
+        return BlockTimeHelpers.getDurationForBlocks(blocksRemaining)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             CaptionMText(t("wallet__activity"))
@@ -25,7 +37,7 @@ struct ActivityLatest: View {
                 .padding(.bottom, 16)
 
             if shouldShowBanner {
-                ActivityBanner(type: bannerType)
+                ActivityBanner(type: bannerType, remainingDuration: remainingDuration)
                     .padding(.bottom, 16)
                     .transition(.opacity)
             }

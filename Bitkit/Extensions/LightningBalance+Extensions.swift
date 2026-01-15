@@ -21,24 +21,6 @@ extension LightningBalance {
         }
     }
 
-    /// Get the channel ID for any LightningBalance case
-    var channelId: String {
-        switch self {
-        case let .claimableOnChannelClose(details):
-            return details.channelId.description
-        case let .claimableAwaitingConfirmations(details):
-            return details.channelId.description
-        case let .contentiousClaimable(details):
-            return details.channelId.description
-        case let .maybeTimeoutClaimableHtlc(details):
-            return details.channelId.description
-        case let .maybePreimageClaimableHtlc(details):
-            return details.channelId.description
-        case let .counterpartyRevokedOutputClaimable(details):
-            return details.channelId.description
-        }
-    }
-
     /// Get a user-friendly description of the balance type
     var balanceUiText: String {
         switch self {
@@ -54,6 +36,30 @@ extension LightningBalance {
             return "Maybe Preimage Claimable HTLC"
         case .counterpartyRevokedOutputClaimable:
             return "Counterparty Revoked Output Claimable"
+        }
+    }
+
+    /// Get the block height at which funds become claimable (for timelocked balances)
+    var claimableAtHeight: UInt32? {
+        switch self {
+        case let .claimableAwaitingConfirmations(details):
+            return details.confirmationHeight
+        case let .contentiousClaimable(details):
+            return details.timeoutHeight
+        case let .maybeTimeoutClaimableHtlc(details):
+            return details.claimableHeight
+        default:
+            return nil
+        }
+    }
+
+    /// Whether this balance is timelocked (force close scenario)
+    var isTimelocked: Bool {
+        switch self {
+        case .contentiousClaimable, .claimableAwaitingConfirmations:
+            return true
+        default:
+            return false
         }
     }
 }

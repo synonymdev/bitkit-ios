@@ -30,7 +30,8 @@ class TransferService {
         amountSats: UInt64,
         channelId: String? = nil,
         fundingTxId: String? = nil,
-        lspOrderId: String? = nil
+        lspOrderId: String? = nil,
+        claimableAtHeight: UInt32? = nil
     ) async throws -> String {
         // When geoblocked, block transfers to spending that involve LSP (Blocktank)
         // toSpending with lspOrderId means it's a Blocktank LSP channel order
@@ -55,7 +56,8 @@ class TransferService {
             lspOrderId: lspOrderId,
             isSettled: false,
             createdAt: createdAt,
-            settledAt: nil
+            settledAt: nil,
+            claimableAtHeight: claimableAtHeight
         )
 
         try storage.insert(transfer)
@@ -95,6 +97,24 @@ class TransferService {
 
         for transfer in toSpending {
             if let channelId = try await resolveChannelId(for: transfer, channels: channels) {
+                // Update transfer with channelId if not set yet
+                if transfer.channelId == nil {
+                    let updatedTransfer = Transfer(
+                        id: transfer.id,
+                        type: transfer.type,
+                        amountSats: transfer.amountSats,
+                        channelId: channelId,
+                        fundingTxId: transfer.fundingTxId,
+                        lspOrderId: transfer.lspOrderId,
+                        isSettled: transfer.isSettled,
+                        createdAt: transfer.createdAt,
+                        settledAt: transfer.settledAt,
+                        claimableAtHeight: transfer.claimableAtHeight
+                    )
+                    try storage.update(updatedTransfer)
+                    Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")
+                }
+
                 // Check if channel is ready (usable)
                 if let channel = channels.first(where: { $0.channelId.description == channelId }),
                    channel.isUsable
@@ -119,7 +139,7 @@ class TransferService {
         for transfer in toSavings {
             if let channelId = try await resolveChannelId(for: transfer, channels: channels) {
                 let hasBalance = balances?.lightningBalances.contains(where: { balance in
-                    balance.channelId == channelId
+                    balance.channelIdString == channelId
                 }) ?? false
 
                 if !hasBalance {

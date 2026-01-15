@@ -10,6 +10,7 @@ struct Transfer: Codable, Identifiable {
     let isSettled: Bool
     let createdAt: UInt64
     let settledAt: UInt64?
+    let claimableAtHeight: UInt32?
 
     init(
         id: String,
@@ -20,7 +21,8 @@ struct Transfer: Codable, Identifiable {
         lspOrderId: String? = nil,
         isSettled: Bool = false,
         createdAt: UInt64,
-        settledAt: UInt64? = nil
+        settledAt: UInt64? = nil,
+        claimableAtHeight: UInt32? = nil
     ) {
         self.id = id
         self.type = type
@@ -31,5 +33,6 @@ struct Transfer: Codable, Identifiable {
         self.isSettled = isSettled
         self.createdAt = createdAt
         self.settledAt = settledAt
+        self.claimableAtHeight = claimableAtHeight
     }
 }
