@@ -14,6 +14,7 @@ struct FundManualSetupView: View {
     @State private var showAlert: Bool = false
     @State private var alertMessage: String = ""
     @State private var alertTitle: String = ""
+    @FocusState private var isTextFieldFocused: Bool
 
     init(initialNodeUri: String? = nil) {
         self.initialNodeUri = initialNodeUri
@@ -64,15 +65,21 @@ struct FundManualSetupView: View {
                         // Node ID field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__node_id"))
-                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
+                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId, submitLabel: .done)
+                                .focused($isTextFieldFocused)
                                 .lineLimit(2 ... 2)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("NodeIdInput")
                         }
 
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__host"))
-                            TextField("00.00.00.00", text: $host)
+                            TextField("00.00.00.00", text: $host, submitLabel: .done)
+                                .focused($isTextFieldFocused)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("HostInput")
                         }
 
@@ -80,6 +87,7 @@ struct FundManualSetupView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__port"))
                             TextField("9735", text: $port)
+                                .focused($isTextFieldFocused)
                                 .keyboardType(.numberPad)
                                 .accessibilityIdentifier("PortInput")
                         }
@@ -119,6 +127,10 @@ struct FundManualSetupView: View {
                         .bottomSafeAreaPadding()
                     }
                     .frame(minHeight: geometry.size.height)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isTextFieldFocused = false
+                    }
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
