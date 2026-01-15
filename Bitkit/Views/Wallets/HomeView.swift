@@ -10,8 +10,6 @@ struct HomeView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Header()
-
             ScrollView(showsIndicators: false) {
                 MoneyStack(
                     sats: wallet.totalBalanceSats,
@@ -69,6 +67,32 @@ struct HomeView: View {
                 }
             }
             .scrollDisabled(isEditingWidgets)
+
+            // Gradients layer
+            VStack(spacing: 0) {
+                // Top gradient: black 100% to black 0%
+                LinearGradient(
+                    colors: [.black, .black.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 140)
+
+                Spacer()
+
+                // Bottom gradient: black 0% to black 100%
+                LinearGradient(
+                    colors: [.black.opacity(0), .black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 140)
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
+            // Header on top
+            Header()
         }
         /// Dismiss (calculator widget) keyboard when scrolling
         .scrollDismissesKeyboard(.immediately)
