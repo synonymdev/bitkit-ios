@@ -148,6 +148,7 @@ struct ActivityExplorerView: View {
                 MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                 Spacer()
                 ActivityIcon(activity: item, size: 48)
+                    .offset(y: 5) // Align arrow with bottom of money stack
             }
             .padding(.bottom, 32)
 

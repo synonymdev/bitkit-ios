@@ -11,6 +11,7 @@ struct SuggestionCard: View {
 
                 Image(data.imageName)
                     .resizable()
+                    .interpolation(.high)
                     .scaledToFit()
                     .frame(height: 80)
 

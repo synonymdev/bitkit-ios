@@ -32,11 +32,10 @@ struct HomeView: View {
                                 )
                             }
 
-                            Divider()
+                            CustomDivider()
                                 .frame(width: 1, height: 50)
-                                .background(Color.white16)
-                                .padding(.trailing, 16)
-                                .padding(.leading, 16)
+                                .background(Color.gray4)
+                                .padding(.horizontal, 16)
 
                             NavigationLink(value: Route.spendingWallet) {
                                 WalletBalanceView(

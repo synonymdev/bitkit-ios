@@ -14,7 +14,9 @@ struct WalletBalanceView: View {
 
             HStack(spacing: 4) {
                 Image(type.imageAsset)
-                    .font(.title3)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
                     .padding(.trailing, 4)
 
                 MoneyText(
