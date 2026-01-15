@@ -44,6 +44,8 @@ struct Header: View {
                         .foregroundColor(.textPrimary)
                         .frame(width: 24, height: 24)
                         .frame(width: 32, height: 32)
+                        .padding(.leading, 16)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityIdentifier("HeaderMenu")
             }
