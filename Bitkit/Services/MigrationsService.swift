@@ -1200,11 +1200,6 @@ extension MigrationsService {
     func reapplyMetadataAfterSync() async {
         // Handle MMKV (local) migration data
         if hasRNMmkvData(), let mmkvData = loadRNMmkvData() {
-            if let metadata = extractRNMetadata(from: mmkvData) {
-                Logger.info("Re-applying MMKV metadata after sync", context: "Migration")
-                await applyAllMetadata(metadata)
-            }
-
             if let activities = extractRNActivities(from: mmkvData) {
                 await applyOnchainMetadata(activities)
             }
@@ -1219,6 +1214,11 @@ extension MigrationsService {
                     Logger.info("Applying \(walletBackup.boosts.count) local boost markers", context: "Migration")
                     await applyBoostTransactions(walletBackup.boosts)
                 }
+            }
+
+            if let metadata = extractRNMetadata(from: mmkvData) {
+                Logger.info("Re-applying MMKV metadata after sync", context: "Migration")
+                await applyAllMetadata(metadata)
             }
         }
 
@@ -1243,7 +1243,7 @@ extension MigrationsService {
             pendingRemoteBoosts = nil
         }
 
-        // Apply stored metadata (all tags after sync when activities exist)
+        // Apply stored metadata (all tags after activities are imported)
         if let metadata = pendingRemoteMetadata {
             Logger.info("Applying stored metadata after sync", context: "Migration")
             await applyAllMetadata(metadata)
@@ -1374,63 +1374,123 @@ extension MigrationsService {
 
     private func applyOnchainMetadata(_ items: [RNActivityItem]) async {
         let onchainItems = items.filter { $0.activityType == "onchain" }
+        var updatedCount = 0
+        var createdCount = 0
+
         for item in onchainItems {
-            guard let txId = item.txId ?? (item.id.isEmpty ? nil : item.id),
-                  var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId)
-            else {
+            guard let txId = item.txId ?? (item.id.isEmpty ? nil : item.id) else {
                 continue
             }
 
-            if item.timestamp > 0 {
-                onchain.timestamp = UInt64(item.timestamp / 1000)
-            }
-            if let confirmTs = item.confirmTimestamp, confirmTs > 0 {
-                onchain.confirmTimestamp = UInt64(confirmTs / 1000)
-            }
-            if item.isTransfer == true {
-                onchain.isTransfer = true
-                onchain.channelId = item.channelId
-                onchain.transferTxId = item.transferTxId
-            }
-
-            if let boostedParents = item.boostedParents, !boostedParents.isEmpty {
-                for parentTxId in boostedParents {
-                    if var parentOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: parentTxId) {
-                        if !parentOnchain.boostTxIds.contains(txId) {
-                            parentOnchain.boostTxIds.append(txId)
-                        }
-                        parentOnchain.isBoosted = true
-
-                        do {
-                            try await CoreService.shared.activity.update(id: parentOnchain.id, activity: .onchain(parentOnchain))
-                        } catch {
-                            Logger.error("Failed to mark parent \(parentTxId) as boosted for CPFP: \(error)", context: "Migration")
-                        }
-                    }
+            // Try to get existing activity (synced by LDK)
+            if var onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: txId) {
+                // Activity exists, update metadata
+                if item.timestamp > 0 {
+                    onchain.timestamp = UInt64(item.timestamp / 1000)
                 }
-                onchain.isBoosted = false
-                onchain.boostTxIds.removeAll { boostedParents.contains($0) }
-            } else if item.isBoosted == true {
-                onchain.isBoosted = true
-            }
+                if let confirmTs = item.confirmTimestamp, confirmTs > 0 {
+                    onchain.confirmTimestamp = UInt64(confirmTs / 1000)
+                }
+                if item.isTransfer == true {
+                    onchain.isTransfer = true
+                    onchain.channelId = item.channelId
+                    onchain.transferTxId = item.transferTxId
+                }
 
-            if let feeRate = item.feeRate, feeRate > 0 {
-                onchain.feeRate = UInt64(feeRate)
-            }
+                if let boostedParents = item.boostedParents, !boostedParents.isEmpty {
+                    await applyBoostedParents(boostedParents, childTxId: txId)
+                    onchain.isBoosted = false
+                    onchain.boostTxIds.removeAll { boostedParents.contains($0) }
+                } else if item.isBoosted == true {
+                    onchain.isBoosted = true
+                }
 
-            if let address = item.address, !address.isEmpty {
-                onchain.address = address
-            }
+                if let feeRate = item.feeRate, feeRate > 0 {
+                    onchain.feeRate = UInt64(feeRate)
+                }
 
-            do {
-                try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
-            } catch {
-                Logger.error("Failed to update onchain metadata for \(txId): \(error)", context: "Migration")
+                // Preserve higher value from backup (handles mixed input txs with unsupported addresses)
+                let backupValue = UInt64(item.value)
+                if backupValue > onchain.value {
+                    onchain.value = backupValue
+                }
+
+                // Preserve higher fee from backup
+                if let backupFee = item.fee, UInt64(backupFee) > onchain.fee {
+                    onchain.fee = UInt64(backupFee)
+                }
+
+                if let address = item.address, !address.isEmpty {
+                    onchain.address = address
+                }
+
+                do {
+                    try await CoreService.shared.activity.update(id: onchain.id, activity: .onchain(onchain))
+                    updatedCount += 1
+                } catch {
+                    Logger.error("Failed to update onchain metadata for \(txId): \(error)", context: "Migration")
+                }
+            } else {
+                let timestampSecs = UInt64(item.timestamp / 1000)
+                let now = UInt64(Date().timeIntervalSince1970)
+                let activityTimestamp = timestampSecs > 0 ? timestampSecs : now
+
+                let onchain = BitkitCore.OnchainActivity(
+                    id: item.id,
+                    txType: item.txType == "sent" ? .sent : .received,
+                    txId: txId,
+                    value: UInt64(item.value),
+                    fee: item.fee.map { UInt64($0) } ?? 0,
+                    feeRate: item.feeRate.map { UInt64($0) } ?? 1,
+                    address: item.address ?? "",
+                    confirmed: item.confirmed ?? false,
+                    timestamp: activityTimestamp,
+                    isBoosted: item.isBoosted ?? false,
+                    boostTxIds: [],
+                    isTransfer: item.isTransfer ?? false,
+                    doesExist: item.exists ?? true,
+                    confirmTimestamp: item.confirmTimestamp.map { UInt64($0 / 1000) },
+                    channelId: item.channelId,
+                    transferTxId: item.transferTxId,
+                    createdAt: activityTimestamp,
+                    updatedAt: activityTimestamp,
+                    seenAt: now
+                )
+
+                do {
+                    try await CoreService.shared.activity.upsert(.onchain(onchain))
+                    createdCount += 1
+
+                    if let boostedParents = item.boostedParents, !boostedParents.isEmpty {
+                        await applyBoostedParents(boostedParents, childTxId: txId)
+                    }
+                } catch {
+                    Logger.error("Failed to import onchain activity from backup \(txId): \(error)", context: "Migration")
+                }
             }
         }
 
-        if !onchainItems.isEmpty {
-            Logger.info("Applied metadata to \(onchainItems.count) onchain activities", context: "Migration")
+        if updatedCount > 0 || createdCount > 0 {
+            Logger.info(
+                "Applied metadata to \(updatedCount) onchain activities, imported \(createdCount) from backup",
+                context: "Migration"
+            )
+        }
+    }
+
+    private func applyBoostedParents(_ boostedParents: [String], childTxId: String) async {
+        for parentTxId in boostedParents {
+            if var parentOnchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: parentTxId) {
+                if !parentOnchain.boostTxIds.contains(childTxId) {
+                    parentOnchain.boostTxIds.append(childTxId)
+                }
+                parentOnchain.isBoosted = true
+                do {
+                    try await CoreService.shared.activity.update(id: parentOnchain.id, activity: .onchain(parentOnchain))
+                } catch {
+                    Logger.error("Failed to mark parent \(parentTxId) as boosted for CPFP: \(error)", context: "Migration")
+                }
+            }
         }
     }
 
