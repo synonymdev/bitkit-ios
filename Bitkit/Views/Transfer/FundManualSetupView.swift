@@ -45,11 +45,11 @@ struct FundManualSetupView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                NavigationBar(title: t("lightning__external__nav_title"))
-                    .padding(.bottom, 16)
+        VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__external__nav_title"))
+                .padding(.bottom, 16)
 
+            GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         DisplayText(
@@ -98,38 +98,34 @@ struct FundManualSetupView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Add padding at the bottom for the overlay buttons
                         Spacer()
-                            .frame(height: 80)
+
+                        HStack(spacing: 16) {
+                            CustomButton(
+                                title: t("lightning__external_manual__scan"),
+                                variant: .secondary
+                            ) {
+                                navigation.navigate(.scanner)
+                            }
+
+                            CustomButton(
+                                title: t("common__continue"),
+                                variant: .primary,
+                                isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
+                                destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
+                            )
+                            .accessibilityIdentifier("ExternalContinue")
+                        }
+                        .bottomSafeAreaPadding()
                     }
+                    .frame(minHeight: geometry.size.height)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
-
-            // Fixed bottom buttons overlay
-            VStack {
-                Spacer()
-
-                HStack {
-                    CustomButton(
-                        title: t("lightning__external_manual__scan"),
-                        variant: .secondary
-                    ) {
-                        navigation.navigate(.scanner)
-                    }
-
-                    CustomButton(
-                        title: t("common__continue"),
-                        variant: .primary,
-                        isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
-                        destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
-                    )
-                    .accessibilityIdentifier("ExternalContinue")
-                }
-            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
         .alert(isPresented: $showAlert) {
             Alert(
                 title: Text(alertTitle),
