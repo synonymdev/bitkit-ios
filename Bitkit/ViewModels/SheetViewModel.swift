@@ -5,6 +5,7 @@ enum SheetID: String, CaseIterable {
     case appUpdate
     case backup
     case boost
+    case connectionClosed
     case forceTransfer
     case forgotPin
     case gift
@@ -146,6 +147,18 @@ class SheetViewModel: ObservableObject {
             let boostConfig = config.data as? BoostConfig
             guard let onchainActivity = boostConfig?.onchainActivity else { return nil }
             return BoostSheetItem(onchainActivity: onchainActivity)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var connectionClosedSheetItem: ConnectionClosedSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .connectionClosed else { return nil }
+            return ConnectionClosedSheetItem()
         }
         set {
             if newValue == nil {

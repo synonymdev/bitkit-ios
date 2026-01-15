@@ -6,6 +6,18 @@ struct SavingsWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    /// Calculate remaining duration for force close transfers
+    private var forceCloseRemainingDuration: String? {
+        guard let claimableAtHeight = wallet.forceCloseClaimableAtHeight,
+              wallet.currentBlockHeight > 0
+        else {
+            return nil
+        }
+        let blocksRemaining = BlockTimeHelpers.blocksRemaining(until: claimableAtHeight, currentHeight: wallet.currentBlockHeight)
+        guard blocksRemaining > 0 else { return nil }
+        return BlockTimeHelpers.getDurationForBlocks(blocksRemaining)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("wallet__savings__title"), icon: "btc")
@@ -20,9 +32,12 @@ struct SavingsWalletView: View {
             .padding(.top)
 
             if wallet.balanceInTransferToSavings > 0 {
-                IncomingTransfer(amount: UInt64(wallet.balanceInTransferToSavings))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
+                IncomingTransfer(
+                    amount: UInt64(wallet.balanceInTransferToSavings),
+                    remainingDuration: forceCloseRemainingDuration
+                )
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 16)
             }
 
             if wallet.totalOnchainSats > 0 {
