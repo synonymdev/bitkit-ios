@@ -19,21 +19,6 @@ enum KeychainEntryType {
             return "security_pin"
         }
     }
-
-    /// Returns the appropriate keychain accessibility level for this key type.
-    /// - pushNotificationPrivateKey: Uses AfterFirstUnlock because the notification service extension
-    ///   needs to decrypt push payloads even when the device is locked.
-    /// - All other keys (mnemonic, passphrase, PIN): Use WhenUnlockedThisDeviceOnly for maximum security.
-    var accessibility: CFString {
-        switch self {
-        case .pushNotificationPrivateKey:
-            // Must be accessible when device is locked for notification extension to decrypt payloads
-            return kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        case .bip39Mnemonic, .bip39Passphrase, .securityPin:
-            // Maximum security: only accessible when device is unlocked
-            return kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        }
-    }
 }
 
 class Keychain {
@@ -43,7 +28,7 @@ class Keychain {
         let query =
             [
                 kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccessible as String: key.accessibility as String,
+                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
                 kSecAttrSynchronizable as String: false,
                 kSecAttrAccount as String: key.storageKey,
                 kSecValueData as String: data,
