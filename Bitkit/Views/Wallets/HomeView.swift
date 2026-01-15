@@ -17,7 +17,8 @@ struct HomeView: View {
                     sats: wallet.totalBalanceSats,
                     showSymbol: true,
                     showEyeIcon: true,
-                    enableSwipeGesture: settings.swipeBalanceToHide
+                    enableSwipeGesture: settings.swipeBalanceToHide,
+                    enableHide: true
                 )
                 .padding(.top, 16 + 48)
                 .padding(.horizontal, 16)

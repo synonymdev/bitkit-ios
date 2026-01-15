@@ -12,29 +12,18 @@ struct WalletBalanceView: View {
             CaptionMText(type.title)
                 .padding(.bottom, 4)
 
-            if let converted = currency.convert(sats: sats) {
-                if currency.primaryDisplay == .bitcoin {
-                    let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-                    HStack(spacing: 4) {
-                        Image(type.imageAsset)
-                            .font(.title3)
-                            .padding(.trailing, 4)
+            HStack(spacing: 4) {
+                Image(type.imageAsset)
+                    .font(.title3)
+                    .padding(.trailing, 4)
 
-                        SubtitleText(btcComponents.value)
-                            .accessibilityIdentifierIfPresent(amountTestIdentifier)
-                    }
-                } else {
-                    HStack(spacing: 4) {
-                        Image(type.imageAsset)
-                            .font(.title3)
-                            .padding(.trailing, 4)
-
-                        SubtitleText(converted.symbol)
-                            .frame(maxWidth: 12)
-                        SubtitleText(converted.formatted)
-                            .accessibilityIdentifierIfPresent(amountTestIdentifier)
-                    }
-                }
+                MoneyText(
+                    sats: Int(sats),
+                    size: .subtitle,
+                    enableHide: true,
+                    symbolColor: .textPrimary,
+                    testIdentifier: amountTestIdentifier
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
