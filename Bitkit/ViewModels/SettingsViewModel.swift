@@ -222,7 +222,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     // Coin Selection Settings
     @AppStorage("coinSelectionMethod") private var _coinSelectionMethod: String = CoinSelectionMethod.autopilot.rawValue
-    @AppStorage("coinSelectionAlgorithm") private var _coinSelectionAlgorithm: String = CoinSelectionAlgorithm.largestFirst.stringValue
+    @AppStorage("coinSelectionAlgorithm") private var _coinSelectionAlgorithm: String = CoinSelectionAlgorithm.branchAndBound.stringValue
 
     var coinSelectionMethod: CoinSelectionMethod {
         get {
