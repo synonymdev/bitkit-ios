@@ -3,8 +3,9 @@ import Foundation
 import LDKNode
 
 extension ChannelDetails {
-    /// Returns the spendable balance in satoshis (outbound capacity + punishment reserve)
-    var spendableBalanceSats: UInt64 {
+    /// Returns the total local balance in satoshis that we would receive on channel close.
+    /// Formula: outbound_capacity + our_reserve
+    var balanceOnCloseSats: UInt64 {
         return outboundCapacityMsat / 1000 + (unspendablePunishmentReserve ?? 0)
     }
 }

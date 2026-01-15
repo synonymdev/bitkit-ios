@@ -218,3 +218,41 @@ extension DateFormatter {
         self.timeStyle = timeStyle
     }
 }
+
+/// Utilities for converting Bitcoin block counts to human-readable durations
+enum BlockTimeHelpers {
+    /// Average Bitcoin block time in minutes
+    private static let blockTimeMinutes: Double = 10
+
+    /// Converts a number of blocks to a human-readable duration string
+    /// - Parameter blocks: Number of blocks to convert
+    /// - Returns: Human-readable duration (e.g., "14d", "6h", "30m")
+    static func getDurationForBlocks(_ blocks: Int) -> String {
+        let minutes = Double(blocks) * blockTimeMinutes
+
+        if blocks > 143 {
+            // More than ~1 day: show days
+            let days = Int(round(minutes / 60 / 24))
+            return "\(days)d"
+        } else if blocks > 6 {
+            // More than ~1 hour: show hours
+            let hours = Int(round(minutes / 60))
+            return "\(hours)h"
+        } else {
+            // Less than 1 hour: show minutes
+            return "\(Int(minutes))m"
+        }
+    }
+
+    /// Calculates remaining blocks until a target height
+    /// - Parameters:
+    ///   - targetHeight: The block height we're waiting for
+    ///   - currentHeight: The current blockchain height
+    /// - Returns: Remaining blocks (minimum 0)
+    static func blocksRemaining(until targetHeight: UInt32, currentHeight: UInt32) -> Int {
+        if targetHeight <= currentHeight {
+            return 0
+        }
+        return Int(targetHeight - currentHeight)
+    }
+}

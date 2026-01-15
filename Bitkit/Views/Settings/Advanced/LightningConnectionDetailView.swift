@@ -60,7 +60,7 @@ struct LightningConnectionDetailView: View {
                         VStack(alignment: .leading, spacing: 0) {
                             LightningChannel(
                                 capacity: channel.channelValueSats,
-                                localBalance: channel.outboundCapacityMsat / 1000,
+                                localBalance: channel.balanceOnCloseSats,
                                 remoteBalance: channel.inboundCapacityMsat / 1000,
                                 status: channel.isClosed ? .closed : channelStatus(for: channel)
                             )

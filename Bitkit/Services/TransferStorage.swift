@@ -82,8 +82,8 @@ class TransferStorage {
     func markSettled(id: String, settledAt: UInt64) throws {
         var transfers = try getAll()
         if let index = transfers.firstIndex(where: { $0.id == id }) {
-            var transfer = transfers[index]
-            transfer = Transfer(
+            let transfer = transfers[index]
+            transfers[index] = Transfer(
                 id: transfer.id,
                 type: transfer.type,
                 amountSats: transfer.amountSats,
@@ -92,9 +92,9 @@ class TransferStorage {
                 lspOrderId: transfer.lspOrderId,
                 isSettled: true,
                 createdAt: transfer.createdAt,
-                settledAt: settledAt
+                settledAt: settledAt,
+                claimableAtHeight: transfer.claimableAtHeight
             )
-            transfers[index] = transfer
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")
             transfersChangedSubject.send()

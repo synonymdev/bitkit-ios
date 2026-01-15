@@ -8,6 +8,7 @@ protocol ChannelDisplayable {
     var outboundCapacityMsat: UInt64 { get }
     var inboundCapacityMsat: UInt64 { get }
     var displayedUnspendablePunishmentReserve: UInt64 { get }
+    var balanceOnCloseSats: UInt64 { get }
     var forwardingFeeBaseMsat: UInt32 { get }
     var forwardingFeeProportionalMillionths: UInt32 { get }
     var channelIdString: String { get }
@@ -82,6 +83,10 @@ extension ClosedChannelDetails: ChannelDisplayable {
 
     var displayedUnspendablePunishmentReserve: UInt64 {
         unspendablePunishmentReserve
+    }
+
+    var balanceOnCloseSats: UInt64 {
+        outboundCapacityMsat / 1000 + unspendablePunishmentReserve
     }
 
     var isChannelReady: Bool {

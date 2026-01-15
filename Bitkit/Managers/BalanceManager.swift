@@ -41,17 +41,28 @@ class BalanceManager {
             balances: balanceDetails
         )
 
-        let toSavingsAmount = try await getTransferToSavingsSats(
+        let (lightningToSubtract, pendingCloseAmount) = await getCloseTransferAmounts(
             transfers: activeTransfers,
-            channels: channels,
             balanceDetails: balanceDetails
         )
+
+        // Detect orphan closed channels: channels with lightning balance that are no longer
+        // in the channels list and don't have a Transfer record yet. This handles the race
+        // condition where the channel closes but Transfer hasn't been created yet.
+        let orphanClosedChannelBalance = getOrphanClosedChannelBalance(
+            transfers: activeTransfers,
+            channels: channels,
+            balances: balanceDetails
+        )
+
+        let toSavingsAmount = pendingCloseAmount
         let toSpendingAmount = paidOrdersSats + pendingChannelsSats
 
         let totalOnchainSats = balanceDetails.totalOnchainBalanceSats
         let totalLightningSats = balanceDetails.totalLightningBalanceSats
             .minusOrZero(pendingChannelsSats)
-            .minusOrZero(toSavingsAmount)
+            .minusOrZero(lightningToSubtract)
+            .minusOrZero(orphanClosedChannelBalance)
 
         let maxSendLightningSats = calculateMaxSendLightning(channels: channels)
 
@@ -70,7 +81,7 @@ class BalanceManager {
             "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)"
         )
         Logger.debug(
-            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount)"
+            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract)"
         )
 
         return balanceState
@@ -78,9 +89,13 @@ class BalanceManager {
 
     // MARK: - Private Helper Methods
 
-    /// Calculates the total amount paid for LSP orders that are still pending
+    /// Calculates the total amount paid for LSP orders before their channel is assigned.
+    /// Once channelId is set, funds are tracked by getPendingChannelsSats instead.
     private func getOrderPaymentsSats(activeTransfers: [Transfer]) -> UInt64 {
-        let paidOrders = activeTransfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
+        // Only count orders that don't have a channel assigned yet
+        let paidOrders = activeTransfers.filter {
+            $0.type.isToSpending() && $0.lspOrderId != nil && $0.channelId == nil
+        }
 
         for transfer in paidOrders {
             Logger.debug(
@@ -91,10 +106,7 @@ class BalanceManager {
         return paidOrders.reduce(0) { $0 + $1.amountSats }
     }
 
-    /// Calculates the total balance in pending (not yet usable) channels
-    /// A channel is considered pending if it's not yet usable for payments,
-    /// even if LDK reports a balance for it. This ensures the balance shows
-    /// as "pending transfer to spending" until the channel funding is confirmed.
+    /// Calculates the total balance in pending (not yet usable) channels.
     private func getPendingChannelsSats(
         transfers: [Transfer],
         channels: [ChannelDetails],
@@ -123,7 +135,7 @@ class BalanceManager {
             // isUsable checks both that the channel is ready AND that it can actually be used
             if !channel.isUsable {
                 let channelBalance = balances.lightningBalances.first { balance in
-                    balance.channelId == channelId
+                    balance.channelIdString == channelId
                 }
                 let balanceAmount = channelBalance?.amountSats ?? 0
                 Logger.debug(
@@ -139,28 +151,69 @@ class BalanceManager {
         return amount
     }
 
-    /// Calculates the total amount being transferred to savings (closing channels)
-    private func getTransferToSavingsSats(
+    /// Calculates amounts for channel close transfers.
+    /// - Returns: lightningToSubtract (always subtract from display), pendingAmount (add to total only if on-chain hasn't arrived)
+    private func getCloseTransferAmounts(
         transfers: [Transfer],
-        channels: [ChannelDetails],
         balanceDetails: BalanceDetails
-    ) async throws -> UInt64 {
-        var toSavingsAmount: UInt64 = 0
-        let toSavings = transfers.filter { $0.type.isToSavings() }
+    ) async -> (lightningToSubtract: UInt64, pendingAmount: UInt64) {
+        var lightningToSubtract: UInt64 = 0
+        var pendingAmount: UInt64 = 0
 
-        for transfer in toSavings {
-            // Resolve channel ID through TransferService
-            let channelId = try await transferService.resolveChannelId(for: transfer, channels: channels)
+        for transfer in transfers.filter({ $0.type.isToSavings() }) {
+            guard let channelId = transfer.channelId else { continue }
 
-            if let channelId {
-                let channelBalance = balanceDetails.lightningBalances.first { balance in
-                    balance.channelId == channelId
-                }
-                toSavingsAmount += channelBalance?.amountSats ?? 0
+            let balanceFromLdk = balanceDetails.lightningBalances
+                .first { $0.channelIdString == channelId }?.amountSats
+            let balanceAmount = balanceFromLdk ?? transfer.amountSats
+
+            if balanceFromLdk == nil {
+                Logger.debug(
+                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, using transfer amount \(transfer.amountSats)"
+                )
+            }
+
+            lightningToSubtract += balanceAmount
+
+            if await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
+                pendingAmount += balanceAmount
             }
         }
 
-        return toSavingsAmount
+        return (lightningToSubtract, pendingAmount)
+    }
+
+    /// Detects "orphan" closed channels - channels that have lightning balance in LDK
+    /// but are no longer in the channels list and don't have a Transfer record yet.
+    private func getOrphanClosedChannelBalance(
+        transfers: [Transfer],
+        channels: [ChannelDetails],
+        balances: BalanceDetails
+    ) -> UInt64 {
+        // Get all channelIds from current channels and active transfers
+        let activeChannelIds = Set(channels.map(\.channelId.description))
+        let transferChannelIds = Set(transfers.compactMap(\.channelId))
+
+        var orphanBalance: UInt64 = 0
+
+        for lightningBalance in balances.lightningBalances {
+            let channelId = lightningBalance.channelIdString
+
+            // If this channel is not in active channels AND not tracked by a Transfer,
+            // it's a closed channel that hasn't had its Transfer record created yet
+            let isInActiveChannels = activeChannelIds.contains(channelId)
+            let hasTransferRecord = transferChannelIds.contains(channelId)
+
+            if !isInActiveChannels && !hasTransferRecord {
+                Logger.debug(
+                    "Found orphan closed channel balance: channelId=\(channelId) amount=\(lightningBalance.amountSats)",
+                    context: "BalanceManager"
+                )
+                orphanBalance += lightningBalance.amountSats
+            }
+        }
+
+        return orphanBalance
     }
 
     /// Calculates maximum sendable Lightning amount (outbound capacity)
