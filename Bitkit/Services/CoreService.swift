@@ -338,7 +338,12 @@ class ActivityService {
         guard case let .onchain(txid, _) = payment.kind else { return }
 
         let paymentTimestamp = payment.latestUpdateTimestamp
-        let existingActivity = try getActivityById(activityId: payment.id)
+
+        // Look for existing activity by id first, then by txid (for migrated activities)
+        var existingActivity = try getActivityById(activityId: payment.id)
+        if existingActivity == nil {
+            existingActivity = try BitkitCore.getActivityByTxId(txId: txid).map { .onchain($0) }
+        }
 
         // Skip if existing activity has newer timestamp to avoid overwriting local data
         if let existingActivity, case let .onchain(existing) = existingActivity {
@@ -347,9 +352,6 @@ class ActivityService {
                 return
             }
         }
-
-        // Determine confirmation status from payment's txStatus
-        let value = payment.amountSats ?? 0
 
         // Determine confirmation status from payment's txStatus
         var blockTimestamp: UInt64?
@@ -380,6 +382,13 @@ class ActivityService {
         let preservedAddress = existingOnchain?.address ?? "Loading..."
         let doesExist = existingOnchain?.doesExist ?? true
         let seenAt = existingOnchain?.seenAt
+
+        let ldkValue = payment.amountSats ?? 0
+        let value: UInt64 = if let existingValue = existingOnchain?.value, existingValue > ldkValue {
+            existingValue
+        } else {
+            ldkValue
+        }
 
         // Check if this transaction is a channel transfer
         if channelId == nil || !isTransfer {
@@ -441,8 +450,8 @@ class ActivityService {
             seenAt: seenAt
         )
 
-        if existingActivity != nil {
-            try await update(id: payment.id, activity: .onchain(onchain))
+        if let existingActivity, case let .onchain(existing) = existingActivity {
+            try await update(id: existing.id, activity: .onchain(onchain))
         } else {
             try await upsert(.onchain(onchain))
         }
