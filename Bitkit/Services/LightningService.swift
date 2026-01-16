@@ -31,12 +31,23 @@ class LightningService {
 
     private init() {}
 
+    /// Flag to prevent concurrent setup calls
+    private var isSettingUp = false
+
     func setup(
         walletIndex: Int,
         electrumServerUrl: String? = nil,
         rgsServerUrl: String? = nil,
         channelMigration: ChannelDataMigration? = nil
     ) async throws {
+        // Guard against concurrent setup calls
+        guard !isSettingUp && node == nil else {
+            Logger.debug("Node already setting up or already set up, skipping")
+            return
+        }
+        isSettingUp = true
+        defer { isSettingUp = false }
+
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
@@ -676,19 +687,18 @@ extension LightningService {
     /// Refresh all cached values asynchronously
     /// Fetches from LDK on background queue, updates cache on main actor
     func refreshCache() async {
+        // Skip if node isn't set up yet - don't block on the LDK queue
+        guard node != nil else { return }
+
         do {
-            // Fetch values on background queue
-            let newStatus = try await ServiceQueue.background(.ldk) { [self] in
-                node?.status()
-            }
-            let newBalances = try await ServiceQueue.background(.ldk) { [self] in
-                node?.listBalances()
-            }
-            let newPeers = try await ServiceQueue.background(.ldk) { [self] in
-                node?.listPeers()
-            }
-            let newChannels = try await ServiceQueue.background(.ldk) { [self] in
-                node?.listChannels()
+            // Fetch all values in a single background queue call
+            let (newStatus, newBalances, newPeers, newChannels) = try await ServiceQueue.background(.ldk) { [self] in
+                (
+                    node?.status(),
+                    node?.listBalances(),
+                    node?.listPeers(),
+                    node?.listChannels()
+                )
             }
 
             // Update cache on main actor

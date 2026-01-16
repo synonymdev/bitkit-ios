@@ -98,6 +98,15 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
+        // Guard against concurrent starts - only allow start from stopped, initializing, or error states
+        switch nodeLifecycleState {
+        case .stopped, .initializing, .errorStarting:
+            break // Allowed to proceed
+        case .starting, .running, .stopping:
+            Logger.debug("Node already starting or running, skipping start")
+            return
+        }
+
         if nodeLifecycleState != .initializing {
             // Initilaizing means it's a wallet restore or create so we need to show the loading view
             nodeLifecycleState = .starting
