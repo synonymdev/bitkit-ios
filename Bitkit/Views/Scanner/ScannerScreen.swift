@@ -7,6 +7,7 @@ struct ScannerScreen: View {
     @EnvironmentObject private var scanner: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
     @State private var isManualEntryPresented = false
     @State private var manualEntry = ""
 
@@ -61,6 +62,7 @@ struct ScannerScreen: View {
         .onAppear {
             scanner.configure(
                 app: app,
+                wallet: wallet,
                 currency: currency,
                 settings: settings,
                 navigation: navigation,

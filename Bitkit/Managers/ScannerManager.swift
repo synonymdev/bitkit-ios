@@ -11,19 +11,24 @@ enum ScannerContext {
 @MainActor
 class ScannerManager: ObservableObject {
     private var app: AppViewModel?
+    private var wallet: WalletViewModel?
     private var currency: CurrencyViewModel?
     private var settings: SettingsViewModel?
     private var navigation: NavigationViewModel?
     private var sheets: SheetViewModel?
 
+    private static let nodeReadyDelayNanoseconds: UInt64 = 500_000_000
+
     func configure(
         app: AppViewModel,
+        wallet: WalletViewModel? = nil,
         currency: CurrencyViewModel? = nil,
         settings: SettingsViewModel? = nil,
         navigation: NavigationViewModel? = nil,
         sheets: SheetViewModel? = nil
     ) {
         self.app = app
+        self.wallet = wallet
         self.currency = currency
         self.settings = settings
         self.navigation = navigation
@@ -47,6 +52,11 @@ class ScannerManager: ObservableObject {
         guard let app else { return }
 
         do {
+            if let wallet {
+                _ = await wallet.waitForNodeToRun()
+                try? await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
+            }
+
             try await app.handleScannedData(uri)
 
             if let currency, let settings, let sheets {
@@ -76,6 +86,11 @@ class ScannerManager: ObservableObject {
         Haptics.play(.scanSuccess)
 
         do {
+            if let wallet {
+                _ = await wallet.waitForNodeToRun()
+                try? await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
+            }
+
             try await app.handleScannedData(uri)
 
             let route = PaymentNavigationHelper.appropriateSendRoute(
