@@ -4,6 +4,7 @@ import SwiftUI
 enum MoneySize {
     case display
     case title
+    case subtitle
     case bodyMSB
     case bodySSB
     case caption
@@ -20,7 +21,7 @@ struct MoneyText: View {
     var unitType: MoneyUnitType = .primary
     var size: MoneySize = .display
     var symbol: Bool?
-    var enableHide: Bool = true
+    var enableHide: Bool = false
     var prefix: String?
     var color: Color = .textPrimary
     var symbolColor: Color?
@@ -95,6 +96,8 @@ extension MoneyText {
             )
         case .title:
             TitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
+        case .subtitle:
+            SubtitleText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .bodyMSB:
             BodyMSBText(text, textColor: color, accentColor: symbolColor ?? .textSecondary)
         case .bodySSB:

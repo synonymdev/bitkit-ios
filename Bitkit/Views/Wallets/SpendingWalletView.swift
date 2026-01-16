@@ -15,6 +15,7 @@ struct SpendingWalletView: View {
                 showSymbol: true,
                 showEyeIcon: false,
                 enableSwipeGesture: true,
+                enableHide: true,
                 testIdPrefix: "TotalBalance"
             )
             .padding(.top)

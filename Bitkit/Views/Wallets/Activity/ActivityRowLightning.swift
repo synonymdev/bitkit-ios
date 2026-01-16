@@ -52,7 +52,7 @@ struct ActivityRowLightning: View {
 
             Spacer()
 
-            MoneyCell(sats: amount, prefix: amountPrefix)
+            MoneyCell(sats: amount, prefix: amountPrefix, enableHide: true)
         }
     }
 }

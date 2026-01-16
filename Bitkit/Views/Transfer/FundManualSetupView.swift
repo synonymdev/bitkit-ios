@@ -14,6 +14,7 @@ struct FundManualSetupView: View {
     @State private var showAlert: Bool = false
     @State private var alertMessage: String = ""
     @State private var alertTitle: String = ""
+    @FocusState private var isTextFieldFocused: Bool
 
     init(initialNodeUri: String? = nil) {
         self.initialNodeUri = initialNodeUri
@@ -45,11 +46,11 @@ struct FundManualSetupView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                NavigationBar(title: t("lightning__external__nav_title"))
-                    .padding(.bottom, 16)
+        VStack(spacing: 0) {
+            NavigationBar(title: t("lightning__external__nav_title"))
+                .padding(.bottom, 16)
 
+            GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         DisplayText(
@@ -64,15 +65,21 @@ struct FundManualSetupView: View {
                         // Node ID field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__node_id"))
-                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId)
+                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId, submitLabel: .done)
+                                .focused($isTextFieldFocused)
                                 .lineLimit(2 ... 2)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("NodeIdInput")
                         }
 
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__host"))
-                            TextField("00.00.00.00", text: $host)
+                            TextField("00.00.00.00", text: $host, submitLabel: .done)
+                                .focused($isTextFieldFocused)
+                                .autocapitalization(.none)
+                                .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("HostInput")
                         }
 
@@ -80,6 +87,7 @@ struct FundManualSetupView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__port"))
                             TextField("9735", text: $port)
+                                .focused($isTextFieldFocused)
                                 .keyboardType(.numberPad)
                                 .accessibilityIdentifier("PortInput")
                         }
@@ -98,38 +106,38 @@ struct FundManualSetupView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Add padding at the bottom for the overlay buttons
                         Spacer()
-                            .frame(height: 80)
+
+                        HStack(spacing: 16) {
+                            CustomButton(
+                                title: t("lightning__external_manual__scan"),
+                                variant: .secondary
+                            ) {
+                                navigation.navigate(.scanner)
+                            }
+
+                            CustomButton(
+                                title: t("common__continue"),
+                                variant: .primary,
+                                isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
+                                destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
+                            )
+                            .accessibilityIdentifier("ExternalContinue")
+                        }
+                        .bottomSafeAreaPadding()
+                    }
+                    .frame(minHeight: geometry.size.height)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isTextFieldFocused = false
                     }
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
-
-            // Fixed bottom buttons overlay
-            VStack {
-                Spacer()
-
-                HStack {
-                    CustomButton(
-                        title: t("lightning__external_manual__scan"),
-                        variant: .secondary
-                    ) {
-                        navigation.navigate(.scanner)
-                    }
-
-                    CustomButton(
-                        title: t("common__continue"),
-                        variant: .primary,
-                        isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
-                        destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
-                    )
-                    .accessibilityIdentifier("ExternalContinue")
-                }
-            }
+            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
         .alert(isPresented: $showAlert) {
             Alert(
                 title: Text(alertTitle),
