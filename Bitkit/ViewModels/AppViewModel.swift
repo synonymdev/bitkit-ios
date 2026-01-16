@@ -57,6 +57,11 @@ class AppViewModel: ObservableObject {
         }
     }
 
+    func resetAppStatusInitialized() {
+        appStatusInitialized = false
+        startAppStatusInitializationTimer()
+    }
+
     private let lightningService: LightningService
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel

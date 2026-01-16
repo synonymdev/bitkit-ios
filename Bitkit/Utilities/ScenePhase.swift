@@ -25,6 +25,8 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     Logger.debug("Scene phase changed: \(newPhase)")
 
                     if newPhase == .background {
+                        app.resetAppStatusInitialized()
+
                         do {
                             try await stopNodeIfNeeded()
                         } catch {
