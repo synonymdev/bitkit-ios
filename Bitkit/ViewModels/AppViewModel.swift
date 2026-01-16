@@ -43,23 +43,22 @@ class AppViewModel: ObservableObject {
     // Drawer menu
     @Published var showDrawer = false
 
-    // App status initialization
+    // App status initialization - shows "ready" until node is actually running
+    // This prevents flashing error status during startup/background transitions
     @Published var appStatusInitialized: Bool = false
 
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
     }
 
-    private func startAppStatusInitializationTimer() {
-        // Give the app some time to initialize before showing the real status
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-            self.appStatusInitialized = true
-        }
+    /// Called when node reaches running state
+    func markAppStatusInitialized() {
+        appStatusInitialized = true
     }
 
+    /// Called when app goes to background to reset the status facade
     func resetAppStatusInitialized() {
         appStatusInitialized = false
-        startAppStatusInitializationTimer()
     }
 
     private let lightningService: LightningService
@@ -78,9 +77,6 @@ class AppViewModel: ObservableObject {
         self.coreService = coreService
         self.sheetViewModel = sheetViewModel
         self.navigationViewModel = navigationViewModel
-
-        // Start app status initialization timer
-        startAppStatusInitializationTimer()
 
         Task {
             await checkGeoStatus()

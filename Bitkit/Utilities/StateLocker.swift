@@ -132,7 +132,7 @@ class StateLocker {
     ///   - wait: The maximum time to wait for the lock to become available, in seconds.
     /// - Throws: `StateLockerError.alreadyLocked` if the lock cannot be acquired within the wait time,
     ///           or other errors related to file operations.
-    static func lock(_ process: ProcessType, wait: TimeInterval) throws {
+    static func lock(_ process: ProcessType, wait: TimeInterval) async throws {
         Logger.debug("🔒 Attempting to lock process: \(process.rawValue) with wait time: \(wait)s")
 
         // Check if the process is already locked
@@ -148,15 +148,15 @@ class StateLocker {
             // Different environment has the lock, wait to acquire it
             Logger.debug("🔒 Process \(process.rawValue) is locked by different context, waiting up to \(wait)s for it to become available")
             let startTime = Date()
-            let pollInterval: TimeInterval = 0.1
+            let pollIntervalNanoseconds: UInt64 = 100_000_000 // 0.1 seconds
             while isLocked(process) {
                 let elapsed = Date().timeIntervalSince(startTime)
                 if elapsed >= wait {
                     Logger.warn("🔒 Failed to acquire lock for process \(process.rawValue) after waiting \(elapsed)s")
                     throw StateLockerError.alreadyLocked(processName: process.rawValue)
                 }
-                // Sleep for a short duration before retrying
-                Thread.sleep(forTimeInterval: pollInterval)
+                // Sleep for a short duration before retrying (non-blocking)
+                try await Task.sleep(nanoseconds: pollIntervalNanoseconds)
             }
         }
 

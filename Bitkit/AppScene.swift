@@ -443,6 +443,7 @@ struct AppScene: View {
             walletIsInitializing = true
         } else if state == .running {
             walletInitShouldFinish = true
+            app.markAppStatusInitialized()
             BackupService.shared.startObservingBackups()
         } else {
             if case .errorStarting = state {

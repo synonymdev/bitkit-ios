@@ -503,10 +503,18 @@ class WalletViewModel: ObservableObject {
 
     /// Sync all state (node status, channels, peers, balances)
     /// Use this for initial load or after sync operations
+    /// Note: Uses cached values from LightningService - call syncStateAsync() for fresh data
     func syncState() {
         syncNodeStatus()
         syncChannelsAndPeers()
         syncBalances()
+    }
+
+    /// Async version that refreshes the cache before syncing state
+    /// Use this when you need guaranteed fresh data from the LDK node
+    func syncStateAsync() async {
+        await lightningService.refreshCache()
+        syncState()
     }
 
     /// Sync node status, ID and lifecycle state

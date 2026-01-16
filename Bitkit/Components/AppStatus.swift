@@ -54,12 +54,14 @@ struct AppStatus: View {
     // MARK: - Computed Properties
 
     private var appStatus: HealthStatus {
-        // During initialization, return 'ready' instead of error
-        if !app.appStatusInitialized {
+        let realStatus = AppStatusHelper.combinedAppStatus(from: wallet, network: network)
+
+        // During initialization, hide error state but show pending (sync animation)
+        if !app.appStatusInitialized && realStatus == .error {
             return .ready
         }
 
-        return AppStatusHelper.combinedAppStatus(from: wallet, network: network)
+        return realStatus
     }
 
     private var statusColor: Color {

@@ -14,6 +14,12 @@ class LightningService {
 
     private var channelCache: [String: ChannelDetails] = [:]
 
+    // Cached values to avoid blocking LDK calls on main thread
+    private var cachedStatus: NodeStatus?
+    private var cachedBalances: BalanceDetails?
+    private var cachedPeers: [PeerDetails]?
+    private var cachedChannels: [ChannelDetails]?
+
     private var storedEventCallback: ((Event) -> Void)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
@@ -31,7 +37,7 @@ class LightningService {
         channelMigration: ChannelDataMigration? = nil
     ) async throws {
         Logger.debug("Checking lightning process lock...")
-        try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -201,6 +207,7 @@ class LightningService {
         }
 
         await refreshChannelCache()
+        await refreshCache()
 
         Logger.info("Node started")
     }
@@ -236,6 +243,7 @@ class LightningService {
             try node.stop()
         }
         self.node = nil
+        clearCache()
 
         if clearEventCallback {
             storedEventCallback = nil
@@ -329,6 +337,7 @@ class LightningService {
         Logger.info("LDK synced")
 
         await refreshChannelCache()
+        await refreshCache()
 
         // Emit state change with sync timestamp from node status
         let nodeStatus = node.status()
@@ -654,11 +663,35 @@ class LightningService {
 
 extension LightningService {
     var nodeId: String? { node?.nodeId() }
-    var balances: BalanceDetails? { node?.listBalances() }
-    var status: NodeStatus? { node?.status() }
-    var peers: [PeerDetails]? { node?.listPeers() }
-    var channels: [ChannelDetails]? { node?.listChannels() }
+
+    // Use cached values to avoid blocking LDK calls on main thread
+    var balances: BalanceDetails? { cachedBalances }
+    var status: NodeStatus? { cachedStatus }
+    var peers: [PeerDetails]? { cachedPeers }
+    var channels: [ChannelDetails]? { cachedChannels }
     var payments: [PaymentDetails]? { node?.listPayments() }
+
+    /// Refresh all cached values asynchronously (call from background)
+    func refreshCache() async {
+        do {
+            try await ServiceQueue.background(.ldk) { [self] in
+                cachedStatus = node?.status()
+                cachedBalances = node?.listBalances()
+                cachedPeers = node?.listPeers()
+                cachedChannels = node?.listChannels()
+            }
+        } catch {
+            Logger.error("Failed to refresh cache: \(error)", context: "LightningService")
+        }
+    }
+
+    /// Clear cached values (called when node stops)
+    func clearCache() {
+        cachedStatus = nil
+        cachedBalances = nil
+        cachedPeers = nil
+        cachedChannels = nil
+    }
 
     /// Get balance for a specific address in satoshis
     /// - Parameter address: The Bitcoin address to check

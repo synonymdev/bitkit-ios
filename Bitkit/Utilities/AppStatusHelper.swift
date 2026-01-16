@@ -38,9 +38,9 @@ struct AppStatusHelper {
         switch wallet.nodeLifecycleState {
         case .running:
             return .ready
-        case .starting, .initializing:
+        case .starting, .initializing, .stopping, .stopped:
             return .pending
-        case .stopping, .stopped, .errorStarting:
+        case .errorStarting:
             return .error
         }
     }
@@ -51,9 +51,9 @@ struct AppStatusHelper {
         switch wallet.nodeLifecycleState {
         case .running:
             return isOnline ? .ready : .error
-        case .starting, .initializing, .stopping:
+        case .starting, .initializing, .stopping, .stopped:
             return .pending
-        case .stopped, .errorStarting:
+        case .errorStarting:
             return .error
         }
     }
