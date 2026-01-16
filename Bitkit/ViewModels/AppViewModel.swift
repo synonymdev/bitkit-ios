@@ -43,22 +43,22 @@ class AppViewModel: ObservableObject {
     // Drawer menu
     @Published var showDrawer = false
 
-    // App status initialization - shows "ready" until node is actually running
+    // App status init - shows "ready" until node is actually running
     // This prevents flashing error status during startup/background transitions
-    @Published var appStatusInitialized: Bool = false
+    @Published var appStatusInit: Bool = false
 
     func showAllEmptyStates(_ show: Bool) {
         showHomeViewEmptyState = show
     }
 
     /// Called when node reaches running state
-    func markAppStatusInitialized() {
-        appStatusInitialized = true
+    func markAppStatusInit() {
+        appStatusInit = true
     }
 
     /// Called when app goes to background to reset the status facade
-    func resetAppStatusInitialized() {
-        appStatusInitialized = false
+    func resetAppStatusInit() {
+        appStatusInit = false
     }
 
     private let lightningService: LightningService

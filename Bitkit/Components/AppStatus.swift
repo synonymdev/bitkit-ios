@@ -56,8 +56,8 @@ struct AppStatus: View {
     private var appStatus: HealthStatus {
         let realStatus = AppStatusHelper.combinedAppStatus(from: wallet, network: network)
 
-        // During initialization, hide error state but show pending (sync animation)
-        if !app.appStatusInitialized && realStatus == .error {
+        // During init, hide error state but show pending (sync animation)
+        if !app.appStatusInit && realStatus == .error {
             return .ready
         }
 

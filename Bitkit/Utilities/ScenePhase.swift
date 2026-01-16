@@ -29,7 +29,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                 Logger.debug("Scene phase changed: \(newPhase)")
 
                 if newPhase == .background {
-                    app.resetAppStatusInitialized()
+                    app.resetAppStatusInit()
                     pendingStartAfterStop = false
                     scheduleNodeStop()
                     return
