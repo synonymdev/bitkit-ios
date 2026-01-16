@@ -31,7 +31,8 @@ final class PaymentFlowTests: XCTestCase {
         try Keychain.wipeEntireKeychain()
         Logger.test("Keychain wiped successfully", context: "PaymentFlowTests")
 
-        if lightning.status?.isRunning == true {
+        let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+        if isRunning {
             try? await lightning.stop()
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
@@ -58,7 +59,7 @@ final class PaymentFlowTests: XCTestCase {
         Logger.test("Lightning node started successfully", context: "PaymentFlowTests")
 
         // Verify node status
-        let status = lightning.status
+        let status = await MainActor.run { lightning.status }
         XCTAssertNotNil(status, "Node status should not be nil")
         Logger.test("Node status: \(String(describing: status))", context: "PaymentFlowTests")
 
@@ -74,7 +75,7 @@ final class PaymentFlowTests: XCTestCase {
         Logger.test("Wallet sync complete", context: "PaymentFlowTests")
 
         // Verify balances
-        let balances = lightning.balances
+        let balances = await MainActor.run { lightning.balances }
         XCTAssertNotNil(balances, "Balances should not be nil")
         let initialTotal = balances?.totalOnchainBalanceSats ?? 0
         XCTAssertEqual(initialTotal, 0, "Initial balance should be zero")
@@ -92,7 +93,7 @@ final class PaymentFlowTests: XCTestCase {
         Logger.test("Connected to trusted peers", context: "PaymentFlowTests")
 
         // Verify peers
-        let peers = lightning.peers
+        let peers = await MainActor.run { lightning.peers }
         XCTAssertNotNil(peers, "Peers should not be nil")
         Logger.test("Connected peers: \(String(describing: peers))", context: "PaymentFlowTests")
 
@@ -124,7 +125,7 @@ final class PaymentFlowTests: XCTestCase {
         Logger.test("Wallet sync complete", context: "PaymentFlowTests")
 
         // Verify updated balances after funding
-        let updatedBalances = lightning.balances
+        let updatedBalances = await MainActor.run { lightning.balances }
         XCTAssertNotNil(updatedBalances, "Updated balances should not be nil")
         let fundedTotal = updatedBalances?.totalOnchainBalanceSats ?? 0
         XCTAssertGreaterThan(fundedTotal, initialTotal, "Balance should have increased after funding")
@@ -229,7 +230,7 @@ final class PaymentFlowTests: XCTestCase {
         try await lightning.sync()
 
         // Verify channel exists
-        let channels = lightning.channels
+        let channels = await MainActor.run { lightning.channels }
         XCTAssertNotNil(channels, "Channels should not be nil")
         XCTAssertGreaterThan(channels?.count ?? 0, 0, "Should have at least one channel")
 
