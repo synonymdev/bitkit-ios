@@ -107,7 +107,10 @@ struct SendConfirmationView: View {
 
             Spacer()
 
-            SwipeButton(title: t("wallet__send_swipe"), accentColor: .greenAccent) {
+            SwipeButton(
+                title: t("wallet__send_swipe"),
+                accentColor: app.selectedWalletToPayFrom == .onchain ? .brandAccent : .purpleAccent
+            ) {
                 // Validate payment and show warnings if needed
                 let warnings = await validatePayment()
                 if !warnings.isEmpty {
