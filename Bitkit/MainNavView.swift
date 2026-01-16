@@ -287,19 +287,19 @@ struct MainNavView: View {
             case .activity:
                 AllActivityView()
             case .contacts:
-                if app.hasSeenContactsIntro {
-                    // ContactsView()
-                    Text("Coming Soon")
-                } else {
-                    ContactsIntroView()
-                }
+                // if app.hasSeenContactsIntro {
+                //     ContactsView()
+                // } else {
+                //     ContactsIntroView()
+                // }
+                ComingSoonScreen()
             case .profile:
-                if app.hasSeenProfileIntro {
-                    // ProfileView()
-                    Text("Coming Soon")
-                } else {
-                    ProfileIntroView()
-                }
+                // if app.hasSeenProfileIntro {
+                //     ProfileView()
+                // } else {
+                //     ProfileIntroView()
+                // }
+                ComingSoonScreen()
             case .settings:
                 MainSettings()
             case .shop:
@@ -324,8 +324,6 @@ struct MainNavView: View {
             case let .activityDetail(activity): ActivityItemView(item: activity)
             case let .activityExplorer(activity): ActivityExplorerView(item: activity)
             case .buyBitcoin: BuyBitcoinView()
-            case .contacts: Text("Coming Soon")
-            case .contactsIntro: ContactsIntroView()
             case .savingsWallet: SavingsWalletView()
             case .spendingWallet: SpendingWalletView()
             case .transferIntro: TransferIntroView()
@@ -345,9 +343,13 @@ struct MainNavView: View {
             case .savingsConfirm: SavingsConfirmView()
             case .savingsAdvanced: SavingsAdvancedView()
             case .savingsProgress: SavingsProgressView()
-            case .profile: Text("Coming Soon")
-            case .profileIntro: ProfileIntroView()
             case .scanner: ScannerScreen()
+
+            // Profile & Contacts
+            case .contacts: ComingSoonScreen()
+            case .contactsIntro: ComingSoonScreen()
+            case .profile: ComingSoonScreen()
+            case .profileIntro: ComingSoonScreen()
 
             // Shop
             case .shopIntro: ShopIntro()

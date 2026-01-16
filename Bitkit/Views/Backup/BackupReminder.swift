@@ -20,9 +20,7 @@ struct BackupReminder: View {
 
                 Spacer()
 
-                CustomButton(
-                    title: t("common__ok")
-                ) {
+                CustomButton(title: t("common__ok")) {
                     navigationPath.append(.success)
                 }
             }
