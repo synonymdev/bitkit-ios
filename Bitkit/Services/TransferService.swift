@@ -82,13 +82,14 @@ class TransferService {
         }
 
         // Get channels from LightningService (returns [ChannelDetails]? directly)
-        guard let channels = lightningService.channels else {
+        let channels = await MainActor.run { lightningService.channels }
+        guard let channels else {
             Logger.error("Failed to get channels for transfer sync", context: "TransferService")
             return
         }
 
         // Get balances from LightningService (returns BalanceDetails? directly)
-        let balances = lightningService.balances
+        let balances = await MainActor.run { lightningService.balances }
 
         Logger.debug("Syncing \(activeTransfers.count) active transfers", context: "TransferService")
 

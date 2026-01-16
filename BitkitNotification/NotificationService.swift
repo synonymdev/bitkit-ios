@@ -215,7 +215,14 @@ class NotificationService: UNNotificationServiceExtension {
 
                 os_log("🔔 NotificationService: cjitPaymentArrived", log: notificationLogger, type: .error)
 
-                if let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) {
+                // Access channels on MainActor and handle in background task
+                Task { @MainActor in
+                    guard let channel = LightningService.shared.channels?.first(where: { $0.channelId == channelId }) else {
+                        os_log("🔔 NotificationService: Channel not found", log: notificationLogger, type: .error)
+                        deliver()
+                        return
+                    }
+
                     os_log("🔔 NotificationService: Channel found", log: notificationLogger, type: .error)
                     let sats = channel.outboundCapacityMsat / 1000 + (channel.unspendablePunishmentReserve ?? 0)
                     bestAttemptContent?.title = "Payment Received"
@@ -223,42 +230,40 @@ class NotificationService: UNNotificationServiceExtension {
                     ReceivedTxSheetDetails(type: .lightning, sats: sats).save() // Save for UI to pick up
 
                     // Add activity item for CJIT payment
-                    Task {
-                        do {
-                            let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
-                            if let cjitOrder {
-                                let now = UInt64(Date().timeIntervalSince1970)
+                    do {
+                        let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
+                        if let cjitOrder {
+                            let now = UInt64(Date().timeIntervalSince1970)
 
-                                let ln = LightningActivity(
-                                    id: channel.fundingTxo?.txid.description ?? "",
-                                    txType: .received,
-                                    status: .succeeded,
-                                    value: sats,
-                                    fee: 0,
-                                    invoice: cjitOrder.invoice.request,
-                                    message: "",
-                                    timestamp: now,
-                                    preimage: nil,
-                                    createdAt: now,
-                                    updatedAt: nil,
-                                    seenAt: nil
-                                )
-
-                                try await CoreService.shared.activity.insert(.lightning(ln))
-                                os_log("🔔 NotificationService: Added CJIT activity item", log: notificationLogger, type: .error)
-                            }
-                        } catch {
-                            os_log(
-                                "🔔 NotificationService: Failed to add CJIT activity: %{public}@",
-                                log: notificationLogger,
-                                type: .error,
-                                error.localizedDescription
+                            let ln = LightningActivity(
+                                id: channel.fundingTxo?.txid.description ?? "",
+                                txType: .received,
+                                status: .succeeded,
+                                value: sats,
+                                fee: 0,
+                                invoice: cjitOrder.invoice.request,
+                                message: "",
+                                timestamp: now,
+                                preimage: nil,
+                                createdAt: now,
+                                updatedAt: nil,
+                                seenAt: nil
                             )
-                        }
-                    }
-                }
 
-                deliver()
+                            try await CoreService.shared.activity.insert(.lightning(ln))
+                            os_log("🔔 NotificationService: Added CJIT activity item", log: notificationLogger, type: .error)
+                        }
+                    } catch {
+                        os_log(
+                            "🔔 NotificationService: Failed to add CJIT activity: %{public}@",
+                            log: notificationLogger,
+                            type: .error,
+                            error.localizedDescription
+                        )
+                    }
+
+                    deliver()
+                }
             } else if notificationType == .orderPaymentConfirmed {
                 bestAttemptContent?.title = "Spending Balance Ready"
                 bestAttemptContent?.body = "Open Bitkit to start paying anyone, anywhere."
@@ -408,7 +413,8 @@ class NotificationService: UNNotificationServiceExtension {
         }
 
         // Check if already connected
-        if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+        let currentPeers = await MainActor.run { LightningService.shared.peers }
+        if let peers = currentPeers, peers.contains(where: { $0.nodeId == lspId }) {
             os_log("🔔 NotificationService: Already connected to LSP %{public}@", log: notificationLogger, type: .error, lspId)
             return
         }
@@ -423,7 +429,8 @@ class NotificationService: UNNotificationServiceExtension {
         let startTime = Date()
 
         while Date().timeIntervalSince(startTime) < maxWaitTime {
-            if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+            let loopPeers = await MainActor.run { LightningService.shared.peers }
+            if let peers = loopPeers, peers.contains(where: { $0.nodeId == lspId }) {
                 os_log("🔔 NotificationService: Successfully connected to LSP %{public}@", log: notificationLogger, type: .error, lspId)
                 return
             }
@@ -432,7 +439,8 @@ class NotificationService: UNNotificationServiceExtension {
         }
 
         // Timeout - check one more time
-        if let peers = LightningService.shared.peers, peers.contains(where: { $0.nodeId == lspId }) {
+        let finalPeers = await MainActor.run { LightningService.shared.peers }
+        if let peers = finalPeers, peers.contains(where: { $0.nodeId == lspId }) {
             os_log(
                 "🔔 NotificationService: Successfully connected to LSP %{public}@ (after timeout check)",
                 log: notificationLogger,

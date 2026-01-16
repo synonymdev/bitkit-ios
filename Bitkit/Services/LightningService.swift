@@ -15,10 +15,11 @@ class LightningService {
     private var channelCache: [String: ChannelDetails] = [:]
 
     // Cached values to avoid blocking LDK calls on main thread
-    private var cachedStatus: NodeStatus?
-    private var cachedBalances: BalanceDetails?
-    private var cachedPeers: [PeerDetails]?
-    private var cachedChannels: [ChannelDetails]?
+    // MainActor isolated to prevent data races between background writes and UI reads
+    @MainActor private var cachedStatus: NodeStatus?
+    @MainActor private var cachedBalances: BalanceDetails?
+    @MainActor private var cachedPeers: [PeerDetails]?
+    @MainActor private var cachedChannels: [ChannelDetails]?
 
     private var storedEventCallback: ((Event) -> Void)?
 
@@ -243,13 +244,13 @@ class LightningService {
             try node.stop()
         }
         self.node = nil
-        clearCache()
 
         if clearEventCallback {
             storedEventCallback = nil
         }
 
         await MainActor.run {
+            clearCache()
             channelCache.removeAll()
         }
 
@@ -390,6 +391,7 @@ class LightningService {
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
+    @MainActor
     func canSend(amountSats: UInt64) -> Bool {
         guard let channels else {
             Logger.warn("Channels not available")
@@ -665,20 +667,36 @@ extension LightningService {
     var nodeId: String? { node?.nodeId() }
 
     // Use cached values to avoid blocking LDK calls on main thread
-    var balances: BalanceDetails? { cachedBalances }
-    var status: NodeStatus? { cachedStatus }
-    var peers: [PeerDetails]? { cachedPeers }
-    var channels: [ChannelDetails]? { cachedChannels }
+    @MainActor var balances: BalanceDetails? { cachedBalances }
+    @MainActor var status: NodeStatus? { cachedStatus }
+    @MainActor var peers: [PeerDetails]? { cachedPeers }
+    @MainActor var channels: [ChannelDetails]? { cachedChannels }
     var payments: [PaymentDetails]? { node?.listPayments() }
 
-    /// Refresh all cached values asynchronously (call from background)
+    /// Refresh all cached values asynchronously
+    /// Fetches from LDK on background queue, updates cache on main actor
     func refreshCache() async {
         do {
-            try await ServiceQueue.background(.ldk) { [self] in
-                cachedStatus = node?.status()
-                cachedBalances = node?.listBalances()
-                cachedPeers = node?.listPeers()
-                cachedChannels = node?.listChannels()
+            // Fetch values on background queue
+            let newStatus = try await ServiceQueue.background(.ldk) { [self] in
+                node?.status()
+            }
+            let newBalances = try await ServiceQueue.background(.ldk) { [self] in
+                node?.listBalances()
+            }
+            let newPeers = try await ServiceQueue.background(.ldk) { [self] in
+                node?.listPeers()
+            }
+            let newChannels = try await ServiceQueue.background(.ldk) { [self] in
+                node?.listChannels()
+            }
+
+            // Update cache on main actor
+            await MainActor.run {
+                cachedStatus = newStatus
+                cachedBalances = newBalances
+                cachedPeers = newPeers
+                cachedChannels = newChannels
             }
         } catch {
             Logger.error("Failed to refresh cache: \(error)", context: "LightningService")
@@ -686,6 +704,7 @@ extension LightningService {
     }
 
     /// Clear cached values (called when node stops)
+    @MainActor
     func clearCache() {
         cachedStatus = nil
         cachedBalances = nil
