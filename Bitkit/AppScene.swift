@@ -307,9 +307,45 @@ struct AppScene: View {
         }
     }
 
+    /// Handle orphaned keychain entries from previous app installs.
+    /// If the installation marker doesn't exist but keychain has data, the app was reinstalled
+    /// and the keychain data is orphaned (corresponding wallet data was deleted with the app).
+    private func handleOrphanedKeychain() {
+        // If marker exists, app was installed before - keychain is valid
+        if InstallationMarker.exists() {
+            Logger.debug("Installation marker exists, skipping orphaned keychain check", context: "AppScene")
+            return
+        }
+
+        // Check if native keychain has data (orphaned from previous install)
+        let hasNativeKeychain = (try? Keychain.exists(key: .bip39Mnemonic(index: 0))) == true
+
+        // Check if RN keychain has data without corresponding RN files (orphaned)
+        let hasOrphanedRNKeychain = MigrationsService.shared.hasOrphanedRNKeychain()
+
+        if hasNativeKeychain || hasOrphanedRNKeychain {
+            Logger.warn("Orphaned keychain detected, wiping", context: "AppScene")
+            try? Keychain.wipeEntireKeychain()
+
+            if hasOrphanedRNKeychain {
+                MigrationsService.shared.cleanupRNKeychain()
+            }
+        }
+
+        // Create marker for this installation
+        do {
+            try InstallationMarker.create()
+        } catch {
+            Logger.error("Failed to create installation marker: \(error)", context: "AppScene")
+        }
+    }
+
     @Sendable
     private func setupTask() async {
         do {
+            // Handle orphaned keychain before anything else
+            handleOrphanedKeychain()
+
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()
 
@@ -340,8 +376,9 @@ struct AppScene: View {
             return
         }
 
-        guard migrations.hasRNWalletData() else {
-            Logger.info("No RN wallet data found, skipping migration", context: "AppScene")
+        // Check if RN wallet data exists AND is not orphaned (has corresponding files)
+        guard migrations.hasRNWalletData(), !migrations.hasOrphanedRNKeychain() else {
+            Logger.info("No valid RN wallet data found, skipping migration", context: "AppScene")
             migrations.markMigrationChecked()
             return
         }

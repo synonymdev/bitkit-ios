@@ -451,6 +451,26 @@ extension MigrationsService {
         return exists
     }
 
+    /// Returns true if RN keychain has mnemonic but RN app files don't exist.
+    /// This indicates an orphaned keychain from a deleted RN app install.
+    func hasOrphanedRNKeychain() -> Bool {
+        // Check if RN keychain has mnemonic
+        guard hasRNWalletData() else {
+            return false
+        }
+
+        // If keychain has mnemonic, check if RN app files exist
+        // RN app would have created MMKV or LDK files if it was actually used
+        let hasRNFiles = hasRNMmkvData() || hasRNLdkData()
+
+        // Orphaned = has keychain data but no app files
+        let isOrphaned = !hasRNFiles
+        if isOrphaned {
+            Logger.warn("Detected orphaned RN keychain (mnemonic exists but no MMKV/LDK files)", context: "Migration")
+        }
+        return isOrphaned
+    }
+
     func migrateFromReactNative(walletIndex: Int = 0) async throws {
         Logger.info("Starting RN migration", context: "Migration")
 
@@ -471,6 +491,10 @@ extension MigrationsService {
 
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+
+        // Clean up RN data after successful migration
+        cleanupAfterMigration()
+
         Logger.info("RN migration completed", context: "Migration")
     }
 
@@ -555,6 +579,61 @@ extension MigrationsService {
 
     func markMigrationChecked() {
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+    }
+
+    // MARK: - RN Data Cleanup
+
+    /// Delete RN keychain entries (mnemonic, passphrase, PIN)
+    func cleanupRNKeychain() {
+        let keysToDelete: [RNKeychainKey] = [
+            .mnemonic(walletName: rnWalletName),
+            .passphrase(walletName: rnWalletName),
+            .pin,
+        ]
+
+        for key in keysToDelete {
+            let query: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrService as String: key.service,
+            ]
+            let status = SecItemDelete(query as CFDictionary)
+            if status == noErr || status == errSecItemNotFound {
+                Logger.info("Deleted RN keychain key: \(key.service)", context: "Migration")
+            } else {
+                Logger.warn("Failed to delete RN keychain key \(key.service): \(status)", context: "Migration")
+            }
+        }
+    }
+
+    /// Delete RN MMKV and LDK files from Documents directory
+    func cleanupRNFiles() {
+        // Delete MMKV directory
+        let mmkvDir = rnMmkvPath.deletingLastPathComponent() // ~/Documents/mmkv/
+        if fileManager.fileExists(atPath: mmkvDir.path) {
+            do {
+                try fileManager.removeItem(at: mmkvDir)
+                Logger.info("Deleted RN MMKV directory", context: "Migration")
+            } catch {
+                Logger.warn("Failed to delete RN MMKV directory: \(error)", context: "Migration")
+            }
+        }
+
+        // Delete LDK directory
+        if fileManager.fileExists(atPath: rnLdkBasePath.path) {
+            do {
+                try fileManager.removeItem(at: rnLdkBasePath)
+                Logger.info("Deleted RN LDK directory", context: "Migration")
+            } catch {
+                Logger.warn("Failed to delete RN LDK directory: \(error)", context: "Migration")
+            }
+        }
+    }
+
+    /// Full cleanup after successful migration - removes all RN data
+    func cleanupAfterMigration() {
+        cleanupRNKeychain()
+        cleanupRNFiles()
+        Logger.info("RN cleanup completed", context: "Migration")
     }
 }
 
