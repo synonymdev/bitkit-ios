@@ -120,25 +120,29 @@ class AppViewModel: ObservableObject {
             toast(
                 type: .error,
                 title: t("other__scan_err_decoding"),
-                description: t("other__scan__error__generic")
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
             )
         case .insufficientSavings:
             toast(
                 type: .error,
                 title: t("other__pay_insufficient_savings"),
-                description: t("other__pay_insufficient_savings_description")
+                description: t("other__pay_insufficient_savings_description"),
+                accessibilityIdentifier: "InsufficientSavingsToast"
             )
         case .insufficientSpending:
             toast(
                 type: .error,
                 title: t("other__pay_insufficient_spending"),
-                description: t("other__pay_insufficient_savings_description")
+                description: t("other__pay_insufficient_savings_description"),
+                accessibilityIdentifier: "InsufficientSpendingToast"
             )
         case .expiredLightningOnly:
             toast(
                 type: .error,
                 title: t("other__scan_err_decoding"),
-                description: t("other__scan__error__expired")
+                description: t("other__scan__error__expired"),
+                accessibilityIdentifier: "ExpiredLightningToast"
             )
         case .valid, .empty:
             break
@@ -237,7 +241,8 @@ extension AppViewModel {
                 toast(
                     type: .error,
                     title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic")
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
                 )
                 return
             }
@@ -278,7 +283,8 @@ extension AppViewModel {
                         description: t(
                             "other__pay_insufficient_savings_amount_description",
                             variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)]
-                        )
+                        ),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
                     )
                     return
                 }
@@ -288,7 +294,8 @@ extension AppViewModel {
                     toast(
                         type: .error,
                         title: t("other__pay_insufficient_savings"),
-                        description: t("other__pay_insufficient_savings_description")
+                        description: t("other__pay_insufficient_savings_description"),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
                     )
                     return
                 }
@@ -302,7 +309,8 @@ extension AppViewModel {
                 toast(
                     type: .error,
                     title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic")
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
                 )
                 return
             }
@@ -321,13 +329,19 @@ extension AppViewModel {
                 toast(
                     type: .error,
                     title: t("other__pay_insufficient_spending"),
-                    description: description
+                    description: description,
+                    accessibilityIdentifier: "InsufficientSpendingToast"
                 )
                 return
             }
 
             guard !invoice.isExpired else {
-                toast(type: .error, title: t("other__scan_err_decoding"), description: t("other__scan__error__expired"))
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__expired"),
+                    accessibilityIdentifier: "ExpiredLightningToast"
+                )
                 return
             }
 
@@ -356,7 +370,8 @@ extension AppViewModel {
                 toast(
                     type: .error,
                     title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic")
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
                 )
                 return
             }
