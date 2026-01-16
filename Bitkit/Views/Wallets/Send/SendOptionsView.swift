@@ -71,7 +71,6 @@ struct SendOptionsView: View {
             wallet.syncState()
             scanner.configure(
                 app: app,
-                wallet: wallet,
                 currency: currency,
                 settings: settings
             )
