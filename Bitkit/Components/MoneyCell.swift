@@ -4,6 +4,7 @@ import SwiftUI
 struct MoneyCell: View {
     let sats: Int
     let prefix: String
+    var enableHide: Bool = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 2) {
@@ -11,6 +12,7 @@ struct MoneyCell: View {
                 sats: sats,
                 unitType: .primary,
                 size: .bodyMSB,
+                enableHide: enableHide,
                 prefix: prefix,
                 color: .textPrimary,
                 symbolColor: .textSecondary
@@ -20,6 +22,7 @@ struct MoneyCell: View {
                 sats: sats,
                 unitType: .secondary,
                 size: .caption,
+                enableHide: enableHide,
                 color: .textSecondary
             )
         }

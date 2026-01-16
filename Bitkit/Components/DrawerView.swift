@@ -123,7 +123,7 @@ struct DrawerView: View {
                                 closeMenu()
                             }
                         )
-                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity)
                         .padding(.bottom, 16)
                     }
                     .frame(width: geometry.size.width * 0.5, height: geometry.size.height)
@@ -186,8 +186,7 @@ struct DrawerView: View {
             }
             .frame(height: 56)
 
-            Divider()
-                .background(Color.white.opacity(0.1))
+            CustomDivider()
         }
         .padding(.horizontal, 16)
     }

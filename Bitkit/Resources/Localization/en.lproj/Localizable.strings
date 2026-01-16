@@ -33,6 +33,10 @@
 "cards__btFailed__title" = "Failed";
 "cards__btFailed__description" = "Please try again";
 "cards__suggestions" = "Suggestions";
+"coming_soon__nav_title" = "Coming Soon";
+"coming_soon__headline" = "Coming\n<accent>soon</accent>";
+"coming_soon__description" = "This feature is currently in development and will be available soon.";
+"coming_soon__button" = "Wallet overview";
 "common__advanced" = "Advanced";
 "common__continue" = "Continue";
 "common__cancel" = "Cancel";

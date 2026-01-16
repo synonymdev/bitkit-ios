@@ -93,6 +93,7 @@ struct NumberPad: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: buttonHeight)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(NumberPadButtonStyle())
                 .accessibilityIdentifier("NRemove")
@@ -117,6 +118,7 @@ private struct NumberPadButton: View {
                 .kerning(-0.1)
                 .frame(maxWidth: .infinity)
                 .frame(height: height)
+                .contentShape(Rectangle())
         }
         .accessibilityIdentifier(testID ?? text)
         .buttonStyle(NumberPadButtonStyle())

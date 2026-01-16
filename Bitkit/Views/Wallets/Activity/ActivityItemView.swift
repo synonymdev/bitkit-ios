@@ -191,6 +191,7 @@ struct ActivityItemView: View {
                         MoneyStack(sats: amount, prefix: amountPrefix, showSymbol: false)
                         Spacer()
                         ActivityIcon(activity: viewModel.activity, size: 48, isCpfpChild: isCpfpChild)
+                            .offset(y: 5) // Align arrow with bottom of money stack
                     }
                     .padding(.bottom, 16)
 

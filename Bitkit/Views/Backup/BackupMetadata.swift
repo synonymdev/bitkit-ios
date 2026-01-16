@@ -25,6 +25,7 @@ struct BackupMetadata: View {
                     BodySText(
                         t("security__mnemonic_latest_backup", variables: ["time": lastBackupTime]),
                         textColor: .textPrimary,
+                        accentColor: .textPrimary,
                         accentFont: Fonts.bold
                     )
                     .padding(.bottom, 16)

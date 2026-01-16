@@ -38,6 +38,7 @@ struct SendOptionsView: View {
                         icon: "users",
                         iconColor: .brandAccent,
                         title: t("wallet__recipient_contact"),
+                        isDisabled: true,
                         testID: "RecipientContact"
                     ) {
                         handleContact()
