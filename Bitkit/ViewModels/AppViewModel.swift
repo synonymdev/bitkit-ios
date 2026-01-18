@@ -610,8 +610,11 @@ extension AppViewModel {
             }
 
             if !canPayLightning {
-                // On-chain: check savings balance (only if amount specified)
+                // On-chain: check savings balance
                 if invoice.amountSatoshis > 0 && savingsBalanceSats < Int(invoice.amountSatoshis) {
+                    result = .insufficientSavings
+                } else if invoice.amountSatoshis == 0 && savingsBalanceSats == 0 {
+                    // Zero-amount invoice: user must have some balance to proceed
                     result = .insufficientSavings
                 }
             }
