@@ -4,67 +4,22 @@ import LDKNode
 import XCTest
 
 final class NetworkValidationHelperTests: XCTestCase {
-    // MARK: - getAddressNetwork Tests
+    // MARK: - convertNetwork Tests
 
-    // Mainnet addresses
-    func testGetAddressNetwork_MainnetBech32() {
-        let address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .bitcoin)
+    func testConvertNetwork_Bitcoin() {
+        XCTAssertEqual(NetworkValidationHelper.convertNetwork(.bitcoin), .bitcoin)
     }
 
-    func testGetAddressNetwork_MainnetBech32Uppercase() {
-        let address = "BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .bitcoin)
+    func testConvertNetwork_Testnet() {
+        XCTAssertEqual(NetworkValidationHelper.convertNetwork(.testnet), .testnet)
     }
 
-    func testGetAddressNetwork_MainnetP2PKH() {
-        let address = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .bitcoin)
+    func testConvertNetwork_Signet() {
+        XCTAssertEqual(NetworkValidationHelper.convertNetwork(.signet), .signet)
     }
 
-    func testGetAddressNetwork_MainnetP2SH() {
-        let address = "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .bitcoin)
-    }
-
-    // Testnet addresses
-    func testGetAddressNetwork_TestnetBech32() {
-        let address = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .testnet)
-    }
-
-    func testGetAddressNetwork_TestnetP2PKH_m() {
-        let address = "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .testnet)
-    }
-
-    func testGetAddressNetwork_TestnetP2PKH_n() {
-        let address = "n3ZddxzLvAY9o7184TB4c6FJasAybsw4HZ"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .testnet)
-    }
-
-    func testGetAddressNetwork_TestnetP2SH() {
-        let address = "2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .testnet)
-    }
-
-    // Regtest addresses
-    func testGetAddressNetwork_RegtestBech32() {
-        let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
-        XCTAssertEqual(NetworkValidationHelper.getAddressNetwork(address), .regtest)
-    }
-
-    // Edge cases
-    func testGetAddressNetwork_EmptyString() {
-        XCTAssertNil(NetworkValidationHelper.getAddressNetwork(""))
-    }
-
-    func testGetAddressNetwork_InvalidAddress() {
-        XCTAssertNil(NetworkValidationHelper.getAddressNetwork("invalid"))
-    }
-
-    func testGetAddressNetwork_RandomText() {
-        XCTAssertNil(NetworkValidationHelper.getAddressNetwork("test123"))
+    func testConvertNetwork_Regtest() {
+        XCTAssertEqual(NetworkValidationHelper.convertNetwork(.regtest), .regtest)
     }
 
     // MARK: - convertNetworkType Tests
@@ -115,29 +70,29 @@ final class NetworkValidationHelperTests: XCTestCase {
         XCTAssertFalse(NetworkValidationHelper.isNetworkMismatch(addressNetwork: nil, currentNetwork: .regtest))
     }
 
-    // MARK: - Integration Tests (combining methods)
+    // MARK: - Integration Tests (combining validateBitcoinAddress with isNetworkMismatch)
 
     func testMainnetAddressOnRegtest_ShouldMismatch() {
         let address = "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
-        let addressNetwork = NetworkValidationHelper.getAddressNetwork(address)
+        let addressNetwork = (try? validateBitcoinAddress(address)).map { NetworkValidationHelper.convertNetwork($0.network) }
         XCTAssertTrue(NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: .regtest))
     }
 
     func testTestnetAddressOnRegtest_ShouldNotMismatch() {
         let address = "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx"
-        let addressNetwork = NetworkValidationHelper.getAddressNetwork(address)
+        let addressNetwork = (try? validateBitcoinAddress(address)).map { NetworkValidationHelper.convertNetwork($0.network) }
         XCTAssertFalse(NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: .regtest))
     }
 
     func testRegtestAddressOnMainnet_ShouldMismatch() {
         let address = "bcrt1q6rhpng9evdsfnn833a4f4vej0asu6dk5srld6x"
-        let addressNetwork = NetworkValidationHelper.getAddressNetwork(address)
+        let addressNetwork = (try? validateBitcoinAddress(address)).map { NetworkValidationHelper.convertNetwork($0.network) }
         XCTAssertTrue(NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: .bitcoin))
     }
 
     func testLegacyTestnetAddressOnRegtest_ShouldNotMismatch() {
         let address = "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn" // m-prefix testnet
-        let addressNetwork = NetworkValidationHelper.getAddressNetwork(address)
+        let addressNetwork = (try? validateBitcoinAddress(address)).map { NetworkValidationHelper.convertNetwork($0.network) }
         XCTAssertFalse(NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: .regtest))
     }
 }

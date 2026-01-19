@@ -3,27 +3,15 @@ import LDKNode
 
 /// Helper for validating Bitcoin network compatibility of addresses and invoices
 enum NetworkValidationHelper {
-    /// Infer the Bitcoin network from an on-chain address prefix
-    /// - Parameter address: The Bitcoin address to check
-    /// - Returns: The detected network, or nil if the address format is unrecognized
-    static func getAddressNetwork(_ address: String) -> LDKNode.Network? {
-        let lowercased = address.lowercased()
-
-        // Bech32/Bech32m addresses (order matters: check bcrt1 before bc1)
-        if lowercased.hasPrefix("bcrt1") {
-            return .regtest
-        } else if lowercased.hasPrefix("bc1") {
-            return .bitcoin
-        } else if lowercased.hasPrefix("tb1") {
-            return .testnet
-        }
-
-        // Legacy addresses - check first character
-        guard let first = address.first else { return nil }
-        switch first {
-        case "1", "3": return .bitcoin
-        case "m", "n", "2": return .testnet // testnet and regtest share these
-        default: return nil
+    /// Convert BitkitCore.Network to LDKNode.Network
+    /// - Parameter network: The BitkitCore network
+    /// - Returns: The equivalent LDKNode network
+    static func convertNetwork(_ network: BitkitCore.Network) -> LDKNode.Network {
+        switch network {
+        case .bitcoin: return .bitcoin
+        case .testnet: return .testnet
+        case .signet: return .signet
+        case .regtest: return .regtest
         }
     }
 
