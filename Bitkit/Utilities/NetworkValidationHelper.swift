@@ -3,18 +3,6 @@ import LDKNode
 
 /// Helper for validating Bitcoin network compatibility of addresses and invoices
 enum NetworkValidationHelper {
-    /// Convert BitkitCore.Network to LDKNode.Network
-    /// - Parameter network: The BitkitCore network
-    /// - Returns: The equivalent LDKNode network
-    static func convertNetwork(_ network: BitkitCore.Network) -> LDKNode.Network {
-        switch network {
-        case .bitcoin: return .bitcoin
-        case .testnet: return .testnet
-        case .signet: return .signet
-        case .regtest: return .regtest
-        }
-    }
-
     /// Convert BitkitCore.NetworkType to LDKNode.Network
     /// - Parameter networkType: The BitkitCore network type
     /// - Returns: The equivalent LDKNode network

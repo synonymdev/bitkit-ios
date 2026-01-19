@@ -236,7 +236,8 @@ extension AppViewModel {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
             // Check network first - treat wrong network as decoding error
-            let addressNetwork = (try? validateBitcoinAddress(invoice.address)).map { NetworkValidationHelper.convertNetwork($0.network) }
+            let addressValidation = try? validateBitcoinAddress(address: invoice.address)
+            let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
             if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
                 toast(
                     type: .error,
@@ -586,7 +587,8 @@ extension AppViewModel {
 
         case let .onChain(invoice):
             // Priority 0: Check network first - treat wrong network as invalid
-            let addressNetwork = (try? validateBitcoinAddress(invoice.address)).map { NetworkValidationHelper.convertNetwork($0.network) }
+            let addressValidation = try? validateBitcoinAddress(address: invoice.address)
+            let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
             if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
                 result = .invalid
                 break
