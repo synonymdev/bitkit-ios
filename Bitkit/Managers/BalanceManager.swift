@@ -186,18 +186,17 @@ class BalanceManager {
 
             let balanceFromLdk = balanceDetails.lightningBalances
                 .first { $0.channelIdString == channelId }?.amountSats
-            let balanceAmount = balanceFromLdk ?? transfer.amountSats
 
-            if balanceFromLdk == nil {
+            if let amount = balanceFromLdk {
+                lightningToSubtract += amount
+            } else {
                 Logger.debug(
-                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, using transfer amount \(transfer.amountSats)"
+                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, not subtracting from lightning"
                 )
             }
 
-            lightningToSubtract += balanceAmount
-
             if await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
-                pendingAmount += balanceAmount
+                pendingAmount += transfer.amountSats
             }
         }
 
