@@ -34,7 +34,9 @@ class TransferService {
         channelId: String? = nil,
         fundingTxId: String? = nil,
         lspOrderId: String? = nil,
-        claimableAtHeight: UInt32? = nil
+        claimableAtHeight: UInt32? = nil,
+        txTotalSats: UInt64? = nil,
+        preTransferOnchainSats: UInt64? = nil
     ) async throws -> String {
         // When geoblocked, block transfers to spending that involve LSP (Blocktank)
         // toSpending with lspOrderId means it's a Blocktank LSP channel order
@@ -60,7 +62,9 @@ class TransferService {
             isSettled: false,
             createdAt: createdAt,
             settledAt: nil,
-            claimableAtHeight: claimableAtHeight
+            claimableAtHeight: claimableAtHeight,
+            txTotalSats: txTotalSats,
+            preTransferOnchainSats: preTransferOnchainSats
         )
 
         try storage.insert(transfer)
@@ -112,7 +116,9 @@ class TransferService {
                         isSettled: transfer.isSettled,
                         createdAt: transfer.createdAt,
                         settledAt: transfer.settledAt,
-                        claimableAtHeight: transfer.claimableAtHeight
+                        claimableAtHeight: transfer.claimableAtHeight,
+                        txTotalSats: transfer.txTotalSats,
+                        preTransferOnchainSats: transfer.preTransferOnchainSats
                     )
                     try storage.update(updatedTransfer)
                     Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")

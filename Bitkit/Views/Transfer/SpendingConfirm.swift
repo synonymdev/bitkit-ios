@@ -136,7 +136,7 @@ struct SpendingConfirm: View {
         isPaying = true
 
         do {
-            try await transfer.payOrder(order: currentOrder, speed: .fast, utxosToSpend: selectedUtxos)
+            try await transfer.payOrder(order: currentOrder, speed: .fast, txFee: transactionFee, utxosToSpend: selectedUtxos)
             await wallet.updateBalanceState()
 
             try await Task.sleep(nanoseconds: 1_000_000_000)
