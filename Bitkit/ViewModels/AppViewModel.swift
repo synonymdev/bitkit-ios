@@ -429,23 +429,29 @@ extension AppViewModel {
                             sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         }
                     } else {
-                        toast(
-                            type: .lightning,
-                            title: t("lightning__channel_opened_title"),
-                            description: t("lightning__channel_opened_msg"),
-                            visibilityTime: 5.0,
-                            accessibilityIdentifier: "SpendingBalanceReadyToast"
-                        )
+                        let channelCount = lightningService.channels?.count ?? 0
+                        if channelCount == 1 {
+                            toast(
+                                type: .lightning,
+                                title: t("lightning__channel_opened_title"),
+                                description: t("lightning__channel_opened_msg"),
+                                visibilityTime: 5.0,
+                                accessibilityIdentifier: "SpendingBalanceReadyToast"
+                            )
+                        }
                     }
                 }
             } else {
-                toast(
-                    type: .lightning,
-                    title: t("lightning__channel_opened_title"),
-                    description: t("lightning__channel_opened_msg"),
-                    visibilityTime: 5.0,
-                    accessibilityIdentifier: "SpendingBalanceReadyToast"
-                )
+                let channelCount = lightningService.channels?.count ?? 0
+                if channelCount == 1 {
+                    toast(
+                        type: .lightning,
+                        title: t("lightning__channel_opened_title"),
+                        description: t("lightning__channel_opened_msg"),
+                        visibilityTime: 5.0,
+                        accessibilityIdentifier: "SpendingBalanceReadyToast"
+                    )
+                }
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
