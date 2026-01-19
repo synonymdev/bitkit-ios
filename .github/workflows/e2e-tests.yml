@@ -294,7 +294,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -306,7 +306,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -317,7 +317,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
@@ -412,7 +412,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -425,7 +425,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -437,7 +437,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "latest"
+          SIMULATOR_OS_VERSION: "26.0.1"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
