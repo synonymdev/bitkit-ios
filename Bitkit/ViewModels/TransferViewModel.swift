@@ -118,7 +118,7 @@ class TransferViewModel: ObservableObject {
         uiState.order ?? order
     }
 
-    func payOrder(order: IBtOrder, speed: TransactionSpeed) async throws {
+    func payOrder(order: IBtOrder, speed: TransactionSpeed, utxosToSpend: [SpendableUtxo]? = nil) async throws {
         var fees = try? await coreService.blocktank.fees(refresh: true)
         if fees == nil {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
@@ -135,7 +135,8 @@ class TransferViewModel: ObservableObject {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        // Pass pre-selected UTXOs to ensure same fee as calculated
+        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte, utxosToSpend: utxosToSpend)
 
         // Create transfer tracking record for spending
         do {
