@@ -131,7 +131,7 @@ struct LnurlAuthSheet: View {
             let response = try await lnurlAuth(
                 domain: extractedDomain,
                 k1: config.authData.k1,
-                callback: config.lnurl,
+                callback: config.authData.uri,
                 bip32Mnemonic: mnemonic,
                 network: Env.bitkitCoreNetwork,
                 bip39Passphrase: passphrase.isEmpty ? nil : passphrase

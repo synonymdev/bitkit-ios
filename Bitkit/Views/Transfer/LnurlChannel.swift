@@ -8,17 +8,13 @@ struct LnurlChannel: View {
 
     let channelData: LnurlChannelData
 
-    @State private var channelInfo: LnurlChannelData?
     @State private var isConnecting = false
-    @State private var isLoadingChannelInfo = true
+    @State private var isPeerConnected = false
+    @State private var isConnectingPeer = true
 
     // Parse the node URI to extract node, host, and port
     private var parsedUri: LnPeer {
-        guard let channelInfo else {
-            return LnPeer(nodeId: "", host: "", port: 0)
-        }
-
-        return parseNodeUri(channelInfo.uri)
+        parseNodeUri(channelData.uri)
     }
 
     func parseNodeUri(_ uri: String) -> LnPeer {
@@ -26,7 +22,7 @@ struct LnurlChannel: View {
             let lnPeer = try LnPeer(connection: uri)
             return lnPeer
         } catch {
-            app.toast(error)
+            Logger.error("Failed to parse node URI: \(uri), error: \(error)")
             return LnPeer(nodeId: "", host: "", port: 0)
         }
     }
@@ -42,14 +38,22 @@ struct LnurlChannel: View {
             BodyMText(t("other__lnurl_channel_message"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if isLoadingChannelInfo {
+            if isConnectingPeer {
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.2)
-                    BodyMText("Loading channel information...", textColor: .textSecondary)
+                    BodyMText("Connecting to peer...", textColor: .textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if channelInfo != nil {
+            } else if parsedUri.nodeId.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.largeTitle)
+                        .foregroundColor(.orange)
+                    BodyMText("Failed to parse channel information", textColor: .textSecondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
                 CaptionMText(t("other__lnurl_channel_lsp"))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.top, 48)
@@ -90,14 +94,6 @@ struct LnurlChannel: View {
 
                     Divider()
                 }
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundColor(.orange)
-                    BodyMText("Failed to load channel information", textColor: .textSecondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
 
             Spacer()
@@ -115,7 +111,7 @@ struct LnurlChannel: View {
                     title: t("common__connect"),
                     variant: .primary,
                     size: .large,
-                    isDisabled: channelInfo == nil || isLoadingChannelInfo,
+                    isDisabled: parsedUri.nodeId.isEmpty || isConnectingPeer,
                     isLoading: isConnecting
                 ) {
                     Task {
@@ -128,7 +124,7 @@ struct LnurlChannel: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .task {
-            await fetchChannelInfo()
+            await connectToPeer()
         }
     }
 
@@ -158,33 +154,28 @@ struct LnurlChannel: View {
         navigation.reset()
     }
 
-    // Fetch channel information from the LNURL
-    private func fetchChannelInfo() async {
-        do {
-            let channelInfo = try await LnurlHelper.fetchLnurlChannelInfo(url: channelData.uri)
-
+    // Connect to the peer before making the channel request
+    private func connectToPeer() async {
+        // The channelData.uri is the node peer URI (pubkey@host:port)
+        guard let peer = try? LnPeer(connection: channelData.uri) else {
             await MainActor.run {
-                self.channelInfo = channelInfo
-                isLoadingChannelInfo = false
+                isConnectingPeer = false
             }
-
-            await connectToPeerIfNeeded(channelInfo: channelInfo)
-        } catch {
-            await MainActor.run {
-                isLoadingChannelInfo = false
-            }
-        }
-    }
-
-    private func connectToPeerIfNeeded(channelInfo: LnurlChannelData) async {
-        guard let peer = try? LnPeer(connection: channelInfo.uri) else {
             return
         }
 
         do {
             try await wallet.connectPeer(peer)
+            await MainActor.run {
+                isPeerConnected = true
+                isConnectingPeer = false
+            }
         } catch {
             Logger.error(error, context: "Failed to connect LNURL peer")
+            await MainActor.run {
+                // Still allow the user to try connecting - peer might already be connected
+                isConnectingPeer = false
+            }
         }
     }
 }
