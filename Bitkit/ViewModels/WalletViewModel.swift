@@ -108,7 +108,7 @@ class WalletViewModel: ObservableObject {
         }
 
         if nodeLifecycleState != .initializing {
-            // Initilaizing means it's a wallet restore or create so we need to show the loading view
+            // Initializing means it's a wallet restore or create so we need to show the loading view
             nodeLifecycleState = .starting
         }
 
@@ -142,26 +142,26 @@ class WalletViewModel: ObservableObject {
                     // Handle specific events for targeted UI updates
                     switch event {
                     case .paymentReceived, .channelReady:
-                        self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
-                        self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
                         }
 
-                    // MARK: New Onchain Transaction Events
+                    // MARK: Onchain Transaction Events
 
                     case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced, .onchainTransactionReorged,
                          .onchainTransactionEvicted:
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
 
                     // MARK: Sync Events
@@ -172,20 +172,20 @@ class WalletViewModel: ObservableObject {
                             self.currentBlockHeight = syncCurrentBlockHeight
                         }
                         Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+
                     case let .syncCompleted(syncType, syncedBlockHeight):
                         self.isSyncingWallet = false
                         self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
-                        self.syncState()
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
 
                     // MARK: Balance Events
 
-                    case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+                    case .balanceChanged:
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
                     default:
                         break
@@ -526,6 +526,13 @@ class WalletViewModel: ObservableObject {
         syncState()
     }
 
+    /// Refreshes cache and syncs all UI state including balance
+    /// Use this for any event that may have changed balances or channel state
+    private func refreshAndSyncState() async {
+        await updateBalanceState()
+        syncChannelsAndPeers()
+    }
+
     /// Sync node status, ID and lifecycle state
     private func syncNodeStatus() {
         nodeStatus = lightningService.status
@@ -565,6 +572,9 @@ class WalletViewModel: ObservableObject {
     }
 
     func updateBalanceState() async {
+        // Ensure we have fresh data from LDK before computing balance
+        await lightningService.refreshCache()
+
         do {
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
@@ -781,7 +791,6 @@ class WalletViewModel: ObservableObject {
             }
 
             sheetViewModel.showSheet(.connectionClosed)
-            await updateBalanceState()
         }
     }
 

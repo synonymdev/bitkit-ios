@@ -189,7 +189,10 @@ struct MainNavView: View {
         }
         .onChange(of: notificationManager.authorizationStatus) { newStatus in
             // Handle notification permission changes
-            if newStatus != .authorized && settings.enableNotifications {
+            if newStatus == .authorized {
+                settings.enableNotifications = true
+                notificationManager.requestPermission()
+            } else {
                 settings.enableNotifications = false
                 notificationManager.unregister()
             }
