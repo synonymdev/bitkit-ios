@@ -31,8 +31,9 @@ class LightningService {
 
     private init() {}
 
-    /// Flag to prevent concurrent setup calls
+    /// Flag and lock to prevent concurrent setup calls
     private var isSettingUp = false
+    private let setupLock = NSLock()
 
     func setup(
         walletIndex: Int,
@@ -41,12 +42,16 @@ class LightningService {
         channelMigration: ChannelDataMigration? = nil
     ) async throws {
         // Guard against concurrent setup calls
-        guard !isSettingUp && node == nil else {
-            Logger.debug("Node already setting up or already set up, skipping")
-            return
+        let shouldProceed: Bool = setupLock.withLock {
+            guard !isSettingUp && node == nil else {
+                Logger.debug("Node already setting up or already set up, skipping")
+                return false
+            }
+            isSettingUp = true
+            return true
         }
-        isSettingUp = true
-        defer { isSettingUp = false }
+        guard shouldProceed else { return }
+        defer { setupLock.withLock { isSettingUp = false } }
 
         Logger.debug("Checking lightning process lock...")
         try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
