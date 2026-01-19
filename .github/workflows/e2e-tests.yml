@@ -185,7 +185,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          SIMULATOR_NAME: "iPhone 17"
+          SIMULATOR_NAME: "iPhone 16"
           OS_VERSION: "latest"
           GEO: false
           E2E_BACKEND: network
@@ -333,6 +333,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
+          SIMULATOR_NAME: "iPhone 17"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -343,6 +344,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
+          SIMULATOR_NAME: "iPhone 17"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -352,6 +354,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
+          SIMULATOR_NAME: "iPhone 17"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
@@ -433,8 +436,8 @@ jobs:
         run: |
           echo "🔧 Shutting down all running iOS simulators..."
           xcrun simctl shutdown all || true
-          echo "🔧 Erasing target simulator: iPhone 17..."
-          xcrun simctl erase "iPhone 17" || true
+          echo "🔧 Erasing target simulator: iPhone 16..."
+          xcrun simctl erase "iPhone 16" || true
           echo "🔧 Disabling iOS Simulator notifications..."
           defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
 
@@ -445,6 +448,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           BACKEND: regtest
+          SIMULATOR_NAME: "iPhone 16"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -456,6 +460,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           BACKEND: regtest
+          SIMULATOR_NAME: "iPhone 16"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -466,6 +471,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           BACKEND: regtest
+          SIMULATOR_NAME: "iPhone 16"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
