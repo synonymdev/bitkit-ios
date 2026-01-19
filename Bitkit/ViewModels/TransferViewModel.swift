@@ -29,6 +29,7 @@ class TransferViewModel: ObservableObject {
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
+    private let onBalanceRefresh: (() async -> Void)?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -42,13 +43,15 @@ class TransferViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         transferService: TransferService,
-        sheetViewModel: SheetViewModel
+        sheetViewModel: SheetViewModel,
+        onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
+        self.onBalanceRefresh = onBalanceRefresh
     }
 
     /// Convenience initializer for testing and previews
@@ -570,6 +573,8 @@ class TransferViewModel: ObservableObject {
         // Sync transfer states after attempting closures
         try? await transferService.syncTransferStates()
 
+        await onBalanceRefresh?()
+
         return failedChannels
     }
 
@@ -593,6 +598,7 @@ class TransferViewModel: ObservableObject {
 
                         // Final sync after successful closure
                         try? await transferService.syncTransferStates()
+                        await onBalanceRefresh?()
 
                         return
                     } else {
@@ -688,6 +694,8 @@ class TransferViewModel: ObservableObject {
         }
 
         try? await transferService.syncTransferStates()
+
+        await onBalanceRefresh?()
 
         // If any errors occurred, throw an aggregated error
         if !errors.isEmpty {
