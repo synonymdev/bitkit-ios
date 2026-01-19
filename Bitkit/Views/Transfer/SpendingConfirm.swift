@@ -15,6 +15,7 @@ struct SpendingConfirm: View {
     @State private var hideSwipeButton = false
     @State private var transactionFee: UInt64 = 0
     @State private var selectedUtxos: [SpendableUtxo]?
+    @State private var satsPerVbyte: UInt32?
 
     private var currentOrder: IBtOrder {
         transfer.displayOrder(for: order)
@@ -121,7 +122,7 @@ struct SpendingConfirm: View {
                         await onConfirm()
                     }
                 }
-                .disabled(isPaying)
+                .disabled(isPaying || selectedUtxos == nil || transactionFee == 0 || satsPerVbyte == nil)
             }
         }
         .navigationBarHidden(true)
@@ -136,7 +137,13 @@ struct SpendingConfirm: View {
         isPaying = true
 
         do {
-            try await transfer.payOrder(order: currentOrder, speed: .fast, txFee: transactionFee, utxosToSpend: selectedUtxos)
+            try await transfer.payOrder(
+                order: currentOrder,
+                speed: .fast,
+                txFee: transactionFee,
+                utxosToSpend: selectedUtxos,
+                satsPerVbyte: satsPerVbyte
+            )
             await wallet.updateBalanceState()
 
             try await Task.sleep(nanoseconds: 1_000_000_000)
@@ -184,12 +191,15 @@ struct SpendingConfirm: View {
                 await MainActor.run {
                     transactionFee = fee
                     selectedUtxos = utxos
+                    satsPerVbyte = fastFeeRate
                 }
             }
         } catch {
             Logger.error("Failed to calculate actual fee: \(error)")
             await MainActor.run {
                 transactionFee = 0
+                selectedUtxos = nil
+                satsPerVbyte = nil
             }
         }
     }

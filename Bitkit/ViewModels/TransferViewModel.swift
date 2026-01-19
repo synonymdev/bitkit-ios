@@ -121,18 +121,27 @@ class TransferViewModel: ObservableObject {
         uiState.order ?? order
     }
 
-    func payOrder(order: IBtOrder, speed: TransactionSpeed, txFee: UInt64, utxosToSpend: [SpendableUtxo]? = nil) async throws {
-        var fees = try? await coreService.blocktank.fees(refresh: true)
-        if fees == nil {
-            Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
-            fees = try await coreService.blocktank.fees(refresh: false)
+    func payOrder(
+        order: IBtOrder,
+        speed: TransactionSpeed,
+        txFee: UInt64,
+        utxosToSpend: [SpendableUtxo]? = nil,
+        satsPerVbyte: UInt32? = nil
+    ) async throws {
+        let rate: UInt32
+        if let satsPerVbyte {
+            rate = satsPerVbyte
+        } else {
+            var fees = try? await coreService.blocktank.fees(refresh: true)
+            if fees == nil {
+                Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
+                fees = try await coreService.blocktank.fees(refresh: false)
+            }
+            guard let fees else {
+                throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
+            }
+            rate = speed.getFeeRate(from: fees)
         }
-
-        guard let fees else {
-            throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
-        }
-
-        let satsPerVbyte = speed.getFeeRate(from: fees)
 
         guard let address = order.payment?.onchain?.address else {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
@@ -141,7 +150,7 @@ class TransferViewModel: ObservableObject {
         let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
 
         // Pass pre-selected UTXOs to ensure same fee as calculated
-        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte, utxosToSpend: utxosToSpend)
+        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: rate, utxosToSpend: utxosToSpend)
 
         let txTotalSats = order.feeSat + txFee
 
@@ -156,7 +165,7 @@ class TransferViewModel: ObservableObject {
                 txId: txid,
                 address: address,
                 isReceive: false,
-                feeRate: UInt64(satsPerVbyte),
+                feeRate: UInt64(rate),
                 isTransfer: true,
                 channelId: nil,
                 createdAt: currentTime
