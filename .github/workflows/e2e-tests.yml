@@ -282,11 +282,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Install Appium XCUITest driver
-        working-directory: bitkit-e2e-tests
-        run: |
-          npx appium driver list --installed
-          npx appium driver install xcuitest
 
       - name: Docker info
         run: |
@@ -435,11 +430,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Install Appium XCUITest driver
-        working-directory: bitkit-e2e-tests
-        run: |
-          npx appium driver list --installed
-          npx appium driver install xcuitest
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
