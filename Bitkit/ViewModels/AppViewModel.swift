@@ -230,6 +230,17 @@ extension AppViewModel {
         // Reset send state before handling new data
         resetSendState()
 
+        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
+        if Bip21Utils.isDuplicatedBip21(uri) {
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
+            return
+        }
+
         let data = try await decode(invoice: uri)
 
         switch data {
@@ -548,6 +559,15 @@ extension AppViewModel {
         guard !normalized.isEmpty else {
             manualEntryValidationResult = .empty
             isManualEntryInputValid = false
+            return
+        }
+
+        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
+        if Bip21Utils.isDuplicatedBip21(normalized) {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .invalid
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .invalid)
             return
         }
 
