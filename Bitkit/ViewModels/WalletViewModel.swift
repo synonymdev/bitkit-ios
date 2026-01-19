@@ -108,7 +108,7 @@ class WalletViewModel: ObservableObject {
         }
 
         if nodeLifecycleState != .initializing {
-            // Initilaizing means it's a wallet restore or create so we need to show the loading view
+            // Initializing means it's a wallet restore or create so we need to show the loading view
             nodeLifecycleState = .starting
         }
 
