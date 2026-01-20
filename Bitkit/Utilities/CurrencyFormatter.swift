@@ -9,4 +9,12 @@ enum CurrencyFormatter {
 
         return formatter.string(from: amount as NSDecimalNumber) ?? ""
     }
+
+    /// Format satoshis with space as grouping separator (e.g., 10000 -> "10 000")
+    static func formatSats(_ sats: UInt64) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.groupingSeparator = " "
+        return formatter.string(from: NSNumber(value: sats)) ?? String(sats)
+    }
 }
