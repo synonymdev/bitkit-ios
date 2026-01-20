@@ -129,7 +129,7 @@ jobs:
 
   build-regtest:
     if: github.event.pull_request.draft == false
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
@@ -380,7 +380,7 @@ jobs:
 
   e2e-tests-regtest:
     if: github.event.pull_request.draft == false
-    runs-on: macos-15
+    runs-on: macos-latest
     needs: [build-regtest, e2e-branch]
 
     strategy:
