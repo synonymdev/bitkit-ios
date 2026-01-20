@@ -186,7 +186,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 16"
-          OS_VERSION: "latest"
+          OS_VERSION: "18.6"
           GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
@@ -282,6 +282,9 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - name: List available simulators
+        run: xcrun simctl list devices available
+
 
       - name: Docker info
         run: |
@@ -335,7 +338,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -347,7 +350,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -358,7 +361,7 @@ jobs:
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
@@ -430,6 +433,9 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - name: List available simulators
+        run: xcrun simctl list devices available
+
 
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
@@ -437,14 +443,10 @@ jobs:
           rm -rf artifacts/
           rm -rf /tmp/lock/
 
-      - name: Clear iOS Simulator environment
+      - name: Boot Simulator
         run: |
-          echo "🔧 Shutting down all running iOS simulators..."
-          xcrun simctl shutdown all || true
-          echo "🔧 Erasing target simulator: iPhone 16..."
-          xcrun simctl erase "iPhone 16" || true
-          echo "🔧 Disabling iOS Simulator notifications..."
-          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl erase "iPhone 16"
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
@@ -454,7 +456,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -467,7 +469,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -479,7 +481,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "26.0.1"
+          SIMULATOR_OS_VERSION: "18.6"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
