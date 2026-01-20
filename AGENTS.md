@@ -37,6 +37,34 @@ E2E_BACKEND=network E2E_NETWORK=regtest \
   build
 ```
 
+### Running on iPhone
+
+**From Xcode (Recommended):**
+1. Run `open Bitkit.xcodeproj` in root dir
+2. Select your device from the destination dropdown
+3. Press Cmd+R to build and run
+
+**From Terminal (Reference):**
+```bash
+# List connected devices
+xcrun devicectl list devices
+
+# Set device ID from the list above
+DEVICE_ID="<device-identifier-from-list>"
+
+# Build for device (Note: SPM binary framework embedding may require Xcode)
+xcodebuild -project Bitkit.xcodeproj -scheme Bitkit -configuration Debug \
+  -destination 'generic/platform=iOS' -derivedDataPath build build
+
+# Install app on device
+xcrun devicectl device install app --device $DEVICE_ID build/Build/Products/Debug-iphoneos/Bitkit.app
+
+# Launch app with console output
+xcrun devicectl device process launch --device $DEVICE_ID to.bitkit --console
+```
+
+**Note:** Due to SPM binary framework embedding issues with command-line builds, running on physical device currently works best from Xcode directly. The LDKNodeFFI.xcframework binary may not be properly embedded when building via `xcodebuild`.
+
 ### Code Formatting
 ```bash
 # Install SwiftFormat
