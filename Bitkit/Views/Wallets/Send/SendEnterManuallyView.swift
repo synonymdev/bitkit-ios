@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SendEnterManuallyView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @Binding var navigationPath: [SendRoute]
@@ -12,7 +13,11 @@ struct SendEnterManuallyView: View {
             get: { app.manualEntryInput },
             set: { newValue in
                 app.manualEntryInput = newValue
-                Task { await app.validateManualEntryInput(newValue) }
+                app.validateManualEntryInput(
+                    newValue,
+                    savingsBalanceSats: wallet.spendableOnchainBalanceSats,
+                    spendingBalanceSats: wallet.maxSendLightningSats
+                )
             }
         )
     }
@@ -40,6 +45,8 @@ struct SendEnterManuallyView: View {
                     .foregroundColor(.textPrimary)
                     .accentColor(.brandAccent)
                     .submitLabel(.done)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
                     .dismissKeyboardOnReturn(text: manualEntryBinding, isFocused: $isTextEditorFocused)
                     .accessibilityValue(app.manualEntryInput)
                     .accessibilityIdentifier("RecipientInput")
@@ -72,12 +79,13 @@ struct SendEnterManuallyView: View {
         do {
             try await app.handleScannedData(uri)
 
-            let route = PaymentNavigationHelper.appropriateSendRoute(
+            if let route = PaymentNavigationHelper.appropriateSendRoute(
                 app: app,
                 currency: currency,
                 settings: settings
-            )
-            navigationPath.append(route)
+            ) {
+                navigationPath.append(route)
+            }
         } catch {
             Logger.error(error, context: "Failed to read data from clipboard")
             app.toast(error)
@@ -88,5 +96,6 @@ struct SendEnterManuallyView: View {
 #Preview {
     SendEnterManuallyView(navigationPath: .constant([]))
         .environmentObject(AppViewModel())
+        .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)
 }
