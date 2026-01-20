@@ -62,7 +62,7 @@ struct ActivityLatest: View {
                         }
                     )
                 } else {
-                    CustomButton(title: tTodo("Show All"), variant: .tertiary) {
+                    CustomButton(title: t("common__show_all"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
                     .accessibilityIdentifier("ActivityShowAll")

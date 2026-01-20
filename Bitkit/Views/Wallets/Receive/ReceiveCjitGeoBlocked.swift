@@ -21,7 +21,7 @@ struct ReceiveCjitGeoBlocked: View {
 
             Spacer()
 
-            CustomButton(title: tTodo("Advanced Setup")) {
+            CustomButton(title: t("lightning__funding_advanced__button_short")) {
                 sheets.hideSheet()
                 navigation.navigate(.fundingAdvanced)
             }

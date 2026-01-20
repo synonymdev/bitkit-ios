@@ -150,8 +150,8 @@ class ScannerManager: ObservableObject {
             else {
                 app.toast(
                     type: .error,
-                    title: "Error",
-                    description: tTodo("Sorry. Bitkit wasn't able to load this image.")
+                    title: t("common__error"),
+                    description: t("other__qr_error_load_image")
                 )
                 return
             }
@@ -159,8 +159,8 @@ class ScannerManager: ObservableObject {
             guard let cgImage = image.cgImage else {
                 app.toast(
                     type: .error,
-                    title: "Error",
-                    description: tTodo("Sorry. Bitkit wasn't able to process this image.")
+                    title: t("common__error"),
+                    description: t("other__qr_error_process_image")
                 )
                 return
             }
@@ -171,8 +171,8 @@ class ScannerManager: ObservableObject {
                     DispatchQueue.main.async {
                         app.toast(
                             type: .error,
-                            title: tTodo("Detection Error"),
-                            description: tTodo("Failed to process the image for QR codes.")
+                            title: t("other__qr_error_detection_title"),
+                            description: t("other__qr_error_detection_description")
                         )
                     }
                     return
@@ -183,8 +183,8 @@ class ScannerManager: ObservableObject {
                     DispatchQueue.main.async {
                         app.toast(
                             type: .error,
-                            title: tTodo("No QR Code Found"),
-                            description: tTodo("Sorry. Bitkit wasn't able to detect a QR code in this image.")
+                            title: t("other__qr_error_no_qr_title"),
+                            description: t("other__qr_error_no_qr_description")
                         )
                     }
                     return
@@ -198,8 +198,8 @@ class ScannerManager: ObservableObject {
                     DispatchQueue.main.async {
                         app.toast(
                             type: .error,
-                            title: tTodo("No QR Code Found"),
-                            description: tTodo("Sorry. Bitkit wasn't able to detect a QR code in this image.")
+                            title: t("other__qr_error_no_qr_title"),
+                            description: t("other__qr_error_no_qr_description")
                         )
                     }
                     return
@@ -230,8 +230,8 @@ class ScannerManager: ObservableObject {
             Logger.error(error, context: "Failed to process image")
             app.toast(
                 type: .error,
-                title: tTodo("Error"),
-                description: tTodo("Sorry. An error occurred when trying to process this image.")
+                title: t("common__error"),
+                description: t("other__qr_error_generic_description")
             )
         }
     }

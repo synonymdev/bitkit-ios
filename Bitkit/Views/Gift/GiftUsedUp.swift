@@ -9,7 +9,7 @@ struct GiftUsedUp: View {
             SheetHeader(title: t("Out of Gifts"))
 
             VStack(spacing: 0) {
-                BodyMText(tTodo("Sorry, you’re too late! All gifts for this code have already been claimed."))
+                BodyMText(t("other__gift__claimed__text"))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Spacer()

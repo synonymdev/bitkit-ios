@@ -153,8 +153,8 @@ struct NodeStateView: View {
                                     try await wallet.disconnectPeer(peer)
                                     app.toast(
                                         type: .info,
-                                        title: tTodo("success"),
-                                        description: tTodo("Peer disconnected.")
+                                        title: t("common__success"),
+                                        description: t("lightning__peer_disconnected")
                                     )
                                 } catch {
                                     app.toast(

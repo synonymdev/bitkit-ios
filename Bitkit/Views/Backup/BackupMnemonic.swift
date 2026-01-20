@@ -15,8 +15,8 @@ struct BackupMnemonicView: View {
 
     private var note: String {
         showMnemonic
-            ? "<accent>Bitkit cannot access your funds and cannot help recover them</accent> if you lose your recovery phrase. Keep it safe!"
-            : "Make sure no one can see your screen. <accent>Never share your recovery phrase</accent> with anyone, as it may result in loss of funds."
+            ? t("security__mnemonic_note_revealed")
+            : t("security__mnemonic_note_hidden")
     }
 
     private var mnemonicAccessibilityLabel: String {
@@ -81,7 +81,7 @@ struct BackupMnemonicView: View {
                     }
                 }
 
-                BodySText(tTodo(note), textColor: .brandAccent, accentFont: Fonts.bold)
+                BodySText(note, textColor: .brandAccent, accentFont: Fonts.bold)
 
                 Spacer()
 
