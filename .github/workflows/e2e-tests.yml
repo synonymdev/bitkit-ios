@@ -429,11 +429,23 @@ jobs:
 
       - name: Boot Simulator
         run: |
+          echo "Erasing simulator..."
           xcrun simctl erase "iPhone 16" || true
+          
+          echo "Booting simulator..."
           xcrun simctl boot "iPhone 16" || true
-          echo "Waiting for simulator to fully boot..."
+          
+          echo "Waiting for boot status..."
           xcrun simctl bootstatus "iPhone 16" -b
-          sleep 10
+          
+          echo "Opening Simulator app to ensure UI is ready..."
+          open -a Simulator
+          
+          echo "Waiting for simulator to fully initialize..."
+          sleep 30
+          
+          echo "Verifying simulator state..."
+          xcrun simctl list devices booted
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
