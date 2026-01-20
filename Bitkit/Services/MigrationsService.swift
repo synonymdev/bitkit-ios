@@ -416,6 +416,18 @@ extension MigrationsService {
         UserDefaults.standard.bool(forKey: Self.rnMigrationCheckedKey)
     }
 
+    var isMigrationCompleted: Bool {
+        UserDefaults.standard.bool(forKey: Self.rnMigrationCompletedKey)
+    }
+
+    func markMigrationChecked() {
+        UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+    }
+
+    func markMigrationCompleted() {
+        UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
+    }
+
     func hasRNWalletData() -> Bool {
         do {
             let mnemonic = try loadStringFromRNKeychain(key: .mnemonic(walletName: rnWalletName))
@@ -489,8 +501,8 @@ extension MigrationsService {
             Logger.warn("No MMKV data found, skipping settings/activities migration", context: "Migration")
         }
 
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
+        markMigrationCompleted()
+        markMigrationChecked()
 
         // Clean up RN data after successful migration
         cleanupAfterMigration()
@@ -575,10 +587,6 @@ extension MigrationsService {
             channelMonitors: monitors
         )
         Logger.info("Prepared \(monitors.count) channel monitors for migration", context: "Migration")
-    }
-
-    func markMigrationChecked() {
-        UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
     }
 
     // MARK: - RN Data Cleanup

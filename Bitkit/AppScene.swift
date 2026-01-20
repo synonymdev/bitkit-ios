@@ -410,24 +410,53 @@ struct AppScene: View {
             return String(data: data, encoding: .utf8)
         }()
 
+        let migrations = MigrationsService.shared
+
+        // If migration was already completed, only use VSS backups (RN backups are outdated)
+        if migrations.isMigrationCompleted {
+            Logger.info("Migration already completed, using VSS backup only (RN backups are outdated)", context: "AppScene")
+            await BackupService.shared.performFullRestoreFromLatestBackup()
+            return
+        }
+
         // Check for RN backup and get its timestamp
-        let hasRNBackup = await MigrationsService.shared.hasRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+        let hasRNBackup = await migrations.hasRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
         let rnTimestamp: UInt64? = await hasRNBackup ? (try? RNBackupClient.shared.getLatestBackupTimestamp()) : nil
 
         // Get VSS backup timestamp
         let vssTimestamp = await BackupService.shared.getLatestBackupTime()
 
-        // Determine which backup is more recent
+        // Determine which backup to use
+        // If VSS backups exist, always prefer them (they indicate wallet was already migrated to native)
+        // RN backups are only relevant for first-time migration, not for restoring after wipe
         let shouldRestoreRN: Bool = {
-            guard hasRNBackup else { return false }
-            guard let vss = vssTimestamp, vss > 0 else { return true } // No VSS, use RN
-            guard let rn = rnTimestamp else { return false } // No RN timestamp, use VSS
-            return rn >= vss // RN is same or newer
+            guard hasRNBackup else {
+                Logger.debug("No RN backup found, using VSS", context: "AppScene")
+                return false
+            }
+
+            // If VSS backups exist, always use them (wallet was already migrated)
+            if let vss = vssTimestamp {
+                if let rn = rnTimestamp {
+                    Logger.info("VSS backups exist (RN: \(rn), VSS: \(vss)), using VSS (wallet was already migrated)", context: "AppScene")
+                } else {
+                    Logger.info("VSS backups exist, using VSS (wallet was already migrated)", context: "AppScene")
+                }
+                return false
+            }
+
+            // No VSS backups exist, use RN backup (first-time migration scenario)
+            guard let rn = rnTimestamp else {
+                Logger.debug("No RN timestamp available, using VSS", context: "AppScene")
+                return false
+            }
+            Logger.info("No VSS backups found, using RN backup (RN: \(rn))", context: "AppScene")
+            return true
         }()
 
         if shouldRestoreRN {
             do {
-                try await MigrationsService.shared.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
+                try await migrations.restoreFromRNRemoteBackup(mnemonic: mnemonic, passphrase: passphrase)
             } catch {
                 Logger.error("RN remote backup restore failed: \(error)", context: "AppScene")
                 // Fall back to VSS
