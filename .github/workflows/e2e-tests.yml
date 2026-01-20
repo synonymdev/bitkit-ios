@@ -436,7 +436,6 @@ jobs:
       - name: List available simulators
         run: xcrun simctl list devices available
 
-
       - name: Clear previous E2E artifacts
         working-directory: bitkit-e2e-tests
         run: |
@@ -445,8 +444,33 @@ jobs:
 
       - name: Boot Simulator
         run: |
-          xcrun simctl erase "iPhone 16"
+          xcrun simctl erase "iPhone 16" || true
           xcrun simctl boot "iPhone 16" || true
+          echo "Waiting for simulator to fully boot..."
+          xcrun simctl bootstatus "iPhone 16" -b
+          sleep 10
+
+      - name: Pre-build WebDriverAgent
+        run: |
+          WDA_PATH=$(find ~/.npm/_npx -name "WebDriverAgent.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname 2>/dev/null || true)
+          if [ -z "$WDA_PATH" ]; then
+            WDA_PATH=$(find node_modules -name "WebDriverAgent.xcodeproj" -type d 2>/dev/null | head -1 | xargs dirname 2>/dev/null || true)
+          fi
+          if [ -n "$WDA_PATH" ]; then
+            echo "Building WDA at: $WDA_PATH"
+            cd "$WDA_PATH"
+            xcodebuild build-for-testing \
+              -project WebDriverAgent.xcodeproj \
+              -scheme WebDriverAgentRunner \
+              -destination "platform=iOS Simulator,name=iPhone 16,OS=26.2" \
+              -derivedDataPath /tmp/WDA \
+              -allowProvisioningUpdates \
+              CODE_SIGNING_ALLOWED=NO \
+              | xcbeautify || echo "WDA pre-build completed with warnings"
+          else
+            echo "WDA not found, will be built on first test run"
+          fi
+        working-directory: bitkit-e2e-tests
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
