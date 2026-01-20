@@ -1,6 +1,16 @@
 import BitkitCore
+import Combine
 import LDKNode
 import SwiftUI
+
+enum ManualEntryValidationResult: Equatable {
+    case valid
+    case empty
+    case invalid
+    case insufficientSavings
+    case insufficientSpending
+    case expiredLightningOnly
+}
 
 @MainActor
 class AppViewModel: ObservableObject {
@@ -10,6 +20,7 @@ class AppViewModel: ObservableObject {
     @Published var selectedWalletToPayFrom: WalletType = .onchain
     @Published var manualEntryInput: String = ""
     @Published var isManualEntryInputValid: Bool = false
+    @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -63,6 +74,10 @@ class AppViewModel: ObservableObject {
     private let navigationViewModel: NavigationViewModel
     private var manualEntryValidationSequence: UInt64 = 0
 
+    // Combine infrastructure for debounced validation
+    private var manualEntryValidationCancellable: AnyCancellable?
+    private let manualEntryValidationSubject = PassthroughSubject<(String, Int, Int, UInt64), Never>()
+
     init(
         lightningService: LightningService = .shared,
         coreService: CoreService = .shared,
@@ -77,10 +92,60 @@ class AppViewModel: ObservableObject {
         // Start app status initialization timer
         startAppStatusInitializationTimer()
 
+        setupManualEntryValidationDebounce()
+
         Task {
             await checkGeoStatus()
             // Check for app updates on startup
             await AppUpdateService.shared.checkForAppUpdate()
+        }
+    }
+
+    private func setupManualEntryValidationDebounce() {
+        manualEntryValidationCancellable = manualEntryValidationSubject
+            .debounce(for: .milliseconds(1000), scheduler: DispatchQueue.main)
+            .sink { [weak self] rawValue, savingsBalanceSats, spendingBalanceSats, queuedSequence in
+                guard let self else { return }
+                // Skip if sequence changed (reset was called or new validation queued)
+                guard queuedSequence == manualEntryValidationSequence else { return }
+                Task {
+                    await self.performValidation(rawValue, savingsBalanceSats: savingsBalanceSats, spendingBalanceSats: spendingBalanceSats)
+                }
+            }
+    }
+
+    private func showValidationErrorToast(for result: ManualEntryValidationResult) {
+        switch result {
+        case .invalid:
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
+        case .insufficientSavings:
+            toast(
+                type: .error,
+                title: t("other__pay_insufficient_savings"),
+                description: t("other__pay_insufficient_savings_description"),
+                accessibilityIdentifier: "InsufficientSavingsToast"
+            )
+        case .insufficientSpending:
+            toast(
+                type: .error,
+                title: t("other__pay_insufficient_spending"),
+                description: t("other__pay_insufficient_savings_description"),
+                accessibilityIdentifier: "InsufficientSpendingToast"
+            )
+        case .expiredLightningOnly:
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__expired"),
+                accessibilityIdentifier: "ExpiredLightningToast"
+            )
+        case .valid, .empty:
+            break
         }
     }
 
@@ -165,11 +230,35 @@ extension AppViewModel {
         // Reset send state before handling new data
         resetSendState()
 
+        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
+        if Bip21Utils.isDuplicatedBip21(uri) {
+            toast(
+                type: .error,
+                title: t("other__scan_err_decoding"),
+                description: t("other__scan__error__generic"),
+                accessibilityIdentifier: "InvalidAddressToast"
+            )
+            return
+        }
+
         let data = try await decode(invoice: uri)
 
         switch data {
         // BIP21 (Unified) invoice handling
         case let .onChain(invoice):
+            // Check network first - treat wrong network as decoding error
+            let addressValidation = try? validateBitcoinAddress(address: invoice.address)
+            let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
+
             if let lnInvoice = invoice.params?["lightning"] {
                 guard lightningService.status?.isRunning == true else {
                     toast(type: .error, title: "Lightning not running", description: "Please try again later.")
@@ -177,27 +266,98 @@ extension AppViewModel {
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
-                    if lightningService.canSend(amountSats: lightningInvoice.amountSatoshis) {
+                    // Check lightning invoice network
+                    let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
+                    let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
+
+                    let canSend = lightningService.canSend(amountSats: lightningInvoice.amountSatoshis)
+
+                    if lnNetworkMatch, !lightningInvoice.isExpired, canSend {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
+
+                    // If Lightning is expired or insufficient, fall back to on-chain silently (no toast)
                 }
             }
 
-            // No LN invoice found, proceed with onchain payment
+            // Fallback to on-chain if address is available
+            guard !invoice.address.isEmpty else { return }
+
+            // Check on-chain balance
+            let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
+            if invoice.amountSatoshis > 0 {
+                guard onchainBalance >= invoice.amountSatoshis else {
+                    let amountNeeded = invoice.amountSatoshis - onchainBalance
+                    toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t(
+                            "other__pay_insufficient_savings_amount_description",
+                            variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)]
+                        ),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
+                    )
+                    return
+                }
+            } else {
+                // Zero-amount invoice: user must have some balance to proceed
+                guard onchainBalance > 0 else {
+                    toast(
+                        type: .error,
+                        title: t("other__pay_insufficient_savings"),
+                        description: t("other__pay_insufficient_savings_description"),
+                        accessibilityIdentifier: "InsufficientSavingsToast"
+                    )
+                    return
+                }
+            }
+
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
+            // Check network first - treat wrong network as decoding error
+            let invoiceNetwork = NetworkValidationHelper.convertNetworkType(invoice.networkType)
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network) {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
+
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
 
-            Logger.debug("Lightning: \(invoice)")
-            if lightningService.canSend(amountSats: invoice.amountSatoshis) {
-                handleScannedLightningInvoice(invoice, bolt11: uri)
-            } else {
-                toast(type: .error, title: "Insufficient Funds", description: "You do not have enough funds to send this payment.")
+            guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+                let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+                let amountNeeded = invoice.amountSatoshis > spendingBalance ? invoice.amountSatoshis - spendingBalance : 0
+                let description = amountNeeded > 0
+                    ? t("other__pay_insufficient_spending_amount_description", variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)])
+                    : t("other__pay_insufficient_spending_description")
+                toast(
+                    type: .error,
+                    title: t("other__pay_insufficient_spending"),
+                    description: description,
+                    accessibilityIdentifier: "InsufficientSpendingToast"
+                )
+                return
             }
+
+            guard !invoice.isExpired else {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__expired"),
+                    accessibilityIdentifier: "ExpiredLightningToast"
+                )
+                return
+            }
+
+            handleScannedLightningInvoice(invoice, bolt11: uri)
         case let .lnurlPay(data: lnurlPayData):
             Logger.debug("LNURL: \(lnurlPayData)")
             handleLnurlPayInvoice(lnurlPayData)
@@ -216,7 +376,17 @@ extension AppViewModel {
                 return
             }
 
-            // TODO: add network check
+            // Check network - treat wrong network as decoding error
+            let nodeNetwork = NetworkValidationHelper.convertNetworkType(network)
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: nodeNetwork, currentNetwork: Env.network) {
+                toast(
+                    type: .error,
+                    title: t("other__scan_err_decoding"),
+                    description: t("other__scan__error__generic"),
+                    accessibilityIdentifier: "InvalidAddressToast"
+                )
+                return
+            }
 
             handleNodeUri(url, network)
         case let .gift(code, amount):
@@ -358,23 +528,136 @@ extension AppViewModel {
         manualEntryValidationSequence &+= 1
         manualEntryInput = ""
         isManualEntryInputValid = false
+        manualEntryValidationResult = .empty
     }
 
-    func validateManualEntryInput(_ rawValue: String) async {
+    /// Queue validation with debounce
+    func validateManualEntryInput(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) {
+        // Increment sequence first so any pending debounced requests become stale
         manualEntryValidationSequence &+= 1
         let currentSequence = manualEntryValidationSequence
 
         let normalized = normalizeManualEntry(rawValue)
 
+        // Immediately update state for empty input (no debounce needed)
         guard !normalized.isEmpty else {
+            manualEntryValidationResult = .empty
             isManualEntryInputValid = false
             return
         }
 
-        let isValid = await (try? decode(invoice: normalized)) != nil
+        // Queue the validation with debounce, including the sequence to detect stale requests
+        manualEntryValidationSubject.send((rawValue, savingsBalanceSats, spendingBalanceSats, currentSequence))
+    }
+
+    /// Perform the actual validation
+    private func performValidation(_ rawValue: String, savingsBalanceSats: Int, spendingBalanceSats: Int) async {
+        let currentSequence = manualEntryValidationSequence
+
+        let normalized = normalizeManualEntry(rawValue)
+
+        guard !normalized.isEmpty else {
+            manualEntryValidationResult = .empty
+            isManualEntryInputValid = false
+            return
+        }
+
+        // Workaround for duplicated BIP21 URIs (bitkit-core#63)
+        if Bip21Utils.isDuplicatedBip21(normalized) {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .invalid
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .invalid)
+            return
+        }
+
+        // Try to decode the invoice
+        guard let decodedData = try? await decode(invoice: normalized) else {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .invalid
+            isManualEntryInputValid = false
+            showValidationErrorToast(for: .invalid)
+            return
+        }
 
         guard currentSequence == manualEntryValidationSequence else { return }
-        isManualEntryInputValid = isValid
+
+        // Determine validation result based on invoice type and balance
+        var result: ManualEntryValidationResult = .valid
+
+        switch decodedData {
+        case let .lightning(invoice):
+            // Priority 0: Check network first - treat wrong network as invalid
+            let invoiceNetwork = NetworkValidationHelper.convertNetworkType(invoice.networkType)
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: invoiceNetwork, currentNetwork: Env.network) {
+                result = .invalid
+                break
+            }
+
+            // Lightning-only invoice: check spending balance and expiry
+            let amountSats = invoice.amountSatoshis
+
+            // Priority 1: Insufficient spending balance (only check if amount > 0)
+            if amountSats > 0 && spendingBalanceSats < Int(amountSats) {
+                result = .insufficientSpending
+            } else if invoice.isExpired {
+                // Priority 2: Expired invoice (only after balance check passes)
+                result = .expiredLightningOnly
+            }
+
+        case let .onChain(invoice):
+            // Priority 0: Check network first - treat wrong network as invalid
+            let addressValidation = try? validateBitcoinAddress(address: invoice.address)
+            let addressNetwork: LDKNode.Network? = addressValidation.map { NetworkValidationHelper.convertNetworkType($0.network) }
+            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: addressNetwork, currentNetwork: Env.network) {
+                result = .invalid
+                break
+            }
+
+            // BIP21 with potential lightning parameter
+            var canPayLightning = false
+            if let lnInvoice = invoice.params?["lightning"],
+               case let .lightning(lightningInvoice) = try? await decode(invoice: lnInvoice)
+            {
+                // Check for stale request after async decode
+                guard currentSequence == manualEntryValidationSequence else { return }
+
+                // Check lightning invoice network too
+                let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
+                let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
+
+                // Has lightning fallback - check if lightning is viable
+                canPayLightning = lnNetworkMatch && !lightningInvoice.isExpired &&
+                    (lightningInvoice.amountSatoshis == 0 || spendingBalanceSats >= Int(lightningInvoice.amountSatoshis))
+            }
+
+            if !canPayLightning {
+                // On-chain: check savings balance
+                if invoice.amountSatoshis > 0 && savingsBalanceSats < Int(invoice.amountSatoshis) {
+                    result = .insufficientSavings
+                } else if invoice.amountSatoshis == 0 && savingsBalanceSats == 0 {
+                    // Zero-amount invoice: user must have some balance to proceed
+                    result = .insufficientSavings
+                }
+            }
+
+        case .lnurlPay, .lnurlWithdraw, .lnurlChannel, .lnurlAuth, .nodeId, .gift:
+            // These types are valid if decoded successfully
+            result = .valid
+
+        default:
+            result = .invalid
+        }
+
+        guard currentSequence == manualEntryValidationSequence else { return }
+
+        manualEntryValidationResult = result
+        isManualEntryInputValid = (result == .valid)
+
+        // Show toast for error results
+        if result != .valid && result != .empty {
+            showValidationErrorToast(for: result)
+        }
     }
 }
 
@@ -570,6 +853,7 @@ extension AppViewModel {
                     SettingsViewModel.shared.updatePinEnabledState()
 
                     MigrationsService.shared.isShowingMigrationLoading = false
+                    self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
                 }
             } else if MigrationsService.shared.isRestoringFromRNRemoteBackup {
                 Task {
