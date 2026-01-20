@@ -19,7 +19,7 @@ struct IncomingTransfer: View {
 
             // Show duration if available (force close scenario), otherwise standard transfer text
             if let duration = remainingDuration {
-                CaptionBText(t("wallet__activity_transfer_from_spending_duration", variables: ["duration": duration]))
+                CaptionBText(t("wallet__activity_transfer_savings_pending", variables: ["duration": duration]))
             } else {
                 CaptionBText(t("wallet__details_transfer_subtitle"))
             }
