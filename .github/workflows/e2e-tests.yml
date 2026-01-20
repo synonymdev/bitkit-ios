@@ -427,15 +427,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: List available simulators
-        run: xcrun simctl list devices available
-
-      - name: Clear previous E2E artifacts
-        working-directory: bitkit-e2e-tests
-        run: |
-          rm -rf artifacts/
-          rm -rf /tmp/lock/
-
       - name: Boot Simulator
         run: |
           xcrun simctl erase "iPhone 16" || true
