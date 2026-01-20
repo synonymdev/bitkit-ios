@@ -1,0 +1,244 @@
+name: E2E Migration (iOS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      e2e_branch:
+        description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
+        required: false
+        default: "default-feature-branch"
+  # schedule:
+  #   - cron: "0 2 * * *"
+
+env:
+  TERM: xterm-256color
+  FORCE_COLOR: 1
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event.pull_request.draft == false
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: System Information
+        run: |
+          echo "=== System Information ==="
+          echo "macOS Version:"
+          sw_vers
+          echo ""
+          echo "Xcode Version:"
+          xcodebuild -version
+
+      - name: Build iOS app (regtest)
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
+          SIMULATOR_NAME: "iPhone 17"
+          OS_VERSION: "latest"
+          GEO: false
+          E2E_BACKEND: network
+          E2E_NETWORK: regtest
+        run: |
+          echo "=== Building iOS app ==="
+          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
+
+          if xcodebuild -showsdks | grep -q "iOS Simulator"; then
+            echo "✅ iOS Simulator platform already installed"
+          else
+            echo "⚙️  iOS Simulator platform not found — downloading..."
+            xcodebuild -downloadPlatform iOS
+          fi
+
+          xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
+            -scheme Bitkit \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
+            -derivedDataPath DerivedData \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
+            -allowProvisioningUpdates \
+            build
+
+      - name: Prepare app for E2E tests
+        run: |
+          mkdir -p e2e-app
+          cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+
+      - name: Upload iOS app
+        uses: actions/upload-artifact@v4
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: e2e-app/
+
+  e2e-branch:
+    if: github.event.pull_request.draft == false
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/determine-e2e-branch.yml@main
+    with:
+      app_branch: ${{ github.head_ref || github.ref_name }}
+      e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
+
+  prepare-wallets:
+    if: github.event.pull_request.draft == false
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
+    needs: [e2e-branch]
+    strategy:
+      fail-fast: false
+      matrix:
+        rn_version:
+          - v1.1.6
+          - v1.1.4
+          - v1.1.3
+        scenario:
+          - { name: migration_1-restore, setup_type: standard }
+          - { name: migration_2-migration, setup_type: standard }
+          - { name: migration_3-with-passphrase, setup_type: standard }
+          - { name: migration_4-with-sweep, setup_type: sweep }
+    with:
+      e2e_branch: ${{ needs.e2e-branch.outputs.branch }}
+      rn_version: ${{ matrix.rn_version }}
+      setup_type: ${{ matrix.scenario.setup_type }}
+      scenario_name: ${{ matrix.scenario.name }}
+
+  e2e-tests:
+    if: github.event.pull_request.draft == false
+    runs-on: macos-latest
+    needs: [build, e2e-branch, prepare-wallets]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        rn_version:
+          - v1.1.6
+          - v1.1.4
+          - v1.1.3
+        scenario:
+          - { name: migration_1-restore, grep: "@migration_1" }
+          - { name: migration_2-migration, grep: "@migration_2" }
+          - { name: migration_3-with-passphrase, grep: "@migration_3" }
+          - { name: migration_4-with-sweep, grep: "@migration_4" }
+
+    name: e2e-tests - ${{ matrix.rn_version }} - ${{ matrix.scenario.name }}
+
+    env:
+      BACKEND: regtest
+      RN_APK_PATH: bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app
+
+    steps:
+      - name: Show selected E2E branch
+        env:
+          E2E_BRANCH: ${{ needs.e2e-branch.outputs.branch }}
+        run: echo $E2E_BRANCH
+
+      - name: Clone E2E tests
+        uses: actions/checkout@v4
+        with:
+          repository: synonymdev/bitkit-e2e-tests
+          path: bitkit-e2e-tests
+          ref: ${{ needs.e2e-branch.outputs.branch }}
+
+      - name: Download iOS app
+        uses: actions/download-artifact@v4
+        with:
+          name: bitkit-e2e-ios_${{ github.run_number }}
+          path: bitkit-e2e-tests/aut
+
+      - name: Download migration env
+        uses: actions/download-artifact@v4
+        with:
+          name: migration-env_${{ matrix.rn_version }}_${{ matrix.scenario.name }}
+          path: bitkit-e2e-tests/artifacts
+
+      - name: Export migration env
+        working-directory: bitkit-e2e-tests
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.scenario.name }}" == "migration_4-with-sweep" ]]; then
+            env_file="artifacts/migration_setup_sweep.env"
+          else
+            env_file="artifacts/migration_setup_standard.env"
+          fi
+          cat "$env_file" >> "$GITHUB_ENV"
+
+      - name: Download RN app for migration
+        run: |
+          mkdir -p bitkit-e2e-tests/aut
+          curl -L -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip \
+            https://github.com/synonymdev/bitkit-e2e-tests/releases/download/migration-rn-regtest/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip
+          unzip -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip -d bitkit-e2e-tests/aut
+
+      - name: List app directory contents
+        run: ls -l bitkit-e2e-tests/aut
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Cache npm cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install dependencies
+        working-directory: bitkit-e2e-tests
+        run: npm ci
+
+      - name: Clear previous E2E artifacts
+        working-directory: bitkit-e2e-tests
+        run: |
+          rm -rf artifacts/
+          rm -rf /tmp/lock/
+
+      - name: Clear iOS Simulator environment
+        run: |
+          echo "🔧 Shutting down all running iOS simulators..."
+          xcrun simctl shutdown all || true
+          echo "🔧 Erasing target simulator: iPhone 17..."
+          xcrun simctl erase "iPhone 17" || true
+          echo "🔧 Disabling iOS Simulator notifications..."
+          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+
+      - name: Run E2E Tests 1 (${{ matrix.scenario.name }})
+        continue-on-error: true
+        id: test1
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.scenario.grep }}'
+        env:
+          RECORD_VIDEO: true
+          ATTEMPT: 1
+
+      - name: Run E2E Tests 2 (${{ matrix.scenario.name }})
+        continue-on-error: true
+        if: steps.test1.outcome != 'success'
+        id: test2
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
+        env:
+          RECORD_VIDEO: true
+          ATTEMPT: 2
+
+      - name: Run E2E Tests 3 (${{ matrix.scenario.name }})
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        id: test3
+        working-directory: bitkit-e2e-tests
+        run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
+        env:
+          RECORD_VIDEO: true
+          ATTEMPT: 3
+
+      - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.rn_version }}_${{ github.run_number }}
+          path: bitkit-e2e-tests/artifacts/
