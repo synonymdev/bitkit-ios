@@ -174,12 +174,6 @@ jobs:
           xcrun simctl boot "iPhone 16" || true
           echo "✅ Simulator started at $(date)"
 
-      - name: Clean build
-        run: |
-          echo "⏱️  Cleaning build at $(date)"
-          xcodebuild clean -scheme Bitkit | xcbeautify
-          echo "✅ Build cleaned at $(date)"
-
       - name: Build iOS app (regtest)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
