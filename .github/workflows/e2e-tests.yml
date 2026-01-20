@@ -147,7 +147,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 16"
-          OS_VERSION: "18.6"
+          OS_VERSION: "26.2"
           GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
@@ -416,7 +416,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "18.6"
+          SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -429,7 +429,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "18.6"
+          SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -441,7 +441,7 @@ jobs:
         env:
           BACKEND: regtest
           SIMULATOR_NAME: "iPhone 16"
-          SIMULATOR_OS_VERSION: "18.6"
+          SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 3
 
