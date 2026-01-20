@@ -61,6 +61,27 @@
 		};
 /* End PBXCopyFilesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		96EMBED0012026012000FRAME /* Remove Static Framework Stubs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Remove Static Framework Stubs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Remove static framework stubs from app bundle\\n# LDKNodeFFI is a static library - its code is linked into the main executable.\\n# The empty framework structure causes iOS install errors.\\nFRAMEWORK_PATH=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks/LDKNodeFFI.framework\"\\n\\nif [ -d \"$FRAMEWORK_PATH\" ]; then\\n    echo \"Removing LDKNodeFFI static framework stub...\"\\n    rm -rf \"$FRAMEWORK_PATH\"\\n    echo \"Done.\"\\nfi\\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXFileReference section */
 		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -252,6 +273,7 @@
 				96FE1F5E2C2DE6AA006D0C8B /* Frameworks */,
 				96FE1F5F2C2DE6AA006D0C8B /* Resources */,
 				961058E72C355B5500E1F1D8 /* Embed Foundation Extensions */,
+				96EMBED0012026012000FRAME /* Remove Static Framework Stubs */,
 			);
 			buildRules = (
 			);
