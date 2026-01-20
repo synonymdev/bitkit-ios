@@ -266,7 +266,6 @@ class LightningService {
         }
 
         await MainActor.run {
-            clearCache()
             channelCache.removeAll()
         }
 
@@ -286,6 +285,12 @@ class LightningService {
 
         Logger.warn("Wiping on lighting wallet...")
         try FileManager.default.removeItem(at: directory)
+
+        await MainActor.run {
+            clearCache()
+            channelCache.removeAll()
+        }
+
         Logger.info("Lightning wallet wiped")
     }
 
@@ -718,7 +723,7 @@ extension LightningService {
         }
     }
 
-    /// Clear cached values (called when node stops)
+    /// Clear cached values - only call when wiping storage or resetting the wallet.
     @MainActor
     func clearCache() {
         cachedStatus = nil
