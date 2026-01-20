@@ -530,7 +530,7 @@ class WalletViewModel: ObservableObject {
     /// Use this for any event that may have changed balances or channel state
     private func refreshAndSyncState() async {
         await updateBalanceState()
-        syncChannelsAndPeers()
+        syncState()
     }
 
     /// Sync node status, ID and lifecycle state
