@@ -9,8 +9,6 @@ struct LnurlChannel: View {
     let channelData: LnurlChannelData
 
     @State private var isConnecting = false
-    @State private var isPeerConnected = false
-    @State private var isConnectingPeer = true
 
     // Parse the node URI to extract node, host, and port
     private var parsedUri: LnPeer {
@@ -38,14 +36,7 @@ struct LnurlChannel: View {
             BodyMText(t("other__lnurl_channel_message"))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            if isConnectingPeer {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.2)
-                    BodyMText("Connecting to peer...", textColor: .textSecondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if parsedUri.nodeId.isEmpty {
+            if parsedUri.nodeId.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle")
                         .font(.largeTitle)
@@ -111,7 +102,7 @@ struct LnurlChannel: View {
                     title: t("common__connect"),
                     variant: .primary,
                     size: .large,
-                    isDisabled: parsedUri.nodeId.isEmpty || isConnectingPeer,
+                    isDisabled: parsedUri.nodeId.isEmpty,
                     isLoading: isConnecting
                 ) {
                     Task {
@@ -123,9 +114,6 @@ struct LnurlChannel: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .task {
-            await connectToPeer()
-        }
     }
 
     private func onConnect() async {
@@ -140,6 +128,16 @@ struct LnurlChannel: View {
 
         isConnecting = true
 
+        // Connect to peer first (like Android does in onConnect)
+        if let peer = try? LnPeer(connection: channelData.uri) {
+            do {
+                try await wallet.connectPeer(peer)
+            } catch {
+                // Log but continue - peer might already be connected
+                Logger.error(error, context: "Failed to connect LNURL peer")
+            }
+        }
+
         do {
             try await LnurlHelper.handleLnurlChannel(params: channelData, nodeId: nodeId)
             isConnecting = false
@@ -152,30 +150,5 @@ struct LnurlChannel: View {
 
     private func onCancel() {
         navigation.reset()
-    }
-
-    // Connect to the peer before making the channel request
-    private func connectToPeer() async {
-        // The channelData.uri is the node peer URI (pubkey@host:port)
-        guard let peer = try? LnPeer(connection: channelData.uri) else {
-            await MainActor.run {
-                isConnectingPeer = false
-            }
-            return
-        }
-
-        do {
-            try await wallet.connectPeer(peer)
-            await MainActor.run {
-                isPeerConnected = true
-                isConnectingPeer = false
-            }
-        } catch {
-            Logger.error(error, context: "Failed to connect LNURL peer")
-            await MainActor.run {
-                // Still allow the user to try connecting - peer might already be connected
-                isConnectingPeer = false
-            }
-        }
     }
 }
