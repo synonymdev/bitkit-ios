@@ -59,7 +59,13 @@ class BalanceManager {
         let toSavingsAmount = pendingCloseAmount
         let toSpendingAmount = paidOrdersSats + pendingChannelsSats
 
+        let ordersOnchainToSubtract = getOrderPaymentOnchainToSubtract(
+            activeTransfers: activeTransfers,
+            currentOnchainSats: balanceDetails.totalOnchainBalanceSats
+        )
+
         let totalOnchainSats = balanceDetails.totalOnchainBalanceSats
+            .minusOrZero(ordersOnchainToSubtract)
         let totalLightningSats = balanceDetails.totalLightningBalanceSats
             .minusOrZero(pendingChannelsSats)
             .minusOrZero(lightningToSubtract)
@@ -82,7 +88,7 @@ class BalanceManager {
             "Balances in ldk-node: onchain=\(balanceDetails.totalOnchainBalanceSats) lightning=\(balanceDetails.totalLightningBalanceSats)"
         )
         Logger.debug(
-            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract)"
+            "Balances in state: onchain=\(totalOnchainSats) lightning=\(totalLightningSats) toSavings=\(toSavingsAmount) toSpending=\(toSpendingAmount) lnSubtract=\(lightningToSubtract) ordersOnchainSubtract=\(ordersOnchainToSubtract)"
         )
 
         return balanceState
@@ -105,6 +111,21 @@ class BalanceManager {
         }
 
         return paidOrders.reduce(0) { $0 + $1.amountSats }
+    }
+
+    /// Amount to subtract from displayed on-chain for order payments whose tx is not yet reflected in LDK.
+    private func getOrderPaymentOnchainToSubtract(activeTransfers: [Transfer], currentOnchainSats: UInt64) -> UInt64 {
+        let orderPayments = activeTransfers.filter {
+            $0.type.isToSpending() && $0.fundingTxId != nil && $0.lspOrderId != nil
+        }
+        var toSubtract: UInt64 = 0
+        for t in orderPayments {
+            guard let txTotal = t.txTotalSats, let pre = t.preTransferOnchainSats else { continue }
+            if currentOnchainSats >= pre {
+                toSubtract += txTotal
+            }
+        }
+        return toSubtract
     }
 
     /// Calculates the total balance in pending (not yet usable) channels.
@@ -166,18 +187,17 @@ class BalanceManager {
 
             let balanceFromLdk = balanceDetails.lightningBalances
                 .first { $0.channelIdString == channelId }?.amountSats
-            let balanceAmount = balanceFromLdk ?? transfer.amountSats
 
-            if balanceFromLdk == nil {
+            if let amount = balanceFromLdk {
+                lightningToSubtract += amount
+            } else {
                 Logger.debug(
-                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, using transfer amount \(transfer.amountSats)"
+                    "Close transfer \(transfer.id): channel \(channelId) not in lightningBalances, not subtracting from lightning"
                 )
             }
 
-            lightningToSubtract += balanceAmount
-
             if await !coreService.activity.hasOnchainActivityForChannel(channelId: channelId) {
-                pendingAmount += balanceAmount
+                pendingAmount += transfer.amountSats
             }
         }
 

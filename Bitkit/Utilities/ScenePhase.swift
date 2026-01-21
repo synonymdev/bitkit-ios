@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
@@ -21,7 +22,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: scenePhase) { newPhase in
+            .onChange(of: scenePhase, perform: { newPhase in
                 guard wallet.walletExists == true else {
                     return
                 }
@@ -46,10 +47,15 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         Logger.debug("Ended background task on app becoming active")
                     }
 
+                    // Check for background-received transaction
                     if let transaction = ReceivedTxSheetDetails.load() {
-                        // Background extension received a transaction
                         ReceivedTxSheetDetails.clear()
                         sheets.showSheet(.receivedTx, data: transaction)
+                    }
+
+                    // Remove delivered notifications
+                    Task {
+                        await clearDeliveredNotifications()
                     }
 
                     startNodeIfNeeded()
@@ -62,14 +68,14 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         try? await blocktank.refreshOrders()
                     }
                 }
-            }
-            .onChange(of: wallet.nodeLifecycleState) { newState in
+            })
+            .onChange(of: wallet.nodeLifecycleState, perform: { newState in
                 // Handle pending start after node finishes stopping
                 if newState == .stopped && pendingStartAfterStop && scenePhase == .active {
                     pendingStartAfterStop = false
                     startNodeIfNeeded()
                 }
-            }
+            })
     }
 
     /// Schedule node stop after a delay - allows quick background trips without restart
@@ -188,6 +194,19 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                 Logger.error(error, context: "Failed to start LN")
             }
         }
+    }
+
+    /// Removes all delivered notifications from Notification Center
+    /// The app will handle processing any relevant notifications when it opens
+    func clearDeliveredNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let deliveredNotifications = await center.deliveredNotifications()
+
+        guard !deliveredNotifications.isEmpty else { return }
+
+        let identifiers = deliveredNotifications.map(\.request.identifier)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        Logger.debug("Removed \(identifiers.count) notification(s) from Notification Center")
     }
 }
 
