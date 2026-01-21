@@ -29,6 +29,7 @@ class TransferViewModel: ObservableObject {
     private let currencyService: CurrencyService
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
+    private let onBalanceRefresh: (() async -> Void)?
 
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
@@ -42,13 +43,15 @@ class TransferViewModel: ObservableObject {
         lightningService: LightningService = .shared,
         currencyService: CurrencyService = .shared,
         transferService: TransferService,
-        sheetViewModel: SheetViewModel
+        sheetViewModel: SheetViewModel,
+        onBalanceRefresh: (() async -> Void)? = nil
     ) {
         self.coreService = coreService
         self.lightningService = lightningService
         self.currencyService = currencyService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
+        self.onBalanceRefresh = onBalanceRefresh
     }
 
     /// Convenience initializer for testing and previews
@@ -118,24 +121,38 @@ class TransferViewModel: ObservableObject {
         uiState.order ?? order
     }
 
-    func payOrder(order: IBtOrder, speed: TransactionSpeed) async throws {
-        var fees = try? await coreService.blocktank.fees(refresh: true)
-        if fees == nil {
-            Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
-            fees = try await coreService.blocktank.fees(refresh: false)
+    func payOrder(
+        order: IBtOrder,
+        speed: TransactionSpeed,
+        txFee: UInt64,
+        utxosToSpend: [SpendableUtxo]? = nil,
+        satsPerVbyte: UInt32? = nil
+    ) async throws {
+        let rate: UInt32
+        if let satsPerVbyte {
+            rate = satsPerVbyte
+        } else {
+            var fees = try? await coreService.blocktank.fees(refresh: true)
+            if fees == nil {
+                Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
+                fees = try await coreService.blocktank.fees(refresh: false)
+            }
+            guard let fees else {
+                throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
+            }
+            rate = speed.getFeeRate(from: fees)
         }
-
-        guard let fees else {
-            throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
-        }
-
-        let satsPerVbyte = speed.getFeeRate(from: fees)
 
         guard let address = order.payment?.onchain?.address else {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
 
-        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: satsPerVbyte)
+        let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
+
+        // Pass pre-selected UTXOs to ensure same fee as calculated
+        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: rate, utxosToSpend: utxosToSpend)
+
+        let txTotalSats = order.feeSat + txFee
 
         // Create transfer tracking record for spending
         do {
@@ -148,7 +165,7 @@ class TransferViewModel: ObservableObject {
                 txId: txid,
                 address: address,
                 isReceive: false,
-                feeRate: UInt64(satsPerVbyte),
+                feeRate: UInt64(rate),
                 isTransfer: true,
                 channelId: nil,
                 createdAt: currentTime
@@ -159,7 +176,9 @@ class TransferViewModel: ObservableObject {
                 type: .toSpending,
                 amountSats: order.clientBalanceSat,
                 fundingTxId: txid,
-                lspOrderId: order.id
+                lspOrderId: order.id,
+                txTotalSats: txTotalSats,
+                preTransferOnchainSats: preTransferOnchainSats
             )
             Logger.info("Created transfer tracking record: \(transferId)", context: "TransferViewModel")
         } catch {
@@ -563,6 +582,8 @@ class TransferViewModel: ObservableObject {
         // Sync transfer states after attempting closures
         try? await transferService.syncTransferStates()
 
+        await onBalanceRefresh?()
+
         return failedChannels
     }
 
@@ -586,6 +607,7 @@ class TransferViewModel: ObservableObject {
 
                         // Final sync after successful closure
                         try? await transferService.syncTransferStates()
+                        await onBalanceRefresh?()
 
                         return
                     } else {
@@ -681,6 +703,8 @@ class TransferViewModel: ObservableObject {
         }
 
         try? await transferService.syncTransferStates()
+
+        await onBalanceRefresh?()
 
         // If any errors occurred, throw an aggregated error
         if !errors.isEmpty {
