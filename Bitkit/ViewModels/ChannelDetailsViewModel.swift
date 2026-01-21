@@ -206,7 +206,8 @@ class ChannelDetailsViewModel: ObservableObject {
                 maxDustHtlcExposure: .feeRateMultiplier(multiplier: 0),
                 forceCloseAvoidanceMaxFeeSatoshis: 0,
                 acceptUnderpayingHtlcs: true
-            )
+            ),
+            claimableOnCloseSats: order.lspBalanceSat + order.clientBalanceSat
         )
     }
 }
