@@ -1,6 +1,16 @@
 import Lottie
 import SwiftUI
 
+struct ReceivedTxSheetDetails: Codable {
+    enum ReceivedTxType: Codable {
+        case onchain
+        case lightning
+    }
+
+    let type: ReceivedTxType
+    let sats: UInt64
+}
+
 struct ReceivedTxSheetItem: SheetItem {
     let id: SheetID = .receivedTx
     let size: SheetSize = .large
