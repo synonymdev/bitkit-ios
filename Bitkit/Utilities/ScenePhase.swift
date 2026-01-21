@@ -22,7 +22,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: scenePhase) { _, newPhase in
+            .onChange(of: scenePhase, perform: { newPhase in
                 guard wallet.walletExists == true else {
                     return
                 }
@@ -68,14 +68,14 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         try? await blocktank.refreshOrders()
                     }
                 }
-            }
-            .onChange(of: wallet.nodeLifecycleState) { _, newState in
+            })
+            .onChange(of: wallet.nodeLifecycleState, perform: { newState in
                 // Handle pending start after node finishes stopping
                 if newState == .stopped && pendingStartAfterStop && scenePhase == .active {
                     pendingStartAfterStop = false
                     startNodeIfNeeded()
                 }
-            }
+            })
     }
 
     /// Schedule node stop after a delay - allows quick background trips without restart
