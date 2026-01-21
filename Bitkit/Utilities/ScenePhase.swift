@@ -22,7 +22,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: scenePhase) { newPhase in
+            .onChange(of: scenePhase) { _, newPhase in
                 guard wallet.walletExists == true else {
                     return
                 }
@@ -69,7 +69,7 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                     }
                 }
             }
-            .onChange(of: wallet.nodeLifecycleState) { newState in
+            .onChange(of: wallet.nodeLifecycleState) { _, newState in
                 // Handle pending start after node finishes stopping
                 if newState == .stopped && pendingStartAfterStop && scenePhase == .active {
                     pendingStartAfterStop = false
