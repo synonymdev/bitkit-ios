@@ -292,6 +292,18 @@ struct AppScene: View {
     }
 
     private func startWallet() async {
+        // Check network before attempting to start - LDK hangs when VSS is unreachable
+        guard network.isConnected else {
+            Logger.warn("Network offline, skipping wallet start", context: "AppScene")
+            if MigrationsService.shared.isShowingMigrationLoading {
+                await MainActor.run {
+                    MigrationsService.shared.isShowingMigrationLoading = false
+                    SettingsViewModel.shared.updatePinEnabledState()
+                }
+            }
+            return
+        }
+
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
@@ -304,6 +316,13 @@ struct AppScene: View {
         } catch {
             Logger.error(error, context: "Failed to start wallet")
             Haptics.notify(.error)
+
+            if MigrationsService.shared.isShowingMigrationLoading {
+                await MainActor.run {
+                    MigrationsService.shared.isShowingMigrationLoading = false
+                    SettingsViewModel.shared.updatePinEnabledState()
+                }
+            }
         }
     }
 

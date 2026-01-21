@@ -306,7 +306,7 @@ enum RNKeychainKey {
 
 // MARK: - Channel Migration Data
 
-struct PendingChannelMigration {
+struct PendingChannelMigration: Codable {
     let channelManager: Data
     let channelMonitors: [Data]
 }
@@ -320,28 +320,82 @@ class MigrationsService: ObservableObject {
 
     private static let rnMigrationCompletedKey = "rnMigrationCompleted"
     private static let rnMigrationCheckedKey = "rnMigrationChecked"
+    private static let rnNeedsPostMigrationSyncKey = "rnNeedsPostMigrationSync"
+    private static let rnPendingRemoteActivityDataKey = "rnPendingRemoteActivityData"
+    private static let rnPendingRemoteTransfersKey = "rnPendingRemoteTransfers"
+    private static let rnPendingRemoteBoostsKey = "rnPendingRemoteBoosts"
+    private static let rnPendingMetadataKey = "rnPendingMetadata"
+    private static let rnPendingRemotePaidOrdersKey = "rnPendingRemotePaidOrders"
+    private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
+    private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
 
     @Published var isShowingMigrationLoading = false
     var isRestoringFromRNRemoteBackup = false
 
-    var pendingChannelMigration: PendingChannelMigration?
+    /// Tracks whether post-migration sync work is still pending (persists across app restarts)
+    var needsPostMigrationSync: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.rnNeedsPostMigrationSyncKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnNeedsPostMigrationSyncKey) }
+    }
 
-    /// Stored activity data from RN remote backup for reapplying metadata after sync
-    private var pendingRemoteActivityData: [RNActivityItem]?
+    /// Stored LDK channel data for migration (persisted)
+    var pendingChannelMigration: PendingChannelMigration? {
+        get { getCodable(forKey: Self.rnPendingChannelMigrationKey) }
+        set { setCodable(newValue, forKey: Self.rnPendingChannelMigrationKey) }
+    }
 
-    /// Stored transfer info from RN wallet backup for marking on-chain txs as transfers
-    private var pendingRemoteTransfers: [String: String]? // txId -> channelId
+    /// Stored activity data from RN remote backup for reapplying metadata after sync (persisted)
+    var pendingRemoteActivityData: [RNActivityItem]? {
+        get { getCodable(forKey: Self.rnPendingRemoteActivityDataKey) }
+        set { setCodable(newValue, forKey: Self.rnPendingRemoteActivityDataKey) }
+    }
 
-    /// Stored boost info from RN wallet backup for applying boostTxIds to activities
-    private var pendingRemoteBoosts: [String: String]? // oldTxId -> newTxId
+    /// Stored transfer info from RN wallet backup for marking on-chain txs as transfers (persisted)
+    var pendingRemoteTransfers: [String: String]? {
+        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemoteTransfersKey) as? [String: String] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemoteTransfersKey) }
+    }
 
-    /// Stored metadata for reapplying after on-chain activities are synced
-    private var pendingMetadata: RNMetadata?
+    /// Stored boost info from RN wallet backup for applying boostTxIds to activities (persisted)
+    var pendingRemoteBoosts: [String: String]? {
+        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemoteBoostsKey) as? [String: String] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemoteBoostsKey) }
+    }
 
-    /// Stored paid orders from RN backup for creating transfers after wallet starts
-    private var pendingRemotePaidOrders: [String: String]? // orderId -> txId
+    /// Stored metadata for reapplying after on-chain activities are synced (persisted)
+    var pendingMetadata: RNMetadata? {
+        get { getCodable(forKey: Self.rnPendingMetadataKey) }
+        set { setCodable(newValue, forKey: Self.rnPendingMetadataKey) }
+    }
+
+    /// Stored paid orders from RN backup for creating transfers after wallet starts (persisted)
+    var pendingRemotePaidOrders: [String: String]? {
+        get { UserDefaults.standard.dictionary(forKey: Self.rnPendingRemotePaidOrdersKey) as? [String: String] }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingRemotePaidOrdersKey) }
+    }
+
+    /// Stored Blocktank order IDs that couldn't be fetched during migration (offline) (persisted)
+    var pendingBlocktankOrderIds: [String]? {
+        get { UserDefaults.standard.stringArray(forKey: Self.rnPendingBlocktankOrderIdsKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingBlocktankOrderIdsKey) }
+    }
 
     private init() {}
+
+    // MARK: - UserDefaults Helpers
+
+    private func getCodable<T: Codable>(forKey key: String) -> T? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func setCodable(_ value: (some Codable)?, forKey key: String) {
+        if let value, let data = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(data, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
 
     private var rnNetworkString: String {
         switch Env.network {
@@ -492,8 +546,8 @@ extension MigrationsService {
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCompletedKey)
         UserDefaults.standard.set(true, forKey: Self.rnMigrationCheckedKey)
 
-        // Clean up RN data after successful migration
-        cleanupAfterMigration()
+        // Mark that post-migration sync work is needed (will run when node syncs)
+        needsPostMigrationSync = true
 
         Logger.info("RN migration completed", context: "Migration")
     }
@@ -633,7 +687,19 @@ extension MigrationsService {
     func cleanupAfterMigration() {
         cleanupRNKeychain()
         cleanupRNFiles()
+        clearPendingMigrationData()
         Logger.info("RN cleanup completed", context: "Migration")
+    }
+
+    /// Clears all persisted pending migration data from UserDefaults
+    private func clearPendingMigrationData() {
+        pendingChannelMigration = nil
+        pendingRemoteActivityData = nil
+        pendingRemoteTransfers = nil
+        pendingRemoteBoosts = nil
+        pendingMetadata = nil
+        pendingRemotePaidOrders = nil
+        pendingBlocktankOrderIds = nil
     }
 }
 
@@ -1212,6 +1278,12 @@ extension MigrationsService {
             }
         } catch {
             Logger.warn("Failed to fetch and upsert Blocktank orders: \(error)", context: "Migration")
+            // Store order IDs for retry after sync completes (when online)
+            pendingBlocktankOrderIds = allOrderIds
+            if !paidOrders.isEmpty {
+                pendingRemotePaidOrders = paidOrders
+            }
+            Logger.info("Stored \(allOrderIds.count) Blocktank order IDs for retry", context: "Migration")
         }
     }
 
@@ -1334,7 +1406,30 @@ extension MigrationsService {
             pendingMetadata = nil
         }
 
+        // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
+        if let orderIds = pendingBlocktankOrderIds, !orderIds.isEmpty {
+            Logger.info("Retrying \(orderIds.count) pending Blocktank orders", context: "Migration")
+            do {
+                let fetchedOrders = try await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true)
+                if !fetchedOrders.isEmpty {
+                    try await CoreService.shared.blocktank.upsertOrdersList(fetchedOrders)
+                    Logger.info("Upserted \(fetchedOrders.count) Blocktank orders after retry", context: "Migration")
+
+                    // Also create transfers for paid orders using the fetched orders
+                    if let paidOrders = pendingRemotePaidOrders, !paidOrders.isEmpty {
+                        Logger.info("Creating transfers for \(paidOrders.count) paid orders", context: "Migration")
+                        await createTransfersForPaidOrders(paidOrdersMap: paidOrders, orders: fetchedOrders)
+                        pendingRemotePaidOrders = nil
+                    }
+                }
+                pendingBlocktankOrderIds = nil
+            } catch {
+                Logger.warn("Still unable to fetch Blocktank orders: \(error)", context: "Migration")
+            }
+        }
+
         // Handle remote backup paid orders (create transfers for pending channel orders)
+        // This also handles paid orders from RN remote backup restore
         if let paidOrders = pendingRemotePaidOrders {
             Logger.info("Applying \(paidOrders.count) remote paid orders", context: "Migration")
             await applyRemotePaidOrders(paidOrders)
@@ -1758,6 +1853,8 @@ extension MigrationsService {
         } else {
             Logger.warn("Failed to retrieve bitkit_blocktank_orders from remote backup", context: "Migration")
         }
+
+        needsPostMigrationSync = true
 
         Logger.info("RN remote backup restore completed", context: "Migration")
     }

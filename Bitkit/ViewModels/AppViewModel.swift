@@ -837,7 +837,7 @@ extension AppViewModel {
         case let .syncCompleted(syncType, syncedBlockHeight):
             Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
 
-            if MigrationsService.shared.isShowingMigrationLoading {
+            if MigrationsService.shared.needsPostMigrationSync {
                 Task { @MainActor in
                     try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])
                     await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
@@ -846,14 +846,14 @@ extension AppViewModel {
 
                     SettingsViewModel.shared.updatePinEnabledState()
 
-                    MigrationsService.shared.isShowingMigrationLoading = false
-                    self.toast(type: .success, title: "Migration Complete", description: "Your wallet has been successfully migrated")
-                }
-            } else if MigrationsService.shared.isRestoringFromRNRemoteBackup {
-                Task {
-                    try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])
-                    await MigrationsService.shared.reapplyMetadataAfterSync()
+                    MigrationsService.shared.cleanupAfterMigration()
+
+                    MigrationsService.shared.needsPostMigrationSync = false
                     MigrationsService.shared.isRestoringFromRNRemoteBackup = false
+
+                    if MigrationsService.shared.isShowingMigrationLoading {
+                        MigrationsService.shared.isShowingMigrationLoading = false
+                    }
                 }
             }
 
