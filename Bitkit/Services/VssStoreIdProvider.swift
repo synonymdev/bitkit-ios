@@ -30,6 +30,7 @@ class VssStoreIdProvider {
 
     func getVssStoreId(walletIndex: Int) async throws -> String {
         if let cached = await cache.get(walletIndex: walletIndex) {
+            Logger.info("VSS store id: '\(cached)' (cached)", context: "VssStoreIdProvider")
             return cached
         }
 
@@ -37,12 +38,14 @@ class VssStoreIdProvider {
             throw CustomServiceError.mnemonicNotFound
         }
 
+        // Normalize empty strings to nil - empty passphrase should be treated as no passphrase
         let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        let normalizedPassphrase = passphrase?.isEmpty == true ? nil : passphrase
 
         let storeId = try vssDeriveStoreId(
             prefix: Env.vssStoreIdPrefix,
             mnemonic: mnemonic,
-            passphrase: passphrase
+            passphrase: normalizedPassphrase
         )
 
         await cache.set(storeId, for: walletIndex)

@@ -1806,6 +1806,10 @@ extension MigrationsService {
         isRestoringFromRNRemoteBackup = true
         Logger.info("Starting RN remote backup restore", context: "Migration")
 
+        // Reset VSS client
+        VssStoreIdProvider.shared.clearCache()
+        await VssBackupClient.shared.reset()
+
         clearPinSettings()
 
         // Fetch LDK data (channel_manager and channel_monitors)
