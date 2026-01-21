@@ -13,14 +13,16 @@ class StartupHandler {
         let mnemonic = generateEntropyMnemonic(wordCount: .words12)
 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
-        if let bip39Passphrase {
+
+        // Normalize empty strings to nil - empty passphrase should be treated as no passphrase
+        if let bip39Passphrase, !bip39Passphrase.isEmpty {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)
         }
 
         return mnemonic
     }
 
-    /// Restores a wallet from a mnemoni and, saves it to the keychain
+    /// Restores a wallet from a mnemonic and saves it to the keychain
     /// - Parameters:
     ///   - mnemonic: 12 or 24 word mnemonic
     ///   - bip39Passphrase: optional bip39 passphrase
@@ -32,7 +34,9 @@ class StartupHandler {
         }
 
         try Keychain.saveString(key: .bip39Mnemonic(index: walletIndex), str: mnemonic)
-        if let bip39Passphrase {
+
+        // Normalize empty strings to nil - empty passphrase should be treated as no passphrase
+        if let bip39Passphrase, !bip39Passphrase.isEmpty {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)
         }
     }

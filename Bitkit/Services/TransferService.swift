@@ -7,15 +7,18 @@ class TransferService {
     private let storage: TransferStorage
     private let lightningService: LightningService
     private let blocktankService: BlocktankService
+    private let coreService: CoreService
 
     init(
         storage: TransferStorage = TransferStorage.shared,
         lightningService: LightningService,
-        blocktankService: BlocktankService
+        blocktankService: BlocktankService,
+        coreService: CoreService = .shared
     ) {
         self.storage = storage
         self.lightningService = lightningService
         self.blocktankService = blocktankService
+        self.coreService = coreService
     }
 
     /// Get all active transfers as a publisher
@@ -31,7 +34,9 @@ class TransferService {
         channelId: String? = nil,
         fundingTxId: String? = nil,
         lspOrderId: String? = nil,
-        claimableAtHeight: UInt32? = nil
+        claimableAtHeight: UInt32? = nil,
+        txTotalSats: UInt64? = nil,
+        preTransferOnchainSats: UInt64? = nil
     ) async throws -> String {
         // When geoblocked, block transfers to spending that involve LSP (Blocktank)
         // toSpending with lspOrderId means it's a Blocktank LSP channel order
@@ -57,7 +62,9 @@ class TransferService {
             isSettled: false,
             createdAt: createdAt,
             settledAt: nil,
-            claimableAtHeight: claimableAtHeight
+            claimableAtHeight: claimableAtHeight,
+            txTotalSats: txTotalSats,
+            preTransferOnchainSats: preTransferOnchainSats
         )
 
         try storage.insert(transfer)
@@ -109,7 +116,9 @@ class TransferService {
                         isSettled: transfer.isSettled,
                         createdAt: transfer.createdAt,
                         settledAt: transfer.settledAt,
-                        claimableAtHeight: transfer.claimableAtHeight
+                        claimableAtHeight: transfer.claimableAtHeight,
+                        txTotalSats: transfer.txTotalSats,
+                        preTransferOnchainSats: transfer.preTransferOnchainSats
                     )
                     try storage.update(updatedTransfer)
                     Logger.debug("Updated transfer \(transfer.id) with channelId: \(channelId)", context: "TransferService")
@@ -143,8 +152,22 @@ class TransferService {
                 }) ?? false
 
                 if !hasBalance {
-                    try await markSettled(id: transfer.id)
-                    Logger.debug("Channel \(channelId) balance swept, settled transfer: \(transfer.id)", context: "TransferService")
+                    // For force closes, only settle when we've detected the on-chain sweep transaction.
+                    // This prevents a balance discrepancy where the transfer is removed but the
+                    // sweep balance hasn't appeared in the on-chain wallet yet.
+                    if transfer.type == .forceClose {
+                        let hasOnchainActivity = await coreService.activity.hasOnchainActivityForChannel(channelId: channelId)
+                        if hasOnchainActivity {
+                            try await markSettled(id: transfer.id)
+                            Logger.debug("Force close sweep detected, settled transfer: \(transfer.id)", context: "TransferService")
+                        } else {
+                            Logger.debug("Force close awaiting sweep detection for transfer: \(transfer.id)", context: "TransferService")
+                        }
+                    } else {
+                        // For coop closes and other types, settle immediately when balance is gone
+                        try await markSettled(id: transfer.id)
+                        Logger.debug("Channel \(channelId) balance swept, settled transfer: \(transfer.id)", context: "TransferService")
+                    }
                 }
             }
         }

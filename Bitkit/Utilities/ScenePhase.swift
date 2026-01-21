@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import UserNotifications
 
 private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @Environment(\.scenePhase) var scenePhase
@@ -41,11 +42,8 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                             Logger.debug("Ended background task on app becoming active")
                         }
 
-                        if let transaction = ReceivedTxSheetDetails.load() {
-                            // Background extension received a transaction
-                            ReceivedTxSheetDetails.clear()
-                            sheets.showSheet(.receivedTx, data: transaction)
-                        }
+                        // Remove all delivered notifications
+                        await clearDeliveredNotifications()
 
                         do {
                             try await startNodeIfNeeded()
@@ -141,6 +139,19 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         Logger.debug("App active, starting LN service...")
 
         try await wallet.start()
+    }
+
+    /// Removes all delivered notifications from Notification Center
+    /// The app will handle processing any relevant notifications when it opens
+    func clearDeliveredNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let deliveredNotifications = await center.deliveredNotifications()
+
+        guard !deliveredNotifications.isEmpty else { return }
+
+        let identifiers = deliveredNotifications.map(\.request.identifier)
+        center.removeDeliveredNotifications(withIdentifiers: identifiers)
+        Logger.debug("Removed \(identifiers.count) notification(s) from Notification Center")
     }
 }
 
