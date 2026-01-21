@@ -335,8 +335,8 @@ class MigrationsService: ObservableObject {
     /// Stored boost info from RN wallet backup for applying boostTxIds to activities
     private var pendingRemoteBoosts: [String: String]? // oldTxId -> newTxId
 
-    /// Stored metadata from RN backup for reapplying after on-chain activities are synced
-    private var pendingRemoteMetadata: RNMetadata?
+    /// Stored metadata for reapplying after on-chain activities are synced
+    private var pendingMetadata: RNMetadata?
 
     /// Stored paid orders from RN backup for creating transfers after wallet starts
     private var pendingRemotePaidOrders: [String: String]? // orderId -> txId
@@ -1244,8 +1244,13 @@ extension MigrationsService {
         }
 
         if let metadata = extractRNMetadata(from: mmkvData) {
-            Logger.info("Migrating metadata", context: "Migration")
-            await applyAllMetadata(metadata)
+            Logger.info("Storing metadata for application after sync", context: "Migration")
+            // Store metadata for later - activities don't exist yet until LDK syncs
+            pendingMetadata = metadata
+            // Apply lastUsedTags immediately (doesn't require activities)
+            if let lastUsedTags = metadata.lastUsedTags {
+                UserDefaults.standard.set(lastUsedTags, forKey: "lastUsedTags")
+            }
         } else {
             Logger.debug("No metadata found in MMKV", context: "Migration")
         }
@@ -1323,10 +1328,10 @@ extension MigrationsService {
         }
 
         // Apply stored metadata (all tags after activities are imported)
-        if let metadata = pendingRemoteMetadata {
+        if let metadata = pendingMetadata {
             Logger.info("Applying stored metadata after sync", context: "Migration")
             await applyAllMetadata(metadata)
-            pendingRemoteMetadata = nil
+            pendingMetadata = nil
         }
 
         // Handle remote backup paid orders (create transfers for pending channel orders)
@@ -1431,18 +1436,28 @@ extension MigrationsService {
         var applied = 0
         for (activityId, tagList) in tags {
             do {
+                // Try to find on-chain activity by txId first
                 if let onchain = try? await CoreService.shared.activity.getOnchainActivityByTxId(txid: activityId) {
                     try await CoreService.shared.activity.upsertTags([
                         ActivityTags(activityId: onchain.id, tags: tagList),
                     ])
                     applied += 1
-                } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId),
-                          case .lightning = activity
-                {
-                    try await CoreService.shared.activity.upsertTags([
-                        ActivityTags(activityId: activityId, tags: tagList),
-                    ])
-                    applied += 1
+                } else if let activity = try? await CoreService.shared.activity.getActivity(id: activityId) {
+                    // Found activity by ID - handle both lightning and on-chain
+                    switch activity {
+                    case .lightning:
+                        try await CoreService.shared.activity.upsertTags([
+                            ActivityTags(activityId: activityId, tags: tagList),
+                        ])
+                        applied += 1
+                    case let .onchain(onchain):
+                        try await CoreService.shared.activity.upsertTags([
+                            ActivityTags(activityId: onchain.id, tags: tagList),
+                        ])
+                        applied += 1
+                    }
+                } else {
+                    Logger.warn("Activity not found for tags: id=\(activityId)", context: "Migration")
                 }
             } catch {
                 Logger.error("Failed to apply pending tag for \(activityId): \(error)", context: "Migration")
@@ -1838,7 +1853,7 @@ extension MigrationsService {
         }
 
         // Store metadata for application after sync (on-chain activities don't exist yet)
-        pendingRemoteMetadata = json.data
+        pendingMetadata = json.data
     }
 
     private func applyRNRemoteActivity(_ data: Data) async throws {
