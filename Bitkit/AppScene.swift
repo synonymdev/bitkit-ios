@@ -80,6 +80,7 @@ struct AppScene: View {
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
                 if !isLoading {
+                    SettingsViewModel.shared.updatePinEnabledState()
                     widgets.loadSavedWidgets()
                     suggestionsManager.reloadDismissed()
                     tagManager.reloadLastUsedTags()

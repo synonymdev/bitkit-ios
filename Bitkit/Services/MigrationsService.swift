@@ -358,7 +358,6 @@ class MigrationsService: ObservableObject {
                 if isShowingMigrationLoading {
                     Logger.warn("Migration loading timeout reached (\(migrationTimeoutSeconds)s), dismissing screen", context: "Migration")
                     isShowingMigrationLoading = false
-                    SettingsViewModel.shared.updatePinEnabledState()
                 }
             } catch {
                 // Task was cancelled, which is expected when migration completes normally
