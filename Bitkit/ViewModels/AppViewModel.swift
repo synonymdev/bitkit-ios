@@ -842,14 +842,17 @@ extension AppViewModel {
                     try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])
                     await CoreService.shared.activity.markAllUnseenActivitiesAsSeen()
                     await MigrationsService.shared.reapplyMetadataAfterSync()
-                    try? await LightningService.shared.restart()
 
-                    SettingsViewModel.shared.updatePinEnabledState()
+                    if MigrationsService.shared.canCleanupAfterMigration {
+                        try? await LightningService.shared.restart()
+                        SettingsViewModel.shared.updatePinEnabledState()
 
-                    MigrationsService.shared.cleanupAfterMigration()
-
-                    MigrationsService.shared.needsPostMigrationSync = false
-                    MigrationsService.shared.isRestoringFromRNRemoteBackup = false
+                        MigrationsService.shared.cleanupAfterMigration()
+                        MigrationsService.shared.needsPostMigrationSync = false
+                        MigrationsService.shared.isRestoringFromRNRemoteBackup = false
+                    } else {
+                        Logger.info("Post-migration sync incomplete, will retry on next sync", context: "AppViewModel")
+                    }
 
                     if MigrationsService.shared.isShowingMigrationLoading {
                         MigrationsService.shared.isShowingMigrationLoading = false

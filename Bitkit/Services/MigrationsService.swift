@@ -691,6 +691,16 @@ extension MigrationsService {
         Logger.info("RN cleanup completed", context: "Migration")
     }
 
+    /// Returns true if all pending migration data has been processed and cleanup can proceed
+    var canCleanupAfterMigration: Bool {
+        // Don't cleanup if there's still pending Blocktank data that needs retry
+        if pendingBlocktankOrderIds != nil || pendingRemotePaidOrders != nil {
+            Logger.debug("Cannot cleanup: pending Blocktank data exists", context: "Migration")
+            return false
+        }
+        return true
+    }
+
     /// Clears all persisted pending migration data from UserDefaults
     private func clearPendingMigrationData() {
         pendingChannelMigration = nil
@@ -1407,6 +1417,7 @@ extension MigrationsService {
         }
 
         // Handle pending Blocktank orders that couldn't be fetched during migration (offline)
+        var blocktankFetchFailed = false
         if let orderIds = pendingBlocktankOrderIds, !orderIds.isEmpty {
             Logger.info("Retrying \(orderIds.count) pending Blocktank orders", context: "Migration")
             do {
@@ -1425,12 +1436,14 @@ extension MigrationsService {
                 pendingBlocktankOrderIds = nil
             } catch {
                 Logger.warn("Still unable to fetch Blocktank orders: \(error)", context: "Migration")
+                blocktankFetchFailed = true
             }
         }
 
         // Handle remote backup paid orders (create transfers for pending channel orders)
         // This also handles paid orders from RN remote backup restore
-        if let paidOrders = pendingRemotePaidOrders {
+        // Skip if Blocktank fetch failed - paid orders depend on Blocktank order data
+        if !blocktankFetchFailed, let paidOrders = pendingRemotePaidOrders {
             Logger.info("Applying \(paidOrders.count) remote paid orders", context: "Migration")
             await applyRemotePaidOrders(paidOrders)
             pendingRemotePaidOrders = nil
