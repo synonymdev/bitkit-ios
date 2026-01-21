@@ -89,6 +89,12 @@ struct AppScene: View {
                     SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
                 }
             }
+            .onChange(of: network.isConnected) { isConnected in
+                // Retry starting wallet when network comes back online
+                if isConnected {
+                    handleNetworkRestored()
+                }
+            }
             .environmentObject(app)
             .environmentObject(navigation)
             .environmentObject(network)
@@ -482,6 +488,37 @@ struct AppScene: View {
         // If PIN is enabled, lock the app when the app goes to the background
         if scenePhase == .background && settings.pinEnabled {
             isPinVerified = false
+        }
+    }
+
+    private func handleNetworkRestored() {
+        // Only retry if:
+        // 1. Wallet exists
+        // 2. App is in foreground
+        // 3. Node is stopped or in error state
+        guard wallet.walletExists == true,
+              scenePhase == .active
+        else {
+            return
+        }
+
+        let shouldRetry: Bool = {
+            switch wallet.nodeLifecycleState {
+            case .stopped, .errorStarting:
+                return true
+            default:
+                return false
+            }
+        }()
+
+        guard shouldRetry else {
+            Logger.debug("Network restored but node is already running/starting", context: "AppScene")
+            return
+        }
+
+        Logger.info("Network restored, retrying wallet start...", context: "AppScene")
+        Task {
+            await startWallet()
         }
     }
 
