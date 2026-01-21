@@ -60,7 +60,9 @@ class LightningService {
             throw CustomServiceError.mnemonicNotFound
         }
 
-        var passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        // Normalize empty strings to nil - empty passphrase should be treated as no passphrase
+        let passphraseRaw = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+        var passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
 
         currentWalletIndex = walletIndex
 
