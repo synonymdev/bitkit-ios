@@ -48,11 +48,16 @@ struct AppScene: View {
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
-        _wallet = StateObject(wrappedValue: WalletViewModel(transferService: transferService, sheetViewModel: sheetViewModel))
+        let walletVm = WalletViewModel(transferService: transferService, sheetViewModel: sheetViewModel)
+        _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
         _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
-        _transfer = StateObject(wrappedValue: TransferViewModel(transferService: transferService, sheetViewModel: sheetViewModel))
+        _transfer = StateObject(wrappedValue: TransferViewModel(
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            onBalanceRefresh: { await walletVm.updateBalanceState() }
+        ))
         _widgets = StateObject(wrappedValue: WidgetsViewModel())
         _settings = StateObject(wrappedValue: SettingsViewModel.shared)
 

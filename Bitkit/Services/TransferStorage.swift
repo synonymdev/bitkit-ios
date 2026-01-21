@@ -93,7 +93,9 @@ class TransferStorage {
                 isSettled: true,
                 createdAt: transfer.createdAt,
                 settledAt: settledAt,
-                claimableAtHeight: transfer.claimableAtHeight
+                claimableAtHeight: transfer.claimableAtHeight,
+                txTotalSats: transfer.txTotalSats,
+                preTransferOnchainSats: transfer.preTransferOnchainSats
             )
             try save(transfers)
             Logger.info("Marked transfer as settled: id=\(id)", context: "TransferStorage")

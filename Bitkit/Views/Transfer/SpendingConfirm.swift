@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 struct SpendingConfirm: View {
@@ -13,6 +14,8 @@ struct SpendingConfirm: View {
     @State private var isPaying = false
     @State private var hideSwipeButton = false
     @State private var transactionFee: UInt64 = 0
+    @State private var selectedUtxos: [SpendableUtxo]?
+    @State private var satsPerVbyte: UInt32?
 
     private var currentOrder: IBtOrder {
         transfer.displayOrder(for: order)
@@ -119,7 +122,7 @@ struct SpendingConfirm: View {
                         await onConfirm()
                     }
                 }
-                .disabled(isPaying)
+                .disabled(isPaying || selectedUtxos == nil || transactionFee == 0 || satsPerVbyte == nil)
             }
         }
         .navigationBarHidden(true)
@@ -134,7 +137,15 @@ struct SpendingConfirm: View {
         isPaying = true
 
         do {
-            try await transfer.payOrder(order: currentOrder, speed: .fast)
+            try await transfer.payOrder(
+                order: currentOrder,
+                speed: .fast,
+                txFee: transactionFee,
+                utxosToSpend: selectedUtxos,
+                satsPerVbyte: satsPerVbyte
+            )
+            await wallet.updateBalanceState()
+
             try await Task.sleep(nanoseconds: 1_000_000_000)
 
             navigation.navigate(.settingUp)
@@ -153,6 +164,7 @@ struct SpendingConfirm: View {
     private func calculateTransactionFee() async {
         do {
             let coreService = CoreService.shared
+            let lightningService = LightningService.shared
 
             if let feeRates = try await coreService.blocktank.fees(refresh: true) {
                 let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
@@ -161,20 +173,33 @@ struct SpendingConfirm: View {
                     throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
                 }
 
+                // Pre-select UTXOs to ensure same fee is used in send
+                let utxos = try await lightningService.selectUtxosWithAlgorithm(
+                    targetAmountSats: currentOrder.feeSat,
+                    satsPerVbyte: fastFeeRate,
+                    coinSelectionAlgorythm: .largestFirst,
+                    utxos: nil
+                )
+
                 let fee = try await wallet.calculateTotalFee(
                     address: address,
                     amountSats: currentOrder.feeSat,
-                    satsPerVByte: fastFeeRate
+                    satsPerVByte: fastFeeRate,
+                    utxosToSpend: utxos
                 )
 
                 await MainActor.run {
                     transactionFee = fee
+                    selectedUtxos = utxos
+                    satsPerVbyte = fastFeeRate
                 }
             }
         } catch {
             Logger.error("Failed to calculate actual fee: \(error)")
             await MainActor.run {
                 transactionFee = 0
+                selectedUtxos = nil
+                satsPerVbyte = nil
             }
         }
     }
