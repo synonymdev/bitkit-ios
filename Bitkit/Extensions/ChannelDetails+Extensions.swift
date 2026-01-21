@@ -63,7 +63,8 @@ extension ChannelDetails {
                 maxDustHtlcExposure: .feeRateMultiplier(multiplier: 0),
                 forceCloseAvoidanceMaxFeeSatoshis: 0,
                 acceptUnderpayingHtlcs: true
-            )
+            ),
+            claimableOnCloseSats: channelValueSats
         )
     }
 }
