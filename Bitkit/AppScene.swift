@@ -79,20 +79,7 @@ struct AppScene: View {
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
-                if isLoading {
-                    // Start a timeout to dismiss the migration screen after 120 seconds
-                    // in case wallet.start() hangs due to network issues
-                    Task {
-                        try? await Task.sleep(nanoseconds: 120_000_000_000)
-                        if migrations.isShowingMigrationLoading {
-                            Logger.warn("Migration loading timeout reached, dismissing screen", context: "AppScene")
-                            await MainActor.run {
-                                migrations.isShowingMigrationLoading = false
-                                SettingsViewModel.shared.updatePinEnabledState()
-                            }
-                        }
-                    }
-                } else {
+                if !isLoading {
                     widgets.loadSavedWidgets()
                     suggestionsManager.reloadDismissed()
                     tagManager.reloadLastUsedTags()

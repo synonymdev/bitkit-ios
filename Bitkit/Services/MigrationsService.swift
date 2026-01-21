@@ -329,8 +329,47 @@ class MigrationsService: ObservableObject {
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
 
-    @Published var isShowingMigrationLoading = false
+    @Published var isShowingMigrationLoading = false {
+        didSet {
+            if isShowingMigrationLoading {
+                startMigrationTimeout()
+            } else {
+                cancelMigrationTimeout()
+            }
+        }
+    }
+
     var isRestoringFromRNRemoteBackup = false
+
+    /// Timeout for migration loading screen (120 seconds)
+    private var migrationTimeoutTask: Task<Void, Never>?
+    private let migrationTimeoutSeconds: UInt64 = 120
+
+    private func startMigrationTimeout() {
+        // Cancel any existing timeout
+        migrationTimeoutTask?.cancel()
+
+        migrationTimeoutTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: self?.migrationTimeoutSeconds ?? 120 * 1_000_000_000)
+
+                guard let self, !Task.isCancelled else { return }
+
+                if isShowingMigrationLoading {
+                    Logger.warn("Migration loading timeout reached (\(migrationTimeoutSeconds)s), dismissing screen", context: "Migration")
+                    isShowingMigrationLoading = false
+                    SettingsViewModel.shared.updatePinEnabledState()
+                }
+            } catch {
+                // Task was cancelled, which is expected when migration completes normally
+            }
+        }
+    }
+
+    private func cancelMigrationTimeout() {
+        migrationTimeoutTask?.cancel()
+        migrationTimeoutTask = nil
+    }
 
     /// Tracks whether post-migration sync work is still pending (persists across app restarts)
     var needsPostMigrationSync: Bool {
