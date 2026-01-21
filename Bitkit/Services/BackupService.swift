@@ -179,6 +179,7 @@ class BackupService {
             }
         }
 
+        // Reset VSS client
         VssStoreIdProvider.shared.clearCache()
         await VssBackupClient.shared.reset()
 
