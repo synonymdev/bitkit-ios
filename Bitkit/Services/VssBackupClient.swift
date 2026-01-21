@@ -79,7 +79,9 @@ class VssBackupClient {
                     guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
                         throw CustomServiceError.mnemonicNotFound
                     }
-                    let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+                    // Normalize empty strings to nil - empty passphrase should be treated as no passphrase
+                    let passphraseRaw = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+                    let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
 
                     try await vssNewClientWithLnurlAuth(
                         baseUrl: vssUrl,

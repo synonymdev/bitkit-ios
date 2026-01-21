@@ -18,6 +18,7 @@ enum AppReset {
         // Stop backup observers and reset VSS client
         await BackupService.shared.stopObservingBackups()
         await VssBackupClient.shared.reset()
+        VssStoreIdProvider.shared.clearCache()
 
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
