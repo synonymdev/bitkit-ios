@@ -1,4 +1,7 @@
 import Foundation
+import LDKNode
+
+// MARK: - Logger
 
 class Logger {
     private init() {}
@@ -96,7 +99,7 @@ class Logger {
         }
     }
 
-    // Cleans up both bitkit and ldk log files
+    // Cleans up log files
     static func cleanUpOldLogFiles(maxTotalSizeMB: Int = 20) {
         queue.async {
             let baseDir = Env.logDirectory
@@ -145,6 +148,52 @@ class Logger {
                     print("Failed to delete log file: \(error)")
                 }
             }
+        }
+    }
+}
+
+// MARK: - LogLevel
+
+extension LogLevel: Comparable {
+    public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
+        lhs.order < rhs.order
+    }
+
+    private var order: Int {
+        switch self {
+        case .gossip: return 1
+        case .trace: return 2
+        case .debug: return 3
+        case .info: return 4
+        case .warn: return 5
+        case .error: return 6
+        }
+    }
+}
+
+// MARK: - LdkLogWriter
+
+final class LdkLogWriter: LogWriter {
+    private let maxLogLevel: LogLevel
+
+    init(maxLogLevel: LogLevel = Env.ldkLogLevel) {
+        self.maxLogLevel = maxLogLevel
+    }
+
+    func log(record: LogRecord) {
+        guard record.level >= maxLogLevel else { return }
+
+        let context = "[LDK] [\(record.modulePath):\(record.line)]"
+
+        switch record.level {
+        case .gossip, .trace, .debug:
+            Logger.debug(record.args, context: context)
+        case .info:
+            Logger.info(record.args, context: context)
+        case .warn:
+            Logger.warn(record.args, context: context)
+        case .error:
+            Logger.error(record.args, context: context)
         }
     }
 }

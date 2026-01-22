@@ -8,7 +8,6 @@ import LDKNode
 class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
-    private var currentLogFilePath: String?
 
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
@@ -83,12 +82,7 @@ class LightningService {
         config.includeUntrustedPendingInSpendable = true
 
         let builder = Builder.fromConfig(config: config)
-
-        Logger.info("LDK-node log path: \(ldkStoragePath)")
-
-        let logFilePath = generateLogFilePath()
-        currentLogFilePath = logFilePath
-        builder.setFilesystemLogger(logFilePath: logFilePath, maxLogLevel: Env.ldkLogLevel)
+        builder.setCustomLogger(logWriter: LdkLogWriter())
 
         let resolvedElectrumServerUrl = electrumServerUrl ?? Env.electrumServerUrl
 
@@ -604,11 +598,7 @@ class LightningService {
     }
 
     func dumpLdkLogs() {
-        guard let logFilePath = currentLogFilePath else {
-            Logger.error("No log file path available")
-            return
-        }
-
+        let logFilePath = Logger.sessionLogFile
         let fileURL = URL(fileURLWithPath: logFilePath)
 
         do {
@@ -642,32 +632,6 @@ class LightningService {
         }
 
         return "Nodes: \(allNodes.count), Last Synced: \(lastRgsSyncString)"
-    }
-
-    // MARK: Logging helpers
-
-    private func generateLogFilePath() -> String {
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
-        dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
-        let timestamp = dateFormatter.string(from: Date())
-
-        let baseDir = Env.logDirectory
-        let contextPrefix = Env.currentExecutionContext.filenamePrefix
-        let logFilePath = "\(baseDir)/ldk_\(contextPrefix)_\(timestamp).log"
-
-        // Create directory if it doesn't exist
-        let directory = URL(fileURLWithPath: baseDir)
-        if !FileManager.default.fileExists(atPath: directory.path) {
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            } catch {
-                Logger.error("Failed to create log directory: \(error)")
-            }
-        }
-
-        Logger.debug("Generated LDK log file path: \(logFilePath)")
-        return logFilePath
     }
 
     // MARK: - Configuration Helpers
