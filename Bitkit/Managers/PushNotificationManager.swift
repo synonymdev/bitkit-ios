@@ -125,7 +125,8 @@ final class PushNotificationManager: ObservableObject {
 
         while Date() < timeoutDate {
             // Check if node is running via the status
-            if let status = LightningService.shared.status, status.isRunning {
+            let status = await MainActor.run { LightningService.shared.status }
+            if let status, status.isRunning {
                 let waitTime = Date().timeIntervalSince(startTime)
                 Logger.debug("✅ Node is ready (waited \(String(format: "%.2f", waitTime))s)")
                 return

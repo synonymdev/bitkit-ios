@@ -17,21 +17,24 @@ final class StateLockerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLockAndUnlock() {
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+    func testLockAndUnlock() async throws {
+        try await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
         XCTAssertNoThrow(try StateLocker.unlock(.lightning))
         XCTAssertFalse(StateLocker.isLocked(.lightning))
     }
 
-    func testLockTimeout() {
+    func testLockTimeout() async {
         StateLocker.injectTestEnvironment(.foregroundApp)
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try? await StateLocker.lock(.lightning, wait: 1)
 
         // Pretend we're not the extension and we need to lock
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
 
-        XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
+        do {
+            try await StateLocker.lock(.lightning, wait: 0.1)
+            XCTFail("Expected lock to throw")
+        } catch {
             XCTAssertEqual(error as? StateLockerError, .alreadyLocked(processName: "lightning"))
         }
         StateLocker.injectTestEnvironment(nil)
@@ -41,47 +44,50 @@ final class StateLockerTests: XCTestCase {
         XCTAssertNoThrow(try StateLocker.unlock(.onchain))
     }
 
-    func testLockExpiry() {
+    func testLockExpiry() async throws {
         // Inject a past date for quick testing
         let pastDate = Date().addingTimeInterval(-3600) // 1 hour ago
         StateLocker.injectTestDate(pastDate)
 
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
 
         StateLocker.injectTestDate(Date()) // Reset to current date
         XCTAssertFalse(StateLocker.isLocked(.lightning))
     }
 
-    func testDifferentProcessLocks() {
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
-        XCTAssertNoThrow(try StateLocker.lock(.onchain, wait: 1))
+    func testDifferentProcessLocks() async throws {
+        try await StateLocker.lock(.lightning, wait: 1)
+        try await StateLocker.lock(.onchain, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
         XCTAssertTrue(StateLocker.isLocked(.onchain))
     }
 
-    func testLockInDifferentEnvironments() {
+    func testLockInDifferentEnvironments() async throws {
         // Test foreground app environment
         StateLocker.injectTestEnvironment(.foregroundApp)
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
         XCTAssertNoThrow(try StateLocker.unlock(.lightning))
 
         // Test push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
-        XCTAssertNoThrow(try StateLocker.lock(.onchain, wait: 1))
+        try await StateLocker.lock(.onchain, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.onchain))
         XCTAssertNoThrow(try StateLocker.unlock(.onchain))
     }
 
-    func testLockConflictBetweenEnvironments() {
+    func testLockConflictBetweenEnvironments() async {
         // Lock in foreground app environment
         StateLocker.injectTestEnvironment(.foregroundApp)
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try? await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
 
         // Attempt to lock in push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
-        XCTAssertThrowsError(try StateLocker.lock(.lightning, wait: 0.1)) { error in
+        do {
+            try await StateLocker.lock(.lightning, wait: 0.1)
+            XCTFail("Expected lock to throw")
+        } catch {
             XCTAssertEqual(error as? StateLockerError, .alreadyLocked(processName: "lightning"))
         }
 
@@ -89,13 +95,13 @@ final class StateLockerTests: XCTestCase {
         XCTAssertNoThrow(try StateLocker.unlock(.lightning))
     }
 
-    func testLockExpiryInDifferentEnvironments() {
+    func testLockExpiryInDifferentEnvironments() async throws {
         let pastDate = Date().addingTimeInterval(-3600) // 1 hour ago
 
         // Set past date and lock in foreground app environment
         StateLocker.injectTestDate(pastDate)
         StateLocker.injectTestEnvironment(.foregroundApp)
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
 
         // Check lock status in push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
@@ -103,14 +109,14 @@ final class StateLockerTests: XCTestCase {
         XCTAssertFalse(StateLocker.isLocked(.lightning))
 
         // Attempt to lock in push notification extension environment
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
     }
 
-    func testUnlockDifferentEnvironment() {
+    func testUnlockDifferentEnvironment() async throws {
         // Lock in foreground app environment
         StateLocker.injectTestEnvironment(.foregroundApp)
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
 
         // Try to unlock from push notification extension environment
         StateLocker.injectTestEnvironment(.pushNotificationExtension)
@@ -119,15 +125,15 @@ final class StateLockerTests: XCTestCase {
         }
     }
 
-    func testLockSameEnvironment() {
+    func testLockSameEnvironment() async throws {
         StateLocker.injectTestEnvironment(.foregroundApp)
 
         // First lock
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
 
         // Second lock attempt in same environment should succeed
-        XCTAssertNoThrow(try StateLocker.lock(.lightning, wait: 1))
+        try await StateLocker.lock(.lightning, wait: 1)
         XCTAssertTrue(StateLocker.isLocked(.lightning))
     }
 }
