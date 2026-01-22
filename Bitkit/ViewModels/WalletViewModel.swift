@@ -98,8 +98,17 @@ class WalletViewModel: ObservableObject {
     }
 
     func start(walletIndex: Int = 0) async throws {
+        // Guard against concurrent starts - only allow start from stopped, initializing, or error states
+        switch nodeLifecycleState {
+        case .stopped, .initializing, .errorStarting:
+            break // Allowed to proceed
+        case .starting, .running, .stopping:
+            Logger.debug("Node already starting or running, skipping start")
+            return
+        }
+
         if nodeLifecycleState != .initializing {
-            // Initilaizing means it's a wallet restore or create so we need to show the loading view
+            // Initializing means it's a wallet restore or create so we need to show the loading view
             nodeLifecycleState = .starting
         }
 
@@ -133,26 +142,26 @@ class WalletViewModel: ObservableObject {
                     // Handle specific events for targeted UI updates
                     switch event {
                     case .paymentReceived, .channelReady:
-                        self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
-                        self.syncChannelsAndPeers()
                         self.bolt11 = ""
                         Task {
+                            await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
                         }
 
-                    // MARK: New Onchain Transaction Events
+                    // MARK: Onchain Transaction Events
 
                     case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced, .onchainTransactionReorged,
                          .onchainTransactionEvicted:
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
 
                     // MARK: Sync Events
@@ -163,20 +172,20 @@ class WalletViewModel: ObservableObject {
                             self.currentBlockHeight = syncCurrentBlockHeight
                         }
                         Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
+
                     case let .syncCompleted(syncType, syncedBlockHeight):
                         self.isSyncingWallet = false
                         self.currentBlockHeight = syncedBlockHeight
                         Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
-                        self.syncState()
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
 
                     // MARK: Balance Events
 
-                    case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+                    case .balanceChanged:
                         Task {
-                            await self.updateBalanceState()
+                            await self.refreshAndSyncState()
                         }
                     default:
                         break
@@ -503,10 +512,25 @@ class WalletViewModel: ObservableObject {
 
     /// Sync all state (node status, channels, peers, balances)
     /// Use this for initial load or after sync operations
+    /// Note: Uses cached values from LightningService - call syncStateAsync() for fresh data
     func syncState() {
         syncNodeStatus()
         syncChannelsAndPeers()
         syncBalances()
+    }
+
+    /// Async version that refreshes the cache before syncing state
+    /// Use this when you need guaranteed fresh data from the LDK node
+    func syncStateAsync() async {
+        await lightningService.refreshCache()
+        syncState()
+    }
+
+    /// Refreshes cache and syncs all UI state including balance
+    /// Use this for any event that may have changed balances or channel state
+    private func refreshAndSyncState() async {
+        await updateBalanceState()
+        syncState()
     }
 
     /// Sync node status, ID and lifecycle state
@@ -548,6 +572,9 @@ class WalletViewModel: ObservableObject {
     }
 
     func updateBalanceState() async {
+        // Ensure we have fresh data from LDK before computing balance
+        await lightningService.refreshCache()
+
         do {
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
@@ -764,7 +791,6 @@ class WalletViewModel: ObservableObject {
             }
 
             sheetViewModel.showSheet(.connectionClosed)
-            await updateBalanceState()
         }
     }
 

@@ -18,13 +18,6 @@ private struct LnurlChannelResponse: Codable {
     let reason: String?
 }
 
-private struct ChannelInfoResponse: Codable {
-    let uri: String
-    let tag: String
-    let callback: String
-    let k1: String
-}
-
 // MARK: - HTTP Helper
 
 private extension LnurlHelper {
@@ -76,14 +69,26 @@ private extension LnurlHelper {
     /// Builds a URL with query parameters
     /// - Parameters:
     ///   - baseUrl: The base URL string
-    ///   - queryItems: The query parameters to add
+    ///   - queryItems: The query parameters to add/override
     /// - Returns: The constructed URL
     /// - Throws: URL construction errors
     static func buildUrl(baseUrl: String, queryItems: [URLQueryItem]) throws -> URL {
-        var urlComponents = URLComponents(string: baseUrl)
-        urlComponents?.queryItems = queryItems
+        guard var urlComponents = URLComponents(string: baseUrl) else {
+            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid callback URL"])
+        }
 
-        guard let url = urlComponents?.url else {
+        // Get existing query items from the base URL
+        var existingItems = urlComponents.queryItems ?? []
+
+        // Remove any existing items that will be overridden by the new ones
+        let newItemKeys = Set(queryItems.map(\.name))
+        existingItems.removeAll { newItemKeys.contains($0.name) }
+
+        // Append new query items
+        existingItems.append(contentsOf: queryItems)
+        urlComponents.queryItems = existingItems.isEmpty ? nil : existingItems
+
+        guard let url = urlComponents.url else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid callback URL"])
         }
 
@@ -192,30 +197,5 @@ struct LnurlHelper {
 
         try handleLnurlError(channelResponse)
         Logger.debug("LNURL channel request successful")
-    }
-
-    /// Fetches LNURL channel information from the provided URL
-    /// - Parameter url: The LNURL channel URL to fetch
-    /// - Returns: The channel information including the node URI
-    /// - Throws: Network or parsing errors
-    static func fetchLnurlChannelInfo(url: String) async throws -> LnurlChannelData {
-        Logger.debug("Fetching LNURL channel info from: \(url)")
-
-        guard let channelUrl = URL(string: url) else {
-            throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid LNURL channel URL"])
-        }
-
-        let responseString = try await makeHttpGetRequest(url: channelUrl)
-        let channelResponse = try parseJsonResponse(responseString, as: ChannelInfoResponse.self)
-
-        let channelInfo = LnurlChannelData(
-            uri: channelResponse.uri,
-            callback: channelResponse.callback,
-            k1: channelResponse.k1,
-            tag: channelResponse.tag
-        )
-
-        Logger.debug("Parsed channel info - URI: \(channelInfo.uri), Tag: \(channelInfo.tag)")
-        return channelInfo
     }
 }

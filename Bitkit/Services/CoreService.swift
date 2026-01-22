@@ -774,7 +774,8 @@ class ActivityService {
     private func findClosedChannelForTransaction(txid: String, transactionDetails: BitkitCore.TransactionDetails? = nil) async -> String? {
         do {
             // First, check if this txid is a known sweep transaction using LDK's pending sweep balances
-            if let pendingSweeps = LightningService.shared.balances?.pendingBalancesFromChannelClosures {
+            let pendingSweeps = await MainActor.run { LightningService.shared.balances?.pendingBalancesFromChannelClosures }
+            if let pendingSweeps {
                 for sweepBalance in pendingSweeps {
                     switch sweepBalance {
                     case let .broadcastAwaitingConfirmation(channelId, _, latestSpendingTxid, _):
@@ -832,7 +833,8 @@ class ActivityService {
 
     /// Check if a transaction is the funding transaction for an open channel
     private func findOpenChannelForTransaction(txid: String) async -> String? {
-        guard let channels = LightningService.shared.channels, !channels.isEmpty else {
+        let channels = await MainActor.run { LightningService.shared.channels }
+        guard let channels, !channels.isEmpty else {
             return nil
         }
 
