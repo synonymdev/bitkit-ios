@@ -265,7 +265,7 @@ jobs:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -417,7 +417,7 @@ jobs:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -428,8 +428,28 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew/ffmpeg--*
+            ~/Library/Caches/Homebrew/downloads/*ffmpeg*
+            /opt/homebrew/Cellar/ffmpeg
+          key: ${{ runner.os }}-homebrew-ffmpeg-v1
+          restore-keys: |
+            ${{ runner.os }}-homebrew-ffmpeg-
+
       - name: Install ffmpeg
-        run: brew install ffmpeg
+        run: |
+          if command -v ffmpeg &> /dev/null; then
+            echo "ffmpeg already installed: $(ffmpeg -version | head -1)"
+          elif [ -d "/opt/homebrew/Cellar/ffmpeg" ]; then
+            echo "ffmpeg cached, linking..."
+            brew link ffmpeg
+          else
+            echo "Installing ffmpeg..."
+            brew install ffmpeg
+          fi
 
       - name: Boot Simulator
         run: |
