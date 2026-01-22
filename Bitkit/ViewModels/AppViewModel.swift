@@ -850,9 +850,11 @@ extension AppViewModel {
                     await MigrationsService.shared.reapplyMetadataAfterSync()
 
                     if MigrationsService.shared.canCleanupAfterMigration {
-                        try? await LightningService.shared.restart()
-                        SettingsViewModel.shared.updatePinEnabledState()
+                        if MigrationsService.shared.isShowingMigrationLoading {
+                            try? await LightningService.shared.restart()
+                        }
 
+                        SettingsViewModel.shared.updatePinEnabledState()
                         MigrationsService.shared.cleanupAfterMigration()
                         MigrationsService.shared.needsPostMigrationSync = false
                         MigrationsService.shared.isRestoringFromRNRemoteBackup = false

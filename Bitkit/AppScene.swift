@@ -88,6 +88,15 @@ struct AppScene: View {
                         isPinVerified = false
                     }
                     SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
+
+                    if migrations.needsPostMigrationSync {
+                        app.toast(
+                            type: .warning,
+                            title: t("migration__network_required_title"),
+                            description: t("migration__network_required_msg"),
+                            visibilityTime: 8.0
+                        )
+                    }
                 }
             }
             .onChange(of: network.isConnected) { isConnected in
@@ -493,33 +502,27 @@ struct AppScene: View {
     }
 
     private func handleNetworkRestored() {
-        // Only retry if:
-        // 1. Wallet exists
-        // 2. App is in foreground
-        // 3. Node is stopped or in error state
+        // Refresh currency rates when network is restored - critical for UI
+        // to display balances (MoneyText returns "0" if rates are nil)
+        Task {
+            await currency.refresh()
+        }
+
         guard wallet.walletExists == true,
               scenePhase == .active
         else {
             return
         }
 
-        let shouldRetry: Bool = {
-            switch wallet.nodeLifecycleState {
-            case .stopped, .errorStarting:
-                return true
-            default:
-                return false
+        // If node is stopped/failed, restart it
+        switch wallet.nodeLifecycleState {
+        case .stopped, .errorStarting:
+            Logger.info("Network restored, retrying wallet start...", context: "AppScene")
+            Task {
+                await startWallet()
             }
-        }()
-
-        guard shouldRetry else {
-            Logger.debug("Network restored but node is already running/starting", context: "AppScene")
-            return
-        }
-
-        Logger.info("Network restored, retrying wallet start...", context: "AppScene")
-        Task {
-            await startWallet()
+        default:
+            break
         }
     }
 

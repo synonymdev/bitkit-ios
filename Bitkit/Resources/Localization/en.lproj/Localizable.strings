@@ -764,6 +764,8 @@
 "migration__title" = "Wallet Migration";
 "migration__headline" = "MIGRATING\n<accent>WALLET</accent>";
 "migration__description" = "Please wait while your old wallet data migrates to this new Bitkit version...";
+"migration__network_required_title" = "Network Issues Detected";
+"migration__network_required_msg" = "Please ensure you have a stable internet connection. Data may show incorrectly while trying to connect.";
 "settings__adv__suggestions_reset" = "Reset Suggestions";
 "settings__adv__reset_title" = "Reset Suggestions?";
 "settings__adv__reset_desc" = "Are you sure you want to reset the suggestions? They will reappear in case you have removed them from your Bitkit wallet overview.";
