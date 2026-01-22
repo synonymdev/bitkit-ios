@@ -233,7 +233,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - { name: local, grep: '@boost|@transfer|@send|@lnurl|@lightning' }
+          - { name: local, grep: '@boost|@transfer|@send|@lnurl|@lightning|@settings_10' }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
@@ -384,7 +384,8 @@ jobs:
           - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
           # send_lnurl_lightning moved to e2e-tests-local (requires local docker stack)
           - { name: onchain_receive, grep: "@onchain_1|@onchain_2|@receive" }
-          - { name: settings, grep: "@settings" }
+          # settings_10 moved to e2e-tests-local (requires local Electrum)
+          - { name: settings, grep: "@settings_01|@settings_02|@settings_03|@settings_04|@settings_05|@settings_06|@settings_07|@settings_09|@settings_11|@settings_12|@settings_13" }
           - { name: security_widgets, grep: "@security|@widgets" }
 
     name: e2e-tests-regtest - ${{ matrix.shard.name }}
