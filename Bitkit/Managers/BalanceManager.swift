@@ -27,11 +27,12 @@ class BalanceManager {
     /// - Returns: BalanceState with all balance calculations
     /// - Throws: Error if balance retrieval fails
     func deriveBalanceState() async throws -> BalanceState {
-        guard let balanceDetails = lightningService.balances else {
+        let balanceDetails = await MainActor.run { lightningService.balances }
+        guard let balanceDetails else {
             throw AppError(message: "Balance details unavailable", debugMessage: "LightningService.balances is nil")
         }
 
-        let channels = lightningService.channels ?? []
+        let channels = await MainActor.run { lightningService.channels } ?? []
         let activeTransfers = try transferService.getActiveTransfers()
 
         let paidOrdersSats = getOrderPaymentsSats(activeTransfers: activeTransfers)

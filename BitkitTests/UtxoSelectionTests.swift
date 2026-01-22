@@ -32,7 +32,8 @@ final class UtxoSelectionTests: XCTestCase {
         try Keychain.wipeEntireKeychain()
         Logger.test("Keychain wiped successfully", context: "UtxoSelectionTests")
 
-        if lightning.status?.isRunning == true {
+        let isRunning = await MainActor.run { lightning.status?.isRunning == true }
+        if isRunning {
             try? await lightning.stop()
         }
         try? await lightning.wipeStorage(walletIndex: walletIndex)
@@ -97,7 +98,7 @@ final class UtxoSelectionTests: XCTestCase {
         Logger.test("Wallet sync complete", context: "UtxoSelectionTests")
 
         // Verify updated balances after funding
-        let updatedBalances = lightning.balances
+        let updatedBalances = await MainActor.run { lightning.balances }
         XCTAssertNotNil(updatedBalances, "Updated balances should not be nil")
         let finalTotal = updatedBalances?.totalOnchainBalanceSats ?? 0
 

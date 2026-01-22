@@ -131,7 +131,7 @@ struct LnurlAuthSheet: View {
             let response = try await lnurlAuth(
                 domain: extractedDomain,
                 k1: config.authData.k1,
-                callback: config.lnurl,
+                callback: config.authData.uri,
                 bip32Mnemonic: mnemonic,
                 network: Env.bitkitCoreNetwork,
                 bip39Passphrase: passphrase.isEmpty ? nil : passphrase
@@ -149,10 +149,14 @@ struct LnurlAuthSheet: View {
         } catch {
             Logger.error("Failed to handle LNURL auth: \(error)")
 
+            let errorMsg = (error as NSError).localizedDescription
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = errorMsg.isEmpty ? String(describing: type(of: error)) : errorMsg
+
             app.toast(
                 type: .error,
                 title: t("other__lnurl_auth_error"),
-                description: t("other__lnurl_auth_error_msg")
+                description: t("other__lnurl_auth_error_msg", variables: ["raw": raw])
             )
         }
     }
