@@ -119,19 +119,27 @@ extension MoneyText {
     }
 
     private var formattedValue: String {
-        guard let converted = currency.convert(sats: UInt64(abs(sats))) else { return "0" }
-
         if hideBalance {
             return displayDots
         }
 
-        switch unit {
-        case .fiat:
-            return converted.formatted
-        case .bitcoin:
-            let btcComponents = converted.bitcoinDisplay(unit: currency.displayUnit)
-            return btcComponents.value
+        if let converted = currency.convert(sats: UInt64(abs(sats))) {
+            switch unit {
+            case .fiat:
+                return converted.formatted
+            case .bitcoin:
+                return converted.bitcoinDisplay(unit: currency.displayUnit).value
+            }
         }
+
+        // Rates unavailable: show sats for bitcoin, "0" for fiat
+        if unit == .bitcoin {
+            let formatter = NumberFormatter()
+            formatter.numberStyle = .decimal
+            formatter.groupingSeparator = " "
+            return formatter.string(from: NSNumber(value: abs(sats))) ?? String(abs(sats))
+        }
+        return "0"
     }
 
     private var symbolText: String? {
