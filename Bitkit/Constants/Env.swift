@@ -120,10 +120,10 @@ enum Env {
         }
 
         switch network {
-        case .bitcoin: return "ssl://fulcrum.bitkit.blocktank.to:8900"
+        case .bitcoin: return "ssl://bitkit.to:9999"
         case .signet: return "ssl://mempool.space:60602"
         case .testnet: return "ssl://electrum.blockstream.info:60002"
-        case .regtest: return "ssl://fulcrum.bitkit.stag0.blocktank.to:18484"
+        case .regtest: return "ssl://electrs.bitkit.stag0.blocktank.to:9999"
         }
     }
 
