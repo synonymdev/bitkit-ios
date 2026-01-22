@@ -618,7 +618,7 @@ class WalletViewModel: ObservableObject {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {
                 // Existing invoice needs to be checked for expiry
-                if case let .lightning(lightningInvoice) = try await decode(invoice: bolt11) {
+                if case let .lightning(lightningInvoice) = try await CoreService.shared.invoice.decode(invoice: bolt11) {
                     if lightningInvoice.isExpired {
                         bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
                     }
@@ -655,7 +655,7 @@ class WalletViewModel: ObservableObject {
     /// Payment hash from the current bolt11 invoice, if available
     private func paymentHash() async -> String? {
         guard !bolt11.isEmpty else { return nil }
-        guard case let .lightning(lightningInvoice) = try? await decode(invoice: bolt11) else { return nil }
+        guard case let .lightning(lightningInvoice) = try? await CoreService.shared.invoice.decode(invoice: bolt11) else { return nil }
         return lightningInvoice.paymentHash.hex
     }
 

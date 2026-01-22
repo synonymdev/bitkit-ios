@@ -1816,6 +1816,7 @@ class CoreService {
     lazy var activity: ActivityService = .init(coreService: self)
     lazy var blocktank: BlocktankService = .init(coreService: self)
     lazy var utility: UtilityService = .init(coreService: self)
+    lazy var invoice: InvoiceService = .init()
 
     private init(walletIndex: Int = 0) {
         self.walletIndex = walletIndex
@@ -1875,5 +1876,20 @@ class CoreService {
             }
             return nil as Bool?
         }
+    }
+}
+
+// MARK: - Invoice Service
+
+class InvoiceService {
+    /// Decodes an invoice/address string with case normalization workaround.
+    /// - Parameter invoice: The invoice or address string to decode
+    /// - Returns: The decoded invoice data
+    /// - Note: TODO: Remove lowercasing workaround after https://github.com/synonymdev/bitkit-core/issues/66 is fixed
+    func decode(invoice: String) async throws -> BitkitCore.Scanner {
+        // Workaround: BitkitCore's decode() fails on uppercase addresses (bitkit-core#66)
+        // Convert to lowercase before decoding
+        let normalizedInvoice = invoice.lowercased()
+        return try await BitkitCore.decode(invoice: normalizedInvoice)
     }
 }

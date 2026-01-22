@@ -241,7 +241,7 @@ extension AppViewModel {
             return
         }
 
-        let data = try await decode(invoice: uri)
+        let data = try await CoreService.shared.invoice.decode(invoice: uri)
 
         switch data {
         // BIP21 (Unified) invoice handling
@@ -265,7 +265,7 @@ extension AppViewModel {
                     return
                 }
                 // Lightning invoice param found, prefer lightning payment if possible
-                if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
+                if case let .lightning(lightningInvoice) = try await CoreService.shared.invoice.decode(invoice: lnInvoice) {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                     let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
@@ -572,7 +572,7 @@ extension AppViewModel {
         }
 
         // Try to decode the invoice
-        guard let decodedData = try? await decode(invoice: normalized) else {
+        guard let decodedData = try? await CoreService.shared.invoice.decode(invoice: normalized) else {
             guard currentSequence == manualEntryValidationSequence else { return }
             manualEntryValidationResult = .invalid
             isManualEntryInputValid = false
@@ -617,7 +617,7 @@ extension AppViewModel {
             // BIP21 with potential lightning parameter
             var canPayLightning = false
             if let lnInvoice = invoice.params?["lightning"],
-               case let .lightning(lightningInvoice) = try? await decode(invoice: lnInvoice)
+               case let .lightning(lightningInvoice) = try? await CoreService.shared.invoice.decode(invoice: lnInvoice)
             {
                 // Check for stale request after async decode
                 guard currentSequence == manualEntryValidationSequence else { return }
