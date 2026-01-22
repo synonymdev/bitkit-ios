@@ -447,6 +447,26 @@ jobs:
           echo "Verifying simulator state..."
           xcrun simctl list devices booted
 
+      - name: Start Appium Server
+        working-directory: bitkit-e2e-tests
+        run: |
+          echo "Starting Appium server..."
+          npx appium --log-timestamp --log-no-colors > appium.log 2>&1 &
+          APPIUM_PID=$!
+          echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
+          
+          echo "Waiting for Appium server to be ready..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4723/status > /dev/null 2>&1; then
+              echo "Appium server is ready!"
+              break
+            fi
+            echo "Waiting for Appium... ($i/30)"
+            sleep 2
+          done
+          
+          curl -s http://127.0.0.1:4723/status || echo "Warning: Appium status check failed"
+
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
         continue-on-error: true
         id: test1
@@ -483,6 +503,13 @@ jobs:
           SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 3
+
+      - name: Copy Appium logs to artifacts
+        if: always()
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts
+          cp appium.log artifacts/ || true
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
         if: failure()
