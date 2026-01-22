@@ -351,12 +351,13 @@ class MigrationsService: ObservableObject {
 
         migrationTimeoutTask = Task { @MainActor [weak self] in
             do {
-                try await Task.sleep(nanoseconds: self?.migrationTimeoutSeconds ?? 120 * 1_000_000_000)
+                let timeoutSeconds = self?.migrationTimeoutSeconds ?? 120
+                try await Task.sleep(nanoseconds: timeoutSeconds * 1_000_000_000)
 
                 guard let self, !Task.isCancelled else { return }
 
                 if isShowingMigrationLoading {
-                    Logger.warn("Migration loading timeout reached (\(migrationTimeoutSeconds)s), dismissing screen", context: "Migration")
+                    Logger.warn("Migration loading timeout reached (\(timeoutSeconds)s), dismissing screen", context: "Migration")
                     isShowingMigrationLoading = false
                 }
             } catch {
