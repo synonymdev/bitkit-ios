@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -118,6 +119,9 @@ struct HomeView: View {
             }
         }
         .refreshable {
+            // Always refresh currency rates - needed for balance display
+            await currency.refresh()
+
             guard wallet.nodeLifecycleState == .running else {
                 return
             }

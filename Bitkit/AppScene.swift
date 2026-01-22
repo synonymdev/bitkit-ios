@@ -80,6 +80,7 @@ struct AppScene: View {
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
             .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
                 if !isLoading {
+                    SettingsViewModel.shared.updatePinEnabledState()
                     widgets.loadSavedWidgets()
                     suggestionsManager.reloadDismissed()
                     tagManager.reloadLastUsedTags()
@@ -87,6 +88,21 @@ struct AppScene: View {
                         isPinVerified = false
                     }
                     SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
+
+                    if migrations.needsPostMigrationSync {
+                        app.toast(
+                            type: .warning,
+                            title: t("migration__network_required_title"),
+                            description: t("migration__network_required_msg"),
+                            visibilityTime: 8.0
+                        )
+                    }
+                }
+            }
+            .onChange(of: network.isConnected) { isConnected in
+                // Retry starting wallet when network comes back online
+                if isConnected {
+                    handleNetworkRestored()
                 }
             }
             .environmentObject(app)
@@ -297,6 +313,18 @@ struct AppScene: View {
     }
 
     private func startWallet() async {
+        // Check network before attempting to start - LDK hangs when VSS is unreachable
+        guard network.isConnected else {
+            Logger.warn("Network offline, skipping wallet start", context: "AppScene")
+            if MigrationsService.shared.isShowingMigrationLoading {
+                await MainActor.run {
+                    MigrationsService.shared.isShowingMigrationLoading = false
+                    SettingsViewModel.shared.updatePinEnabledState()
+                }
+            }
+            return
+        }
+
         do {
             try await wallet.start()
             try await activity.syncLdkNodePayments()
@@ -309,6 +337,13 @@ struct AppScene: View {
         } catch {
             Logger.error(error, context: "Failed to start wallet")
             Haptics.notify(.error)
+
+            if MigrationsService.shared.isShowingMigrationLoading {
+                await MainActor.run {
+                    MigrationsService.shared.isShowingMigrationLoading = false
+                    SettingsViewModel.shared.updatePinEnabledState()
+                }
+            }
         }
     }
 
@@ -464,6 +499,31 @@ struct AppScene: View {
         // If PIN is enabled, lock the app when the app goes to the background
         if scenePhase == .background && settings.pinEnabled {
             isPinVerified = false
+        }
+    }
+
+    private func handleNetworkRestored() {
+        // Refresh currency rates when network is restored - critical for UI
+        // to display balances (MoneyText returns "0" if rates are nil)
+        Task {
+            await currency.refresh()
+        }
+
+        guard wallet.walletExists == true,
+              scenePhase == .active
+        else {
+            return
+        }
+
+        // If node is stopped/failed, restart it
+        switch wallet.nodeLifecycleState {
+        case .stopped, .errorStarting:
+            Logger.info("Network restored, retrying wallet start...", context: "AppScene")
+            Task {
+                await startWallet()
+            }
+        default:
+            break
         }
     }
 
