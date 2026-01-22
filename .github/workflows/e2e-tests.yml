@@ -233,7 +233,7 @@ jobs:
       fail-fast: false
       matrix:
         shard:
-          - { name: local, grep: '@boost|@transfer' }
+          - { name: local, grep: '@boost|@transfer|@send|@lnurl|@lightning' }
 
     name: e2e-tests-local - ${{ matrix.shard.name }}
 
@@ -382,9 +382,10 @@ jobs:
       matrix:
         shard:
           - { name: onboarding_backup_numberpad, grep: "@onboarding|@backup|@numberpad" }
-          - { name: send_lnurl_lightning, grep: "@send|@lnurl|@lightning" }
-          - { name: onchain_receive_widgets, grep: "@onchain_1|@onchain_2|@receive|@widgets" }
-          - { name: settings_security, grep: "@settings|@security" }
+          # send_lnurl_lightning moved to e2e-tests-local (requires local docker stack)
+          - { name: onchain_receive, grep: "@onchain_1|@onchain_2|@receive" }
+          - { name: settings, grep: "@settings" }
+          - { name: security_widgets, grep: "@security|@widgets" }
 
     name: e2e-tests-regtest - ${{ matrix.shard.name }}
 
@@ -426,6 +427,9 @@ jobs:
       - name: Install dependencies
         working-directory: bitkit-e2e-tests
         run: npm ci
+
+      - name: Install ffmpeg
+        run: brew install ffmpeg
 
       - name: Boot Simulator
         run: |
