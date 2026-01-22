@@ -14,6 +14,13 @@ class LightningService {
 
     private var channelCache: [String: ChannelDetails] = [:]
 
+    // Cached values to avoid blocking LDK calls on main thread
+    // MainActor isolated to prevent data races between background writes and UI reads
+    @MainActor private var cachedStatus: NodeStatus?
+    @MainActor private var cachedBalances: BalanceDetails?
+    @MainActor private var cachedPeers: [PeerDetails]?
+    @MainActor private var cachedChannels: [ChannelDetails]?
+
     private var storedEventCallback: ((Event) -> Void)?
 
     var syncStatusChangedPublisher: AnyPublisher<UInt64, Never> {
@@ -24,14 +31,30 @@ class LightningService {
 
     private init() {}
 
+    /// Flag and lock to prevent concurrent setup calls
+    private var isSettingUp = false
+    private let setupLock = NSLock()
+
     func setup(
         walletIndex: Int,
         electrumServerUrl: String? = nil,
         rgsServerUrl: String? = nil,
         channelMigration: ChannelDataMigration? = nil
     ) async throws {
+        // Guard against concurrent setup calls
+        let shouldProceed: Bool = setupLock.withLock {
+            guard !isSettingUp && node == nil else {
+                Logger.debug("Node already setting up or already set up, skipping")
+                return false
+            }
+            isSettingUp = true
+            return true
+        }
+        guard shouldProceed else { return }
+        defer { setupLock.withLock { isSettingUp = false } }
+
         Logger.debug("Checking lightning process lock...")
-        try StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
+        try await StateLocker.lock(.lightning, wait: 30) // Wait 30 seconds to lock because maybe extension is still running
 
         guard var mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
             throw CustomServiceError.mnemonicNotFound
@@ -203,6 +226,7 @@ class LightningService {
         }
 
         await refreshChannelCache()
+        await refreshCache()
 
         Logger.info("Node started")
     }
@@ -263,6 +287,12 @@ class LightningService {
 
         Logger.warn("Wiping on lighting wallet...")
         try FileManager.default.removeItem(at: directory)
+
+        await MainActor.run {
+            clearCache()
+            channelCache.removeAll()
+        }
+
         Logger.info("Lightning wallet wiped")
     }
 
@@ -331,6 +361,7 @@ class LightningService {
         Logger.info("LDK synced")
 
         await refreshChannelCache()
+        await refreshCache()
 
         // Emit state change with sync timestamp from node status
         let nodeStatus = node.status()
@@ -383,6 +414,7 @@ class LightningService {
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
+    @MainActor
     func canSend(amountSats: UInt64) -> Bool {
         guard let channels else {
             Logger.warn("Channels not available")
@@ -656,11 +688,51 @@ class LightningService {
 
 extension LightningService {
     var nodeId: String? { node?.nodeId() }
-    var balances: BalanceDetails? { node?.listBalances() }
-    var status: NodeStatus? { node?.status() }
-    var peers: [PeerDetails]? { node?.listPeers() }
-    var channels: [ChannelDetails]? { node?.listChannels() }
+
+    // Use cached values to avoid blocking LDK calls on main thread
+    @MainActor var balances: BalanceDetails? { cachedBalances }
+    @MainActor var status: NodeStatus? { cachedStatus }
+    @MainActor var peers: [PeerDetails]? { cachedPeers }
+    @MainActor var channels: [ChannelDetails]? { cachedChannels }
     var payments: [PaymentDetails]? { node?.listPayments() }
+
+    /// Refresh all cached values asynchronously
+    /// Fetches from LDK on background queue, updates cache on main actor
+    func refreshCache() async {
+        // Skip if node isn't set up yet - don't block on the LDK queue
+        guard node != nil else { return }
+
+        do {
+            // Fetch all values in a single background queue call
+            let (newStatus, newBalances, newPeers, newChannels) = try await ServiceQueue.background(.ldk) { [self] in
+                (
+                    node?.status(),
+                    node?.listBalances(),
+                    node?.listPeers(),
+                    node?.listChannels()
+                )
+            }
+
+            // Update cache on main actor
+            await MainActor.run {
+                cachedStatus = newStatus
+                cachedBalances = newBalances
+                cachedPeers = newPeers
+                cachedChannels = newChannels
+            }
+        } catch {
+            Logger.error("Failed to refresh cache: \(error)", context: "LightningService")
+        }
+    }
+
+    /// Clear cached values - only call when wiping storage or resetting the wallet.
+    @MainActor
+    func clearCache() {
+        cachedStatus = nil
+        cachedBalances = nil
+        cachedPeers = nil
+        cachedChannels = nil
+    }
 
     /// Get balance for a specific address in satoshis
     /// - Parameter address: The Bitcoin address to check

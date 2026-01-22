@@ -29,16 +29,14 @@ struct AppStatusView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .onAppear {
-            wallet.syncState()
-        }
         .task {
+            await wallet.syncStateAsync()
             backupTimestamp = await BackupService.shared.getLatestBackupTime()
         }
     }
 
     private func refreshAppStatus() async {
-        wallet.syncState()
+        await wallet.syncStateAsync()
         backupTimestamp = await BackupService.shared.getLatestBackupTime()
 
         if wallet.nodeLifecycleState == .running {

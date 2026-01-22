@@ -10,66 +10,106 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
 
-    let sleepTime: UInt64 = 500_000_000 // 0.5 seconds
-
     // Store the background task identifier
     @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    // Track if we need to start node after it finishes stopping
+    @State private var pendingStartAfterStop = false
+    // Delay before stopping node (don't stop for quick background trips)
+    @State private var stopNodeWorkItem: DispatchWorkItem?
+
+    // Only stop node if app has been in background for this long
+    private let backgroundStopDelay: TimeInterval = 90.0
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: scenePhase) { newPhase in
+            .onChange(of: scenePhase, perform: { newPhase in
                 guard wallet.walletExists == true else {
                     return
                 }
 
-                Task { @MainActor in
-                    Logger.debug("Scene phase changed: \(newPhase)")
+                Logger.debug("Scene phase changed: \(newPhase)")
 
-                    if newPhase == .background {
-                        do {
-                            try await stopNodeIfNeeded()
-                        } catch {
-                            Logger.error(error, context: "Failed to stop LN")
-                        }
-                        return
+                if newPhase == .background {
+                    app.resetAppStatusInit()
+                    pendingStartAfterStop = false
+                    scheduleNodeStop()
+                    return
+                }
+
+                if newPhase == .active {
+                    // Cancel any pending node stop
+                    cancelScheduledNodeStop()
+
+                    // End background task if it's still active
+                    if backgroundTaskID != .invalid {
+                        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                        backgroundTaskID = .invalid
+                        Logger.debug("Ended background task on app becoming active")
                     }
 
-                    if newPhase == .active {
-                        // End background task if it's still active
-                        if backgroundTaskID != .invalid {
-                            UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                            backgroundTaskID = .invalid
-                            Logger.debug("Ended background task on app becoming active")
-                        }
+                    // Check for background-received transaction
+                    if let transaction = ReceivedTxSheetDetails.load() {
+                        ReceivedTxSheetDetails.clear()
+                        sheets.showSheet(.receivedTx, data: transaction)
+                    }
 
-                        // Remove all delivered notifications
+                    // Remove delivered notifications
+                    Task {
                         await clearDeliveredNotifications()
+                    }
 
-                        do {
-                            try await startNodeIfNeeded()
-                        } catch {
-                            Logger.error(error, context: "Failed to start LN")
-                        }
-                        Task {
-                            await currency.refresh()
-                        }
+                    startNodeIfNeeded()
 
-                        Task {
-                            try? await blocktank.refreshOrders()
-                        }
+                    Task {
+                        await currency.refresh()
+                    }
+
+                    Task {
+                        try? await blocktank.refreshOrders()
                     }
                 }
-            }
+            })
+            .onChange(of: wallet.nodeLifecycleState, perform: { newState in
+                // Handle pending start after node finishes stopping
+                if newState == .stopped && pendingStartAfterStop && scenePhase == .active {
+                    pendingStartAfterStop = false
+                    startNodeIfNeeded()
+                }
+            })
     }
 
-    func stopNodeIfNeeded() async throws {
+    /// Schedule node stop after a delay - allows quick background trips without restart
+    func scheduleNodeStop() {
+        // Cancel any existing scheduled stop
+        stopNodeWorkItem?.cancel()
+
+        let workItem = DispatchWorkItem { [self] in
+            stopNodeIfNeeded()
+        }
+        stopNodeWorkItem = workItem
+
+        Logger.debug("Scheduling node stop in \(backgroundStopDelay)s...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + backgroundStopDelay, execute: workItem)
+    }
+
+    /// Cancel scheduled node stop (called when returning to foreground quickly)
+    func cancelScheduledNodeStop() {
+        if let workItem = stopNodeWorkItem, !workItem.isCancelled {
+            workItem.cancel()
+            Logger.debug("Cancelled scheduled node stop - quick return to foreground")
+        }
+        stopNodeWorkItem = nil
+    }
+
+    func stopNodeIfNeeded() {
+        // Already stopped or stopping
         if wallet.nodeLifecycleState == .stopped || wallet.nodeLifecycleState == .stopping {
             return
         }
 
-        while wallet.nodeLifecycleState == .starting {
-            Logger.debug("Waiting for LN to start first before stopping...")
-            try await Task.sleep(nanoseconds: sleepTime)
+        if wallet.nodeLifecycleState == .starting {
+            Logger.debug("Node is starting, can't stop yet")
+            return
         }
 
         guard scenePhase != .active else {
@@ -77,8 +117,8 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
             return
         }
 
-        guard wallet.nodeLifecycleState != .stopped && wallet.nodeLifecycleState != .stopping else {
-            Logger.debug("LN is already stopped or stopping")
+        guard wallet.nodeLifecycleState == .running else {
+            Logger.debug("LN is not in a stoppable state: \(wallet.nodeLifecycleState)")
             return
         }
 
@@ -93,39 +133,48 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
         }
 
         Logger.debug("Background task started with ID: \(backgroundTaskID.rawValue)")
-        Logger.debug("App backgrounded Stopping node...")
+        Logger.debug("App backgrounded, stopping node...")
 
-        do {
-            try await wallet.stopLightningNode()
+        Task {
+            do {
+                try await wallet.stopLightningNode()
 
-            // End the background task if completed successfully
-            if backgroundTaskID != .invalid {
-                UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                backgroundTaskID = .invalid
-                Logger.debug("Background task ended after successful node stop")
-            }
+                await MainActor.run {
+                    // End the background task if completed successfully
+                    if backgroundTaskID != .invalid {
+                        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                        backgroundTaskID = .invalid
+                        Logger.debug("Background task ended after successful node stop")
+                    }
 
-            // If we're stopped and we're not in the background, we need to start again
-            if scenePhase == .active {
-                try await startNodeIfNeeded()
+                    // If we're stopped and we're not in the background, we need to start again
+                    if scenePhase == .active {
+                        startNodeIfNeeded()
+                    }
+                }
+            } catch {
+                Logger.error(error, context: "Failed to stop LN")
+                await MainActor.run {
+                    // End the background task if there was an error
+                    if backgroundTaskID != .invalid {
+                        UIApplication.shared.endBackgroundTask(backgroundTaskID)
+                        backgroundTaskID = .invalid
+                        Logger.debug("Background task ended after error stopping node")
+                    }
+                }
             }
-        } catch {
-            // End the background task if there was an error
-            if backgroundTaskID != .invalid {
-                UIApplication.shared.endBackgroundTask(backgroundTaskID)
-                backgroundTaskID = .invalid
-                Logger.debug("Background task ended after error stopping node")
-            }
-            throw error
         }
     }
 
-    func startNodeIfNeeded() async throws {
-        while wallet.nodeLifecycleState == .stopping {
-            Logger.debug("Node is still stopping, waiting...")
-            try await Task.sleep(nanoseconds: sleepTime)
+    func startNodeIfNeeded() {
+        // If node is stopping, mark that we want to start after it stops
+        if wallet.nodeLifecycleState == .stopping {
+            Logger.debug("Node is stopping, will start after it finishes")
+            pendingStartAfterStop = true
+            return
         }
 
+        // Already running or starting
         guard wallet.nodeLifecycleState == .stopped else {
             Logger.debug("LN is already running or starting, abandoning restart...")
             return
@@ -138,7 +187,13 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
 
         Logger.debug("App active, starting LN service...")
 
-        try await wallet.start()
+        Task {
+            do {
+                try await wallet.start()
+            } catch {
+                Logger.error(error, context: "Failed to start LN")
+            }
+        }
     }
 
     /// Removes all delivered notifications from Notification Center
