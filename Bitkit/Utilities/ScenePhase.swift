@@ -47,12 +47,6 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
                         Logger.debug("Ended background task on app becoming active")
                     }
 
-                    // Check for background-received transaction
-                    if let transaction = ReceivedTxSheetDetails.load() {
-                        ReceivedTxSheetDetails.clear()
-                        sheets.showSheet(.receivedTx, data: transaction)
-                    }
-
                     // Remove delivered notifications
                     Task {
                         await clearDeliveredNotifications()
