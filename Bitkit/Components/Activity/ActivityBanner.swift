@@ -26,9 +26,9 @@ struct ActivityBanner: View {
 
     private var bannerText: String {
         if let duration = remainingDuration {
-            return tTodo("TRANSFER READY IN \(duration)")
+            return t("wallet__activity_transfer_ready_in", variables: ["duration": duration])
         } else {
-            return tTodo("TRANSFER IN PROGRESS")
+            return t("wallet__activity_transfer_in_progress")
         }
     }
 

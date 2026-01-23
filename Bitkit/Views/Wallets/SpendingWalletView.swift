@@ -36,7 +36,7 @@ struct SpendingWalletView: View {
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .lightning)
 
-                    CustomButton(title: tTodo("Show All"), variant: .tertiary) {
+                    CustomButton(title: t("common__show_all"), variant: .tertiary) {
                         navigation.navigate(.activityList)
                     }
                     /// Leave some space for TabBar
@@ -76,7 +76,7 @@ struct SpendingWalletView: View {
 
     var transferButton: some View {
         CustomButton(
-            title: tTodo("Transfer To Savings"),
+            title: t("lightning__transfer_to_savings_button"),
             variant: .secondary,
             icon: Image("arrow-up-down")
                 .resizable()

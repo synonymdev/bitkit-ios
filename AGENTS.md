@@ -37,6 +37,34 @@ E2E_BACKEND=network E2E_NETWORK=regtest \
   build
 ```
 
+### Running on Physical Device
+
+**From Terminal:**
+```bash
+# List connected devices
+xcrun devicectl list devices
+
+# Set device ID from the list above
+DEVICE_ID="<device-identifier-from-list>"
+
+# Build for device
+xcodebuild -project Bitkit.xcodeproj -scheme Bitkit -configuration Debug \
+  -destination 'generic/platform=iOS' -derivedDataPath build build
+
+# Install app on device
+xcrun devicectl device install app --device $DEVICE_ID build/Build/Products/Debug-iphoneos/Bitkit.app
+
+# Launch app with console output
+xcrun devicectl device process launch --device $DEVICE_ID to.bitkit --console
+```
+
+**From Xcode:**
+1. Open `Bitkit.xcodeproj`
+2. Select your device from the destination dropdown
+3. Press Cmd+R to build and run
+
+**Note:** The project includes a "Remove Static Framework Stubs" build phase that removes empty LDKNodeFFI.framework from the app bundle. This is needed because LDKNodeFFI is a static library (linked at compile time), not a dynamic framework.
+
 ### Code Formatting
 ```bash
 # Install SwiftFormat

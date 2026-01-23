@@ -97,8 +97,8 @@ struct RgsSettingsScreen: View {
         } else {
             app.toast(
                 type: .warning,
-                title: tTodo("settings__rgs__error_peer"),
-                description: errorMessage ?? tTodo("settings__rgs__server_error_description"),
+                title: t("settings__rgs__error_peer"),
+                description: errorMessage ?? t("settings__rgs__server_error_description"),
                 accessibilityIdentifier: "RgsErrorToast"
             )
         }

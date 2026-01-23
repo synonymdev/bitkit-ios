@@ -58,7 +58,7 @@ struct ReceiveCjitConfirmation: View {
             Spacer()
 
             HStack(alignment: .center, spacing: 0) {
-                BodyMText(tTodo("Enable background setup"), textColor: .textPrimary)
+                BodyMText(t("wallet__receive_background_setup_toggle"), textColor: .textPrimary)
 
                 Spacer()
 

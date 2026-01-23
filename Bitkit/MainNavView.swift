@@ -207,8 +207,8 @@ struct MainNavView: View {
                         Logger.error("Failed to sync push notifications with backend: \(error)")
                         app.toast(
                             type: .error,
-                            title: tTodo("Notification Registration Failed"),
-                            description: tTodo("Bitkit was unable to register for push notifications.")
+                            title: t("other__notification_registration_failed_title"),
+                            description: t("other__notification_registration_failed_description")
                         )
                     }
                 }
@@ -228,8 +228,8 @@ struct MainNavView: View {
                             Logger.error("Failed to sync push notifications: \(error)")
                             app.toast(
                                 type: .error,
-                                title: tTodo("Notification Registration Failed"),
-                                description: tTodo("Bitkit was unable to register for push notifications.")
+                                title: t("other__notification_registration_failed_title"),
+                                description: t("other__notification_registration_failed_description")
                             )
                         }
                     }

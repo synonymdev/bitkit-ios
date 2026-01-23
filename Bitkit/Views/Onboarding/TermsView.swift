@@ -25,8 +25,8 @@ private struct TermsFooter: View {
         VStack(spacing: 25) {
             VStack(alignment: .leading, spacing: 12) {
                 FooterItem(
-                    title: tTodo("Terms of Use"),
-                    subtitle: tTodo("By continuing you declare that you have read and accept the terms of use."),
+                    title: t("onboarding__tos_title"),
+                    subtitle: t("onboarding__tos_subtitle"),
                     subtitleUrl: nil
                 )
 
@@ -34,7 +34,7 @@ private struct TermsFooter: View {
 
                 FooterItem(
                     title: t("onboarding__pp_checkbox"),
-                    subtitle: tTodo("By continuing you declare that you have read and accept the <accent>privacy policy.</accent>"),
+                    subtitle: t("onboarding__pp_subtitle"),
                     subtitleUrl: URL(string: Env.privacyPolicyUrl)
                 )
 
