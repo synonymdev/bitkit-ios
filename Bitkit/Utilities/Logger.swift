@@ -152,25 +152,6 @@ class Logger {
     }
 }
 
-// MARK: - LogLevel
-
-extension LogLevel: Comparable {
-    public static func < (lhs: LogLevel, rhs: LogLevel) -> Bool {
-        lhs.order < rhs.order
-    }
-
-    private var order: Int {
-        switch self {
-        case .gossip: return 1
-        case .trace: return 2
-        case .debug: return 3
-        case .info: return 4
-        case .warn: return 5
-        case .error: return 6
-        }
-    }
-}
-
 // MARK: - LdkLogWriter
 
 final class LdkLogWriter: LogWriter {
@@ -181,7 +162,7 @@ final class LdkLogWriter: LogWriter {
     }
 
     func log(record: LogRecord) {
-        guard record.level >= maxLogLevel else { return }
+        guard logLevelOrder(record.level) >= logLevelOrder(maxLogLevel) else { return }
 
         let context = "[LDK] [\(record.modulePath):\(record.line)]"
 
@@ -194,6 +175,19 @@ final class LdkLogWriter: LogWriter {
             Logger.warn(record.args, context: context)
         case .error:
             Logger.error(record.args, context: context)
+        }
+    }
+
+    /// Returns the numeric order of a LogLevel for comparison purposes.
+    /// Higher values are more severe (error > warn > info > debug > trace > gossip).
+    private func logLevelOrder(_ level: LogLevel) -> Int {
+        switch level {
+        case .gossip: return 1
+        case .trace: return 2
+        case .debug: return 3
+        case .info: return 4
+        case .warn: return 5
+        case .error: return 6
         }
     }
 }
