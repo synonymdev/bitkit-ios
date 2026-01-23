@@ -24,7 +24,7 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
     private let itemHeight: CGFloat
 
     /// Minimum drag distance before reordering starts
-    private let minDragDistance: CGFloat = 0
+    private let minDragDistance: CGFloat = 10
 
     /// Called when a drag operation begins
     let onDragBegan: () -> Void
@@ -116,7 +116,7 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
+        DragGesture(minimumDistance: minDragDistance)
             .onChanged { gesture in
                 let verticalMovement = abs(gesture.translation.height)
                 let startLocation = gesture.startLocation
