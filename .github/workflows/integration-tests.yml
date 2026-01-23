@@ -48,16 +48,6 @@ jobs:
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
 
-      - name: Reset and start simulator
-        run: |
-          echo "⏱️  Resetting simulator at $(date)"
-          xcrun simctl shutdown all || true
-          xcrun simctl erase "iPhone 16" || true
-          xcrun simctl boot "iPhone 16"
-          # Wait for simulator to fully boot
-          sleep 5
-          echo "✅ Simulator ready at $(date)"
-
       - name: Clean build
         run: |
           echo "⏱️  Cleaning build at $(date)"
