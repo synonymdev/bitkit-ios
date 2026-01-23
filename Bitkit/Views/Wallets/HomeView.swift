@@ -65,7 +65,6 @@ struct HomeView: View {
                     .padding(.bottom, 130)
                 }
             }
-            .scrollDisabled(isEditingWidgets)
 
             // Gradients layer
             VStack(spacing: 0) {
