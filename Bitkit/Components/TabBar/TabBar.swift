@@ -3,6 +3,7 @@ import SwiftUI
 struct TabBar: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
         if navigation.activeDrawerMenuItem == .wallet || navigation.activeDrawerMenuItem == .activity {
@@ -54,7 +55,11 @@ struct TabBar: View {
     }
 
     private func onReceivePress() {
-        if navigation.currentRoute == .spendingWallet {
+        let hasInboundCapacity = (wallet.totalInboundLightningSats ?? 0) > 0
+        let hasPendingTransfersToSpending = wallet.balanceInTransferToSpending > 0
+
+        if navigation.currentRoute == .spendingWallet && !hasInboundCapacity && !hasPendingTransfersToSpending {
+            // On spending wallet screen, show CJIT flow when user can't receive normally
             sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
         } else {
             sheets.showSheet(.receive)

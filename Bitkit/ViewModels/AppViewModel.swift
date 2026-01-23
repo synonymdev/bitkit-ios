@@ -684,9 +684,10 @@ extension AppViewModel {
             // Only relevant for channels to external nodes
             break
         case .channelReady(let channelId, userChannelId: _, counterpartyNodeId: _, fundingTxo: _):
-            if let channel = lightningService.channels?.first(where: { $0.channelId == channelId }) {
-                Task {
-                    let cjitOrder = try await CoreService.shared.blocktank.getCjit(channel: channel)
+            Task {
+                // Use channelCache instead of cachedChannels array, as it's updated immediately
+                if let channel = await lightningService.getChannelFromCache(channelId: channelId) {
+                    let cjitOrder = await CoreService.shared.blocktank.getCjit(channel: channel)
                     if cjitOrder != nil {
                         let amount = channel.balanceOnCloseSats
                         let now = UInt64(Date().timeIntervalSince1970)
@@ -713,7 +714,9 @@ extension AppViewModel {
                             sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         }
                     } else {
-                        let channelCount = lightningService.channels?.count ?? 0
+                        let channelCount = await MainActor.run {
+                            lightningService.channels?.count ?? 0
+                        }
                         if channelCount == 1 {
                             toast(
                                 type: .lightning,
@@ -724,17 +727,20 @@ extension AppViewModel {
                             )
                         }
                     }
-                }
-            } else {
-                let channelCount = lightningService.channels?.count ?? 0
-                if channelCount == 1 {
-                    toast(
-                        type: .lightning,
-                        title: t("lightning__channel_opened_title"),
-                        description: t("lightning__channel_opened_msg"),
-                        visibilityTime: 5.0,
-                        accessibilityIdentifier: "SpendingBalanceReadyToast"
-                    )
+                } else {
+                    Logger.warn("Channel not found in cache: \(channelId)")
+                    let channelCount = await MainActor.run {
+                        lightningService.channels?.count ?? 0
+                    }
+                    if channelCount == 1 {
+                        toast(
+                            type: .lightning,
+                            title: t("lightning__channel_opened_title"),
+                            description: t("lightning__channel_opened_msg"),
+                            visibilityTime: 5.0,
+                            accessibilityIdentifier: "SpendingBalanceReadyToast"
+                        )
+                    }
                 }
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
