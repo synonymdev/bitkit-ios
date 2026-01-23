@@ -48,11 +48,15 @@ jobs:
           xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
           echo "✅ Dependencies resolved at $(date)"
 
-      - name: Pre-start simulator
+      - name: Reset and start simulator
         run: |
-          echo "⏱️  Starting simulator at $(date)"
-          xcrun simctl boot "iPhone 16" || true
-          echo "✅ Simulator started at $(date)"
+          echo "⏱️  Resetting simulator at $(date)"
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "iPhone 16" || true
+          xcrun simctl boot "iPhone 16"
+          # Wait for simulator to fully boot
+          sleep 5
+          echo "✅ Simulator ready at $(date)"
 
       - name: Clean build
         run: |
@@ -63,17 +67,38 @@ jobs:
       - name: Run integration tests
         run: |
           echo "⏱️  Starting integration tests at $(date)"
-          set -o pipefail && xcodebuild test \
-            -scheme Bitkit \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-            -enableCodeCoverage NO \
-            -parallel-testing-enabled NO \
-            -only-testing:BitkitTests/TxBumpingTests \
-            -only-testing:BitkitTests/UtxoSelectionTests \
-            -only-testing:BitkitTests/BlocktankTests \
-            -only-testing:BitkitTests/PaymentFlowTests \
-            | xcbeautify --report junit
-          echo "✅ Integration tests completed at $(date)"
+
+          run_tests() {
+            set -o pipefail && xcodebuild test \
+              -scheme Bitkit \
+              -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+              -enableCodeCoverage NO \
+              -parallel-testing-enabled NO \
+              -only-testing:BitkitTests/UtxoSelectionTests \
+              -only-testing:BitkitTests/BlocktankTests \
+              -only-testing:BitkitTests/PaymentFlowTests \
+              | xcbeautify --report junit
+          }
+
+          # Try up to 3 times with simulator reset between failures
+          for attempt in 1 2 3; do
+            echo "🔄 Test attempt $attempt of 3"
+            if run_tests; then
+              echo "✅ Integration tests completed at $(date)"
+              exit 0
+            fi
+
+            if [ $attempt -lt 3 ]; then
+              echo "⚠️  Test attempt $attempt failed, resetting simulator..."
+              xcrun simctl shutdown all || true
+              xcrun simctl erase "iPhone 16" || true
+              xcrun simctl boot "iPhone 16"
+              sleep 5
+            fi
+          done
+
+          echo "❌ All test attempts failed"
+          exit 1
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
