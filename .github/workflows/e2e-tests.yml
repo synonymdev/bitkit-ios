@@ -20,11 +20,16 @@ concurrency:
 jobs:
   build:
     if: github.event.pull_request.draft == false
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
 
       - name: System Information
         run: |
@@ -35,29 +40,41 @@ jobs:
           echo "Xcode Version:"
           xcodebuild -version
 
-      - name: Clean build environment
+      - name: Install xcbeautify
         run: |
-          # Clean any existing build artifacts
-          rm -rf DerivedData
-          rm -rf ~/Library/Developer/Xcode/DerivedData
+          brew install xcbeautify
 
-          # Clean Swift Package Manager caches
-          rm -rf ~/Library/Caches/org.swift.swiftpm
-          rm -rf ~/Library/org.swift.swiftpm
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
 
-          # Reset package caches
-          xcodebuild -resolvePackageDependencies -workspace Bitkit.xcodeproj/project.xcworkspace -scheme Bitkit
+      - name: Install dependencies
+        run: |
+          echo "⏱️  Starting dependency resolution at $(date)"
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+          echo "✅ Dependencies resolved at $(date)"
 
-      - name: Build iOS app
+      - name: Pre-start simulator
+        run: |
+          echo "⏱️  Starting simulator at $(date)"
+          xcrun simctl boot "iPhone 17" || true
+          echo "✅ Simulator started at $(date)"
+
+      - name: Build iOS app (local)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
           SIMULATOR_NAME: "iPhone 17"
-          OS_VERSION: "latest"
+          OS_VERSION: "26.2"
           GEO: false
         run: |
-          echo "=== Building iOS app ==="
+          echo "=== Building iOS app (local) ==="
           echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
 
           if xcodebuild -showsdks | grep -q "iOS Simulator"; then
@@ -76,19 +93,17 @@ jobs:
             -allowProvisioningUpdates \
             build
 
-      - name: Prepare app for E2E tests
+      - name: Prepare app for E2E tests (local)
         run: |
-          # Copy the .app bundle to the expected location and name, then zip it
-          # Zipping prevents "Upload progress stalled" errors with large .app bundles
+          # Copy the .app bundle to the expected location and name
           mkdir -p e2e-app
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
-          cd e2e-app && zip -r -q bitkit.app.zip bitkit.app && rm -rf bitkit.app
 
-      - name: Upload iOS app
-        uses: actions/upload-artifact@v6
+      - name: Upload iOS app (local)
+        uses: actions/upload-artifact@v4
         with:
-          name: bitkit-e2e-ios_${{ github.run_number }}
-          path: e2e-app/bitkit.app.zip
+          name: bitkit-e2e-ios-regtest_${{ github.run_number }}
+          path: e2e-app/
 
   e2e-branch:
     if: github.event.pull_request.draft == false
