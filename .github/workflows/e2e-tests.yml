@@ -87,6 +87,8 @@ jobs:
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
+        env:
+          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 10
 
   e2e-branch:
     if: github.event.pull_request.draft == false
