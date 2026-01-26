@@ -148,12 +148,6 @@ jobs:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
 
-      - name: Extract iOS app
-        working-directory: bitkit-e2e-tests/aut
-        run: |
-          unzip -q bitkit.app.zip
-          rm bitkit.app.zip
-
       - name: List iOS app directory contents
         run: ls -l bitkit-e2e-tests/aut
 
