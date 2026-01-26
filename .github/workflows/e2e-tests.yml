@@ -39,7 +39,7 @@ jobs:
               - 'Package.swift'
               - '.github/workflows/e2e-tests.yml'
 
-  build:
+  build-local:
     needs: detect-changes
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
@@ -456,19 +456,19 @@ jobs:
         run: |
           echo "Erasing simulator..."
           xcrun simctl erase "iPhone 16" || true
-          
+
           echo "Booting simulator..."
           xcrun simctl boot "iPhone 16" || true
-          
+
           echo "Waiting for boot status..."
           xcrun simctl bootstatus "iPhone 16" -b
-          
+
           echo "Opening Simulator app to ensure UI is ready..."
           open -a Simulator
-          
+
           echo "Waiting for simulator to fully initialize..."
           sleep 30
-          
+
           echo "Verifying simulator state..."
           xcrun simctl list devices booted
 
@@ -479,7 +479,7 @@ jobs:
           npx appium --log-timestamp --log-no-colors > appium.log 2>&1 &
           APPIUM_PID=$!
           echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
-          
+
           echo "Waiting for Appium server to be ready..."
           for i in {1..30}; do
             if curl -s http://127.0.0.1:4723/status > /dev/null 2>&1; then
@@ -489,7 +489,7 @@ jobs:
             echo "Waiting for Appium... ($i/30)"
             sleep 2
           done
-          
+
           curl -s http://127.0.0.1:4723/status || echo "Warning: Appium status check failed"
 
       - name: Run E2E Tests 1 (${{ matrix.shard.name }})
