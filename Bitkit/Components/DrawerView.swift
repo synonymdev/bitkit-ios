@@ -183,6 +183,7 @@ struct DrawerView: View {
                     .foregroundColor(.white)
                     .kerning(-1)
                     .padding(.vertical, 18)
+                    .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             }
             .frame(height: 56)
 

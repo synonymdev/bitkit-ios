@@ -36,7 +36,7 @@ struct EmptyStateView: View {
 
             HStack(alignment: .bottom, spacing: 0) {
                 DisplayText(t(type.localizationKey), accentColor: type.accentColor)
-                    .frame(width: 224)
+                    .frame(width: 240)
 
                 Image("empty-state-arrow")
                     .resizable()
