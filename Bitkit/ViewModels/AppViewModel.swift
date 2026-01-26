@@ -261,59 +261,27 @@ extension AppViewModel {
             }
 
             if let lnInvoice = invoice.params?["lightning"] {
-                guard lightningService.status?.isRunning == true else {
-                    toast(type: .error, title: "Lightning not running", description: "Please try again later.")
-                    return
-                }
-                // Lightning invoice param found, prefer lightning payment if possible
+                // Lightning invoice param found, prefer lightning payment if invoice is valid
                 if case let .lightning(lightningInvoice) = try await decode(invoice: lnInvoice) {
                     // Check lightning invoice network
                     let lnNetwork = NetworkValidationHelper.convertNetworkType(lightningInvoice.networkType)
                     let lnNetworkMatch = !NetworkValidationHelper.isNetworkMismatch(addressNetwork: lnNetwork, currentNetwork: Env.network)
 
-                    let canSend = lightningService.canSend(amountSats: lightningInvoice.amountSatoshis)
-
-                    if lnNetworkMatch, !lightningInvoice.isExpired, canSend {
+                    // Proceed with lightning if invoice is valid (network match, not expired)
+                    // SendSheet will show sync overlay and validate capacity after node is ready
+                    if lnNetworkMatch, !lightningInvoice.isExpired {
                         handleScannedLightningInvoice(lightningInvoice, bolt11: lnInvoice, onchainInvoice: invoice)
                         return
                     }
 
-                    // If Lightning is expired or insufficient, fall back to on-chain silently (no toast)
+                    // If Lightning is expired or wrong network, fall back to on-chain silently (no toast)
                 }
             }
 
             // Fallback to on-chain if address is available
             guard !invoice.address.isEmpty else { return }
 
-            // Check on-chain balance
-            let onchainBalance = lightningService.balances?.spendableOnchainBalanceSats ?? 0
-            if invoice.amountSatoshis > 0 {
-                guard onchainBalance >= invoice.amountSatoshis else {
-                    let amountNeeded = invoice.amountSatoshis - onchainBalance
-                    toast(
-                        type: .error,
-                        title: t("other__pay_insufficient_savings"),
-                        description: t(
-                            "other__pay_insufficient_savings_amount_description",
-                            variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)]
-                        ),
-                        accessibilityIdentifier: "InsufficientSavingsToast"
-                    )
-                    return
-                }
-            } else {
-                // Zero-amount invoice: user must have some balance to proceed
-                guard onchainBalance > 0 else {
-                    toast(
-                        type: .error,
-                        title: t("other__pay_insufficient_savings"),
-                        description: t("other__pay_insufficient_savings_description"),
-                        accessibilityIdentifier: "InsufficientSavingsToast"
-                    )
-                    return
-                }
-            }
-
+            // Proceed with onchain payment - SendSheet will show sync overlay and validate balance after node is ready
             handleScannedOnchainInvoice(invoice)
         case let .lightning(invoice):
             // Check network first - treat wrong network as decoding error
@@ -328,26 +296,6 @@ extension AppViewModel {
                 return
             }
 
-            guard lightningService.status?.isRunning == true else {
-                toast(type: .error, title: "Lightning not running", description: "Please try again later.")
-                return
-            }
-
-            guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
-                let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-                let amountNeeded = invoice.amountSatoshis > spendingBalance ? invoice.amountSatoshis - spendingBalance : 0
-                let description = amountNeeded > 0
-                    ? t("other__pay_insufficient_spending_amount_description", variables: ["amount": CurrencyFormatter.formatSats(amountNeeded)])
-                    : t("other__pay_insufficient_spending_description")
-                toast(
-                    type: .error,
-                    title: t("other__pay_insufficient_spending"),
-                    description: description,
-                    accessibilityIdentifier: "InsufficientSpendingToast"
-                )
-                return
-            }
-
             guard !invoice.isExpired else {
                 toast(
                     type: .error,
@@ -358,6 +306,7 @@ extension AppViewModel {
                 return
             }
 
+            // Proceed with lightning payment - SendSheet will show sync overlay and validate capacity after node is ready
             handleScannedLightningInvoice(invoice, bolt11: uri)
         case let .lnurlPay(data: lnurlPayData):
             Logger.debug("LNURL: \(lnurlPayData)")
