@@ -102,7 +102,7 @@ jobs:
       - name: Upload iOS app (local)
         uses: actions/upload-artifact@v4
         with:
-          name: bitkit-e2e-ios-regtest_${{ github.run_number }}
+          name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
 
   e2e-branch:
