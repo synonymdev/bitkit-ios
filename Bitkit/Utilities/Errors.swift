@@ -357,6 +357,9 @@ struct AppError: LocalizedError {
         case let .InvalidMnemonic(ldkMessage):
             message = "Invalid mnemonic"
             debugMessage = ldkMessage
+        case let .BackgroundSyncNotEnabled(ldkMessage):
+            message = "Background sync not enabled"
+            debugMessage = ldkMessage
         }
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }
