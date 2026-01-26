@@ -728,6 +728,16 @@ extension LightningService {
         }
         return (trusted: trusted, nonTrusted: nonTrusted)
     }
+
+    /// Get a channel by ID from the channel cache
+    /// This is more reliable than using the cachedChannels array when handling events,
+    /// as the channelCache is updated immediately when channel events occur
+    func getChannelFromCache(channelId: ChannelId) async -> ChannelDetails? {
+        let channelIdString = channelId.description
+        return await MainActor.run {
+            channelCache[channelIdString]
+        }
+    }
 }
 
 // MARK: Events
