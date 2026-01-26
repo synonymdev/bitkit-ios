@@ -83,7 +83,7 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
@@ -228,7 +228,7 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.shard.name }})
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-artifacts_${{ matrix.shard.name }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
