@@ -78,17 +78,17 @@ jobs:
 
       - name: Prepare app for E2E tests
         run: |
-          # Copy the .app bundle to the expected location and name
+          # Copy the .app bundle to the expected location and name, then zip it
+          # Zipping prevents "Upload progress stalled" errors with large .app bundles
           mkdir -p e2e-app
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
+          cd e2e-app && zip -r -q bitkit.app.zip bitkit.app && rm -rf bitkit.app
 
       - name: Upload iOS app
         uses: actions/upload-artifact@v6
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
-          path: e2e-app/
-        env:
-          ACTIONS_ARTIFACT_UPLOAD_CONCURRENCY: 10
+          path: e2e-app/bitkit.app.zip
 
   e2e-branch:
     if: github.event.pull_request.draft == false
@@ -132,6 +132,12 @@ jobs:
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
+
+      - name: Extract iOS app
+        working-directory: bitkit-e2e-tests/aut
+        run: |
+          unzip -q bitkit.app.zip
+          rm bitkit.app.zip
 
       - name: List iOS app directory contents
         run: ls -l bitkit-e2e-tests/aut
