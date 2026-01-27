@@ -546,7 +546,7 @@ struct AppScene: View {
         app.toast(
             type: .error,
             title: t("settings__backup__failed_title"),
-            description: t("settings__backup__failed_message", variables: ["interval": "\(intervalMinutes)"])
+            description: tPlural("settings__backup__failed_message", arguments: ["interval": intervalMinutes])
         )
     }
 }
