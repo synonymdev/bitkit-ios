@@ -152,7 +152,7 @@ class ActivityListViewModel: ObservableObject {
             // Fetch all activities
             await updateFilteredActivities()
 
-            let lightningActivities = try await coreService.activity.get(filter: .lightning)
+            lightningActivities = try await coreService.activity.get(filter: .lightning)
 
             let onchain = try await coreService.activity.get(filter: .onchain)
             onchainActivities = await filterOutReplacedSentTransactions(onchain)
