@@ -317,7 +317,7 @@
 "onboarding__restore_failed_text" = "Bitkit restauró tus ahorros, pero no pudo recuperar tu saldo para gastar (estado Lightning) ni los datos de tu wallet.";
 "onboarding__restore_no_backup_button" = "Proceder sin respaldar";
 "onboarding__restore_no_backup_warn" = "Si anteriormente tenía una copia de seguridad Lightning, ésta se sobrescribirá y se perderá. Esto puede acarrear en pérdida de fondos.";
-"onboarding__empty_wallet" = "Para empezar\nempezar\n<accent>envíe\nBitcoin</accent>\na su\nbilletera";
+"onboarding__empty_wallet" = "Para\nempezar\n<accent>envíe\nBitcoin</accent>\na su\nbilletera";
 "onboarding__error_create" = "Falló la creación de billetera";
 "onboarding__multiple_header" = "<accent>Precaución:</accent>\nmúltiples dispositivos";
 "onboarding__multiple_text" = "No instale su frase de recuperación Bitkit en varios teléfonos simultáneamente, ya que podría corromper sus datos.";
