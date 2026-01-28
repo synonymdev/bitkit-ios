@@ -2,9 +2,10 @@ name: self-hosted-cleanup
 
 on:
   workflow_dispatch:
-  schedule:
-    # Run every Sunday at 3am UTC
-    - cron: "0 3 * * 0"
+
+concurrency:
+  group: self-hosted-runner
+  cancel-in-progress: false
 
 jobs:
   cleanup:
@@ -49,30 +50,6 @@ jobs:
           
           echo "✅ Simulator caches cleaned"
 
-      - name: Clean Docker resources
-        run: |
-          echo "Cleaning Docker resources..."
-          
-          # Stop all running containers
-          docker ps -q | xargs -r docker stop || true
-          
-          # Remove all containers
-          docker container prune -f || true
-          
-          # Remove unused images
-          docker image prune -af || true
-          
-          # Remove unused volumes
-          docker volume prune -f || true
-          
-          # Remove unused networks
-          docker network prune -f || true
-          
-          # Full system prune (includes build cache)
-          docker system prune -af --volumes || true
-          
-          echo "✅ Docker resources cleaned"
-
       - name: Clean npm cache
         run: |
           echo "Cleaning npm cache..."
@@ -98,7 +75,6 @@ jobs:
         run: |
           echo "Cleaning system caches..."
           rm -rf ~/Library/Caches/com.apple.dt.Xcode/* || true
-          rm -rf /tmp/com.apple.launchd.* || true
           echo "✅ System caches cleaned"
 
       - name: Disk space after cleanup
