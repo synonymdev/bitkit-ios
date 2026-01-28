@@ -9,14 +9,13 @@ enum SheetSize {
             UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
                 .first?.windows.first?.safeAreaInsets ?? .zero
-        let headerHeight: CGFloat = 46
+        let headerHeight: CGFloat = 48
         let balanceHeight: CGFloat = 70
-        let spacing: CGFloat = 32
-        let adjustment: CGFloat = -21
+        let spacing: CGFloat = 16
 
         let safeArea = safeAreaInsets.top + safeAreaInsets.bottom
-        let headerSpacing = safeArea + headerHeight + spacing + adjustment
-        let balanceSpacing = headerSpacing + balanceHeight + spacing
+        let headerSpacing = safeArea + headerHeight - spacing
+        let balanceSpacing = headerSpacing + balanceHeight + spacing * 2
 
         switch self {
         case .small:

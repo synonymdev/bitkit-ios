@@ -455,6 +455,7 @@ struct ActivityItemView: View {
                     title: t("wallet__activity_assign"), size: .small,
                     icon: Image("user-plus")
                         .foregroundColor(accentColor),
+                    isDisabled: true,
                     shouldExpand: true
                 ) {
                     // TODO: add assign contact action
