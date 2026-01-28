@@ -17,6 +17,7 @@ struct SendConfirmationView: View {
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
     @State private var routingFee: Int = 0
+    @State private var shouldUseSendAll: Bool = false
 
     // Warning system
     private enum WarningType: String, CaseIterable {
@@ -231,7 +232,9 @@ struct SendConfirmationView: View {
                 navigationPath.append(.success(paymentHash))
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
-                let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: wallet.isMaxAmountSend)
+                // Use sendAll if explicitly MAX or if change would be dust
+                let useMaxAmount = wallet.isMaxAmountSend || shouldUseSendAll
+                let txid = try await wallet.send(address: invoice.address, sats: amount, isMaxAmount: useMaxAmount)
 
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
@@ -565,20 +568,46 @@ struct SendConfirmationView: View {
         }
 
         do {
-            let fee = try await wallet.calculateTotalFee(
+            let lightningService = LightningService.shared
+            let spendableBalance = UInt64(wallet.spendableOnchainBalanceSats)
+
+            // Calculate fee for sendAll to check if change would be dust
+            let allUtxos = try await lightningService.listSpendableOutputs()
+            let sendAllFee = try await wallet.calculateTotalFee(
                 address: address,
-                amountSats: amountSats,
+                amountSats: spendableBalance,
                 satsPerVByte: feeRate,
-                utxosToSpend: wallet.selectedUtxos
+                utxosToSpend: allUtxos
             )
 
-            await MainActor.run {
-                transactionFee = Int(fee)
+            let expectedChange = Int64(spendableBalance) - Int64(amountSats) - Int64(sendAllFee)
+            let useSendAll = expectedChange >= 0 && expectedChange < Int64(Env.dustLimit)
+
+            if useSendAll {
+                // Change would be dust - use sendAll and add dust to fee
+                await MainActor.run {
+                    transactionFee = Int(sendAllFee)
+                    shouldUseSendAll = true
+                }
+            } else {
+                // Normal send with change output
+                let fee = try await wallet.calculateTotalFee(
+                    address: address,
+                    amountSats: amountSats,
+                    satsPerVByte: feeRate,
+                    utxosToSpend: wallet.selectedUtxos
+                )
+
+                await MainActor.run {
+                    transactionFee = Int(fee)
+                    shouldUseSendAll = false
+                }
             }
         } catch {
             Logger.error("Failed to calculate actual fee: \(error)")
             await MainActor.run {
                 transactionFee = 0
+                shouldUseSendAll = false
             }
         }
     }
