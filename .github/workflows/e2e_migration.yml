@@ -117,7 +117,7 @@ jobs:
 
   prepare-wallets:
     if: github.event.pull_request.draft == false
-    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@test/migration
+    uses: synonymdev/bitkit-e2e-tests/.github/workflows/migration-wallet-setup.yml@main
     needs: [e2e-branch]
     strategy:
       fail-fast: false
