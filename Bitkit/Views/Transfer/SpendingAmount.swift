@@ -111,6 +111,19 @@ struct SpendingAmount: View {
         isLoading = true
         defer { isLoading = false }
 
+        // Wait for node to be running if it's not already
+        if wallet.nodeLifecycleState != .running {
+            let isReady = await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
+            guard isReady else {
+                app.toast(
+                    type: .error,
+                    title: "Lightning node not ready",
+                    description: "Please wait for the Lightning node to start and try again."
+                )
+                return
+            }
+        }
+
         do {
             let values = transfer.calculateTransferValues(clientBalanceSat: amountSats, blocktankInfo: blocktank.info)
             let lspBalance = max(values.defaultLspBalance, values.minLspBalance)

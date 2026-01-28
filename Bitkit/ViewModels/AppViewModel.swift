@@ -216,6 +216,9 @@ extension AppViewModel {
     }
 
     func toast(_ error: Error) {
+        if error is CancellationError {
+            return
+        }
         toast(type: .error, title: "Error", description: error.localizedDescription)
     }
 
