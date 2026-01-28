@@ -7,12 +7,14 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
-  # schedule:
-  #   - cron: "0 2 * * *"
+  schedule:
+    - cron: "0 3 * * *"
 
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
+  SIMULATOR_NAME: "iPhone 17"
+  IOS_VERSION: "26.2"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -63,7 +65,7 @@ jobs:
       - name: Pre-start simulator
         run: |
           echo "⏱️  Starting simulator at $(date)"
-          xcrun simctl boot "iPhone 17" || true
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
           echo "✅ Simulator started at $(date)"
 
       - name: Build iOS app (regtest)
@@ -71,14 +73,12 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          SIMULATOR_NAME: "iPhone 17"
-          OS_VERSION: "26.2"
           GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
         run: |
           echo "=== Building iOS app (regtest) ==="
-          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
+          echo "Using simulator: ${{ env.SIMULATOR_NAME }} (iOS ${{ env.IOS_VERSION }})"
 
           if xcodebuild -showsdks | grep -q "iOS Simulator"; then
             echo "✅ iOS Simulator platform already installed"
@@ -90,7 +90,7 @@ jobs:
           xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
             -scheme Bitkit \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
+            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR_NAME }},OS=${{ env.IOS_VERSION }}" \
             -derivedDataPath DerivedData \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
             -allowProvisioningUpdates \
@@ -250,13 +250,13 @@ jobs:
       - name: Boot Simulator
         run: |
           echo "Erasing simulator..."
-          xcrun simctl erase "iPhone 17" || true
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
           
           echo "Booting simulator..."
-          xcrun simctl boot "iPhone 17" || true
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
           
           echo "Waiting for boot status..."
-          xcrun simctl bootstatus "iPhone 17" -b
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
           
           echo "Opening Simulator app to ensure UI is ready..."
           open -a Simulator
@@ -293,8 +293,8 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.scenario.grep }}'
         env:
-          SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "26.2"
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -305,8 +305,8 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
-          SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "26.2"
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -316,8 +316,8 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
-          SIMULATOR_NAME: "iPhone 17"
-          SIMULATOR_OS_VERSION: "26.2"
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 3
 
