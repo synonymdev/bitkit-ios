@@ -610,8 +610,9 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    /// Returns true if there's at least one usable channel (ready AND peer connected)
     var hasUsableChannels: Bool {
-        return channels?.contains(where: \.isChannelReady) ?? false
+        return channels?.contains(where: \.isUsable) ?? false
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
