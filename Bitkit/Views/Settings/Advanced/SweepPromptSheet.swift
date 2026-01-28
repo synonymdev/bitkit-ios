@@ -20,6 +20,7 @@ struct SweepPromptSheet: View {
                 continueText: t("sweep__prompt_sweep"),
                 cancelText: t("common__cancel"),
                 testID: "SweepPromptSheet",
+                continueTestID: "SweepButton",
                 onCancel: {
                     sheets.hideSheet()
                 },

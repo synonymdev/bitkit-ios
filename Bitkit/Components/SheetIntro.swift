@@ -10,6 +10,7 @@ struct SheetIntro: View {
     let accentColor: Color
     let accentFont: ((CGFloat) -> Font)?
     let testID: String?
+    let continueTestID: String?
     let onCancel: (() -> Void)?
     let onContinue: () -> Void
     private var baseTestID: String {
@@ -26,6 +27,7 @@ struct SheetIntro: View {
         accentColor: Color = .brandAccent,
         accentFont: ((CGFloat) -> Font)? = nil,
         testID: String? = nil,
+        continueTestID: String? = nil,
         onCancel: (() -> Void)? = nil,
         onContinue: @escaping () -> Void
     ) {
@@ -38,6 +40,7 @@ struct SheetIntro: View {
         self.accentColor = accentColor
         self.accentFont = accentFont
         self.testID = testID
+        self.continueTestID = continueTestID
         self.onCancel = onCancel
         self.onContinue = onContinue
     }
@@ -74,6 +77,10 @@ struct SheetIntro: View {
         .accessibilityIdentifier(baseTestID)
     }
 
+    private var continueButtonTestID: String {
+        continueTestID ?? "\(baseTestID)Continue"
+    }
+
     @ViewBuilder
     private var buttonStack: some View {
         if let cancelText, let onCancel {
@@ -91,7 +98,7 @@ struct SheetIntro: View {
                 ) {
                     onContinue()
                 }
-                .accessibilityIdentifier("\(baseTestID)Continue")
+                .accessibilityIdentifier(continueButtonTestID)
             }
         } else {
             CustomButton(
@@ -99,7 +106,7 @@ struct SheetIntro: View {
             ) {
                 onContinue()
             }
-            .accessibilityIdentifier("\(baseTestID)Continue")
+            .accessibilityIdentifier(continueButtonTestID)
         }
     }
 }

@@ -125,6 +125,7 @@ struct SweepSettingsView: View {
             CustomButton(title: t("sweep__sweep_to_wallet")) {
                 navigation.navigate(.sweepConfirm)
             }
+            .accessibilityIdentifier("SweepToWalletButton")
         }
     }
 
