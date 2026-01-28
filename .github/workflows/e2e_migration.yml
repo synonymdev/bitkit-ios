@@ -159,7 +159,6 @@ jobs:
 
     env:
       BACKEND: regtest
-      RN_APK_PATH: bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app
 
     steps:
       - name: Show selected E2E branch
@@ -203,9 +202,17 @@ jobs:
           curl -L -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip \
             https://github.com/synonymdev/bitkit-e2e-tests/releases/download/migration-rn-regtest/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip
           unzip -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip -d bitkit-e2e-tests/aut
+          
+          # Rename the versioned RN app to the expected default name
+          # (Bitkit.app / bitkit.app is the native app - don't touch it)
+          if [ -d "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" ]; then
+            mv "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" \
+               "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios.app"
+            echo "Renamed bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app to bitkit_rn_regtest_ios.app"
+          fi
 
       - name: List app directory contents
-        run: ls -l bitkit-e2e-tests/aut
+        run: ls -la bitkit-e2e-tests/aut
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
