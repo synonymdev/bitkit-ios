@@ -227,9 +227,10 @@ struct SendSheet: View {
                     hasValidatedAfterSync = true
                     return
                 } else {
-                    // For pure lightning invoices, show error toast
+                    // For pure lightning invoices, show error toast and dismiss sheet
                     let spendingBalance = LightningService.shared.balances?.totalLightningBalanceSats ?? 0
                     showInsufficientSpendingToast(invoiceAmount: lightningInvoice.amountSatoshis, spendingBalance: spendingBalance)
+                    sheets.hideSheet()
                     hasValidatedAfterSync = true
                     return
                 }

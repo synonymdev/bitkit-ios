@@ -385,25 +385,24 @@ extension AppViewModel {
                 return
             }
 
-            // If user has no channels at all, they can never pay a pure lightning invoice.
-            // Show insufficient spending toast and do not navigate to the send flow.
-            // Check channels array directly (LightningService doesn't have channelCount cached)
-            let hasAnyChannels = (lightningService.channels?.isEmpty == false)
-            if !hasAnyChannels {
-                let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-                showInsufficientSpendingToast(invoiceAmount: invoice.amountSatoshis, spendingBalance: spendingBalance)
-                return
-            }
-
-            // If node is running and channels are usable, validate immediately
-            if lightningService.status?.isRunning == true,
-               let channels = lightningService.channels,
-               channels.contains(where: \.isUsable)
-            {
-                guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+            // If node is running, we can check for channels and validate immediately
+            if lightningService.status?.isRunning == true {
+                // If user has no channels at all, they can never pay a pure lightning invoice.
+                // Show insufficient spending toast and do not navigate to the send flow.
+                let hasAnyChannels = (lightningService.channels?.isEmpty == false)
+                if !hasAnyChannels {
                     let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
                     showInsufficientSpendingToast(invoiceAmount: invoice.amountSatoshis, spendingBalance: spendingBalance)
                     return
+                }
+
+                // If channels are usable, validate capacity immediately
+                if let channels = lightningService.channels, channels.contains(where: \.isUsable) {
+                    guard lightningService.canSend(amountSats: invoice.amountSatoshis) else {
+                        let spendingBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
+                        showInsufficientSpendingToast(invoiceAmount: invoice.amountSatoshis, spendingBalance: spendingBalance)
+                        return
+                    }
                 }
             }
 
