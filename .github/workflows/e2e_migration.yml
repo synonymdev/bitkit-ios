@@ -63,7 +63,7 @@ jobs:
       - name: Pre-start simulator
         run: |
           echo "⏱️  Starting simulator at $(date)"
-          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl boot "iPhone 17" || true
           echo "✅ Simulator started at $(date)"
 
       - name: Build iOS app (regtest)
@@ -71,7 +71,7 @@ jobs:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          SIMULATOR_NAME: "iPhone 16"
+          SIMULATOR_NAME: "iPhone 17"
           OS_VERSION: "26.2"
           GEO: false
           E2E_BACKEND: network
@@ -250,13 +250,13 @@ jobs:
       - name: Boot Simulator
         run: |
           echo "Erasing simulator..."
-          xcrun simctl erase "iPhone 16" || true
+          xcrun simctl erase "iPhone 17" || true
           
           echo "Booting simulator..."
-          xcrun simctl boot "iPhone 16" || true
+          xcrun simctl boot "iPhone 17" || true
           
           echo "Waiting for boot status..."
-          xcrun simctl bootstatus "iPhone 16" -b
+          xcrun simctl bootstatus "iPhone 17" -b
           
           echo "Opening Simulator app to ensure UI is ready..."
           open -a Simulator
@@ -293,7 +293,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.scenario.grep }}'
         env:
-          SIMULATOR_NAME: "iPhone 16"
+          SIMULATOR_NAME: "iPhone 17"
           SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 1
@@ -305,7 +305,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
-          SIMULATOR_NAME: "iPhone 16"
+          SIMULATOR_NAME: "iPhone 17"
           SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 2
@@ -316,7 +316,7 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
-          SIMULATOR_NAME: "iPhone 16"
+          SIMULATOR_NAME: "iPhone 17"
           SIMULATOR_OS_VERSION: "26.2"
           RECORD_VIDEO: true
           ATTEMPT: 3
