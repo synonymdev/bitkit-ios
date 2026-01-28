@@ -200,7 +200,7 @@ jobs:
       e2e_branch_input: ${{ github.event.inputs.e2e_branch || 'default-feature-branch' }}
 
   e2e-tests-local:
-    if: false
+    if: github.event.pull_request.draft == false
     runs-on: [self-hosted, macOS]
     needs: [build-local, e2e-branch]
 
