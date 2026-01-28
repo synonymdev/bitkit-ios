@@ -408,21 +408,24 @@ class LightningService {
     /// Checks if we have the correct outbound capacity to send the amount
     /// - Parameter amountSats: Amount to send in satoshis
     /// - Returns: True if we can send the amount
+    /// Note: Uses cached channels for fast, non-blocking checks
     @MainActor
     func canSend(amountSats: UInt64) -> Bool {
         guard let channels else {
-            Logger.warn("Channels not available")
             return false
         }
 
-        let totalNextOutboundHtlcLimitSats =
-            channels
-                .filter(\.isUsable)
-                .map(\.nextOutboundHtlcLimitMsat)
-                .reduce(0, +) / 1000
+        let usableChannels = channels.filter(\.isUsable)
+        guard !usableChannels.isEmpty else {
+            return false
+        }
+
+        let totalNextOutboundHtlcLimitSats = usableChannels
+            .map(\.nextOutboundHtlcLimitMsat)
+            .reduce(0, +) / 1000
 
         guard totalNextOutboundHtlcLimitSats > amountSats else {
-            Logger.warn("Insufficient outbound capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)")
+            Logger.warn("canSend: insufficient capacity: \(totalNextOutboundHtlcLimitSats) < \(amountSats)", context: "LightningService")
             return false
         }
 
