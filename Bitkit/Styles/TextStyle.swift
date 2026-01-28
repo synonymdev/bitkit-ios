@@ -43,6 +43,7 @@ struct DisplayText: View {
         .textCase(.uppercase)
         .padding(.bottom, -9)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
     }
 }
 
