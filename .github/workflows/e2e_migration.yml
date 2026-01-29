@@ -230,28 +230,11 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Cache Homebrew packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/Homebrew/ffmpeg--*
-            ~/Library/Caches/Homebrew/downloads/*ffmpeg*
-            /opt/homebrew/Cellar/ffmpeg
-          key: ${{ runner.os }}-homebrew-ffmpeg-v1
-          restore-keys: |
-            ${{ runner.os }}-homebrew-ffmpeg-
-
       - name: Install ffmpeg
         run: |
-          if command -v ffmpeg &> /dev/null; then
-            echo "ffmpeg already installed: $(ffmpeg -version | head -1)"
-          elif [ -d "/opt/homebrew/Cellar/ffmpeg" ]; then
-            echo "ffmpeg cached, linking..."
-            brew link ffmpeg
-          else
-            echo "Installing ffmpeg..."
-            brew install ffmpeg
-          fi
+          echo "Installing ffmpeg..."
+          brew install ffmpeg || brew upgrade ffmpeg || true
+          echo "ffmpeg version: $(ffmpeg -version | head -1)"
 
       - name: Boot Simulator
         run: |
