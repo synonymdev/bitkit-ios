@@ -126,7 +126,9 @@ class TransferViewModel: ObservableObject {
         speed: TransactionSpeed,
         txFee: UInt64,
         utxosToSpend: [SpendableUtxo]? = nil,
-        satsPerVbyte: UInt32? = nil
+        satsPerVbyte: UInt32? = nil,
+        isMaxAmount: Bool = false,
+        maxSendableAmount: UInt64? = nil
     ) async throws {
         let rate: UInt32
         if let satsPerVbyte {
@@ -149,8 +151,23 @@ class TransferViewModel: ObservableObject {
 
         let preTransferOnchainSats = lightningService.balances?.totalOnchainBalanceSats ?? 0
 
-        // Pass pre-selected UTXOs to ensure same fee as calculated
-        let txid = try await lightningService.send(address: address, sats: order.feeSat, satsPerVbyte: rate, utxosToSpend: utxosToSpend)
+        // Verify we can afford the transfer when using sendAll
+        if isMaxAmount, let maxSendable = maxSendableAmount, maxSendable < order.feeSat {
+            throw AppError(
+                message: t("other__pay_insufficient_savings"),
+                debugMessage: "Fee rate changed. Max sendable: \(maxSendable), order requires: \(order.feeSat)"
+            )
+        }
+
+        // For sendAll (change would be dust), send entire balance
+        // Otherwise, send exact order.feeSat amount
+        let txid = try await lightningService.send(
+            address: address,
+            sats: order.feeSat,
+            satsPerVbyte: rate,
+            utxosToSpend: utxosToSpend,
+            isMaxAmount: isMaxAmount
+        )
 
         let txTotalSats = order.feeSat + txFee
 
