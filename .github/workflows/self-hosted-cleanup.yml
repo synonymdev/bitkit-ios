@@ -1,0 +1,89 @@
+name: self-hosted-cleanup
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: self-hosted-runner
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, macOS]
+
+    steps:
+      - name: Disk space before cleanup
+        run: |
+          echo "=== Disk Space Before Cleanup ==="
+          df -h /
+          echo ""
+          echo "=== Large directories ==="
+          du -sh ~/Library/Developer/Xcode/DerivedData 2>/dev/null || echo "No DerivedData"
+          du -sh ~/Library/Caches/org.swift.swiftpm 2>/dev/null || echo "No SPM cache"
+          du -sh ~/Library/Developer/CoreSimulator 2>/dev/null || echo "No Simulator data"
+          du -sh ~/.npm 2>/dev/null || echo "No npm cache"
+
+      - name: Clean Xcode DerivedData
+        run: |
+          echo "Cleaning Xcode DerivedData..."
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+          rm -rf ~/Library/Developer/Xcode/Archives/*
+          echo "✅ Xcode DerivedData cleaned"
+
+      - name: Clean Swift Package Manager caches
+        run: |
+          echo "Cleaning Swift Package Manager caches..."
+          rm -rf ~/Library/Caches/org.swift.swiftpm
+          rm -rf ~/Library/org.swift.swiftpm
+          echo "✅ SPM caches cleaned"
+
+      - name: Clean iOS Simulator caches
+        run: |
+          echo "Shutting down all simulators..."
+          xcrun simctl shutdown all || true
+          
+          echo "Deleting unavailable simulators..."
+          xcrun simctl delete unavailable || true
+          
+          echo "Cleaning simulator caches..."
+          rm -rf ~/Library/Developer/CoreSimulator/Caches/*
+          
+          echo "✅ Simulator caches cleaned"
+
+      - name: Clean npm cache
+        run: |
+          echo "Cleaning npm cache..."
+          npm cache clean --force || true
+          rm -rf ~/.npm/_cacache
+          echo "✅ npm cache cleaned"
+
+      - name: Clean Homebrew cache
+        run: |
+          echo "Cleaning Homebrew cache..."
+          brew cleanup -s || true
+          rm -rf ~/Library/Caches/Homebrew/*
+          echo "✅ Homebrew cache cleaned"
+
+      - name: Clean GitHub Actions cache
+        run: |
+          echo "Cleaning old GitHub Actions artifacts..."
+          rm -rf ~/actions-runner/_work/_temp/* || true
+          rm -rf ~/actions-runner/_work/_actions/* || true
+          echo "✅ Actions temp files cleaned"
+
+      - name: Clean system caches
+        run: |
+          echo "Cleaning system caches..."
+          rm -rf ~/Library/Caches/com.apple.dt.Xcode/* || true
+          echo "✅ System caches cleaned"
+
+      - name: Disk space after cleanup
+        run: |
+          echo "=== Disk Space After Cleanup ==="
+          df -h /
+          echo ""
+          echo "=== Remaining large directories ==="
+          du -sh ~/Library/Developer/Xcode/DerivedData 2>/dev/null || echo "No DerivedData"
+          du -sh ~/Library/Caches/org.swift.swiftpm 2>/dev/null || echo "No SPM cache"
+          du -sh ~/Library/Developer/CoreSimulator 2>/dev/null || echo "No Simulator data"
+          du -sh ~/.npm 2>/dev/null || echo "No npm cache"
