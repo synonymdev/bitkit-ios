@@ -7,12 +7,14 @@ on:
         description: "Branch of synonymdev/bitkit-e2e-tests to use (main | default-feature-branch | custom branch name)"
         required: false
         default: "default-feature-branch"
-  # schedule:
-  #   - cron: "0 2 * * *"
+  schedule:
+    - cron: "0 3 * * *"
 
 env:
   TERM: xterm-256color
   FORCE_COLOR: 1
+  SIMULATOR_NAME: "iPhone 17"
+  IOS_VERSION: "26.2"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -27,6 +29,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.2"
+
       - name: System Information
         run: |
           echo "=== System Information ==="
@@ -36,19 +43,42 @@ jobs:
           echo "Xcode Version:"
           xcodebuild -version
 
+      - name: Install xcbeautify
+        run: |
+          brew install xcbeautify
+
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/org.swift.swiftpm
+            Bitkit.xcodeproj/project.xcworkspace/xcshareddata/swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+
+      - name: Install dependencies
+        run: |
+          echo "⏱️  Starting dependency resolution at $(date)"
+          xcodebuild -resolvePackageDependencies -onlyUsePackageVersionsFromResolvedFile | xcbeautify
+          echo "✅ Dependencies resolved at $(date)"
+
+      - name: Pre-start simulator
+        run: |
+          echo "⏱️  Starting simulator at $(date)"
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+          echo "✅ Simulator started at $(date)"
+
       - name: Build iOS app (regtest)
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHATWOOT_API: ${{ secrets.CHATWOOT_API }}
-          SIMULATOR_NAME: "iPhone 17"
-          OS_VERSION: "latest"
           GEO: false
           E2E_BACKEND: network
           E2E_NETWORK: regtest
         run: |
-          echo "=== Building iOS app ==="
-          echo "Using simulator: $SIMULATOR_NAME (iOS $OS_VERSION)"
+          echo "=== Building iOS app (regtest) ==="
+          echo "Using simulator: ${{ env.SIMULATOR_NAME }} (iOS ${{ env.IOS_VERSION }})"
 
           if xcodebuild -showsdks | grep -q "iOS Simulator"; then
             echo "✅ iOS Simulator platform already installed"
@@ -60,18 +90,19 @@ jobs:
           xcodebuild -workspace Bitkit.xcodeproj/project.xcworkspace \
             -scheme Bitkit \
             -configuration Debug \
-            -destination "platform=iOS Simulator,name=$SIMULATOR_NAME,OS=$OS_VERSION" \
+            -destination "platform=iOS Simulator,name=${{ env.SIMULATOR_NAME }},OS=${{ env.IOS_VERSION }}" \
             -derivedDataPath DerivedData \
             SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) E2E_BUILD' \
             -allowProvisioningUpdates \
             build
 
-      - name: Prepare app for E2E tests
+      - name: Prepare app for E2E tests (regtest)
         run: |
+          # Copy the .app bundle to the expected location and name
           mkdir -p e2e-app
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
-      - name: Upload iOS app
+      - name: Upload iOS app (regtest)
         uses: actions/upload-artifact@v4
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
@@ -98,7 +129,7 @@ jobs:
         scenario:
           - { name: migration_1-restore, setup_type: standard }
           - { name: migration_2-migration, setup_type: standard }
-          - { name: migration_3-with-passphrase, setup_type: standard }
+          - { name: migration_3-with-passphrase, setup_type: passphrase }
           - { name: migration_4-with-sweep, setup_type: sweep }
     with:
       e2e_branch: ${{ needs.e2e-branch.outputs.branch }}
@@ -119,16 +150,15 @@ jobs:
           - v1.1.4
           - v1.1.3
         scenario:
-          - { name: migration_1-restore, grep: "@migration_1" }
-          - { name: migration_2-migration, grep: "@migration_2" }
-          - { name: migration_3-with-passphrase, grep: "@migration_3" }
-          - { name: migration_4-with-sweep, grep: "@migration_4" }
+          - { name: migration_1-restore, setup_type: standard, grep: "@migration_1" }
+          - { name: migration_2-migration, setup_type: standard, grep: "@migration_2" }
+          - { name: migration_3-with-passphrase, setup_type: passphrase, grep: "@migration_3" }
+          - { name: migration_4-with-sweep, setup_type: sweep, grep: "@migration_4" }
 
     name: e2e-tests - ${{ matrix.rn_version }} - ${{ matrix.scenario.name }}
 
     env:
       BACKEND: regtest
-      RN_APK_PATH: bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app
 
     steps:
       - name: Show selected E2E branch
@@ -159,11 +189,10 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: |
           set -euo pipefail
-          if [[ "${{ matrix.scenario.name }}" == "migration_4-with-sweep" ]]; then
-            env_file="artifacts/migration_setup_sweep.env"
-          else
-            env_file="artifacts/migration_setup_standard.env"
-          fi
+          env_file="artifacts/migration_setup_${{ matrix.scenario.setup_type }}.env"
+          echo "=== Env file contents ==="
+          cat "$env_file"
+          echo "========================="
           cat "$env_file" >> "$GITHUB_ENV"
 
       - name: Download RN app for migration
@@ -172,9 +201,17 @@ jobs:
           curl -L -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip \
             https://github.com/synonymdev/bitkit-e2e-tests/releases/download/migration-rn-regtest/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip
           unzip -o bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.zip -d bitkit-e2e-tests/aut
+          
+          # Rename the versioned RN app to the expected default name
+          # (Bitkit.app / bitkit.app is the native app - don't touch it)
+          if [ -d "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" ]; then
+            mv "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app" \
+               "bitkit-e2e-tests/aut/bitkit_rn_regtest_ios.app"
+            echo "Renamed bitkit_rn_regtest_ios_${{ matrix.rn_version }}.app to bitkit_rn_regtest_ios.app"
+          fi
 
       - name: List app directory contents
-        run: ls -l bitkit-e2e-tests/aut
+        run: ls -la bitkit-e2e-tests/aut
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -182,7 +219,7 @@ jobs:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -193,20 +230,51 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
-      - name: Clear previous E2E artifacts
+      - name: Install ffmpeg
+        run: |
+          echo "Installing ffmpeg..."
+          brew install ffmpeg || brew upgrade ffmpeg || true
+          echo "ffmpeg version: $(ffmpeg -version | head -1)"
+
+      - name: Boot Simulator
+        run: |
+          echo "Erasing simulator..."
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
+          
+          echo "Booting simulator..."
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+          
+          echo "Waiting for boot status..."
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
+          
+          echo "Opening Simulator app to ensure UI is ready..."
+          open -a Simulator
+          
+          echo "Waiting for simulator to fully initialize..."
+          sleep 30
+          
+          echo "Verifying simulator state..."
+          xcrun simctl list devices booted
+
+      - name: Start Appium Server
         working-directory: bitkit-e2e-tests
         run: |
-          rm -rf artifacts/
-          rm -rf /tmp/lock/
-
-      - name: Clear iOS Simulator environment
-        run: |
-          echo "🔧 Shutting down all running iOS simulators..."
-          xcrun simctl shutdown all || true
-          echo "🔧 Erasing target simulator: iPhone 17..."
-          xcrun simctl erase "iPhone 17" || true
-          echo "🔧 Disabling iOS Simulator notifications..."
-          defaults write com.apple.iphonesimulator DisableAllNotifications -bool true
+          echo "Starting Appium server..."
+          npx appium --log-timestamp --log-no-colors > appium.log 2>&1 &
+          APPIUM_PID=$!
+          echo "APPIUM_PID=$APPIUM_PID" >> $GITHUB_ENV
+          
+          echo "Waiting for Appium server to be ready..."
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:4723/status > /dev/null 2>&1; then
+              echo "Appium server is ready!"
+              break
+            fi
+            echo "Waiting for Appium... ($i/30)"
+            sleep 2
+          done
+          
+          curl -s http://127.0.0.1:4723/status || echo "Warning: Appium status check failed"
 
       - name: Run E2E Tests 1 (${{ matrix.scenario.name }})
         continue-on-error: true
@@ -214,6 +282,8 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.scenario.grep }}'
         env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -224,6 +294,8 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -233,8 +305,17 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.scenario.grep }}"
         env:
+          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
+          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 3
+
+      - name: Copy Appium logs to artifacts
+        if: always()
+        working-directory: bitkit-e2e-tests
+        run: |
+          mkdir -p artifacts
+          cp appium.log artifacts/ || true
 
       - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
         if: failure()
