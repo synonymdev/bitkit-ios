@@ -8,6 +8,14 @@ on:
         required: false
         default: "default-feature-branch"
   pull_request:
+    paths:
+      - 'Bitkit/**'
+      - 'BitkitNotification/**'
+      - 'BitkitTests/**'
+      - 'BitkitUITests/**'
+      - 'Bitkit.xcodeproj/**'
+      - 'Package.swift'
+      - '.github/workflows/e2e-tests.yml'
 
 env:
   TERM: xterm-256color
