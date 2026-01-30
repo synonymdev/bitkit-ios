@@ -1,16 +1,8 @@
 # Bitkit iOS (Native)
 
-> [!CAUTION]
-> ⚠️This is **NOT** the repository of the live Bitkit app in the app stores!
-> ⚠️Work-in-progress
-> The live Bitkit app repository is here: **[github.com/synonymdev/bitkit](https://github.com/synonymdev/bitkit)**
-
----
-
 ## About
 
-This repository contains a **new native iOS app** which is **not ready for production**.
-
+This repository contains the **native iOS app** for Bitkit.
 
 ## How to build
 
