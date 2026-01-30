@@ -2,7 +2,7 @@
 
 ## About
 
-This repository contains the **nnative iOS app** for Bitkit.
+This repository contains the **native iOS app** for Bitkit.
 
 ## How to build
 
