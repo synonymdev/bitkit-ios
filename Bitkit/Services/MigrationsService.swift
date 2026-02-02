@@ -1915,6 +1915,28 @@ extension MigrationsService {
         Logger.info("RN remote backup restore completed", context: "Migration")
     }
 
+    private func retrieveChannelMonitorWithRetry(
+        channelId: String,
+        maxAttempts: Int = 3,
+        baseDelayMs: UInt64 = 1000
+    ) async -> Data? {
+        for attempt in 1 ... maxAttempts {
+            do {
+                return try await RNBackupClient.shared.retrieveChannelMonitor(channelId: channelId)
+            } catch {
+                if attempt < maxAttempts {
+                    let delayMs = baseDelayMs * UInt64(attempt)
+                    Logger.debug(
+                        "Retrying channel monitor retrieval for \(channelId) (attempt \(attempt + 1)/\(maxAttempts)) after \(delayMs)ms",
+                        context: "Migration"
+                    )
+                    try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+                }
+            }
+        }
+        return nil
+    }
+
     private func fetchRNRemoteLdkData() async {
         do {
             let files = try await RNBackupClient.shared.listFiles(fileGroup: "ldk")
@@ -1924,20 +1946,36 @@ extension MigrationsService {
                 return
             }
 
-            let monitors = await withTaskGroup(of: Data?.self) { group in
-                var results: [Data] = []
+            let expectedCount = files.channel_monitors.count
+            let monitorResults = await withTaskGroup(of: (String, Data?).self) { group in
+                var results: [(String, Data?)] = []
                 for monitorFile in files.channel_monitors {
+                    let channelId = monitorFile.replacingOccurrences(of: ".bin", with: "")
                     group.addTask {
-                        let channelId = monitorFile.replacingOccurrences(of: ".bin", with: "")
-                        return try? await RNBackupClient.shared.retrieveChannelMonitor(channelId: channelId)
+                        await (channelId, self.retrieveChannelMonitorWithRetry(channelId: channelId))
                     }
                 }
-                for await monitor in group {
-                    if let monitor {
-                        results.append(monitor)
-                    }
+                for await result in group {
+                    results.append(result)
                 }
                 return results
+            }
+
+            let failedMonitors = monitorResults.filter { $0.1 == nil }.map(\.0)
+            if !failedMonitors.isEmpty {
+                Logger.error(
+                    "Failed to retrieve \(failedMonitors.count)/\(expectedCount) channel monitors after retries: \(failedMonitors.joined(separator: ", "))",
+                    context: "Migration"
+                )
+            }
+
+            let monitors = monitorResults.compactMap(\.1)
+
+            if monitors.count < expectedCount {
+                Logger.warn(
+                    "Channel monitor count mismatch: expected \(expectedCount), got \(monitors.count). Some channels may not be recoverable.",
+                    context: "Migration"
+                )
             }
 
             if !monitors.isEmpty {
@@ -1945,7 +1983,7 @@ extension MigrationsService {
                     channelManager: managerData,
                     channelMonitors: monitors
                 )
-                Logger.info("Prepared \(monitors.count) channel monitors for migration", context: "Migration")
+                Logger.info("Prepared \(monitors.count)/\(expectedCount) channel monitors for migration", context: "Migration")
             }
         } catch {
             Logger.error("Failed to fetch remote LDK data: \(error)", context: "Migration")
