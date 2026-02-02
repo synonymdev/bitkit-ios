@@ -149,7 +149,6 @@ struct BaseWidget<Content: View>: View {
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
-                                .trackButtonLocation { _ in }
                                 .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
 
                                 // Edit button
@@ -163,13 +162,20 @@ struct BaseWidget<Content: View>: View {
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
-                                .trackButtonLocation { _ in }
                                 .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
 
                                 Image("burger")
                                     .resizable()
                                     .foregroundColor(.textPrimary)
                                     .frame(width: 24, height: 24)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                                    .overlay {
+                                        Color.clear
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
+                                            .trackDragHandle()
+                                    }
                                     .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                             }
                         }

@@ -30,6 +30,14 @@ struct EmptyStateView: View {
     let type: EmptyStateType
     var onClose: (() -> Void)?
 
+    var bottomPadding: CGFloat {
+        if type == .home {
+            return windowSafeAreaInsets.bottom > 0 ? 160 : 125
+        } else {
+            return 100
+        }
+    }
+
     var body: some View {
         VStack {
             Spacer()
@@ -46,7 +54,7 @@ struct EmptyStateView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 100)
+            .padding(.bottom, bottomPadding)
             .overlay {
                 if let onClose {
                     VStack {

@@ -5,10 +5,7 @@ enum SheetSize {
 
     var height: CGFloat {
         let screenHeight = UIScreen.screenHeight
-        let safeAreaInsets =
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.windows.first?.safeAreaInsets ?? .zero
+        let safeAreaInsets = windowSafeAreaInsets
         let headerHeight: CGFloat = 48
         let balanceHeight: CGFloat = 70
         let spacing: CGFloat = 16

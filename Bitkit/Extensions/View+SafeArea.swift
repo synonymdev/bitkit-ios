@@ -1,13 +1,18 @@
 import SwiftUI
 import UIKit
 
-var hasHomeIndicator: Bool {
+private var hasHomeIndicator: Bool {
+    windowSafeAreaInsets.bottom > 0
+}
+
+/// Key window's safe area insets, or `.zero` if no window is available.
+var windowSafeAreaInsets: UIEdgeInsets {
     guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
           let window = windowScene.windows.first
     else {
-        return false
+        return .zero
     }
-    return window.safeAreaInsets.bottom > 0
+    return window.safeAreaInsets
 }
 
 // For phones without a home indicator, we add padding to the bottom of the view

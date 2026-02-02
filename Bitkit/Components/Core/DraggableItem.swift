@@ -23,8 +23,8 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
     /// Height of each item including spacing
     private let itemHeight: CGFloat
 
-    /// Minimum drag distance before reordering starts
-    private let minDragDistance: CGFloat = 10
+    /// Long-press duration on burger before drag activates (avoids scroll conflict)
+    private let longPressDuration: Double = 0.3
 
     /// Called when a drag operation begins
     let onDragBegan: () -> Void
@@ -41,21 +41,20 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
     /// Track if we should handle the drag
     @State private var shouldHandleDrag = false
 
-    /// Track button locations
-    @State private var buttonFrames: [CGRect] = []
+    /// Track drag handle locations (e.g. burger icon); only drag starts from these
+    @State private var dragHandleFrames: [CGRect] = []
 
-    /// Track if the gesture started on a button
-    @State private var startedOnButton = false
+    /// Frozen overlay frame during drag so overlay position doesn't change and cause jitter
+    @State private var overlayFrameDuringDrag: CGRect?
 
-    /// Namespace for coordinate space
-    @Namespace private var dragSpace
+    /// Coordinate space name used for preference (must match content)
+    private let dragSpaceName = "dragSpace"
 
-    /// Track the item's frame
-    @State private var itemFrame: CGRect = .zero
-
-    private var windowScene: UIWindowScene? {
-        UIApplication.shared.connectedScenes
-            .first(where: { $0 is UIWindowScene }) as? UIWindowScene
+    /// Clamp vertical drag to list bounds (can't drag above first or below last item).
+    private func constrainVerticalOffset(_ vertical: CGFloat) -> CGFloat {
+        let maxUp = -CGFloat(originalIndex) * itemHeight
+        let maxDown = CGFloat(itemCount - 1 - originalIndex) * itemHeight
+        return max(maxUp, min(maxDown, vertical))
     }
 
     init(
@@ -86,8 +85,6 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
         content
             .opacity(isDragging ? 0.9 : 1.0)
             .offset(x: 0, y: isDragging ? dragOffset.height : 0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: dragOffset)
-            .simultaneousGesture(enableDrag ? dragGesture : nil)
             .shadow(
                 color: Color.black.opacity(isDragging ? 0.3 : 0),
                 radius: isDragging ? 10 : 0,
@@ -95,74 +92,131 @@ struct DraggableItem<Content: View, ID: Hashable>: View {
                 y: isDragging ? 5 : 0
             )
             .zIndex(isDragging ? 10 : 0)
-            .coordinateSpace(name: dragSpace)
-            .background(
-                GeometryReader { geometry in
-                    Color.clear
-                        .onAppear {
-                            itemFrame = geometry.frame(in: .named(dragSpace))
-                        }
-                        .onChange(of: geometry.frame(in: .named(dragSpace))) { newFrame in
-                            itemFrame = newFrame
-                        }
-                }
-            )
-            .onPreferenceChange(ButtonLocationPreferenceKey.self) { frames in
-                buttonFrames = frames
+            .coordinateSpace(name: dragSpaceName)
+            .onPreferenceChange(DragHandlePreferenceKey.self) { frames in
+                dragHandleFrames = frames
             }
-            .detectButton { isButton in
-                startedOnButton = isButton
+            // Handle overlay: long-press on burger then drag. UIKit view so it reliably receives touches (Color.clear often doesn't).
+            // Use frozen frame during drag so overlay position doesn't change and cause jitter.
+            .overlay(alignment: .topLeading) {
+                if enableDrag, let frame = overlayFrameDuringDrag ?? dragHandleFrames.first, frame.width > 0, frame.height > 0 {
+                    LongPressDragHandleView(
+                        itemHeight: itemHeight,
+                        originalIndex: originalIndex,
+                        itemCount: itemCount,
+                        longPressDuration: longPressDuration,
+                        onDragBegan: {
+                            shouldHandleDrag = true
+                            overlayFrameDuringDrag = dragHandleFrames.first
+                            onDragBegan()
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        },
+                        onDragChanged: { translation in
+                            dragOffset = CGSize(width: 0, height: constrainVerticalOffset(translation))
+                            onDragChanged(dragOffset)
+                        },
+                        onDragEnded: {
+                            onDragEnded(dragOffset)
+                            overlayFrameDuringDrag = nil
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                dragOffset = .zero
+                                shouldHandleDrag = false
+                            }
+                        }
+                    )
+                    .frame(width: frame.width, height: frame.height)
+                    .offset(x: frame.minX, y: frame.minY)
+                }
             }
     }
+}
 
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: minDragDistance)
-            .onChanged { gesture in
-                let verticalMovement = abs(gesture.translation.height)
-                let startLocation = gesture.startLocation
+// MARK: - UIKit long-press handle (reliably receives touches; Color.clear often doesn't)
 
-                // Check if we started on a button
-                let isOnButton = buttonFrames.contains { frame in
-                    // Convert button frame to be relative to the item
-                    let relativeFrame = CGRect(
-                        x: frame.origin.x - itemFrame.origin.x,
-                        y: frame.origin.y - itemFrame.origin.y,
-                        width: frame.width,
-                        height: frame.height
-                    )
-                    return relativeFrame.contains(startLocation)
-                }
+private struct LongPressDragHandleView: UIViewRepresentable {
+    let itemHeight: CGFloat
+    let originalIndex: Int
+    let itemCount: Int
+    let longPressDuration: Double
+    let onDragBegan: () -> Void
+    let onDragChanged: (CGFloat) -> Void
+    let onDragEnded: () -> Void
 
-                // Only start dragging if we're not over a button and have enough movement
-                if !isDragging && verticalMovement > minDragDistance && !isOnButton {
-                    shouldHandleDrag = true
-                    onDragBegan()
+    func makeCoordinator() -> Coordinator {
+        Coordinator(
+            itemHeight: itemHeight,
+            originalIndex: originalIndex,
+            itemCount: itemCount,
+            onDragBegan: onDragBegan,
+            onDragChanged: onDragChanged,
+            onDragEnded: onDragEnded
+        )
+    }
 
-                    // Give haptic feedback when drag begins
-                    let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-                    impactFeedback.impactOccurred()
-                }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let recognizer = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleLongPress(_:))
+        )
+        recognizer.minimumPressDuration = longPressDuration
+        view.addGestureRecognizer(recognizer)
+        return view
+    }
 
-                if isDragging && shouldHandleDrag {
-                    // Calculate the maximum allowed offset based on the item's position
-                    let maxUpOffset = -CGFloat(originalIndex) * itemHeight
-                    let maxDownOffset = CGFloat(itemCount - 1 - originalIndex) * itemHeight
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.itemHeight = itemHeight
+        context.coordinator.originalIndex = originalIndex
+        context.coordinator.itemCount = itemCount
+    }
 
-                    // Constrain the vertical movement
-                    let proposedOffset = gesture.translation.height
-                    let constrainedOffset = max(maxUpOffset, min(maxDownOffset, proposedOffset))
+    final class Coordinator: NSObject {
+        var itemHeight: CGFloat
+        var originalIndex: Int
+        var itemCount: Int
+        var onDragBegan: () -> Void
+        var onDragChanged: (CGFloat) -> Void
+        var onDragEnded: () -> Void
+        /// Use window coordinates so translation isn't affected by the overlay moving with the dragged content (reduces lag/jitter).
+        var initialLocationInWindow: CGPoint = .zero
 
-                    dragOffset = CGSize(width: 0, height: constrainedOffset)
-                    onDragChanged(dragOffset)
-                }
+        init(
+            itemHeight: CGFloat,
+            originalIndex: Int,
+            itemCount: Int,
+            onDragBegan: @escaping () -> Void,
+            onDragChanged: @escaping (CGFloat) -> Void,
+            onDragEnded: @escaping () -> Void
+        ) {
+            self.itemHeight = itemHeight
+            self.originalIndex = originalIndex
+            self.itemCount = itemCount
+            self.onDragBegan = onDragBegan
+            self.onDragChanged = onDragChanged
+            self.onDragEnded = onDragEnded
+        }
+
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard let window = recognizer.view?.window else { return }
+            let locationInWindow = recognizer.location(in: window)
+            switch recognizer.state {
+            case .began:
+                initialLocationInWindow = locationInWindow
+                onDragBegan()
+            case .changed:
+                let translation = locationInWindow.y - initialLocationInWindow.y
+                let maxUp = -CGFloat(originalIndex) * itemHeight
+                let maxDown = CGFloat(itemCount - 1 - originalIndex) * itemHeight
+                let constrained = max(maxUp, min(maxDown, translation))
+                onDragChanged(constrained)
+            case .ended, .cancelled:
+                onDragEnded()
+            default:
+                break
             }
-            .onEnded { _ in
-                if isDragging && shouldHandleDrag {
-                    let verticalOffset = CGSize(width: 0, height: dragOffset.height)
-                    onDragEnded(verticalOffset)
-                    dragOffset = .zero
-                    shouldHandleDrag = false
-                }
-            }
+        }
     }
 }
