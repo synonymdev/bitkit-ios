@@ -17,7 +17,7 @@ struct WidgetEditItemView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                Image("checkmark")
+                Image("check-mark")
                     .resizable()
                     .foregroundColor(item.isChecked ? .brandAccent : .gray3)
                     .frame(width: 32, height: 32)
