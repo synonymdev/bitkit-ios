@@ -399,9 +399,9 @@
 "other__update_critical_title" = "Update\n<accent>Bitkit now</accent>";
 "other__update_critical_text" = "There is a critical update for Bitkit. You must update to continue using Bitkit.";
 "other__update_critical_button" = "Update Bitkit";
-"other__camera_ask_title" = "Permission to use camera";
-"other__camera_ask_msg" = "Bitkit needs permission to use your camera";
-"other__camera_no_text" = "<bold>It appears Bitkit does not have permission to access your camera.</bold>\n\nTo utilize this feature in the future you will need to enable camera permissions for this app from your phone\'s settings.";
+"other__camera_no_title" = "Scan\n<accent>QR code</accent>";
+"other__camera_no_text" = "Allow camera access to scan bitcoin invoices and pay more quickly.";
+"other__camera_no_button" = "Enable Camera";
 "other__clipboard_redirect_title" = "Clipboard Data Detected";
 "other__clipboard_redirect_msg" = "Do you want to be redirected to the relevant screen?";
 "other__pay_insufficient_savings" = "Insufficient Savings";

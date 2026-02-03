@@ -66,24 +66,58 @@ struct Scanner: View {
     let onScan: (String) async -> Void
     let onImageSelection: (PhotosPickerItem?) async -> Void
 
+    @EnvironmentObject private var cameraManager: CameraManager
     @State private var isTorchOn = false
 
     var body: some View {
         ZStack {
-            ScannerCamera(
-                isTorchOn: isTorchOn,
-                onScan: { uri in
-                    await onScan(uri)
-                }
-            )
+            if cameraManager.hasPermission {
+                ScannerCamera(
+                    isTorchOn: isTorchOn,
+                    onScan: { uri in
+                        await onScan(uri)
+                    }
+                )
 
-            ScannerCornerButtons(
-                isTorchOn: $isTorchOn,
-                onImageSelection: { item in
-                    await onImageSelection(item)
-                }
-            )
+                ScannerCornerButtons(
+                    isTorchOn: $isTorchOn,
+                    onImageSelection: { item in
+                        await onImageSelection(item)
+                    }
+                )
+            } else {
+                ScannerPermissionRequest(onRequestPermission: cameraManager.requestPermission)
+            }
         }
         .cornerRadius(16)
+        .onAppear {
+            guard !cameraManager.hasPermission else { return }
+            cameraManager.requestPermissionIfNeeded()
+        }
+    }
+}
+
+struct ScannerPermissionRequest: View {
+    let onRequestPermission: () -> Void
+
+    var body: some View {
+        Color.black
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                VStack(spacing: 0) {
+                    DisplayText(t("other__camera_no_title"), accentColor: .brandAccent)
+                        .padding(.bottom, 8)
+                    BodyMText(t("other__camera_no_text"))
+                        .padding(.bottom, 32)
+                    CustomButton(
+                        title: t("other__camera_no_button"),
+                        icon: Image("camera").foregroundColor(.textPrimary)
+                    ) {
+                        onRequestPermission()
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.vertical, 16)
+            }
     }
 }
