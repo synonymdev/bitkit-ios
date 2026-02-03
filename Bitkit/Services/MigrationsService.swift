@@ -1927,7 +1927,7 @@ extension MigrationsService {
                 if attempt < maxAttempts {
                     let delayMs = baseDelayMs * UInt64(attempt)
                     Logger.debug(
-                        "Retrying channel monitor retrieval for \(channelId) (attempt \(attempt + 1)/\(maxAttempts)) after \(delayMs)ms",
+                        "Retrying channel monitor retrieval for \(channelId) (attempt \(attempt + 1)/\(maxAttempts)) after \(delayMs)ms: \(error)",
                         context: "Migration"
                     )
                     try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
