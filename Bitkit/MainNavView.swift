@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var cameraManager: CameraManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
@@ -169,8 +170,9 @@ struct MainNavView: View {
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .active {
-                // Update notification permission in case user changed it in OS settings
+                // Update permissions in case user changed them in OS settings
                 notificationManager.updateNotificationPermission()
+                cameraManager.refreshPermission()
 
                 guard settings.readClipboard else { return }
 

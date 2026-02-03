@@ -18,6 +18,7 @@ struct AppScene: View {
     @StateObject private var feeEstimatesManager: FeeEstimatesManager
     @StateObject private var transfer: TransferViewModel
     @StateObject private var widgets = WidgetsViewModel()
+    @StateObject private var cameraManager = CameraManager.shared
     @StateObject private var pushManager = PushNotificationManager.shared
     @StateObject private var scannerManager = ScannerManager()
     @StateObject private var settings = SettingsViewModel.shared
@@ -124,6 +125,7 @@ struct AppScene: View {
             .environmentObject(activity)
             .environmentObject(transfer)
             .environmentObject(widgets)
+            .environmentObject(cameraManager)
             .environmentObject(pushManager)
             .environmentObject(scannerManager)
             .environmentObject(settings)
