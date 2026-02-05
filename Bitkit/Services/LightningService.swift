@@ -626,7 +626,7 @@ class LightningService {
         let nodeIdPreviewLength = 20
         var sb = ""
 
-        sb += "\n\n=== ROUTE NOT FOUND - NETWORK GRAPH DUMP ===\n"
+        sb += "\n\n=== NETWORK GRAPH DUMP ===\n"
 
         // 1. Invoice Info
         do {
