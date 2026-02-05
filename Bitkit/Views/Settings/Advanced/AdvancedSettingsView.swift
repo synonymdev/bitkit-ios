@@ -3,7 +3,21 @@ import SwiftUI
 struct AdvancedSettingsView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var settings: SettingsViewModel
     @State private var showingResetAlert = false
+
+    private func addressTypeDisplayName(_ addressType: AddressScriptType) -> String {
+        switch addressType {
+        case .legacy:
+            return "Legacy"
+        case .nestedSegwit:
+            return "Nested Segwit"
+        case .nativeSegwit:
+            return "Native Segwit"
+        case .taproot:
+            return "Taproot"
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,13 +31,13 @@ struct AdvancedSettingsView: View {
                         CaptionMText(t("settings__adv__section_payments"))
                             .padding(.bottom, 8)
 
-                        // Maybe never implemented
-                        // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(
-                        //         title: t("settings__adv__address_type"),
-                        //         rightText: "Native Segwit"
-                        //     )
-                        // }
+                        NavigationLink(value: Route.addressTypePreference) {
+                            SettingsListLabel(
+                                title: t("settings__adv__address_type"),
+                                rightText: addressTypeDisplayName(settings.selectedAddressType)
+                            )
+                        }
+                        .accessibilityIdentifier("AddressTypePreference")
 
                         NavigationLink(value: Route.coinSelection) {
                             SettingsListLabel(title: t("settings__adv__coin_selection"))
@@ -78,11 +92,6 @@ struct AdvancedSettingsView: View {
                             SettingsListLabel(title: t("settings__adv__address_viewer"))
                         }
                         .accessibilityIdentifier("AddressViewer")
-
-                        NavigationLink(value: Route.sweep) {
-                            SettingsListLabel(title: t("settings__adv__sweep_funds"))
-                        }
-                        .accessibilityIdentifier("SweepFunds")
 
                         // SettingsListLabel(title: t("settings__adv__rescan"), rightIcon: nil)
 

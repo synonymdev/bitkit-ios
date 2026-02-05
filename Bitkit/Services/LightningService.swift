@@ -81,6 +81,17 @@ class LightningService {
         )
         config.includeUntrustedPendingInSpendable = true
 
+        // Set address type from user preference
+        let selectedAddressType = Self.parseAddressType(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        config.addressType = selectedAddressType
+
+        // Set additional monitored address types (excluding the primary type)
+        let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let monitoredTypes = monitoredTypesString.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .compactMap { Self.parseAddressType($0) }
+        config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
+
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
 
@@ -188,7 +199,6 @@ class LightningService {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                // Clear the node reference anyway
                 node = nil
                 try? StateLocker.unlock(.lightning)
             }
@@ -381,6 +391,16 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.onchainPayment().newAddress()
+        }
+    }
+
+    func newAddressForType(_ addressType: LDKNode.AddressType) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().newAddressForType(addressType: addressType)
         }
     }
 
@@ -856,6 +876,20 @@ extension LightningService {
         }
     }
 
+    /// Get balance for a specific address type
+    /// - Parameter addressType: The address type to check
+    /// - Returns: AddressTypeBalance with total and spendable sats
+    /// - Throws: AppError if node is not setup
+    func getBalanceForAddressType(_ addressType: LDKNode.AddressType) async throws -> AddressTypeBalance {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.getBalanceForAddressType(addressType: addressType)
+        }
+    }
+
     /// Returns LSP (Blocktank) peer node IDs
     func getLspPeerNodeIds() -> [String] {
         return Env.trustedLnPeers.map(\.nodeId)
@@ -1266,6 +1300,17 @@ extension LightningService {
             } else {
                 try node.bolt11Payment().sendProbes(invoice: invoice, routeParameters: nil)
             }
+        }
+    }
+        
+    // MARK: - Helpers
+
+    private static func parseAddressType(_ string: String?) -> LDKNode.AddressType {
+        switch string {
+        case "legacy": return .legacy
+        case "nestedSegwit": return .nestedSegwit
+        case "taproot": return .taproot
+        default: return .nativeSegwit
         }
     }
 }

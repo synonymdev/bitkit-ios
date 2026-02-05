@@ -399,6 +399,7 @@ struct MainNavView: View {
 
             // Advanced settings
             case .coinSelection: CoinSelectionSettingsView()
+            case .addressTypePreference: AddressTypePreferenceView()
             case .connections: LightningConnectionsView()
             case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
             case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)

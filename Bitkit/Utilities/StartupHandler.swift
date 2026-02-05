@@ -19,6 +19,10 @@ class StartupHandler {
             try Keychain.saveString(key: .bip39Passphrase(index: walletIndex), str: bip39Passphrase)
         }
 
+        // Set default address type settings for new wallets
+        UserDefaults.standard.set("nativeSegwit", forKey: "selectedAddressType")
+        UserDefaults.standard.set("nativeSegwit", forKey: "addressTypesToMonitor")
+
         return mnemonic
     }
 

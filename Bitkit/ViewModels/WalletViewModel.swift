@@ -560,10 +560,10 @@ class WalletViewModel: ObservableObject {
 
     /// Sync balance details only
     private func syncBalances() {
-        balanceDetails = lightningService.balances
-
-        if let balanceDetails {
-            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        // Only update balanceDetails if we have valid data (don't overwrite with nil during restart)
+        if let newBalances = lightningService.balances {
+            balanceDetails = newBalances
+            spendableOnchainBalanceSats = Int(newBalances.spendableOnchainBalanceSats)
         }
 
         Task { @MainActor in

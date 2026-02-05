@@ -4,6 +4,10 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+/// Typealias for LDKNode.AddressType to avoid naming conflicts with local AddressType enums
+/// used elsewhere in the app for UI purposes (e.g., receiving/change in AddressViewer).
+typealias AddressScriptType = LDKNode.AddressType
+
 enum CoinSelectionMethod: String, CaseIterable {
     case manual
     case autopilot
@@ -44,6 +48,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     static let shared = SettingsViewModel()
 
     private let defaults = UserDefaults.standard
+
+    /// Flag to prevent concurrent address type changes
+    private var isChangingAddressType = false
     private var observedKeys: Set<String> = []
 
     // Reactive publishers for settings changes (used by BackupService)
@@ -239,6 +246,206 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
         set {
             _coinSelectionAlgorithm = newValue.stringValue
+        }
+    }
+
+    // Address Type Settings
+    @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
+
+    // Monitored Address Types - stored as comma-separated string for @AppStorage compatibility
+    // Default to only Native Segwit, matching React Native behavior
+    @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
+
+    /// All available address types
+    static let allAddressTypes: [AddressScriptType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
+
+    /// Convert address type to string for storage
+    static func addressTypeToString(_ addressType: AddressScriptType) -> String {
+        switch addressType {
+        case .legacy: return "legacy"
+        case .nestedSegwit: return "nestedSegwit"
+        case .nativeSegwit: return "nativeSegwit"
+        case .taproot: return "taproot"
+        }
+    }
+
+    /// Convert string to address type
+    static func stringToAddressType(_ string: String) -> AddressScriptType? {
+        switch string {
+        case "legacy": return .legacy
+        case "nestedSegwit": return .nestedSegwit
+        case "nativeSegwit": return .nativeSegwit
+        case "taproot": return .taproot
+        default: return nil
+        }
+    }
+
+    /// Address types currently being monitored
+    var addressTypesToMonitor: [AddressScriptType] {
+        get {
+            let strings = _addressTypesToMonitor.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+            return strings.compactMap { Self.stringToAddressType($0) }
+        }
+        set {
+            _addressTypesToMonitor = newValue.map { Self.addressTypeToString($0) }.joined(separator: ",")
+        }
+    }
+
+    /// Check if an address type is being monitored
+    func isMonitoring(_ addressType: AddressScriptType) -> Bool {
+        addressTypesToMonitor.contains(addressType)
+    }
+
+    /// Check if an address type has balance
+    /// - Parameter addressType: The address type to check
+    /// - Returns: The balance in sats, or 0 if unable to check
+    func getBalanceForAddressType(_ addressType: AddressScriptType) async -> UInt64 {
+        do {
+            let balance = try await lightningService.getBalanceForAddressType(addressType)
+            return balance.totalSats
+        } catch {
+            Logger.error("Failed to get balance for address type \(addressType): \(error)")
+            return 0
+        }
+    }
+
+    /// Enable or disable monitoring for an address type
+    /// - Parameters:
+    ///   - addressType: The address type to toggle
+    ///   - enabled: Whether to enable or disable monitoring
+    ///   - wallet: Optional wallet view model to update UI state during restart
+    /// - Returns: True if the operation succeeded, false if it was prevented (e.g., type has balance)
+    func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
+        guard !isChangingAddressType else { return false }
+
+        var current = addressTypesToMonitor
+
+        if enabled {
+            if !current.contains(addressType) {
+                current.append(addressType)
+                addressTypesToMonitor = current
+            }
+        } else {
+            // Don't allow disabling if it's the currently selected type
+            if addressType == selectedAddressType { return false }
+
+            // Check if address type has balance - don't allow disabling if it has funds
+            let balance = await getBalanceForAddressType(addressType)
+            if balance > 0 { return false }
+
+            current.removeAll { $0 == addressType }
+            addressTypesToMonitor = current
+        }
+
+        UserDefaults.standard.synchronize()
+
+        do {
+            try await lightningService.restart()
+            try await lightningService.sync()
+        } catch {
+            Logger.error("Failed to restart node after monitored types change: \(error)")
+        }
+
+        wallet?.syncState()
+        return true
+    }
+
+    /// Add an address type to monitored types if not already present
+    func ensureMonitoring(_ addressType: AddressScriptType) {
+        if !addressTypesToMonitor.contains(addressType) {
+            var current = addressTypesToMonitor
+            current.append(addressType)
+            addressTypesToMonitor = current
+        }
+    }
+
+    /// Set all address types as monitored (used during wallet restore)
+    func monitorAllAddressTypes() {
+        addressTypesToMonitor = Self.allAddressTypes
+    }
+
+    var selectedAddressType: AddressScriptType {
+        get {
+            // Parse the stored string value
+            switch _selectedAddressType {
+            case "legacy":
+                return .legacy
+            case "nestedSegwit":
+                return .nestedSegwit
+            case "nativeSegwit":
+                return .nativeSegwit
+            case "taproot":
+                return .taproot
+            default:
+                return .nativeSegwit // Default fallback
+            }
+        }
+        set {
+            // Convert AddressScriptType to string for storage
+            switch newValue {
+            case .legacy:
+                _selectedAddressType = "legacy"
+            case .nestedSegwit:
+                _selectedAddressType = "nestedSegwit"
+            case .nativeSegwit:
+                _selectedAddressType = "nativeSegwit"
+            case .taproot:
+                _selectedAddressType = "taproot"
+            }
+        }
+    }
+
+    func updateAddressType(_ addressType: AddressScriptType, wallet: WalletViewModel? = nil) async {
+        guard !isChangingAddressType else { return }
+        guard addressType != selectedAddressType else { return }
+
+        isChangingAddressType = true
+        defer { isChangingAddressType = false }
+
+        selectedAddressType = addressType
+        ensureMonitoring(addressType)
+
+        // Clear cached address
+        UserDefaults.standard.set("", forKey: "onchainAddress")
+        UserDefaults.standard.set("", forKey: "bip21")
+        UserDefaults.standard.synchronize()
+
+        if let wallet {
+            wallet.onchainAddress = ""
+            wallet.bip21 = ""
+        }
+
+        do {
+            try await lightningService.restart()
+            try await lightningService.sync()
+            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
+        } catch {
+            Logger.error("Failed to restart node after address type change: \(error)")
+            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
+        }
+
+        wallet?.syncState()
+    }
+
+    /// Generate a new address for the specified type and update wallet properties
+    private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {
+        do {
+            let newAddress = try await lightningService.newAddressForType(addressType)
+
+            UserDefaults.standard.set(newAddress, forKey: "onchainAddress")
+            UserDefaults.standard.synchronize()
+
+            if let wallet {
+                wallet.onchainAddress = newAddress
+                wallet.bip21 = "bitcoin:\(newAddress)"
+            }
+        } catch {
+            Logger.error("Failed to generate new address: \(error)")
+            UserDefaults.standard.set("", forKey: "onchainAddress")
+            UserDefaults.standard.synchronize()
+            if let wallet {
+                wallet.onchainAddress = ""
+            }
         }
     }
 

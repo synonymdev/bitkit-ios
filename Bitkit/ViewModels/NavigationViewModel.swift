@@ -76,6 +76,7 @@ enum Route: Hashable {
 
     // Advanced settings
     case coinSelection
+    case addressTypePreference
     case connections
     case connectionDetail(channelId: String)
     case closeConnection(channel: ChannelDetails)
