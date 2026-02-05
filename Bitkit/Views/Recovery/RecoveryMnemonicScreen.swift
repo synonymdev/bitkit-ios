@@ -54,7 +54,7 @@ struct RecoveryMnemonicScreen: View {
                             .padding(32)
                             .background(Color.white10)
                             .cornerRadius(16)
-                            .privacySensitive()
+                            .screenshotPreventMask(true)
 
                             // Passphrase section (if available)
                             if !passphrase.isEmpty {
