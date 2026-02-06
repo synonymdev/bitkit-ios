@@ -6,6 +6,7 @@ struct NumberPadTextField: View {
     @ObservedObject var viewModel: AmountInputViewModel
 
     var showConversion: Bool = true
+    var showEditButton: Bool = false
     var isFocused: Bool = true
     var testIdentifier: String?
 
@@ -31,8 +32,16 @@ struct NumberPadTextField: View {
                 }
 
                 // Primary display (bitcoin)
-                HStack {
+                HStack(spacing: 5) {
                     primaryDisplayView
+
+                    if showEditButton {
+                        Image("pencil")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.textPrimary)
+                    }
+
                     Spacer()
                 }
                 .transition(
@@ -58,8 +67,16 @@ struct NumberPadTextField: View {
                 }
 
                 // Primary display (fiat)
-                HStack {
+                HStack(spacing: 5) {
                     primaryDisplayView
+
+                    if showEditButton {
+                        Image("pencil")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.textPrimary)
+                    }
+
                     Spacer()
                 }
                 .transition(
