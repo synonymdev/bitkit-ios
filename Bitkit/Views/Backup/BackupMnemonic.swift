@@ -53,7 +53,7 @@ struct BackupMnemonicView: View {
                     .padding(32)
                     .background(Color.gray6)
                     .blur(radius: showMnemonic ? 0 : 5)
-                    .privacySensitive()
+                    .screenshotPreventMask(true)
                     .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier("SeedContainer")
                     .accessibilityLabel(mnemonicAccessibilityLabel)

@@ -105,8 +105,13 @@ struct RestoreWalletView: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         headerSection
-                        wordInputSection
-                        passphraseSection
+
+                        Group {
+                            wordInputSection
+                            passphraseSection
+                        }
+                        .screenshotPreventMask(true)
+
                         validationSection
                         Spacer(minLength: 16)
                         buttonSection
