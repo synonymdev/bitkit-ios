@@ -72,17 +72,25 @@ struct ReceiveEdit: View {
                     .cornerRadius(8)
 
                     if !isNoteEditorFocused {
-                        TagSelectionView(
-                            onDelete: { tag in
-                                Task {
-                                    await deleteTag(tag)
+                        VStack(alignment: .leading, spacing: 0) {
+                            CaptionMText(t("wallet__tags"))
+                                .padding(.top, 16)
+                                .padding(.bottom, 8)
+
+                            TagsListView(
+                                tags: tagManager.selectedTagsArray,
+                                icon: .close,
+                                onAddTag: {
+                                    navigationPath.append(.tag)
+                                },
+                                onTagDelete: { tag in
+                                    Task {
+                                        await deleteTag(tag)
+                                    }
                                 }
-                            },
-                            onAddTag: {
-                                navigationPath.append(.tag)
-                            },
-                            buttonTestId: "TagsAdd"
-                        )
+                            )
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     Spacer()

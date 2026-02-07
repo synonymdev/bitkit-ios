@@ -36,7 +36,7 @@ struct Tag: View {
                         .foregroundColor(.textSecondary)
                         .frame(width: 16, height: 16)
                 }
-                .padding(.leading, 6) // Corresponds to icon paddingLeft
+                .padding(.leading, 6)
                 .accessibilityIdentifier("Tag-\(value)-delete")
             }
         }
