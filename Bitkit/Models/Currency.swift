@@ -40,6 +40,8 @@ struct ConvertedAmount {
     let sats: UInt64
     let btcValue: Decimal
 
+    var isSymbolSuffix: Bool { isSuffixSymbolCurrency(currency) }
+
     init(value: Decimal, formatted: String, symbol: String, currency: String, flag: String, sats: UInt64) {
         self.value = value
         self.formatted = formatted
@@ -48,6 +50,10 @@ struct ConvertedAmount {
         self.flag = flag
         self.sats = sats
         btcValue = Decimal(sats) / 100_000_000
+    }
+
+    func formattedWithSymbol() -> String {
+        isSymbolSuffix ? "\(formatted)\(symbol)" : "\(symbol)\(formatted)"
     }
 
     struct BitcoinDisplayComponents {
@@ -75,3 +81,23 @@ struct ConvertedAmount {
         }
     }
 }
+
+func isSuffixSymbolCurrency(_ currencyCode: String) -> Bool {
+    suffixSymbolCurrencies.contains(currencyCode)
+}
+
+private let suffixSymbolCurrencies: Set<String> = [
+    "BGN", // Bulgarian Lev (10,00 лв)
+    "CHF", // Swiss Franc (10.00 CHF)
+    "CZK", // Czech Koruna (10,00 Kč)
+    "DKK", // Danish Krone (10,00 kr)
+    "HRK", // Croatian Kuna (10,00 kn)
+    "HUF", // Hungarian Forint (10 000 Ft)
+    "ISK", // Icelandic Króna (10.000 kr)
+    "NOK", // Norwegian Krone (10,00 kr)
+    "PLN", // Polish Złoty (0,35 zł)
+    "RON", // Romanian Leu (10,00 lei)
+    "RUB", // Russian Ruble (10,00 ₽)
+    "SEK", // Swedish Krona (10,00 kr)
+    "TRY", // Turkish Lira (10,00 ₺)
+]

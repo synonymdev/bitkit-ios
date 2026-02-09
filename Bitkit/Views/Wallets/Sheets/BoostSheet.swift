@@ -82,7 +82,7 @@ struct BoostSheet: View {
         else {
             return ""
         }
-        return "\(converted.symbol)\(converted.formatted)"
+        return converted.formattedWithSymbol()
     }
 
     var body: some View {
