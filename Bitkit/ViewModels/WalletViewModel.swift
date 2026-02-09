@@ -207,6 +207,17 @@ class WalletViewModel: ObservableObject {
             Logger.error("Failed to connect to trusted peers")
         }
 
+        // Migration only: fetch peers from remote backup (once) and persist in ldk-node
+        let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
+        for uri in peerUris {
+            guard let peer = try? LnPeer(connection: uri) else { continue }
+            do {
+                try await lightningService.connectPeer(peer: peer, persist: true)
+            } catch {
+                Logger.error("Failed to connect migration peer \(peer.nodeId): \(error)")
+            }
+        }
+
         Task { @MainActor in
             try await refreshBip21()
         }
