@@ -1,13 +1,10 @@
 import SwiftUI
 
 struct FundManualConfirmView: View {
-    @State private var showSuccess = false
-    @State private var hideSwipeButton = false
-
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     let lnPeer: LnPeer
     let amountSats: UInt64
@@ -31,10 +28,10 @@ struct FundManualConfirmView: View {
     var body: some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                NavigationBar(title: t("lightning__connections"))
+                NavigationBar(title: t("lightning__external__nav_title"))
+                    .padding(.bottom, 16)
 
                 DisplayText(t("lightning__transfer__confirm"), accentColor: .purpleAccent)
-                    .padding(.top, 16)
 
                 VStack(spacing: 16) {
                     HStack {
@@ -69,44 +66,30 @@ struct FundManualConfirmView: View {
 
                 Spacer()
 
-                if !hideSwipeButton {
-                    SwipeButton(
-                        title: t("lightning__transfer__swipe"),
-                        accentColor: .purpleAccent
-                    ) {
-                        do {
-                            let (channelId, _) = try await transfer.openManualChannel(
-                                peer: lnPeer,
-                                amountSats: amountSats,
-                                onEvent: { eventId, handler in
-                                    wallet.addOnEvent(id: eventId, handler: handler)
-                                },
-                                removeEvent: { eventId in
-                                    wallet.removeOnEvent(id: eventId)
-                                }
-                            )
-
-                            Logger.info("Channel opened successfully with ID: \(channelId)")
-
-                            try await Task.sleep(nanoseconds: 500_000_000)
-                            showSuccess = true
-
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                                hideSwipeButton = true
+                SwipeButton(title: t("lightning__transfer__swipe"), accentColor: .purpleAccent) {
+                    do {
+                        let (channelId, _) = try await transfer.openManualChannel(
+                            peer: lnPeer,
+                            amountSats: amountSats,
+                            onEvent: { eventId, handler in
+                                wallet.addOnEvent(id: eventId, handler: handler)
+                            },
+                            removeEvent: { eventId in
+                                wallet.removeOnEvent(id: eventId)
                             }
-                        } catch {
-                            Logger.error("Failed to open channel: \(error)")
-                            app.toast(error)
-                        }
+                        )
+
+                        Logger.info("Channel opened successfully with ID: \(channelId)")
+
+                        try await Task.sleep(nanoseconds: 500_000_000)
+                        navigation.navigate(.fundManualSuccess)
+                    } catch {
+                        Logger.error("Failed to open channel: \(error)")
+                        app.toast(error)
                     }
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
-
-            NavigationLink(destination: FundManualSuccessView(), isActive: $showSuccess) {
-                EmptyView()
-            }
         }
         .navigationBarHidden(true)
         .task {

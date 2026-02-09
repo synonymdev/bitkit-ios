@@ -9,7 +9,7 @@ struct FundManualSuccessView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("lightning__transfer_success__nav_title"), showBackButton: false)
+            NavigationBar(title: t("lightning__external__nav_title"), showBackButton: false)
                 .padding(.bottom, 16)
 
             VStack(alignment: .leading, spacing: 16) {
@@ -43,12 +43,12 @@ struct FundManualSuccessView: View {
                 }
                 .accessibilityIdentifier("ExternalSuccess-button")
             }
-            .padding(.horizontal, 16)
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("ExternalSuccess")
         }
         .navigationBarHidden(true)
         .interactiveDismissDisabled()
+        .padding(.horizontal, 16)
     }
 }
 

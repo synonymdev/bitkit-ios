@@ -53,10 +53,7 @@ struct FundManualSetupView: View {
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        DisplayText(
-                            t("lightning__external_manual__title"),
-                            accentColor: .purpleAccent
-                        )
+                        DisplayText(t("lightning__external_manual__title"), accentColor: .purpleAccent)
 
                         BodyMText(t("lightning__external_manual__text"))
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -65,9 +62,8 @@ struct FundManualSetupView: View {
                         // Node ID field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__node_id"))
-                            TextField("00000000000000000000000000000000000000000000000000000000000000", text: $nodeId, submitLabel: .done)
+                            TextField("038543a13c2c040d0cd2d16c312a08fa5397c0329dd1d08a704e5c18aeced50e29", text: $nodeId, submitLabel: .done)
                                 .focused($isTextFieldFocused)
-                                .lineLimit(2 ... 2)
                                 .autocapitalization(.none)
                                 .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("NodeIdInput")
@@ -76,7 +72,7 @@ struct FundManualSetupView: View {
                         // Host field
                         VStack(alignment: .leading, spacing: 8) {
                             CaptionMText(t("lightning__external_manual__host"))
-                            TextField("00.00.00.00", text: $host, submitLabel: .done)
+                            TextField("127.0.0.1", text: $host, submitLabel: .done)
                                 .focused($isTextFieldFocused)
                                 .autocapitalization(.none)
                                 .autocorrectionDisabled(true)
@@ -118,10 +114,10 @@ struct FundManualSetupView: View {
 
                             CustomButton(
                                 title: t("common__continue"),
-                                variant: .primary,
-                                isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty,
-                                destination: FundManualAmountView(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0))
-                            )
+                                isDisabled: nodeId.isEmpty || host.isEmpty || port.isEmpty
+                            ) {
+                                navigation.navigate(.fundManualAmount(lnPeer: LnPeer(nodeId: nodeId, host: host, port: UInt16(port) ?? 0)))
+                            }
                             .accessibilityIdentifier("ExternalContinue")
                         }
                         .bottomSafeAreaPadding()
