@@ -17,17 +17,22 @@ struct ReceiveEdit: View {
     @State private var isAmountInputFocused: Bool = false
     @FocusState private var isNoteEditorFocused: Bool
 
+    var navTitle: String {
+        isAmountInputFocused ? t("wallet__receive_specify") : t("wallet__receive_amount")
+    }
+
     var amountSats: UInt64 {
         amountViewModel.amountSats
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(title: t("wallet__receive_specify"), showBackButton: true)
+            SheetHeader(title: navTitle, showBackButton: true)
 
             VStack(alignment: .leading, spacing: 0) {
                 NumberPadTextField(
                     viewModel: amountViewModel,
+                    showEditButton: !isAmountInputFocused,
                     isFocused: isAmountInputFocused,
                     testIdentifier: "ReceiveNumberPadTextField"
                 )
@@ -67,17 +72,25 @@ struct ReceiveEdit: View {
                     .cornerRadius(8)
 
                     if !isNoteEditorFocused {
-                        TagSelectionView(
-                            onDelete: { tag in
-                                Task {
-                                    await deleteTag(tag)
+                        VStack(alignment: .leading, spacing: 0) {
+                            CaptionMText(t("wallet__tags"))
+                                .padding(.top, 16)
+                                .padding(.bottom, 8)
+
+                            TagsListView(
+                                tags: tagManager.selectedTagsArray,
+                                icon: .close,
+                                onAddTag: {
+                                    navigationPath.append(.tag)
+                                },
+                                onTagDelete: { tag in
+                                    Task {
+                                        await deleteTag(tag)
+                                    }
                                 }
-                            },
-                            onAddTag: {
-                                navigationPath.append(.tag)
-                            },
-                            buttonTestId: "TagsAdd"
-                        )
+                            )
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
                     Spacer()

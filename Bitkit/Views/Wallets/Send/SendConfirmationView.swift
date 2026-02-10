@@ -96,14 +96,20 @@ struct SendConfirmationView: View {
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            TagSelectionView(
-                onDelete: { tag in
-                    tagManager.removeTagFromSelection(tag)
-                },
+            CaptionMText(t("wallet__tags"))
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+
+            TagsListView(
+                tags: tagManager.selectedTagsArray,
+                icon: .close,
                 onAddTag: {
                     navigationPath.append(.tag)
                 },
-                buttonTestId: "TagsAddSend"
+                onTagDelete: { tag in
+                    tagManager.removeTagFromSelection(tag)
+                },
+                addButtonTestId: "TagsAddSend"
             )
 
             Spacer()
