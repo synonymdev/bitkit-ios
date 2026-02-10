@@ -95,4 +95,20 @@ final class CurrencyTests: XCTestCase {
         )
         XCTAssertEqual(converted.formattedWithSymbol(), "50.00CHF")
     }
+
+    func testFormattedWithSymbol_PrefixCurrency_WithSpace() {
+        let converted = ConvertedAmount(
+            value: 10.50, formatted: "10.50", symbol: "$",
+            currency: "USD", flag: "🇺🇸", sats: 1000
+        )
+        XCTAssertEqual(converted.formattedWithSymbol(withSpace: true), "$ 10.50")
+    }
+
+    func testFormattedWithSymbol_SuffixCurrency_WithSpace() {
+        let converted = ConvertedAmount(
+            value: 0.35, formatted: "0.35", symbol: "zł",
+            currency: "PLN", flag: "🇵🇱", sats: 100
+        )
+        XCTAssertEqual(converted.formattedWithSymbol(withSpace: true), "0.35 zł")
+    }
 }

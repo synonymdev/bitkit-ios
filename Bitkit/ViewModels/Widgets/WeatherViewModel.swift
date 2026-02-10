@@ -166,7 +166,7 @@ class WeatherViewModel: ObservableObject {
             throw AppError(message: "Currency conversion unavailable", debugMessage: "Failed to convert \(fee) satoshis to fiat currency")
         }
 
-        return converted.formattedWithSymbol()
+        return converted.formattedWithSymbol(withSpace: true)
     }
 
     deinit {

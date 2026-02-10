@@ -52,8 +52,9 @@ struct ConvertedAmount {
         btcValue = Decimal(sats) / 100_000_000
     }
 
-    func formattedWithSymbol() -> String {
-        isSymbolSuffix ? "\(formatted)\(symbol)" : "\(symbol)\(formatted)"
+    func formattedWithSymbol(withSpace: Bool = false) -> String {
+        let separator = withSpace ? " " : ""
+        return isSymbolSuffix ? "\(formatted)\(separator)\(symbol)" : "\(symbol)\(separator)\(formatted)"
     }
 
     struct BitcoinDisplayComponents {
