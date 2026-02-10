@@ -51,8 +51,14 @@ struct MoneyText: View {
     private var displayText: String {
         if showSymbol {
             let baseSymbol = unit == .bitcoin ? "₿" : fiatSymbol
-            let symbolPart = prefix != nil ? "<accent>\(prefix!) \(baseSymbol)</accent>" : "<accent>\(baseSymbol)</accent>"
-            return "\(symbolPart) \(formattedValue)"
+            let isSuffix = unit == .fiat && isFiatSymbolSuffix
+            if isSuffix {
+                let prefixPart = prefix != nil ? "<accent>\(prefix!)</accent> " : ""
+                return "\(prefixPart)\(formattedValue) <accent>\(baseSymbol)</accent>"
+            } else {
+                let symbolPart = prefix != nil ? "<accent>\(prefix!) \(baseSymbol)</accent>" : "<accent>\(baseSymbol)</accent>"
+                return "\(symbolPart) \(formattedValue)"
+            }
         } else {
             return prefix != nil ? "<accent>\(prefix!)</accent> \(formattedValue)" : formattedValue
         }
@@ -116,6 +122,10 @@ extension MoneyText {
     private var fiatSymbol: String {
         guard let converted = currency.convert(sats: UInt64(abs(sats))) else { return "$" }
         return converted.symbol
+    }
+
+    private var isFiatSymbolSuffix: Bool {
+        isSuffixSymbolCurrency(currency.selectedCurrency)
     }
 
     private var formattedValue: String {

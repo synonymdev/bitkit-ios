@@ -94,11 +94,15 @@ struct NumberPadTextField: View {
 
     @ViewBuilder
     private var primaryDisplayView: some View {
+        let isSuffix = currency.primaryDisplay == .fiat && isSuffixSymbolCurrency(currency.selectedCurrency)
+        let symbolText = currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol
+
         HStack(spacing: 6) {
-            // Symbol
-            Text(currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol)
-                .font(.custom(Fonts.extraBold, size: 44))
-                .foregroundColor(.textSecondary)
+            if !isSuffix {
+                Text(symbolText)
+                    .font(.custom(Fonts.extraBold, size: 44))
+                    .foregroundColor(.textSecondary)
+            }
 
             // Value and placeholder
             (Text(viewModel.displayText)
@@ -106,6 +110,12 @@ struct NumberPadTextField: View {
                 + Text(viewModel.getPlaceholder(currency: currency))
                 .foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
+
+            if isSuffix {
+                Text(symbolText)
+                    .font(.custom(Fonts.extraBold, size: 44))
+                    .foregroundColor(.textSecondary)
+            }
         }
     }
 }
