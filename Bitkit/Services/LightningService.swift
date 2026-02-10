@@ -1105,4 +1105,26 @@ extension LightningService {
             return feeSat
         }
     }
+
+    // MARK: - Probing
+
+    /// Sends a probe to test if a payment route exists for the given invoice.
+    /// - Parameters:
+    ///   - bolt11: The Lightning invoice string (BOLT 11)
+    ///   - amountSats: Optional amount in sats for variable-amount invoices
+    func sendProbe(bolt11: String, amountSats: UInt64? = nil) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            let invoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            if let amountSats {
+                let amountMsat = amountSats * 1000
+                try node.bolt11Payment().sendProbesUsingAmount(invoice: invoice, amountMsat: amountMsat, routeParameters: nil)
+            } else {
+                try node.bolt11Payment().sendProbes(invoice: invoice, routeParameters: nil)
+            }
+        }
+    }
 }

@@ -24,6 +24,10 @@ struct DevSettingsView: View {
                         SettingsListLabel(title: "LDK")
                     }
 
+                    NavigationLink(value: Route.probingTool) {
+                        SettingsListLabel(title: "Probing Tool")
+                    }
+
                     NavigationLink(value: Route.orders) {
                         SettingsListLabel(title: "Orders")
                     }

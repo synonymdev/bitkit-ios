@@ -96,6 +96,7 @@ enum Route: Hashable {
     // Dev settings
     case blocktankRegtest
     case ldkDebug
+    case probingTool
     case orders
     case logs
 }
