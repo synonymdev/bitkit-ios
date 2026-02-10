@@ -128,7 +128,8 @@ jobs:
           path: e2e-app/
 
   build-regtest:
-    if: github.event.pull_request.draft == false
+    needs: detect-changes
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
 
     steps:
@@ -225,7 +226,7 @@ jobs:
   e2e-tests-local:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
-    needs: [build-local, e2e-branch]
+    needs: [detect-changes, build-local, e2e-branch]
 
     strategy:
       fail-fast: false
@@ -371,9 +372,9 @@ jobs:
           cd docker && docker compose down -v || true
 
   e2e-tests-regtest:
-    if: github.event.pull_request.draft == false
+    if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
-    needs: [build-regtest, e2e-branch]
+    needs: [detect-changes, build-regtest, e2e-branch]
 
     strategy:
       fail-fast: false
