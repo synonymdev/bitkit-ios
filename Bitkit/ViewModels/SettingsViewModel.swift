@@ -333,6 +333,16 @@ class SettingsViewModel: NSObject, ObservableObject {
             let balance = await getBalanceForAddressType(addressType)
             if balance > 0 { return false }
 
+            // If primary is Legacy, ensure at least one SegWit-compatible wallet remains enabled
+            // (Legacy UTXOs cannot be used for Lightning channel funding)
+            if selectedAddressType == .legacy {
+                let segwitTypes: [AddressScriptType] = [.nestedSegwit, .nativeSegwit, .taproot]
+                let remainingSegwit = current.filter { $0 != addressType && segwitTypes.contains($0) }
+                if remainingSegwit.isEmpty {
+                    return false
+                }
+            }
+
             current.removeAll { $0 == addressType }
             addressTypesToMonitor = current
         }
@@ -362,6 +372,22 @@ class SettingsViewModel: NSObject, ObservableObject {
     /// Set all address types as monitored (used during wallet restore)
     func monitorAllAddressTypes() {
         addressTypesToMonitor = Self.allAddressTypes
+    }
+
+    /// Check if disabling an address type would leave no SegWit wallets when Legacy is primary
+    /// - Parameter addressType: The address type to check
+    /// - Returns: True if this is the last SegWit wallet and Legacy is primary
+    func isLastRequiredSegwitWallet(_ addressType: AddressScriptType) -> Bool {
+        // Only applies when Legacy is the primary wallet
+        guard selectedAddressType == .legacy else { return false }
+
+        // Only applies to SegWit-compatible types
+        let segwitTypes: [AddressScriptType] = [.nestedSegwit, .nativeSegwit, .taproot]
+        guard segwitTypes.contains(addressType) else { return false }
+
+        // Check if disabling this would leave no SegWit wallets
+        let remainingSegwit = addressTypesToMonitor.filter { $0 != addressType && segwitTypes.contains($0) }
+        return remainingSegwit.isEmpty
     }
 
     var selectedAddressType: AddressScriptType {

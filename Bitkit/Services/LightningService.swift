@@ -890,6 +890,49 @@ extension LightningService {
         }
     }
 
+    /// Get the total balance that can be used for channel funding (excludes Legacy/P2PKH UTXOs)
+    /// LDK channel funding requires witness-compatible UTXOs (NativeSegwit, NestedSegwit, Taproot)
+    /// - Returns: Total spendable sats from witness-compatible address types
+    func getChannelFundableBalance() async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        // Get monitored address types from UserDefaults
+        let storedTypes = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let typeStrings = storedTypes.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        let monitoredTypes: [LDKNode.AddressType] = typeStrings.compactMap { str in
+            switch str {
+            case "legacy": return .legacy
+            case "nestedSegwit": return .nestedSegwit
+            case "nativeSegwit": return .nativeSegwit
+            case "taproot": return .taproot
+            default: return nil
+            }
+        }
+
+        var totalFundable: UInt64 = 0
+
+        for addressType in monitoredTypes {
+            // Skip Legacy (P2PKH) as it cannot be used for channel funding
+            if addressType == .legacy {
+                continue
+            }
+
+            do {
+                let balance = try await ServiceQueue.background(.ldk) {
+                    try node.getBalanceForAddressType(addressType: addressType)
+                }
+                totalFundable += balance.spendableSats
+            } catch {
+                // If we can't get balance for this type, log and continue
+                Logger.warn("Failed to get balance for \(addressType) when calculating channel fundable balance: \(error)")
+            }
+        }
+
+        return totalFundable
+    }
+
     /// Returns LSP (Blocktank) peer node IDs
     func getLspPeerNodeIds() -> [String] {
         return Env.trustedLnPeers.map(\.nodeId)

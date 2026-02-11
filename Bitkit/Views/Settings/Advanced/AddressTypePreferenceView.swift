@@ -265,11 +265,20 @@ struct AddressTypePreferenceView: View {
                                                     description: "Address monitoring settings applied."
                                                 )
                                             } else if !enabled {
-                                                app.toast(
-                                                    type: .error,
-                                                    title: "Cannot Disable",
-                                                    description: "\(addressType.localizedTitle) addresses have balance."
-                                                )
+                                                // Determine reason for failure
+                                                if settingsViewModel.isLastRequiredSegwitWallet(addressType) {
+                                                    app.toast(
+                                                        type: .error,
+                                                        title: "Cannot Disable",
+                                                        description: "At least one SegWit wallet is required for Lightning when using Legacy as primary."
+                                                    )
+                                                } else {
+                                                    app.toast(
+                                                        type: .error,
+                                                        title: "Cannot Disable",
+                                                        description: "\(addressType.localizedTitle) addresses have balance."
+                                                    )
+                                                }
                                             }
                                         }
                                     }
