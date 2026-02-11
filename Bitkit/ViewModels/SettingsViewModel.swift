@@ -314,6 +314,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
 
+        isChangingAddressType = true
+        defer { isChangingAddressType = false }
+
         var current = addressTypesToMonitor
 
         if enabled {
