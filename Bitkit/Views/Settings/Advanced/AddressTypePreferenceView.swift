@@ -266,11 +266,11 @@ struct AddressTypePreferenceView: View {
                                                 )
                                             } else if !enabled {
                                                 // Determine reason for failure
-                                                if settingsViewModel.isLastRequiredSegwitWallet(addressType) {
+                                                if settingsViewModel.isLastRequiredNativeWitnessWallet(addressType) {
                                                     app.toast(
                                                         type: .error,
                                                         title: "Cannot Disable",
-                                                        description: "At least one SegWit wallet is required for Lightning when using Legacy as primary."
+                                                        description: "At least one Native SegWit or Taproot wallet is required for Lightning channels."
                                                     )
                                                 } else {
                                                     app.toast(

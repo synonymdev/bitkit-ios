@@ -1224,7 +1224,16 @@ extension MigrationsService {
             Logger.info("Migrated selectedAddressType: \(selected)", context: "Migration")
         }
 
-        if let monitored = addressTypesToMonitor {
+        if var monitored = addressTypesToMonitor {
+            // BOLT 2 requires native witness scripts for channel shutdown/close outputs.
+            // Ensure at least one native witness type (NativeSegwit or Taproot) is monitored.
+            let nativeWitnessTypes = ["nativeSegwit", "taproot"]
+            let hasNativeWitness = monitored.contains(where: { nativeWitnessTypes.contains($0) })
+            if !hasNativeWitness {
+                monitored.append("nativeSegwit")
+                Logger.info("Added nativeSegwit to monitored types (required for Lightning channel scripts)", context: "Migration")
+            }
+
             let monitoredString = monitored.joined(separator: ",")
             defaults.set(monitoredString, forKey: "addressTypesToMonitor")
             Logger.info("Migrated addressTypesToMonitor: \(monitoredString)", context: "Migration")

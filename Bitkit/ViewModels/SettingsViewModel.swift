@@ -338,14 +338,14 @@ class SettingsViewModel: NSObject, ObservableObject {
                 return false
             }
 
-            // If primary is Legacy, ensure at least one SegWit-compatible wallet remains enabled
-            // (Legacy UTXOs cannot be used for Lightning channel funding)
-            if selectedAddressType == .legacy {
-                let segwitTypes: [AddressScriptType] = [.nestedSegwit, .nativeSegwit, .taproot]
-                let remainingSegwit = current.filter { $0 != addressType && segwitTypes.contains($0) }
-                if remainingSegwit.isEmpty {
-                    return false
-                }
+            // Ensure at least one native witness wallet (NativeSegwit or Taproot) remains enabled.
+            // BOLT 2 requires native witness scripts for channel shutdown/close outputs.
+            // When primary is Legacy or NestedSegwit, the node uses a loaded native witness
+            // wallet for all channel scripts. Without one, channels will fail.
+            let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
+            let remainingNativeWitness = current.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
+            if remainingNativeWitness.isEmpty {
+                return false
             }
 
             current.removeAll { $0 == addressType }
@@ -379,20 +379,19 @@ class SettingsViewModel: NSObject, ObservableObject {
         addressTypesToMonitor = Self.allAddressTypes
     }
 
-    /// Check if disabling an address type would leave no SegWit wallets when Legacy is primary
+    /// Check if disabling an address type would leave no native witness wallets
+    /// BOLT 2 requires native witness scripts for channel shutdown/close outputs,
+    /// so at least one NativeSegwit or Taproot wallet must always remain enabled.
     /// - Parameter addressType: The address type to check
-    /// - Returns: True if this is the last SegWit wallet and Legacy is primary
-    func isLastRequiredSegwitWallet(_ addressType: AddressScriptType) -> Bool {
-        // Only applies when Legacy is the primary wallet
-        guard selectedAddressType == .legacy else { return false }
+    /// - Returns: True if this is the last native witness wallet
+    func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
+        // Only applies to native witness types
+        let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
+        guard nativeWitnessTypes.contains(addressType) else { return false }
 
-        // Only applies to SegWit-compatible types
-        let segwitTypes: [AddressScriptType] = [.nestedSegwit, .nativeSegwit, .taproot]
-        guard segwitTypes.contains(addressType) else { return false }
-
-        // Check if disabling this would leave no SegWit wallets
-        let remainingSegwit = addressTypesToMonitor.filter { $0 != addressType && segwitTypes.contains($0) }
-        return remainingSegwit.isEmpty
+        // Check if disabling this would leave no native witness wallets
+        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
+        return remainingNativeWitness.isEmpty
     }
 
     var selectedAddressType: AddressScriptType {
