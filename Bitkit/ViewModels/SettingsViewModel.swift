@@ -298,15 +298,11 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Check if an address type has balance
     /// - Parameter addressType: The address type to check
-    /// - Returns: The balance in sats, or 0 if unable to check
-    func getBalanceForAddressType(_ addressType: AddressScriptType) async -> UInt64 {
-        do {
-            let balance = try await lightningService.getBalanceForAddressType(addressType)
-            return balance.totalSats
-        } catch {
-            Logger.error("Failed to get balance for address type \(addressType): \(error)")
-            return 0
-        }
+    /// - Returns: The balance in sats
+    /// - Throws: If unable to check balance
+    func getBalanceForAddressType(_ addressType: AddressScriptType) async throws -> UInt64 {
+        let balance = try await lightningService.getBalanceForAddressType(addressType)
+        return balance.totalSats
     }
 
     /// Enable or disable monitoring for an address type
@@ -330,8 +326,14 @@ class SettingsViewModel: NSObject, ObservableObject {
             if addressType == selectedAddressType { return false }
 
             // Check if address type has balance - don't allow disabling if it has funds
-            let balance = await getBalanceForAddressType(addressType)
-            if balance > 0 { return false }
+            // Fail safely: if we can't verify balance, don't allow disabling
+            do {
+                let balance = try await getBalanceForAddressType(addressType)
+                if balance > 0 { return false }
+            } catch {
+                Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+                return false
+            }
 
             // If primary is Legacy, ensure at least one SegWit-compatible wallet remains enabled
             // (Legacy UTXOs cannot be used for Lightning channel funding)
