@@ -278,6 +278,11 @@ jobs:
       - name: List available simulators
         run: xcrun simctl list devices available
 
+      - name: Xcode and runtime preflight
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
 
       - name: Docker info
         run: |
@@ -330,8 +335,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep '${{ matrix.shard.grep }}'
         env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 1
 
@@ -342,8 +345,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 2
 
@@ -353,8 +354,6 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: ./ci_run_ios.sh --mochaOpts.grep "${{ matrix.shard.grep }}"
         env:
-          SIMULATOR_NAME: ${{ env.SIMULATOR_NAME }}
-          SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 3
 
