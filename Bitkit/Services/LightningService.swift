@@ -1345,7 +1345,7 @@ extension LightningService {
             }
         }
     }
-        
+
     // MARK: - Helpers
 
     private static func parseAddressType(_ string: String?) -> LDKNode.AddressType {

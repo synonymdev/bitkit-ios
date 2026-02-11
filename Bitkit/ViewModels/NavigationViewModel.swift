@@ -84,11 +84,6 @@ enum Route: Hashable {
     case electrumSettings
     case rgsSettings
     case addressViewer
-    case sweep
-    case sweepConfirm
-    case sweepFeeRate
-    case sweepFeeCustom
-    case sweepSuccess(txid: String)
 
     // Support settings
     case reportIssue
