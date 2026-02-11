@@ -308,23 +308,32 @@ struct AddressTypePreferenceView: View {
     }
 }
 
+/// Error thrown when operation times out
+private struct TimeoutError: Error {}
+
 /// Executes an async operation with a timeout. Returns true if the operation timed out.
+/// Note: If timeout occurs, the operation continues running in the background.
 private func withTimeout(seconds: UInt64, operation: @escaping () async -> some Any) async -> Bool {
-    await withTaskGroup(of: Bool.self) { group in
-        group.addTask {
-            _ = await operation()
-            return false // Operation completed
-        }
+    do {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                _ = await operation()
+            }
 
-        group.addTask {
-            try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-            return true // Timeout
-        }
+            group.addTask {
+                try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                throw TimeoutError()
+            }
 
-        // Return whichever finishes first
-        let result = await group.next() ?? false
-        group.cancelAll()
-        return result
+            // Wait for first task to complete or throw
+            try await group.next()
+            group.cancelAll()
+        }
+        return false // Operation completed
+    } catch is TimeoutError {
+        return true // Timeout
+    } catch {
+        return false // Other error, treat as completed
     }
 }
 
