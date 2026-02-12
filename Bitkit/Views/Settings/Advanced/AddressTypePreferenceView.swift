@@ -125,7 +125,7 @@ struct MonitoredAddressTypeToggle: View {
                     VStack(alignment: .leading, spacing: 4) {
                         BodyMText("\(addressType.localizedTitle) \(addressType.shortExample)", textColor: .textPrimary)
                         if isSelectedType {
-                            BodySText("Currently selected", textColor: .textSecondary)
+                            BodySText(t("settings__adv__addr_type_currently_selected"), textColor: .textSecondary)
                         }
                     }
                     Spacer()
@@ -196,20 +196,27 @@ struct AddressTypePreferenceView: View {
                                         showLoadingView = false
 
                                         if didTimeout {
-                                            app.toast(type: .error, title: "Timeout", description: "The operation took too long. Please try again.")
+                                            app.toast(
+                                                type: .error,
+                                                title: t("settings__adv__addr_type_timeout_title"),
+                                                description: t("settings__adv__addr_type_timeout_desc")
+                                            )
                                         } else if success {
                                             Haptics.notify(.success)
                                             navigation.reset()
                                             app.toast(
                                                 type: .success,
-                                                title: "Address Type Changed",
-                                                description: "Now using \(addressType.localizedTitle) addresses."
+                                                title: t("settings__adv__addr_type_changed_title"),
+                                                description: t(
+                                                    "settings__adv__addr_type_changed_desc",
+                                                    variables: ["type": addressType.localizedTitle]
+                                                )
                                             )
                                         } else {
                                             app.toast(
                                                 type: .error,
-                                                title: "Failed",
-                                                description: "Could not change address type. Please try again."
+                                                title: t("settings__adv__addr_type_failed_title"),
+                                                description: t("settings__adv__addr_type_change_failed_desc")
                                             )
                                         }
                                     }
@@ -221,7 +228,7 @@ struct AddressTypePreferenceView: View {
                     if showDevSettings {
                         VStack(alignment: .leading, spacing: 0) {
                             HStack {
-                                CaptionMText("Monitored Address Types")
+                                CaptionMText(t("settings__adv__monitored_address_types"))
                                 Spacer()
                                 Button(action: { showMonitoredTypesNote.toggle() }) {
                                     Image(systemName: "info.circle")
@@ -233,7 +240,7 @@ struct AddressTypePreferenceView: View {
 
                             if showMonitoredTypesNote {
                                 BodySText(
-                                    "Enable monitoring to track funds received at different address types. The app will watch these addresses for incoming transactions. Disabling monitoring for a type with balance may hide your funds.",
+                                    t("settings__adv__addr_type_monitored_note"),
                                     textColor: .textSecondary
                                 )
                                 .padding(.bottom, 12)
@@ -261,35 +268,38 @@ struct AddressTypePreferenceView: View {
                                             if didTimeout {
                                                 app.toast(
                                                     type: .error,
-                                                    title: "Timeout",
-                                                    description: "The operation took too long. Please try again."
+                                                    title: t("settings__adv__addr_type_timeout_title"),
+                                                    description: t("settings__adv__addr_type_timeout_desc")
                                                 )
                                             } else if success {
                                                 Haptics.notify(.success)
                                                 app.toast(
                                                     type: .success,
-                                                    title: "Settings Updated",
-                                                    description: "Address monitoring settings applied."
+                                                    title: t("settings__adv__addr_type_monitored_updated_title"),
+                                                    description: t("settings__adv__addr_type_monitored_updated_desc")
                                                 )
                                             } else if !enabled {
                                                 if settingsViewModel.isLastRequiredNativeWitnessWallet(addressType) {
                                                     app.toast(
                                                         type: .error,
-                                                        title: "Cannot Disable",
-                                                        description: "At least one Native SegWit or Taproot wallet is required for Lightning channels."
+                                                        title: t("settings__adv__addr_type_cannot_disable_title"),
+                                                        description: t("settings__adv__addr_type_cannot_disable_native_desc")
                                                     )
                                                 } else {
                                                     app.toast(
                                                         type: .error,
-                                                        title: "Cannot Disable",
-                                                        description: "\(addressType.localizedTitle) addresses have balance."
+                                                        title: t("settings__adv__addr_type_cannot_disable_title"),
+                                                        description: t(
+                                                            "settings__adv__addr_type_cannot_disable_balance_desc",
+                                                            variables: ["type": addressType.localizedTitle]
+                                                        )
                                                     )
                                                 }
                                             } else {
                                                 app.toast(
                                                     type: .error,
-                                                    title: "Failed",
-                                                    description: "Could not update monitoring settings. Please try again."
+                                                    title: t("settings__adv__addr_type_failed_title"),
+                                                    description: t("settings__adv__addr_type_monitored_failed_desc")
                                                 )
                                             }
                                         }

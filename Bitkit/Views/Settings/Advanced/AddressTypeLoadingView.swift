@@ -5,18 +5,18 @@ struct AddressTypeLoadingView: View {
     let isMonitoringChange: Bool
 
     private var navTitle: String {
-        isMonitoringChange ? "Address Monitoring" : "Address Type"
+        isMonitoringChange ? t("settings__adv__addr_type_loading_nav_monitoring") : t("settings__adv__addr_type_loading_nav_address")
     }
 
     private var headline: String {
         if let addressType = targetAddressType, !isMonitoringChange {
-            return "Switching to <accent>\(addressType.localizedTitle)</accent>"
+            return t("settings__adv__addr_type_loading_headline", variables: ["type": addressType.localizedTitle])
         }
-        return "Updating Wallet"
+        return t("settings__adv__addr_type_loading_updating")
     }
 
     private var description: String {
-        "Please wait while the wallet restarts..."
+        t("settings__adv__addr_type_loading_desc")
     }
 
     var body: some View {
