@@ -385,6 +385,65 @@ class SettingsViewModel: NSObject, ObservableObject {
         addressTypesToMonitor = Self.allAddressTypes
     }
 
+    private static let pendingRestoreAddressTypePruneKey = "pendingRestoreAddressTypePrune"
+
+    /// Tracks whether to prune empty address types after restore (set when user taps Get Started; cleared when prune runs).
+    var pendingRestoreAddressTypePrune: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.pendingRestoreAddressTypePruneKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreAddressTypePruneKey) }
+    }
+
+    /// After restore, disables monitoring for address types with zero balance.
+    /// Keeps nativeSegwit as primary and monitored; only types with funds stay monitored.
+    func pruneEmptyAddressTypesAfterRestore() async {
+        guard !isChangingAddressType else { return }
+
+        let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
+        var newMonitored = addressTypesToMonitor
+        var changed = false
+
+        for type in addressTypesToMonitor {
+            // Always keep nativeSegwit (primary, required for Lightning)
+            if type == .nativeSegwit { continue }
+
+            do {
+                let balance = try await getBalanceForAddressType(type)
+                if balance == 0 {
+                    newMonitored.removeAll { $0 == type }
+                    changed = true
+                    Logger.debug("Pruned empty address type from monitoring: \(type)", context: "SettingsViewModel")
+                }
+            } catch {
+                Logger.warn("Could not check balance for \(type), keeping monitored: \(error)")
+                // Don't disable on error - fail safe
+            }
+        }
+
+        // Ensure at least one native witness type
+        if !newMonitored.contains(where: { nativeWitnessTypes.contains($0) }) {
+            if !newMonitored.contains(.nativeSegwit) {
+                newMonitored.append(.nativeSegwit)
+                changed = true
+            }
+        }
+
+        guard changed else { return }
+
+        addressTypesToMonitor = newMonitored
+        UserDefaults.standard.synchronize()
+
+        do {
+            try await lightningService.restart()
+            try await lightningService.sync()
+            Logger.info(
+                "Pruned empty address types after restore: \(newMonitored.map { Self.addressTypeToString($0) }.joined(separator: ","))",
+                context: "SettingsViewModel"
+            )
+        } catch {
+            Logger.error("Failed to restart after prune: \(error)")
+        }
+    }
+
     /// True if disabling this would leave no native witness wallet (required for Lightning).
     func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
         let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]

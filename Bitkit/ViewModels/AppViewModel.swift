@@ -902,6 +902,15 @@ extension AppViewModel {
         case let .syncCompleted(syncType, syncedBlockHeight):
             Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
 
+            // After mnemonic restore, prune empty address types once sync has completed
+            if SettingsViewModel.shared.pendingRestoreAddressTypePrune {
+                SettingsViewModel.shared.pendingRestoreAddressTypePrune = false
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 30 * 1_000_000_000) // 30s delay after sync
+                    await SettingsViewModel.shared.pruneEmptyAddressTypesAfterRestore()
+                }
+            }
+
             if MigrationsService.shared.needsPostMigrationSync {
                 Task { @MainActor in
                     try? await CoreService.shared.activity.syncLdkNodePayments(LightningService.shared.payments ?? [])

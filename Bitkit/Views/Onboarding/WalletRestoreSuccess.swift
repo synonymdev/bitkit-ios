@@ -35,6 +35,9 @@ struct WalletRestoreSuccess: View {
                 // Mark backup as verified since user just restored with their phrase
                 app.backupVerified = true
                 wallet.isRestoringWallet = false
+
+                // Prune empty address types on next syncCompleted
+                SettingsViewModel.shared.pendingRestoreAddressTypePrune = true
             }
             .accessibilityIdentifier("GetStartedButton")
         }
