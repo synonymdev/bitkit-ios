@@ -326,6 +326,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         isChangingAddressType = true
         defer { isChangingAddressType = false }
 
+        let previousAddressTypesToMonitor = addressTypesToMonitor
         var current = addressTypesToMonitor
 
         if enabled {
@@ -363,6 +364,9 @@ class SettingsViewModel: NSObject, ObservableObject {
             try await lightningService.sync()
         } catch {
             Logger.error("Failed to restart node after monitored types change: \(error)")
+            addressTypesToMonitor = previousAddressTypesToMonitor
+            UserDefaults.standard.synchronize()
+            return false
         }
 
         wallet?.syncState()
@@ -419,17 +423,21 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    func updateAddressType(_ addressType: AddressScriptType, wallet: WalletViewModel? = nil) async {
-        guard !isChangingAddressType else { return }
-        guard addressType != selectedAddressType else { return }
+    func updateAddressType(_ addressType: AddressScriptType, wallet: WalletViewModel? = nil) async -> Bool {
+        guard !isChangingAddressType else { return false }
+        guard addressType != selectedAddressType else { return true }
 
         isChangingAddressType = true
         defer { isChangingAddressType = false }
 
+        let previousSelectedAddressType = selectedAddressType
+        let previousAddressTypesToMonitor = addressTypesToMonitor
+        let previousOnchainAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+        let previousBip21 = UserDefaults.standard.string(forKey: "bip21") ?? ""
+
         selectedAddressType = addressType
         ensureMonitoring(addressType)
 
-        // Clear cached address
         UserDefaults.standard.set("", forKey: "onchainAddress")
         UserDefaults.standard.set("", forKey: "bip21")
         UserDefaults.standard.synchronize()
@@ -445,10 +453,21 @@ class SettingsViewModel: NSObject, ObservableObject {
             await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
         } catch {
             Logger.error("Failed to restart node after address type change: \(error)")
-            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
+            selectedAddressType = previousSelectedAddressType
+            addressTypesToMonitor = previousAddressTypesToMonitor
+            UserDefaults.standard.set(previousOnchainAddress, forKey: "onchainAddress")
+            UserDefaults.standard.set(previousBip21, forKey: "bip21")
+            UserDefaults.standard.synchronize()
+            if let wallet {
+                wallet.onchainAddress = previousOnchainAddress
+                wallet.bip21 = previousBip21
+            }
+            wallet?.syncState()
+            return false
         }
 
         wallet?.syncState()
+        return true
     }
 
     private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {

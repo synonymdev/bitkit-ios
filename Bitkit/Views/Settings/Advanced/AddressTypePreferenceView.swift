@@ -188,21 +188,28 @@ struct AddressTypePreferenceView: View {
                                     showLoadingView = true
 
                                     loadingTask = Task {
+                                        var success = false
                                         let didTimeout = await withTimeout(seconds: timeoutSeconds) {
-                                            await settingsViewModel.updateAddressType(addressType, wallet: wallet)
+                                            success = await settingsViewModel.updateAddressType(addressType, wallet: wallet)
                                         }
 
                                         showLoadingView = false
 
                                         if didTimeout {
                                             app.toast(type: .error, title: "Timeout", description: "The operation took too long. Please try again.")
-                                        } else {
+                                        } else if success {
                                             Haptics.notify(.success)
                                             navigation.reset()
                                             app.toast(
                                                 type: .success,
                                                 title: "Address Type Changed",
                                                 description: "Now using \(addressType.localizedTitle) addresses."
+                                            )
+                                        } else {
+                                            app.toast(
+                                                type: .error,
+                                                title: "Failed",
+                                                description: "Could not change address type. Please try again."
                                             )
                                         }
                                     }
@@ -265,7 +272,6 @@ struct AddressTypePreferenceView: View {
                                                     description: "Address monitoring settings applied."
                                                 )
                                             } else if !enabled {
-                                                // Determine reason for failure
                                                 if settingsViewModel.isLastRequiredNativeWitnessWallet(addressType) {
                                                     app.toast(
                                                         type: .error,
@@ -279,6 +285,12 @@ struct AddressTypePreferenceView: View {
                                                         description: "\(addressType.localizedTitle) addresses have balance."
                                                     )
                                                 }
+                                            } else {
+                                                app.toast(
+                                                    type: .error,
+                                                    title: "Failed",
+                                                    description: "Could not update monitoring settings. Please try again."
+                                                )
                                             }
                                         }
                                     }

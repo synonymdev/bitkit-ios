@@ -889,9 +889,11 @@ extension LightningService {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        let storedTypes = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let typeStrings = storedTypes.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        let monitoredTypes: [LDKNode.AddressType] = typeStrings.compactMap { str in
+        let defaults = UserDefaults.standard
+        let selectedType = Self.parseAddressType(defaults.string(forKey: "selectedAddressType"))
+        let monitoredTypesString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let monitoredTypeStrings = monitoredTypesString.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        let monitoredTypes: [LDKNode.AddressType] = monitoredTypeStrings.compactMap { str in
             switch str {
             case "legacy": return .legacy
             case "nestedSegwit": return .nestedSegwit
@@ -901,13 +903,17 @@ extension LightningService {
             }
         }
 
+        var typesToSum = Set<LDKNode.AddressType>()
+        if selectedType != .legacy {
+            typesToSum.insert(selectedType)
+        }
+        for type in monitoredTypes where type != .legacy {
+            typesToSum.insert(type)
+        }
+
         var totalFundable: UInt64 = 0
 
-        for addressType in monitoredTypes {
-            if addressType == .legacy {
-                continue // Legacy UTXOs cannot fund channels
-            }
-
+        for addressType in typesToSum {
             do {
                 let balance = try await ServiceQueue.background(.ldk) {
                     try node.getBalanceForAddressType(addressType: addressType)
