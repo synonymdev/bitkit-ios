@@ -300,10 +300,15 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
+    /// Parses a comma-separated string of address types, filtering invalid values.
+    static func parseAddressTypesString(_ string: String) -> [AddressScriptType] {
+        let strings = string.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+        return strings.compactMap { stringToAddressType($0) }
+    }
+
     var addressTypesToMonitor: [AddressScriptType] {
         get {
-            let strings = _addressTypesToMonitor.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-            return strings.compactMap { Self.stringToAddressType($0) }
+            Self.parseAddressTypesString(_addressTypesToMonitor)
         }
         set {
             _addressTypesToMonitor = newValue.map { Self.addressTypeToString($0) }.joined(separator: ",")
