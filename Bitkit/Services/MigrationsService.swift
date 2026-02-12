@@ -881,7 +881,6 @@ extension MigrationsService {
         }
     }
 
-    /// Maps RN EAddressType enum values to iOS AddressScriptType string values
     private static let rnAddressTypeMapping: [String: String] = [
         "p2pkh": "legacy",
         "p2sh": "nestedSegwit",
@@ -907,7 +906,7 @@ extension MigrationsService {
         var selectedAddressType: String?
         var addressTypesToMonitor: [String]?
 
-        // Extract selectedAddressType from wallets.wallet0.addressType.<network>
+        // wallets.wallet0.addressType.<network>
         if let wallets = walletDict["wallets"] as? [String: Any],
            let wallet0 = wallets["wallet0"] as? [String: Any],
            let addressTypePerNetwork = wallet0["addressType"] as? [String: String]
@@ -920,7 +919,7 @@ extension MigrationsService {
             }
         }
 
-        // Extract addressTypesToMonitor from top-level wallet state
+        // Top-level addressTypesToMonitor
         if let rnMonitoredTypes = walletDict["addressTypesToMonitor"] as? [String] {
             let iosTypes = rnMonitoredTypes.compactMap { Self.rnAddressTypeMapping[$0] }
             if !iosTypes.isEmpty {
@@ -1225,10 +1224,9 @@ extension MigrationsService {
         }
 
         if var monitored = addressTypesToMonitor {
-            // BOLT 2 requires native witness scripts for channel shutdown/close outputs.
-            // Ensure at least one native witness type (NativeSegwit or Taproot) is monitored.
             let nativeWitnessTypes = ["nativeSegwit", "taproot"]
             let hasNativeWitness = monitored.contains(where: { nativeWitnessTypes.contains($0) })
+            // Lightning requires at least one native witness type
             if !hasNativeWitness {
                 monitored.append("nativeSegwit")
                 Logger.info("Added nativeSegwit to monitored types (required for Lightning channel scripts)", context: "Migration")

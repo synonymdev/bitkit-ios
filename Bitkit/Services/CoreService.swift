@@ -24,7 +24,6 @@ class ActivityService {
 
     /// Maximum address index to search when current address exists
     private static let maxAddressSearchIndex: UInt32 = 1000
-    /// Lock to prevent concurrent address searches
     private let addressSearchLock = NSLock()
     private var isSearchingAddresses = false
 
@@ -894,7 +893,7 @@ class ActivityService {
     private func findReceivingAddress(for txid: String, value: UInt64,
                                       transactionDetails: BitkitCore.TransactionDetails? = nil) async throws -> String?
     {
-        // Prevent concurrent searches that could cause infinite loops
+        // Prevents concurrent searches (can cause infinite loop)
         addressSearchLock.lock()
         guard !isSearchingAddresses else {
             addressSearchLock.unlock()

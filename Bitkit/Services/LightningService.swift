@@ -81,11 +81,9 @@ class LightningService {
         )
         config.includeUntrustedPendingInSpendable = true
 
-        // Set address type from user preference
         let selectedAddressType = Self.parseAddressType(UserDefaults.standard.string(forKey: "selectedAddressType"))
         config.addressType = selectedAddressType
 
-        // Set additional monitored address types (excluding the primary type)
         let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
         let monitoredTypes = monitoredTypesString.split(separator: ",")
             .map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -876,10 +874,6 @@ extension LightningService {
         }
     }
 
-    /// Get balance for a specific address type
-    /// - Parameter addressType: The address type to check
-    /// - Returns: AddressTypeBalance with total and spendable sats
-    /// - Throws: AppError if node is not setup
     func getBalanceForAddressType(_ addressType: LDKNode.AddressType) async throws -> AddressTypeBalance {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
@@ -890,15 +884,11 @@ extension LightningService {
         }
     }
 
-    /// Get the total balance that can be used for channel funding (excludes Legacy/P2PKH UTXOs)
-    /// LDK channel funding requires witness-compatible UTXOs (NativeSegwit, NestedSegwit, Taproot)
-    /// - Returns: Total spendable sats from witness-compatible address types
     func getChannelFundableBalance() async throws -> UInt64 {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        // Get monitored address types from UserDefaults
         let storedTypes = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
         let typeStrings = storedTypes.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
         let monitoredTypes: [LDKNode.AddressType] = typeStrings.compactMap { str in
@@ -914,9 +904,8 @@ extension LightningService {
         var totalFundable: UInt64 = 0
 
         for addressType in monitoredTypes {
-            // Skip Legacy (P2PKH) as it cannot be used for channel funding
             if addressType == .legacy {
-                continue
+                continue // Legacy UTXOs cannot fund channels
             }
 
             do {
@@ -925,7 +914,6 @@ extension LightningService {
                 }
                 totalFundable += balance.spendableSats
             } catch {
-                // If we can't get balance for this type, log and continue
                 Logger.warn("Failed to get balance for \(addressType) when calculating channel fundable balance: \(error)")
             }
         }

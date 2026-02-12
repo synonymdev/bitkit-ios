@@ -4,8 +4,7 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
-/// Typealias for LDKNode.AddressType to avoid naming conflicts with local AddressType enums
-/// used elsewhere in the app for UI purposes (e.g., receiving/change in AddressViewer).
+// Avoids conflict with AddressViewer.AddressType
 typealias AddressScriptType = LDKNode.AddressType
 
 enum CoinSelectionMethod: String, CaseIterable {
@@ -49,7 +48,6 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     private let defaults = UserDefaults.standard
 
-    /// Flag to prevent concurrent address type changes
     private var isChangingAddressType = false
     private var observedKeys: Set<String> = []
 
@@ -188,6 +186,33 @@ class SettingsViewModel: NSObject, ObservableObject {
         appStateSubject.send()
     }
 
+    /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
+    func resetToDefaults() {
+        _swipeBalanceToHide = true
+        defaultTransactionSpeed = .normal
+        hideBalance = false
+        hideBalanceOnOpen = false
+        readClipboard = false
+        warnWhenSendingOver100 = false
+        enableQuickpay = false
+        quickpayAmount = 5
+        enableNotifications = false
+        enableNotificationsAmount = false
+        ignoresSwitchUnitToast = false
+        ignoresHideBalanceToast = false
+        pinFailedAttempts = 0
+        requirePinForPayments = false
+        useBiometrics = false
+        showWidgets = true
+        showWidgetTitles = false
+        _coinSelectionMethod = CoinSelectionMethod.autopilot.rawValue
+        _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
+        _selectedAddressType = "nativeSegwit"
+        _addressTypesToMonitor = "nativeSegwit"
+        pinEnabled = false
+        isChangingAddressType = false
+    }
+
     // MARK: - Computed Properties
 
     var electrumHasEdited: Bool {
@@ -252,14 +277,10 @@ class SettingsViewModel: NSObject, ObservableObject {
     // Address Type Settings
     @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
 
-    // Monitored Address Types - stored as comma-separated string for @AppStorage compatibility
-    // Default to only Native Segwit, matching React Native behavior
     @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
 
-    /// All available address types
     static let allAddressTypes: [AddressScriptType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
 
-    /// Convert address type to string for storage
     static func addressTypeToString(_ addressType: AddressScriptType) -> String {
         switch addressType {
         case .legacy: return "legacy"
@@ -269,7 +290,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Convert string to address type
     static func stringToAddressType(_ string: String) -> AddressScriptType? {
         switch string {
         case "legacy": return .legacy
@@ -280,7 +300,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Address types currently being monitored
     var addressTypesToMonitor: [AddressScriptType] {
         get {
             let strings = _addressTypesToMonitor.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
@@ -296,21 +315,11 @@ class SettingsViewModel: NSObject, ObservableObject {
         addressTypesToMonitor.contains(addressType)
     }
 
-    /// Check if an address type has balance
-    /// - Parameter addressType: The address type to check
-    /// - Returns: The balance in sats
-    /// - Throws: If unable to check balance
     func getBalanceForAddressType(_ addressType: AddressScriptType) async throws -> UInt64 {
         let balance = try await lightningService.getBalanceForAddressType(addressType)
         return balance.totalSats
     }
 
-    /// Enable or disable monitoring for an address type
-    /// - Parameters:
-    ///   - addressType: The address type to toggle
-    ///   - enabled: Whether to enable or disable monitoring
-    ///   - wallet: Optional wallet view model to update UI state during restart
-    /// - Returns: True if the operation succeeded, false if it was prevented (e.g., type has balance)
     func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
         guard !isChangingAddressType else { return false }
 
@@ -325,23 +334,18 @@ class SettingsViewModel: NSObject, ObservableObject {
                 addressTypesToMonitor = current
             }
         } else {
-            // Don't allow disabling if it's the currently selected type
             if addressType == selectedAddressType { return false }
 
-            // Check if address type has balance - don't allow disabling if it has funds
-            // Fail safely: if we can't verify balance, don't allow disabling
             do {
                 let balance = try await getBalanceForAddressType(addressType)
                 if balance > 0 { return false }
             } catch {
+                // Fail safely: block disable if balance check fails
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
                 return false
             }
 
-            // Ensure at least one native witness wallet (NativeSegwit or Taproot) remains enabled.
-            // BOLT 2 requires native witness scripts for channel shutdown/close outputs.
-            // When primary is Legacy or NestedSegwit, the node uses a loaded native witness
-            // wallet for all channel scripts. Without one, channels will fail.
+            // At least one native witness type required for Lightning
             let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
             let remainingNativeWitness = current.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
             if remainingNativeWitness.isEmpty {
@@ -365,7 +369,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         return true
     }
 
-    /// Add an address type to monitored types if not already present
     func ensureMonitoring(_ addressType: AddressScriptType) {
         if !addressTypesToMonitor.contains(addressType) {
             var current = addressTypesToMonitor
@@ -374,29 +377,21 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    /// Set all address types as monitored (used during wallet restore)
     func monitorAllAddressTypes() {
         addressTypesToMonitor = Self.allAddressTypes
     }
 
-    /// Check if disabling an address type would leave no native witness wallets
-    /// BOLT 2 requires native witness scripts for channel shutdown/close outputs,
-    /// so at least one NativeSegwit or Taproot wallet must always remain enabled.
-    /// - Parameter addressType: The address type to check
-    /// - Returns: True if this is the last native witness wallet
+    /// True if disabling this would leave no native witness wallet (required for Lightning).
     func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
-        // Only applies to native witness types
         let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
         guard nativeWitnessTypes.contains(addressType) else { return false }
 
-        // Check if disabling this would leave no native witness wallets
         let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
         return remainingNativeWitness.isEmpty
     }
 
     var selectedAddressType: AddressScriptType {
         get {
-            // Parse the stored string value
             switch _selectedAddressType {
             case "legacy":
                 return .legacy
@@ -407,11 +402,10 @@ class SettingsViewModel: NSObject, ObservableObject {
             case "taproot":
                 return .taproot
             default:
-                return .nativeSegwit // Default fallback
+                return .nativeSegwit
             }
         }
         set {
-            // Convert AddressScriptType to string for storage
             switch newValue {
             case .legacy:
                 _selectedAddressType = "legacy"
@@ -457,7 +451,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         wallet?.syncState()
     }
 
-    /// Generate a new address for the specified type and update wallet properties
     private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {
         do {
             let newAddress = try await lightningService.newAddressForType(addressType)

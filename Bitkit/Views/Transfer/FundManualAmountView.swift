@@ -32,7 +32,7 @@ struct FundManualAmountView: View {
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    // Show channel fundable balance (excludes Legacy UTXOs which can't be used for channel funding)
+                    // Excludes Legacy (not usable for channel funding)
                     AvailableAmount(label: t("wallet__send_available"), amount: wallet.channelFundableBalanceSats)
                         .onTapGesture {
                             amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)

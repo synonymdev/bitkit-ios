@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Loading view shown during address type or monitoring changes
 struct AddressTypeLoadingView: View {
     let targetAddressType: AddressScriptType?
     let isMonitoringChange: Bool

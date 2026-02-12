@@ -80,7 +80,6 @@ struct SpendingAmount: View {
             await calculateMaxTransferAmount()
         }
         .onChange(of: wallet.spendableOnchainBalanceSats) { _ in
-            // Recalculate when balance changes (e.g., after receiving funds)
             Task {
                 await calculateMaxTransferAmount()
             }
