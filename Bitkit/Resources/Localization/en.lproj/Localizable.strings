@@ -1171,6 +1171,8 @@
 "wallet__boost_error_msg" = "Bitkit was unable to boost the transaction.";
 "wallet__boost_fee_custom" = "Your transaction may settle faster if you include an additional network fee. Set your custom fee below.";
 "wallet__boost_fee_recomended" = "Your transaction may settle faster if you include an additional network fee. Here is a recommendation:";
+"wallet__boost_fee_error" = "We couldn't load the fee. Please try again.";
+"wallet__boost_fee_not_set" = "Please set a fee rate before boosting.";
 "wallet__boost_recomended_button" = "Use Suggested Fee";
 "wallet__boost_swipe" = "Swipe To Boost";
 "wallet__payment_received" = "Received Bitcoin";
