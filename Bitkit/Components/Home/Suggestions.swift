@@ -161,6 +161,9 @@ extension SuggestionCardData {
 }
 
 struct Suggestions: View {
+    /// When true, show only two static cards and ignore taps (e.g. widget detail preview).
+    var isPreview: Bool = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
@@ -180,8 +183,12 @@ struct Suggestions: View {
         return .onchain
     }
 
-    /// Up to 4 cards for the current wallet state, in priority order; completed and dismissed cards are skipped and the next in the set is shown.
+    /// Up to 4 cards for the current wallet state, in priority order; completed and dismissed cards are skipped and the next in the set is shown. In
+    /// preview, exactly 2 fixed cards.
     private var filteredCards: [SuggestionCardData] {
+        if isPreview {
+            return Array(cards.prefix(2))
+        }
         let orderedIds = suggestionOrderByState[walletSuggestionState] ?? []
         var result: [SuggestionCardData] = []
         for id in orderedIds {
@@ -222,12 +229,13 @@ struct Suggestions: View {
             ) {
                 ForEach(filteredCards) { card in
                     SuggestionCard(data: card, onDismiss: { dismissCard(card) })
-                        .onTapGesture { onItemTap(card) }
+                        .onTapGesture { if !isPreview { onItemTap(card) } }
                         .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("Suggestions")
             }
+            .allowsHitTesting(!isPreview)
         }
     }
 

@@ -42,14 +42,7 @@ struct HomeWidgetsView: View {
 
     @ViewBuilder
     private func rowContent(_ row: WidgetsTabRow) -> some View {
-        switch row {
-        case .suggestions:
-            if isEditingWidgets {
-                SuggestionsEditRow()
-            } else {
-                Suggestions()
-            }
-        case let .widget(widget):
+        if case let .widget(widget) = row {
             WidgetViewWrapper(widget: widget, isEditing: isEditingWidgets) {
                 withAnimation {
                     isEditingWidgets = false
@@ -69,55 +62,5 @@ private struct WidgetViewWrapper: View {
 
     var body: some View {
         widget.view(widgetsViewModel: widgets, isEditing: isEditing, onEditingEnd: onEditingEnd)
-    }
-}
-
-/// Collapsed suggestions row shown in edit mode. Matches widget edit layout with delete/edit disabled.
-private struct SuggestionsEditRow: View {
-    var body: some View {
-        Button {} label: {
-            HStack(spacing: 16) {
-                Image("suggestions-widget")
-                    .resizable()
-                    .frame(width: 32, height: 32)
-
-                BodyMSBText(t("cards__suggestions"))
-                    .lineLimit(1)
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Image("trash")
-                        .resizable()
-                        .foregroundColor(.textPrimary)
-                        .frame(width: 24, height: 24)
-                        .frame(width: 32, height: 32)
-                    Image("gear-six")
-                        .resizable()
-                        .foregroundColor(.textPrimary)
-                        .frame(width: 24, height: 24)
-                        .frame(width: 32, height: 32)
-                    Image("burger")
-                        .resizable()
-                        .foregroundColor(.textPrimary)
-                        .frame(width: 24, height: 24)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
-                        .overlay {
-                            Color.clear
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                                .trackDragHandle()
-                        }
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(WidgetButtonStyle())
-        .frame(maxWidth: .infinity)
-        .padding(16)
-        .background(Color.gray6)
-        .cornerRadius(16)
-        .accessibilityIdentifier("SuggestionsWidget")
     }
 }

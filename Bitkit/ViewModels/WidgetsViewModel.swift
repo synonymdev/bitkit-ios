@@ -12,6 +12,8 @@ protocol WidgetOptionsProtocol: Codable, Equatable {
 // Default options for each widget type
 func getDefaultOptions(for type: WidgetType) -> Any {
     switch type {
+    case .suggestions, .calculator:
+        return EmptyWidgetOptions()
     case .blocks:
         return BlocksWidgetOptions()
     case .facts:
@@ -22,8 +24,6 @@ func getDefaultOptions(for type: WidgetType) -> Any {
         return WeatherWidgetOptions()
     case .price:
         return PriceWidgetOptions()
-    case .calculator:
-        return EmptyWidgetOptions()
     }
 }
 
@@ -63,8 +63,10 @@ struct Widget: Identifiable {
 
     @MainActor
     @ViewBuilder
-    func view(widgetsViewModel: WidgetsViewModel, isEditing: Bool, onEditingEnd: (() -> Void)? = nil) -> some View {
+    func view(widgetsViewModel: WidgetsViewModel, isEditing: Bool, onEditingEnd: (() -> Void)? = nil, isPreview: Bool = false) -> some View {
         switch type {
+        case .suggestions:
+            SuggestionsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd, isPreview: isPreview)
         case .blocks:
             BlocksWidget(
                 options: widgetsViewModel.getOptions(for: type, as: BlocksWidgetOptions.self),
@@ -143,6 +145,7 @@ struct PlaceholderWidget: View {
 // MARK: - Widget Types
 
 enum WidgetType: String, CaseIterable, Codable {
+    case suggestions
     case price
     case news
     case blocks
@@ -151,17 +154,14 @@ enum WidgetType: String, CaseIterable, Codable {
     case weather
 }
 
-// MARK: - Widgets tab row (suggestions section or a widget)
+// MARK: - Widgets tab row
 
-/// A single row in the widgets tab: either the suggestions section or a widget.
+/// A single row in the widgets tab (each row is a widget, including suggestions).
 enum WidgetsTabRow: Identifiable {
-    case suggestions
     case widget(Widget)
 
     var id: String {
         switch self {
-        case .suggestions:
-            return "suggestions"
         case let .widget(widget):
             return widget.type.rawValue
         }
@@ -170,59 +170,30 @@ enum WidgetsTabRow: Identifiable {
 
 // MARK: - WidgetsViewModel
 
-private let widgetsTabLayoutOrderKey = "widgetsTabLayoutOrder"
-
 @MainActor
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    // Single AppStorage key for widgets with their options
+    // Single AppStorage key for widgets with their options (array order = display order)
     @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
 
     // In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
 
-    /// Order of widgets tab rows: "suggestions" or WidgetType.rawValue. Persisted separately so suggestions can sit between widgets.
-    @Published private(set) var layoutOrder: [String] = []
-
     // Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
+        SavedWidget(type: .suggestions),
         SavedWidget(type: .price),
         SavedWidget(type: .blocks),
     ]
 
-    /// Default layout: suggestions first, then default widget types.
-    private static var defaultLayoutOrder: [String] {
-        ["suggestions"] + defaultSavedWidgets.map(\.type.rawValue)
-    }
-
     init() {
-        loadLayoutOrder()
         loadSavedWidgets()
     }
 
-    /// Rows to display in the widgets tab (suggestions + widgets) in the user's order.
+    /// Rows to display in the widgets tab in the user's order (same as savedWidgets order).
     var orderedRows: [WidgetsTabRow] {
-        let widgetTypesInOrder = layoutOrder.compactMap { id -> WidgetType? in
-            id == "suggestions" ? nil : WidgetType(rawValue: id)
-        }
-        let validWidgetTypes = widgetTypesInOrder.filter { type in savedWidgets.contains { $0.type == type } }
-        let orderedWidgets = validWidgetTypes.compactMap { type in savedWidgets.first { $0.type == type } }
-        var result: [WidgetsTabRow] = []
-        for id in layoutOrder {
-            if id == "suggestions" {
-                result.append(.suggestions)
-            } else if let widget = orderedWidgets.first(where: { $0.type.rawValue == id }) {
-                result.append(.widget(widget))
-            }
-        }
-        for widget in savedWidgets where !layoutOrder.contains(widget.type.rawValue) {
-            result.append(.widget(widget))
-        }
-        if !layoutOrder.contains("suggestions") {
-            result.insert(.suggestions, at: 0)
-        }
-        return result
+        savedWidgets.map { .widget($0) }
     }
 
     // MARK: - Public Methods
@@ -240,10 +211,6 @@ class WidgetsViewModel: ObservableObject {
         let newSavedWidget = SavedWidget(type: type)
         savedWidgetsWithOptions.append(newSavedWidget)
         savedWidgets.append(newSavedWidget.toWidget())
-        if !layoutOrder.contains(type.rawValue) {
-            layoutOrder.append(type.rawValue)
-            persistLayoutOrder()
-        }
         persistSavedWidgets()
     }
 
@@ -251,37 +218,25 @@ class WidgetsViewModel: ObservableObject {
     func deleteWidget(_ type: WidgetType) {
         savedWidgetsWithOptions.removeAll { $0.type == type }
         savedWidgets.removeAll { $0.type == type }
-        layoutOrder.removeAll { $0 == type.rawValue }
-        persistLayoutOrder()
         persistSavedWidgets()
     }
 
-    /// Reorder the widgets tab list (suggestions + widgets). Updates layout order and, when a widget is moved, savedWidgets order.
+    /// Reorder the widgets tab list by moving one widget to a new index.
     func reorderWidgetsTab(from sourceIndex: Int, to destinationIndex: Int) {
-        let rows = orderedRows
         guard sourceIndex != destinationIndex,
-              sourceIndex >= 0, sourceIndex < rows.count,
-              destinationIndex >= 0, destinationIndex < rows.count
+              sourceIndex >= 0, sourceIndex < savedWidgetsWithOptions.count,
+              destinationIndex >= 0, destinationIndex < savedWidgetsWithOptions.count
         else { return }
-
-        let moved = rows[sourceIndex]
-        var newOrder = rows.map(\.id)
-        newOrder.remove(at: sourceIndex)
-        newOrder.insert(moved.id, at: destinationIndex)
-        layoutOrder = newOrder
-        persistLayoutOrder()
-
-        if case .widget = moved {
-            syncSavedWidgetsOrderFromLayoutOrder()
-        }
+        let moved = savedWidgetsWithOptions.remove(at: sourceIndex)
+        savedWidgetsWithOptions.insert(moved, at: destinationIndex)
+        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
+        persistSavedWidgets()
     }
 
     /// Clear all persisted widgets and restore defaults
     func clearWidgets() {
         savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
         savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
-        layoutOrder = Self.defaultLayoutOrder
-        persistLayoutOrder()
         persistSavedWidgets()
     }
 
@@ -327,6 +282,8 @@ class WidgetsViewModel: ObservableObject {
     /// Check if widget has custom options (different from default)
     func hasCustomOptions(for type: WidgetType) -> Bool {
         switch type {
+        case .suggestions, .calculator:
+            return false
         case .blocks:
             let current: BlocksWidgetOptions = getOptions(for: type, as: BlocksWidgetOptions.self)
             let defaultOptions = BlocksWidgetOptions()
@@ -347,8 +304,6 @@ class WidgetsViewModel: ObservableObject {
             let current: PriceWidgetOptions = getOptions(for: type, as: PriceWidgetOptions.self)
             let defaultOptions = PriceWidgetOptions()
             return current != defaultOptions
-        case .calculator:
-            return false // No customization available yet
         }
     }
 
@@ -367,54 +322,6 @@ class WidgetsViewModel: ObservableObject {
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
-        syncLayoutOrderFromSavedWidgets()
-    }
-
-    private func loadLayoutOrder() {
-        guard let data = UserDefaults.standard.data(forKey: widgetsTabLayoutOrderKey),
-              let decoded = try? JSONDecoder().decode([String].self, from: data)
-        else {
-            layoutOrder = Self.defaultLayoutOrder
-            persistLayoutOrder()
-            return
-        }
-        layoutOrder = decoded
-    }
-
-    private func persistLayoutOrder() {
-        guard let data = try? JSONEncoder().encode(layoutOrder) else { return }
-        UserDefaults.standard.set(data, forKey: widgetsTabLayoutOrderKey)
-    }
-
-    /// Ensure layoutOrder contains all current saved widget types and "suggestions"; append missing ids.
-    private func syncLayoutOrderFromSavedWidgets() {
-        let currentIds = Set(layoutOrder)
-        let widgetIds = Set(savedWidgets.map(\.type.rawValue))
-        var needSync = false
-        if !currentIds.contains("suggestions") {
-            layoutOrder.insert("suggestions", at: 0)
-            needSync = true
-        }
-        for type in savedWidgets.map(\.type) {
-            if !currentIds.contains(type.rawValue) {
-                layoutOrder.append(type.rawValue)
-                needSync = true
-            }
-        }
-        layoutOrder = layoutOrder.filter { $0 == "suggestions" || widgetIds.contains($0) }
-        if needSync { persistLayoutOrder() }
-    }
-
-    /// Update savedWidgets order to match the order of widget ids in layoutOrder.
-    private func syncSavedWidgetsOrderFromLayoutOrder() {
-        let widgetIdsInOrder = layoutOrder.compactMap { id -> WidgetType? in
-            id == "suggestions" ? nil : WidgetType(rawValue: id)
-        }
-        let ordered = widgetIdsInOrder.compactMap { type in savedWidgetsWithOptions.first(where: { $0.type == type }) }
-        let remaining = savedWidgetsWithOptions.filter { w in !widgetIdsInOrder.contains(w.type) }
-        savedWidgetsWithOptions = ordered + remaining
-        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
-        persistSavedWidgets()
     }
 
     private func persistSavedWidgets() {

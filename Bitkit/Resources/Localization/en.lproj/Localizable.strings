@@ -1224,6 +1224,7 @@
 "widgets__widget__edit_description" = "Please select which fields you want to display in the {name} widget.";
 "widgets__widget__source" = "Source";
 "widgets__add" = "Add Widget";
+"widgets__list__button" = "Enable In Settings";
 "widgets__delete__title" = "Delete Widget?";
 "widgets__delete__description" = "Are you sure you want to delete '{name}' from your widgets?";
 "widgets__price__name" = "Bitcoin Price";
@@ -1239,6 +1240,8 @@
 "widgets__facts__description" = "Discover fun facts about Bitcoin, every time you open your wallet.";
 "widgets__calculator__name" = "Bitcoin Calculator";
 "widgets__calculator__description" = "Convert ₿ amounts to {fiatSymbol} or vice versa.";
+"widgets__suggestions__name" = "Bitkit Suggestions";
+"widgets__suggestions__description" = "Discover everything Bitkit has to offer.";
 "widgets__weather__name" = "Bitcoin Weather";
 "widgets__weather__description" = "Find out when it's a good time to transact on the Bitcoin blockchain.";
 "widgets__weather__condition__good__title" = "Favorable Conditions";

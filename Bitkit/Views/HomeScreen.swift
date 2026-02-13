@@ -9,6 +9,10 @@ struct HomeScreen: View {
     @State private var scrollPosition: Int? = 0
     @State private var isEditingWidgets = false
 
+    private var hasActivity: Bool {
+        return activity.latestActivities?.isEmpty == false
+    }
+
     private var currentPage: Int { scrollPosition ?? 0 }
     private var topPadding: CGFloat { windowSafeAreaInsets.top + 48 + 16 } // safe area + header + spacing
     private var bottomPadding: CGFloat { windowSafeAreaInsets.bottom + 64 + 32 } // safe area + tab bar + spacing
@@ -35,8 +39,8 @@ struct HomeScreen: View {
                 .scrollTargetBehavior(.paging)
                 .scrollPosition(id: $scrollPosition)
                 .onChange(of: scrollPosition) { _, newValue in
-                    // Dismiss widgets onboarding hint the first time user scrolls to widgets
-                    if newValue == 1 {
+                    // Dismiss this hint after the user has seen it and scrolls to widgets
+                    if hasActivity, newValue == 1 {
                         app.hasDismissedWidgetsOnboardingHint = true
                     }
                 }
