@@ -32,7 +32,6 @@ struct CreateWalletView: View {
                 CustomButton(title: t("onboarding__new_wallet")) {
                     do {
                         wallet.nodeLifecycleState = .initializing
-                        app.showAllEmptyStates(true)
                         _ = try StartupHandler.createNewWallet(bip39Passphrase: nil)
                         try wallet.setWalletExistsState()
                     } catch {

@@ -29,6 +29,8 @@
 "cards__slashtagsProfile__description" = "Add your details";
 "cards__support__title" = "Support";
 "cards__support__description" = "Get assistance";
+"cards__hardware__title" = "Hardware";
+"cards__hardware__description" = "Connect device";
 "cards__buyBitcoin__title" = "Buy";
 "cards__buyBitcoin__description" = "Buy some bitcoin";
 "cards__btFailed__title" = "Failed";
@@ -37,7 +39,7 @@
 "coming_soon__nav_title" = "Coming Soon";
 "coming_soon__headline" = "Coming\n<accent>soon</accent>";
 "coming_soon__description" = "This feature is currently in development and will be available soon.";
-"coming_soon__button" = "Wallet overview";
+"coming_soon__button" = "Wallet Overview";
 "common__advanced" = "Advanced";
 "common__continue" = "Continue";
 "common__cancel" = "Cancel";
@@ -636,8 +638,8 @@
 "settings__general__language" = "Language";
 "settings__general__language_title" = "Language";
 "settings__general__language_other" = "Interface language";
-"settings__widgets__nav_title" = "Widgets";
-"settings__widgets__showWidgets" = "Widgets";
+"settings__widgets__nav_title" = "Widgets and Suggestions";
+"settings__widgets__showWidgets" = "Widgets and Suggestions";
 "settings__widgets__showWidgetTitles" = "Show Widget Titles";
 "settings__notifications__nav_title" = "Background Payments";
 "settings__notifications__intro__title" = "Get Paid\n<accent>Passively</accent>";
@@ -1211,6 +1213,7 @@
 "wallet__receive_foreground_title" = "Keep Bitkit In Foreground";
 "wallet__receive_foreground_msg" = "Payments to your spending balance might fail if you switch between apps.";
 "widgets__widgets" = "Widgets";
+"widgets__onboarding__swipe" = "Swipe down\nto find your\n<accent>widgets</accent>";
 "widgets__onboarding__title" = "Hello,\n<accent>Widgets</accent>";
 "widgets__onboarding__description" = "Enjoy decentralized feeds from your favorite web services, by adding fun and useful widgets to your Bitkit wallet.";
 "widgets__nav_title" = "Widgets";

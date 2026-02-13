@@ -25,7 +25,7 @@ struct SuggestionCard: View {
                 CaptionBText(data.description)
             }
             .padding()
-            .frame(width: 152, height: 152, alignment: .topLeading)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(

@@ -25,7 +25,7 @@ enum SettingsBackupConfig {
         "hasSeenTransferToSpendingIntro",
         "hasSeenTransferToSavingsIntro",
         "hasSeenWidgetsIntro",
-        "showHomeViewEmptyState",
+        "hasDismissedWidgetsOnboardingHint",
         "appUpdateIgnoreTimestamp",
         "backupIgnoreTimestamp",
         "highBalanceIgnoreCount",
