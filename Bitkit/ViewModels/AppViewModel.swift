@@ -34,6 +34,7 @@ class AppViewModel: ObservableObject {
     @Published var lnurlWithdrawData: LnurlWithdrawData?
 
     // Onboarding
+    @AppStorage("hasDismissedWidgetsOnboardingHint") var hasDismissedWidgetsOnboardingHint: Bool = false
     @AppStorage("hasSeenContactsIntro") var hasSeenContactsIntro: Bool = false
     @AppStorage("hasSeenProfileIntro") var hasSeenProfileIntro: Bool = false
     @AppStorage("hasSeenNotificationsIntro") var hasSeenNotificationsIntro: Bool = false
@@ -44,10 +45,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
-    /// When to show empty state UI
-    @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
-
-    /// App update tracking
+    // App update tracking
     @AppStorage("appUpdateIgnoreTimestamp") var appUpdateIgnoreTimestamp: TimeInterval = 0
 
     // Backup warning tracking
@@ -72,10 +70,6 @@ class AppViewModel: ObservableObject {
     /// App status init - shows "ready" until node is actually running
     /// This prevents flashing error status during startup/background transitions
     @Published var appStatusInit: Bool = false
-
-    func showAllEmptyStates(_ show: Bool) {
-        showHomeViewEmptyState = show
-    }
 
     /// Called when node reaches running state
     func markAppStatusInit() {
@@ -235,7 +229,7 @@ class AppViewModel: ObservableObject {
         hasSeenTransferToSpendingIntro = false
         hasSeenTransferToSavingsIntro = false
         hasSeenWidgetsIntro = false
-        showHomeViewEmptyState = false
+        hasDismissedWidgetsOnboardingHint = false
         appUpdateIgnoreTimestamp = 0
         backupVerified = false
         backupIgnoreTimestamp = 0
