@@ -1061,6 +1061,7 @@
 "wallet__selection_total_selected" = "Total selected";
 "wallet__receive_bitcoin" = "Receive Bitcoin";
 "wallet__receive_specify" = "Edit Invoice";
+"wallet__receive_amount" = "Amount";
 "wallet__receive_copied" = "Invoice copied to clipboard";
 "wallet__receive_share_address" = "Share receiving address";
 "wallet__receive_bitcoin_invoice" = "Bitcoin invoice";
@@ -1070,8 +1071,8 @@
 "wallet__receive_text_lnfunds" = "Want to receive <accent>Lightning</accent> funds?";
 "wallet__receive_background_setup_text" = "Enable background setup to safely exit Bitkit while your balance is being configured.";
 "wallet__receive_background_setup_toggle" = "Enable background setup";
-"wallet__receive_spending" = "Receive on Spending Balance";
-"wallet__receive_spending_text" = "Enjoy instant and cheap\ntransactions with friends, family,\nand merchants.";
+"wallet__receive_spending" = "Receive Lightning Funds";
+"wallet__receive_spending_text" = "Enjoy instant and cheap bitcoin payments on the Lightning Network.";
 "wallet__receive_spending_title" = "Receive on <accent>spending balance</accent>";
 "wallet__receive_connect_initial" = "To set up your spending balance, a <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted.";
 "wallet__receive_connect_additional" = "To receive more instant Bitcoin, Bitkit has to increase your liquidity. A <accent>{networkFee}</accent> network fee and <accent>{serviceFee}</accent> service provider fee will be deducted from the amount you specified.";
@@ -1170,6 +1171,8 @@
 "wallet__boost_error_msg" = "Bitkit was unable to boost the transaction.";
 "wallet__boost_fee_custom" = "Your transaction may settle faster if you include an additional network fee. Set your custom fee below.";
 "wallet__boost_fee_recomended" = "Your transaction may settle faster if you include an additional network fee. Here is a recommendation:";
+"wallet__boost_fee_error" = "We couldn't load the fee. Please try again.";
+"wallet__boost_fee_not_set" = "Please set a fee rate before boosting.";
 "wallet__boost_recomended_button" = "Use Suggested Fee";
 "wallet__boost_swipe" = "Swipe To Boost";
 "wallet__payment_received" = "Received Bitcoin";

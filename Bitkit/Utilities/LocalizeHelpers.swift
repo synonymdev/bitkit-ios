@@ -134,18 +134,6 @@ func tPlural(_ key: String, comment: String = "", arguments: [String: Any] = [:]
     return LocalizationHelper.formatPlural(localizedString, arguments: arguments)
 }
 
-// These are for keys that are not yet translated
-func tTodo(_ key: String, comment: String = "", variables: [String: String] = [:]) -> String {
-    var localizedString = key
-
-    // Replace variables
-    for (name, value) in variables {
-        localizedString = localizedString.replacingOccurrences(of: "{\(name)}", with: value)
-    }
-
-    return localizedString
-}
-
 // Get a random line from a localized string
 func localizedRandom(_ key: String, comment: String = "") -> String {
     let localizedString = LocalizationHelper.getString(for: key, comment: comment)

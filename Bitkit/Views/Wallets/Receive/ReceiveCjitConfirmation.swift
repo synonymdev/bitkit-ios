@@ -14,14 +14,14 @@ struct ReceiveCjitConfirmation: View {
         guard let converted = currency.convert(sats: entry.networkFeeSat) else {
             return String(entry.networkFeeSat)
         }
-        return "\(converted.symbol)\(converted.formatted)"
+        return converted.formattedWithSymbol()
     }
 
     private func formattedServiceFee() -> String {
         guard let converted = currency.convert(sats: entry.serviceFeeSat) else {
             return String(entry.serviceFeeSat)
         }
-        return "\(converted.symbol)\(converted.formatted)"
+        return converted.formattedWithSymbol()
     }
 
     var receiveAmount: Int {

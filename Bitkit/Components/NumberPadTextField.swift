@@ -6,6 +6,7 @@ struct NumberPadTextField: View {
     @ObservedObject var viewModel: AmountInputViewModel
 
     var showConversion: Bool = true
+    var showEditButton: Bool = false
     var isFocused: Bool = true
     var testIdentifier: String?
 
@@ -31,8 +32,16 @@ struct NumberPadTextField: View {
                 }
 
                 // Primary display (bitcoin)
-                HStack {
+                HStack(spacing: 5) {
                     primaryDisplayView
+
+                    if showEditButton {
+                        Image("pencil")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.textPrimary)
+                    }
+
                     Spacer()
                 }
                 .transition(
@@ -58,8 +67,16 @@ struct NumberPadTextField: View {
                 }
 
                 // Primary display (fiat)
-                HStack {
+                HStack(spacing: 5) {
                     primaryDisplayView
+
+                    if showEditButton {
+                        Image("pencil")
+                            .resizable()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.textPrimary)
+                    }
+
                     Spacer()
                 }
                 .transition(
@@ -77,11 +94,15 @@ struct NumberPadTextField: View {
 
     @ViewBuilder
     private var primaryDisplayView: some View {
+        let isSuffix = currency.primaryDisplay == .fiat && isSuffixSymbolCurrency(currency.selectedCurrency)
+        let symbolText = currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol
+
         HStack(spacing: 6) {
-            // Symbol
-            Text(currency.primaryDisplay == .bitcoin ? "₿" : currency.symbol)
-                .font(.custom(Fonts.extraBold, size: 44))
-                .foregroundColor(.textSecondary)
+            if !isSuffix {
+                Text(symbolText)
+                    .font(.custom(Fonts.extraBold, size: 44))
+                    .foregroundColor(.textSecondary)
+            }
 
             // Value and placeholder
             (Text(viewModel.displayText)
@@ -89,6 +110,12 @@ struct NumberPadTextField: View {
                 + Text(viewModel.getPlaceholder(currency: currency))
                 .foregroundColor(isFocused ? .textSecondary : .textPrimary))
                 .font(.custom(Fonts.black, size: 44))
+
+            if isSuffix {
+                Text(symbolText)
+                    .font(.custom(Fonts.extraBold, size: 44))
+                    .foregroundColor(.textSecondary)
+            }
         }
     }
 }

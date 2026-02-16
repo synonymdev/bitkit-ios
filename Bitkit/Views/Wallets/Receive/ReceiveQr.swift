@@ -43,8 +43,8 @@ struct ReceiveQr: View {
     }
 
     private var availableTabItems: [TabItem<ReceiveTab>] {
-        // Only show unified tab if there are usable channels
-        if wallet.hasUsableChannels {
+        // Show unified tab when we have a Lightning invoice (even if channels not yet usable)
+        if !wallet.bolt11.isEmpty {
             return [
                 TabItem(.savings),
                 TabItem(.unified, activeColor: .white),
@@ -59,7 +59,7 @@ struct ReceiveQr: View {
     }
 
     var showingCjitOnboarding: Bool {
-        return !wallet.hasUsableChannels && cjitInvoice == nil && selectedTab == .spending
+        return !wallet.hasReadyChannels && cjitInvoice == nil && selectedTab == .spending
     }
 
     var body: some View {
@@ -75,7 +75,7 @@ struct ReceiveQr: View {
                 TabView(selection: $selectedTab) {
                     tabContent(for: .savings)
 
-                    if wallet.hasUsableChannels {
+                    if !wallet.bolt11.isEmpty {
                         tabContent(for: .unified)
                     }
 
@@ -96,7 +96,7 @@ struct ReceiveQr: View {
                                 .foregroundColor(.purpleAccent),
                             isDisabled: wallet.nodeLifecycleState != .running
                         ) {
-                            if !wallet.hasUsableChannels && !GeoService.shared.isGeoBlocked {
+                            if !wallet.hasReadyChannels && !GeoService.shared.isGeoBlocked {
                                 navigationPath.append(.cjitAmount)
                             } else if GeoService.shared.isGeoBlocked {
                                 navigationPath.append(.cjitGeoBlocked)
@@ -112,8 +112,8 @@ struct ReceiveQr: View {
                 .padding(.horizontal, 16)
             }
             .onAppear {
-                // Set default tab to unified if available and no tab was provided
-                if tab == nil && wallet.channelCount != 0 {
+                // Set default tab to unified if we have a Lightning invoice and no tab was provided
+                if tab == nil && !wallet.bolt11.isEmpty {
                     selectedTab = .unified
                 }
             }

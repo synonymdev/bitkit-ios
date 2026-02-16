@@ -621,6 +621,11 @@ class WalletViewModel: ObservableObject {
         return capacity
     }
 
+    /// Returns true if there's at least one channel that is ready
+    var hasReadyChannels: Bool {
+        return channels?.contains(where: \.isChannelReady) ?? false
+    }
+
     /// Returns true if there's at least one usable channel (ready AND peer connected)
     var hasUsableChannels: Bool {
         return channels?.contains(where: \.isUsable) ?? false
@@ -652,7 +657,8 @@ class WalletViewModel: ObservableObject {
 
         let amountSats = invoiceAmountSats > 0 ? invoiceAmountSats : nil
 
-        if hasUsableChannels {
+        // Create Lightning invoice if at least one channel is ready
+        if hasReadyChannels {
             if forceRefreshBolt11 || bolt11.isEmpty {
                 bolt11 = try await createInvoice(amountSats: amountSats, note: invoiceNote)
             } else {

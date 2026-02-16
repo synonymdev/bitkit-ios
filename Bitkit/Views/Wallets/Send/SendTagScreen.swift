@@ -12,8 +12,11 @@ struct SendTagScreen: View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("wallet__tags_add"), showBackButton: true)
 
-            PreviouslyUsedTagsView { tag in
-                await addTag(tag)
+            if !tagManager.lastUsedTags.isEmpty {
+                PreviouslyUsedTagsView(tags: tagManager.lastUsedTags) { tag in
+                    await addTag(tag)
+                }
+                .padding(.bottom, 36)
             }
 
             TagInputForm(
