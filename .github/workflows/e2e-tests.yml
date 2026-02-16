@@ -226,6 +226,7 @@ jobs:
   e2e-tests-local:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: [self-hosted, macOS]
+    timeout-minutes: 90
     needs: [detect-changes, build-local, e2e-branch]
 
     strategy:
@@ -373,6 +374,7 @@ jobs:
   e2e-tests-regtest:
     if: github.event.pull_request.draft == false && needs.detect-changes.outputs.code == 'true'
     runs-on: macos-latest
+    timeout-minutes: 90
     needs: [detect-changes, build-regtest, e2e-branch]
 
     strategy:
@@ -477,6 +479,18 @@ jobs:
           SIMULATOR_OS_VERSION: ${{ env.IOS_VERSION }}
           RECORD_VIDEO: true
           ATTEMPT: 2
+
+      - name: Reset iOS Simulator before attempt 3
+        if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
+        run: |
+          echo "🔁 Resetting iOS simulator before attempt 3..."
+          xcrun simctl shutdown all || true
+          xcrun simctl erase "${{ env.SIMULATOR_NAME }}" || true
+          xcrun simctl boot "${{ env.SIMULATOR_NAME }}" || true
+          xcrun simctl bootstatus "${{ env.SIMULATOR_NAME }}" -b
+          open -a Simulator
+          sleep 15
+          xcrun simctl list devices booted
 
       - name: Run E2E Tests 3 (${{ matrix.shard.name }})
         if: steps.test1.outcome != 'success' && steps.test2.outcome != 'success'
