@@ -419,6 +419,7 @@ struct MainNavView: View {
             // Dev settings
             case .blocktankRegtest: BlocktankRegtestView()
             case .ldkDebug: LdkDebugScreen()
+            case .vssDebug: VssDebugScreen()
             case .probingTool: ProbingToolScreen()
             case .orders: ChannelOrders()
             case .logs: LogView()
