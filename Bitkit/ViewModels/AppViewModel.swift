@@ -423,25 +423,13 @@ extension AppViewModel {
         case let .lnurlAuth(data: lnurlAuthData):
             Logger.debug("LNURL: \(lnurlAuthData)")
             handleLnurlAuth(lnurlAuthData, lnurl: uri)
-        case let .nodeId(url, network):
+        case let .nodeId(url, _):
             guard lightningService.status?.isRunning == true else {
                 toast(type: .error, title: "Lightning not running", description: "Please try again later.")
                 return
             }
 
-            // Check network - treat wrong network as decoding error
-            let nodeNetwork = NetworkValidationHelper.convertNetworkType(network)
-            if NetworkValidationHelper.isNetworkMismatch(addressNetwork: nodeNetwork, currentNetwork: Env.network) {
-                toast(
-                    type: .error,
-                    title: t("other__scan_err_decoding"),
-                    description: t("other__scan__error__generic"),
-                    accessibilityIdentifier: "InvalidAddressToast"
-                )
-                return
-            }
-
-            handleNodeUri(url, network)
+            handleNodeUri(url)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -555,7 +543,7 @@ extension AppViewModel {
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
     }
 
-    private func handleNodeUri(_ url: String, _ network: NetworkType) {
+    private func handleNodeUri(_ url: String) {
         sheetViewModel.hideSheet()
         navigationViewModel.navigate(.fundManual(nodeUri: url))
     }

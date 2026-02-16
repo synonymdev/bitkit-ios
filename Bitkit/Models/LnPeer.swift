@@ -16,7 +16,7 @@ extension LnPeerError: LocalizedError {
     }
 }
 
-struct LnPeer {
+struct LnPeer: Hashable {
     let nodeId: String
     let host: String
     let port: UInt16

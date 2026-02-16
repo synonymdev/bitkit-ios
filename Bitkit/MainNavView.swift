@@ -316,6 +316,9 @@ struct MainNavView: View {
             case .buyBitcoin: BuyBitcoinView()
             case .savingsWallet: SavingsWalletView()
             case .spendingWallet: SpendingWalletView()
+            case .scanner: ScannerScreen()
+
+            // Transfer
             case .transferIntro: TransferIntroView()
             case .fundingOptions: FundingOptions()
             case .spendingIntro: SpendingIntroView()
@@ -326,6 +329,8 @@ struct MainNavView: View {
             case .settingUp: SettingUpView()
             case .fundingAdvanced: FundAdvancedOptions()
             case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
+            case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
+            case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
             case .fundManualSuccess: FundManualSuccessView()
             case let .lnurlChannel(channelData): LnurlChannel(channelData: channelData)
             case .savingsIntro: SavingsIntroView()
@@ -333,7 +338,6 @@ struct MainNavView: View {
             case .savingsConfirm: SavingsConfirmView()
             case .savingsAdvanced: SavingsAdvancedView()
             case .savingsProgress: SavingsProgressView()
-            case .scanner: ScannerScreen()
 
             // Profile & Contacts
             case .contacts: ComingSoonScreen()

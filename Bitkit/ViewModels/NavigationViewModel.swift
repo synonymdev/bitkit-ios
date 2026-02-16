@@ -23,6 +23,8 @@ enum Route: Hashable {
     case settingUp
     case fundingAdvanced
     case fundManual(nodeUri: String?)
+    case fundManualAmount(lnPeer: LnPeer)
+    case fundManualConfirm(lnPeer: LnPeer, amountSats: UInt64)
     case fundManualSuccess
     case lnurlChannel(channelData: LnurlChannelData)
     case savingsIntro

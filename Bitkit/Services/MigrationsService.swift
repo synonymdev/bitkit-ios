@@ -313,6 +313,13 @@ struct PendingChannelMigration: Codable {
     let channelMonitors: [Data]
 }
 
+/// Peer entry from backup peers.json: [{"pubKey":"...","address":"...","port":9735}, ...]
+struct BackupPeerEntry: Codable {
+    let pubKey: String
+    let address: String
+    let port: UInt16
+}
+
 // MARK: - MigrationsService
 
 class MigrationsService: ObservableObject {
@@ -330,6 +337,7 @@ class MigrationsService: ObservableObject {
     private static let rnPendingRemotePaidOrdersKey = "rnPendingRemotePaidOrders"
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
+    private static let rnDidAttemptPeerRecoveryKey = "rnDidAttemptMigrationPeerRecovery"
 
     @Published var isShowingMigrationLoading = false {
         didSet {
@@ -419,6 +427,17 @@ class MigrationsService: ObservableObject {
     var pendingBlocktankOrderIds: [String]? {
         get { UserDefaults.standard.stringArray(forKey: Self.rnPendingBlocktankOrderIdsKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.rnPendingBlocktankOrderIdsKey) }
+    }
+
+    /// True after we've attempted once to fetch peers from remote backup (so we don't retry every node start).
+    var didAttemptPeerRecovery: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.rnDidAttemptPeerRecoveryKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnDidAttemptPeerRecoveryKey) }
+    }
+
+    /// True if the user completed RN migration (local or remote).
+    var rnMigrationCompleted: Bool {
+        UserDefaults.standard.bool(forKey: Self.rnMigrationCompletedKey)
     }
 
     private init() {}
@@ -2079,6 +2098,51 @@ extension MigrationsService {
             }
         } catch {
             Logger.error("Failed to fetch remote LDK data: \(error)", context: "Migration")
+        }
+    }
+
+    /// Fetches peers.json from remote backup once, returns URIs to connect (or []).
+    func tryFetchMigrationPeersFromBackup(walletIndex: Int) async -> [String] {
+        guard rnMigrationCompleted else { return [] }
+        guard !didAttemptPeerRecovery else { return [] }
+
+        didAttemptPeerRecovery = true
+
+        do {
+            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
+                Logger.debug("Migration peer recovery: no mnemonic, skipping", context: "Migration")
+                return []
+            }
+            let passphrase = try? Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
+
+            RNBackupClient.shared.reset()
+            try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
+
+            let data: Data
+            do {
+                data = try await RNBackupClient.shared.retrieve(label: "peers", fileGroup: "ldk")
+            } catch {
+                Logger.debug("Migration peer recovery: retrieve peers failed: \(error)", context: "Migration")
+                return []
+            }
+
+            guard let peers = try? JSONDecoder().decode([BackupPeerEntry].self, from: data) else {
+                Logger.warn("Migration peer recovery: decode failed (data count=\(data.count))", context: "Migration")
+                return []
+            }
+
+            guard !peers.isEmpty else {
+                Logger.debug("Migration peer recovery: peers array empty", context: "Migration")
+                return []
+            }
+
+            let trustedIds = Set(Env.trustedLnPeers.map(\.nodeId))
+            let uris = peers.filter { !trustedIds.contains($0.pubKey) }.map { "\($0.pubKey)@\($0.address):\($0.port)" }
+            Logger.info("Migration peer recovery: fetched \(uris.count) peer(s) from remote backup", context: "Migration")
+            return uris
+        } catch {
+            Logger.warn("Migration peer recovery failed (will not retry): \(error)", context: "Migration")
+            return []
         }
     }
 

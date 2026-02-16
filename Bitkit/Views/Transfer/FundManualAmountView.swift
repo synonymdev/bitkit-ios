@@ -1,9 +1,10 @@
 import SwiftUI
 
 struct FundManualAmountView: View {
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     let lnPeer: LnPeer
 
@@ -16,7 +17,7 @@ struct FundManualAmountView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("lightning__connections"))
+            NavigationBar(title: t("lightning__external__nav_title"))
                 .padding(.bottom, 16)
 
             VStack(alignment: .leading, spacing: 0) {
@@ -53,11 +54,9 @@ struct FundManualAmountView: View {
                     amountViewModel.handleNumberPadInput(key, currency: currency)
                 }
 
-                CustomButton(
-                    title: t("common__continue"),
-                    isDisabled: amountSats == 0,
-                    destination: FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
-                )
+                CustomButton(title: t("common__continue"), isDisabled: amountSats == 0) {
+                    navigation.navigate(.fundManualConfirm(lnPeer: lnPeer, amountSats: amountSats))
+                }
                 .accessibilityIdentifier("ExternalAmountContinue")
             }
         }
