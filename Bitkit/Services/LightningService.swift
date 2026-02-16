@@ -502,6 +502,7 @@ class LightningService {
             }
         } catch {
             dumpLdkLogs()
+            dumpNetworkGraphInfo(bolt11: bolt11)
             throw error
         }
     }
@@ -620,6 +621,140 @@ class LightningService {
         } catch {
             Logger.error(error, context: "failed to load ldk log file: \(logFilePath)")
         }
+    }
+
+    func dumpNetworkGraphInfo(bolt11: String) {
+        guard let node else {
+            Logger.error("Node not available for network graph dump", context: "LightningService")
+            return
+        }
+
+        let nodeIdPreviewLength = 20
+        var sb = ""
+
+        sb += "\n\n=== NETWORK GRAPH DUMP ===\n"
+
+        // 1. Invoice Info
+        do {
+            let invoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            sb += "\nInvoice Info:\n"
+            sb += "  - Payment Hash: \(invoice.paymentHash())\n"
+            sb += "  - Invoice: \(bolt11)\n"
+        } catch {
+            sb += "\nFailed to parse bolt11 invoice: \(error)\n"
+        }
+
+        // 2. Our Node Info
+        sb += "\nOur Node Info:\n"
+        sb += "  - Node ID: \(node.nodeId())\n"
+
+        // 3. Our Channels
+        sb += "\nOur Channels:\n"
+        let channels = node.listChannels()
+        sb += "  Total channels: \(channels.count)\n"
+
+        var totalOutboundMsat: UInt64 = 0
+        var totalInboundMsat: UInt64 = 0
+        var usableChannels = 0
+        var announcedChannels = 0
+
+        for (index, channel) in channels.enumerated() {
+            totalOutboundMsat += channel.outboundCapacityMsat
+            totalInboundMsat += channel.inboundCapacityMsat
+            if channel.isUsable { usableChannels += 1 }
+            if channel.isAnnounced { announcedChannels += 1 }
+
+            sb += "  Channel \(index + 1):\n"
+            sb += "    - Channel ID: \(channel.channelId)\n"
+            sb += "    - Counterparty: \(channel.counterpartyNodeId)\n"
+            sb += "    - Ready: \(channel.isChannelReady), Usable: \(channel.isUsable), Announced: \(channel.isAnnounced)\n"
+            sb += "    - Outbound: \(channel.outboundCapacityMsat) msat, Inbound: \(channel.inboundCapacityMsat) msat\n"
+        }
+
+        sb += "\n  Channel Summary:\n"
+        sb += "    - Usable channels: \(usableChannels)/\(channels.count)\n"
+        sb += "    - Announced channels: \(announcedChannels)/\(channels.count)\n"
+        sb += "    - Total Outbound: \(totalOutboundMsat) msat\n"
+        sb += "    - Total Inbound: \(totalInboundMsat) msat\n"
+
+        // 4. Our Peers
+        sb += "\nOur Peers:\n"
+        let peers = node.listPeers()
+        sb += "  Total peers: \(peers.count)\n"
+
+        for (index, peer) in peers.enumerated() {
+            let nodeIdPreview = String(peer.nodeId.prefix(nodeIdPreviewLength))
+            sb += "  Peer \(index + 1): \(nodeIdPreview)... @ \(peer.address)\n"
+        }
+
+        // 5. RGS Configuration
+        sb += "\nRGS Configuration:\n"
+        sb += "  - RGS Server URL: \(Env.ldkRgsServerUrl ?? "Not configured")\n"
+
+        let nodeStatus = node.status()
+        if let rgsTimestamp = nodeStatus.latestRgsSnapshotTimestamp {
+            let date = Date(timeIntervalSince1970: TimeInterval(rgsTimestamp))
+            let timeAgo = Date().timeIntervalSince(date)
+            let hoursAgo = Int(timeAgo / 3600)
+            let minutesAgo = Int((timeAgo.truncatingRemainder(dividingBy: 3600)) / 60)
+
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            formatter.timeZone = TimeZone(abbreviation: "UTC")
+
+            sb += "  - Last RGS Snapshot: \(formatter.string(from: date))\n"
+            if hoursAgo > 0 {
+                sb += "  - Time since update: \(hoursAgo)h \(minutesAgo)m ago\n"
+            } else {
+                sb += "  - Time since update: \(minutesAgo)m ago\n"
+            }
+            sb += "  - Timestamp: \(rgsTimestamp)\n"
+        } else {
+            sb += "  - Last RGS Snapshot: Never synced\n"
+            sb += "  - WARNING: Network graph may be empty or stale!\n"
+        }
+
+        // 6. Network Graph Data
+        sb += "\nRGS Network Graph Data:\n"
+        let networkGraph = node.networkGraph()
+        let allNodes = networkGraph.listNodes()
+        let allChannels = networkGraph.listChannels()
+
+        sb += "  Total nodes: \(allNodes.count)\n"
+        sb += "  Total channels: \(allChannels.count)\n"
+
+        // Check for trusted peers in graph
+        sb += "\n  Checking for trusted peers in network graph:\n"
+        let trustedPeers = Env.trustedLnPeers
+        var foundTrustedNodes = 0
+        let allNodeStrings = allNodes.map(\.description)
+
+        for peer in trustedPeers {
+            let nodeId = peer.nodeId
+            if allNodeStrings.contains(nodeId) {
+                foundTrustedNodes += 1
+                let nodeIdPreview = String(nodeId.prefix(nodeIdPreviewLength))
+                sb += "    OK: \(nodeIdPreview)... found in graph\n"
+            } else {
+                let nodeIdPreview = String(nodeId.prefix(nodeIdPreviewLength))
+                sb += "    MISSING: \(nodeIdPreview)... NOT in graph\n"
+            }
+        }
+        sb += "  Summary: \(foundTrustedNodes)/\(trustedPeers.count) trusted peers found in graph\n"
+
+        // Show first 10 nodes
+        let nodesToShow = min(10, allNodes.count)
+        sb += "\n  First \(nodesToShow) nodes:\n"
+        for (index, nodeId) in allNodes.prefix(nodesToShow).enumerated() {
+            sb += "    \(index + 1). \(nodeId.description)\n"
+        }
+        if allNodes.count > nodesToShow {
+            sb += "    ... and \(allNodes.count - nodesToShow) more nodes\n"
+        }
+
+        sb += "\n=== END NETWORK GRAPH DUMP ===\n"
+
+        Logger.info(sb, context: "LightningService")
     }
 
     func logNetworkGraphInfo() async throws -> String {
