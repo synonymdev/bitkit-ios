@@ -64,6 +64,7 @@ struct FundManualSetupView: View {
                             CaptionMText(t("lightning__external_manual__node_id"))
                             TextField("038543a13c2c040d0cd2d16c312a08fa5397c0329dd1d08a704e5c18aeced50e29", text: $nodeId, submitLabel: .done)
                                 .focused($isTextFieldFocused)
+                                .lineLimit(1)
                                 .autocapitalization(.none)
                                 .autocorrectionDisabled(true)
                                 .accessibilityIdentifier("NodeIdInput")
