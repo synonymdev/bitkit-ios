@@ -296,6 +296,16 @@ class LightningService {
         Logger.info("Lightning wallet wiped")
     }
 
+    func deleteNetworkGraph() async throws {
+        let graphPath = Env.ldkStorage(walletIndex: currentWalletIndex).appendingPathComponent("network_graph_cache")
+        guard FileManager.default.fileExists(atPath: graphPath.path) else {
+            Logger.warn("Network graph cache not found at: \(graphPath.path)")
+            return
+        }
+        try FileManager.default.removeItem(at: graphPath)
+        Logger.info("Deleted network graph cache at: \(graphPath.path)")
+    }
+
     func connectToTrustedPeers() async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
