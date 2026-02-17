@@ -699,8 +699,6 @@
 "settings__adv__section_other" = "Altro";
 "settings__adv__address_type" = "Tipologia Indirizzo Bitcoin";
 "settings__adv__monitored_address_types" = "Tipi di indirizzi monitorati";
-"settings__adv__monitored_address_types_update_title" = "Tipi di indirizzi monitorati aggiornati";
-"settings__adv__monitored_address_types_update_description" = "Le modifiche avranno pieno effetto dopo il riavvio dell\'app.";
 "settings__adv__gap_limit" = "Limite del gap di indirizzi";
 "settings__adv__coin_selection" = "Coin Selection";
 "settings__adv__cs_method" = "Metodo di Coin Selection";

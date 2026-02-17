@@ -152,17 +152,10 @@ struct AddressTypePreferenceView: View {
     @EnvironmentObject private var settingsViewModel: SettingsViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var navigation: NavigationViewModel
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
 
     @State private var showMonitoredTypesNote = false
-    @State private var showLoadingView = false
-    @State private var loadingAddressType: AddressScriptType?
-    @State private var isMonitoringChange = false
-    @State private var loadingTask: Task<Void, Never>?
-
-    private let timeoutSeconds: UInt64 = 60
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -183,27 +176,12 @@ struct AddressTypePreferenceView: View {
                                 ) {
                                     guard settingsViewModel.selectedAddressType != addressType else { return }
 
-                                    loadingAddressType = addressType
-                                    isMonitoringChange = false
-                                    showLoadingView = true
+                                    app.toast(type: .info, title: t("settings__adv__addr_type_applying"), autoHide: false)
 
-                                    loadingTask = Task {
-                                        var success = false
-                                        let didTimeout = await withTimeout(seconds: timeoutSeconds) {
-                                            success = await settingsViewModel.updateAddressType(addressType, wallet: wallet)
-                                        }
-
-                                        showLoadingView = false
-
-                                        if didTimeout {
-                                            app.toast(
-                                                type: .error,
-                                                title: t("settings__adv__addr_type_timeout_title"),
-                                                description: t("settings__adv__addr_type_timeout_desc")
-                                            )
-                                        } else if success {
+                                    Task {
+                                        let success = await settingsViewModel.updateAddressType(addressType, wallet: wallet)
+                                        if success {
                                             Haptics.notify(.success)
-                                            navigation.reset()
                                             app.toast(
                                                 type: .success,
                                                 title: t("settings__adv__addr_type_changed_title"),
@@ -253,25 +231,11 @@ struct AddressTypePreferenceView: View {
                                         isMonitored: settingsViewModel.isMonitoring(addressType),
                                         isSelectedType: settingsViewModel.selectedAddressType == addressType
                                     ) { enabled in
-                                        loadingAddressType = addressType
-                                        isMonitoringChange = true
-                                        showLoadingView = true
+                                        app.toast(type: .info, title: t("settings__adv__addr_type_applying"), autoHide: false)
 
-                                        loadingTask = Task {
-                                            var success = false
-                                            let didTimeout = await withTimeout(seconds: timeoutSeconds) {
-                                                success = await settingsViewModel.setMonitoring(addressType, enabled: enabled, wallet: wallet)
-                                            }
-
-                                            showLoadingView = false
-
-                                            if didTimeout {
-                                                app.toast(
-                                                    type: .error,
-                                                    title: t("settings__adv__addr_type_timeout_title"),
-                                                    description: t("settings__adv__addr_type_timeout_desc")
-                                                )
-                                            } else if success {
+                                        Task {
+                                            let success = await settingsViewModel.setMonitoring(addressType, enabled: enabled, wallet: wallet)
+                                            if success {
                                                 Haptics.notify(.success)
                                                 app.toast(
                                                     type: .success,
@@ -318,41 +282,6 @@ struct AddressTypePreferenceView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .fullScreenCover(isPresented: $showLoadingView) {
-            AddressTypeLoadingView(
-                targetAddressType: loadingAddressType,
-                isMonitoringChange: isMonitoringChange
-            )
-        }
-        .onDisappear {
-            loadingTask?.cancel()
-        }
-    }
-}
-
-private struct TimeoutError: Error {}
-
-/// Returns true if operation timed out.
-private func withTimeout(seconds: UInt64, operation: @escaping () async -> some Any) async -> Bool {
-    do {
-        try await withThrowingTaskGroup(of: Void.self) { group in
-            group.addTask {
-                _ = await operation()
-            }
-
-            group.addTask {
-                try await Task.sleep(nanoseconds: seconds * 1_000_000_000)
-                throw TimeoutError()
-            }
-
-            try await group.next()
-            group.cancelAll()
-        }
-        return false
-    } catch is TimeoutError {
-        return true
-    } catch {
-        return false
     }
 }
 
@@ -363,7 +292,6 @@ private func withTimeout(seconds: UInt64, operation: @escaping () async -> some 
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(app)
             .environmentObject(WalletViewModel())
-            .environmentObject(NavigationViewModel())
     }
     .preferredColorScheme(.dark)
 }

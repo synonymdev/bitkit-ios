@@ -338,6 +338,15 @@ class SettingsViewModel: NSObject, ObservableObject {
             if !current.contains(addressType) {
                 current.append(addressType)
                 addressTypesToMonitor = current
+
+                do {
+                    try await lightningService.addAddressTypeToMonitor(addressType)
+                    try await lightningService.sync()
+                } catch {
+                    Logger.error("Failed to add address type to monitor: \(error)")
+                    addressTypesToMonitor = previousAddressTypesToMonitor
+                    return false
+                }
             }
         } else {
             if addressType == selectedAddressType { return false }
@@ -346,12 +355,10 @@ class SettingsViewModel: NSObject, ObservableObject {
                 let balance = try await getBalanceForAddressType(addressType)
                 if balance > 0 { return false }
             } catch {
-                // Fail safely: block disable if balance check fails
                 Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
                 return false
             }
 
-            // At least one native witness type required for Lightning
             let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
             let remainingNativeWitness = current.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
             if remainingNativeWitness.isEmpty {
@@ -360,18 +367,15 @@ class SettingsViewModel: NSObject, ObservableObject {
 
             current.removeAll { $0 == addressType }
             addressTypesToMonitor = current
-        }
 
-        UserDefaults.standard.synchronize()
-
-        do {
-            try await lightningService.restart()
-            try await lightningService.sync()
-        } catch {
-            Logger.error("Failed to restart node after monitored types change: \(error)")
-            addressTypesToMonitor = previousAddressTypesToMonitor
-            UserDefaults.standard.synchronize()
-            return false
+            do {
+                try await lightningService.removeAddressTypeFromMonitor(addressType)
+                try await lightningService.sync()
+            } catch {
+                Logger.error("Failed to remove address type from monitor: \(error)")
+                addressTypesToMonitor = previousAddressTypesToMonitor
+                return false
+            }
         }
 
         wallet?.syncState()
@@ -434,18 +438,23 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         guard changed else { return }
 
+        let toRemove = addressTypesToMonitor.filter { !newMonitored.contains($0) }
         addressTypesToMonitor = newMonitored
-        UserDefaults.standard.synchronize()
-
+        for type in toRemove {
+            do {
+                try await lightningService.removeAddressTypeFromMonitor(type)
+            } catch {
+                Logger.error("Failed to remove address type \(type) from monitor: \(error)")
+            }
+        }
         do {
-            try await lightningService.restart()
             try await lightningService.sync()
             Logger.info(
                 "Pruned empty address types after restore: \(newMonitored.map { Self.addressTypeToString($0) }.joined(separator: ","))",
                 context: "SettingsViewModel"
             )
         } catch {
-            Logger.error("Failed to restart after prune: \(error)")
+            Logger.error("Failed to sync after prune: \(error)")
         }
     }
 
@@ -502,26 +511,16 @@ class SettingsViewModel: NSObject, ObservableObject {
         selectedAddressType = addressType
         ensureMonitoring(addressType)
 
-        UserDefaults.standard.set("", forKey: "onchainAddress")
-        UserDefaults.standard.set("", forKey: "bip21")
-        UserDefaults.standard.synchronize()
-
-        if let wallet {
-            wallet.onchainAddress = ""
-            wallet.bip21 = ""
-        }
-
         do {
-            try await lightningService.restart()
+            try await lightningService.setPrimaryAddressType(addressType)
             try await lightningService.sync()
             await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
         } catch {
-            Logger.error("Failed to restart node after address type change: \(error)")
+            Logger.error("Failed to set primary address type: \(error)")
             selectedAddressType = previousSelectedAddressType
             addressTypesToMonitor = previousAddressTypesToMonitor
             UserDefaults.standard.set(previousOnchainAddress, forKey: "onchainAddress")
             UserDefaults.standard.set(previousBip21, forKey: "bip21")
-            UserDefaults.standard.synchronize()
             if let wallet {
                 wallet.onchainAddress = previousOnchainAddress
                 wallet.bip21 = previousBip21
@@ -539,7 +538,6 @@ class SettingsViewModel: NSObject, ObservableObject {
             let newAddress = try await lightningService.newAddressForType(addressType)
 
             UserDefaults.standard.set(newAddress, forKey: "onchainAddress")
-            UserDefaults.standard.synchronize()
 
             if let wallet {
                 wallet.onchainAddress = newAddress
@@ -548,7 +546,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         } catch {
             Logger.error("Failed to generate new address: \(error)")
             UserDefaults.standard.set("", forKey: "onchainAddress")
-            UserDefaults.standard.synchronize()
             if let wallet {
                 wallet.onchainAddress = ""
             }

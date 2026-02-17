@@ -884,6 +884,46 @@ extension LightningService {
         }
     }
 
+    func addAddressTypeToMonitor(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: currentWalletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try? Keychain.loadString(key: .bip39Passphrase(index: currentWalletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
+
+        try await ServiceQueue.background(.ldk) {
+            try node.addAddressTypeToMonitorWithMnemonic(addressType: addressType, mnemonic: mnemonic, passphrase: passphrase)
+        }
+    }
+
+    func removeAddressTypeFromMonitor(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            try node.removeAddressTypeFromMonitor(addressType: addressType)
+        }
+    }
+
+    func setPrimaryAddressType(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: currentWalletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try? Keychain.loadString(key: .bip39Passphrase(index: currentWalletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
+
+        try await ServiceQueue.background(.ldk) {
+            try node.setPrimaryAddressTypeWithMnemonic(addressType: addressType, mnemonic: mnemonic, passphrase: passphrase)
+        }
+    }
+
     func getChannelFundableBalance() async throws -> UInt64 {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
