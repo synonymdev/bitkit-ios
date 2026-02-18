@@ -500,7 +500,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 174;
+				CURRENT_PROJECT_VERSION = 177;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -512,7 +512,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -528,7 +528,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 174;
+				CURRENT_PROJECT_VERSION = 177;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -540,7 +540,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -674,7 +674,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 174;
+				CURRENT_PROJECT_VERSION = 177;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -699,7 +699,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -717,7 +717,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 174;
+				CURRENT_PROJECT_VERSION = 177;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -742,7 +742,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 2.0.3;
+				MARKETING_VERSION = 2.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
