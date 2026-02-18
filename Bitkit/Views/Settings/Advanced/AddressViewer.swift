@@ -15,36 +15,6 @@ enum AddressKind: CaseIterable, CustomStringConvertible {
     }
 }
 
-private extension LDKNode.AddressType {
-    var addressTypeString: String {
-        switch self {
-        case .legacy: return "legacy"
-        case .nestedSegwit: return "nestedSegwit"
-        case .nativeSegwit: return "nativeSegwit"
-        case .taproot: return "taproot"
-        }
-    }
-
-    var derivationPath: String {
-        let coinType = Env.network == .bitcoin ? "0" : "1"
-        switch self {
-        case .legacy: return "m/44'/\(coinType)'/0'/0"
-        case .nestedSegwit: return "m/49'/\(coinType)'/0'/0"
-        case .nativeSegwit: return "m/84'/\(coinType)'/0'/0"
-        case .taproot: return "m/86'/\(coinType)'/0'/0"
-        }
-    }
-
-    var shortLabel: String {
-        switch self {
-        case .legacy: return "Legacy"
-        case .nestedSegwit: return "Nested"
-        case .nativeSegwit: return "Native"
-        case .taproot: return "Taproot"
-        }
-    }
-}
-
 struct AddressViewer: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var settings: SettingsViewModel
@@ -63,7 +33,7 @@ struct AddressViewer: View {
     private let initialLoadCount: UInt32 = 20
     private let loadMoreCount: UInt32 = 20
     private let walletIndex = 0
-    private let scriptTypes: [LDKNode.AddressType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
+    private let scriptTypes: [LDKNode.AddressType] = LDKNode.AddressType.allAddressTypes
 
     private var addressKindTabItems: [TabItem<AddressKind>] {
         [
@@ -328,7 +298,7 @@ struct AddressViewer: View {
                 isChange: selectedAddressKind == .change,
                 startIndex: 0,
                 count: initialLoadCount,
-                addressTypeString: selectedScriptType.addressTypeString
+                addressTypeString: selectedScriptType.stringValue
             )
 
             await MainActor.run {
@@ -363,7 +333,7 @@ struct AddressViewer: View {
                 isChange: selectedAddressKind == .change,
                 startIndex: nextStartIndex,
                 count: loadMoreCount,
-                addressTypeString: selectedScriptType.addressTypeString
+                addressTypeString: selectedScriptType.stringValue
             )
 
             await MainActor.run {

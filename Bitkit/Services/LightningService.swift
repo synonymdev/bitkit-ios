@@ -81,13 +81,13 @@ class LightningService {
         )
         config.includeUntrustedPendingInSpendable = true
 
-        let selectedAddressType = Self.parseAddressType(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
         config.addressType = selectedAddressType
 
         let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
         let monitoredTypes = monitoredTypesString.split(separator: ",")
             .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .compactMap { Self.parseAddressType($0) }
+            .compactMap { LDKNode.AddressType.from(string: $0) }
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
 
         let builder = Builder.fromConfig(config: config)
@@ -924,23 +924,13 @@ extension LightningService {
         }
     }
 
-    func getChannelFundableBalance() async throws -> UInt64 {
+    /// Sum of spendable on-chain balance for non-legacy address types (selected + monitored), for channel funding.
+    /// - Parameters:
+    ///   - selectedType: Current primary address type.
+    ///   - monitoredTypes: Address types currently monitored (from settings).
+    func getChannelFundableBalance(selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType]) async throws -> UInt64 {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
-        }
-
-        let defaults = UserDefaults.standard
-        let selectedType = Self.parseAddressType(defaults.string(forKey: "selectedAddressType"))
-        let monitoredTypesString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypeStrings = monitoredTypesString.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        let monitoredTypes: [LDKNode.AddressType] = monitoredTypeStrings.compactMap { str in
-            switch str {
-            case "legacy": return .legacy
-            case "nestedSegwit": return .nestedSegwit
-            case "nativeSegwit": return .nativeSegwit
-            case "taproot": return .taproot
-            default: return nil
-            }
         }
 
         var typesToSum = Set<LDKNode.AddressType>()
@@ -965,6 +955,18 @@ extension LightningService {
         }
 
         return totalFundable
+    }
+
+    /// Reads selected and monitored address types from UserDefaults. Use when calling from UI/balance flow.
+    static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
+        -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
+    {
+        let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
+        let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let monitoredTypes = monitoredString.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .compactMap { LDKNode.AddressType.from(string: $0) }
+        return (selectedType, monitoredTypes)
     }
 
     /// Returns LSP (Blocktank) peer node IDs
@@ -1377,17 +1379,6 @@ extension LightningService {
             } else {
                 try node.bolt11Payment().sendProbes(invoice: invoice, routeParameters: nil)
             }
-        }
-    }
-
-    // MARK: - Helpers
-
-    private static func parseAddressType(_ string: String?) -> LDKNode.AddressType {
-        switch string {
-        case "legacy": return .legacy
-        case "nestedSegwit": return .nestedSegwit
-        case "taproot": return .taproot
-        default: return .nativeSegwit
         }
     }
 }

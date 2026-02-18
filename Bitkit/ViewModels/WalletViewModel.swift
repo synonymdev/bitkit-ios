@@ -600,7 +600,11 @@ class WalletViewModel: ObservableObject {
             maxSendLightningSats = Int(state.maxSendLightningSats)
 
             // Update channel fundable balance (excludes Legacy UTXOs which can't be used for channels)
-            if let fundableBalance = try? await lightningService.getChannelFundableBalance() {
+            let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
+            if let fundableBalance = try? await lightningService.getChannelFundableBalance(
+                selectedType: selectedType,
+                monitoredTypes: monitoredTypes
+            ) {
                 channelFundableBalanceSats = Int(fundableBalance)
             }
 

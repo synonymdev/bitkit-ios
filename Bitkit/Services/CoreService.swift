@@ -22,10 +22,7 @@ class ActivityService {
 
     // MARK: - Constants
 
-    /// Maximum address index to search when current address exists
-    private static let maxAddressSearchIndex: UInt32 = 1000
-    private let addressSearchLock = NSLock()
-    private var isSearchingAddresses = false
+    private let addressSearchCoordinator: AddressSearchCoordinator
 
     // MARK: - BoostTxIds Cache
 
@@ -286,6 +283,7 @@ class ActivityService {
 
     init(coreService: CoreService) {
         self.coreService = coreService
+        addressSearchCoordinator = AddressSearchCoordinator(coreService: coreService)
     }
 
     func removeAll() async throws {
@@ -893,124 +891,28 @@ class ActivityService {
     private func findReceivingAddress(for txid: String, value: UInt64,
                                       transactionDetails: BitkitCore.TransactionDetails? = nil) async throws -> String?
     {
-        // Prevents concurrent searches (can cause infinite loop)
-        addressSearchLock.lock()
-        guard !isSearchingAddresses else {
-            addressSearchLock.unlock()
-            return nil
-        }
-        isSearchingAddresses = true
-        addressSearchLock.unlock()
-        defer {
-            addressSearchLock.lock()
-            isSearchingAddresses = false
-            addressSearchLock.unlock()
-        }
-
         let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
         guard let details else {
             Logger.warn("Transaction details not available for \(txid)", context: "CoreService.findReceivingAddress")
             return nil
         }
 
-        let batchSize: UInt32 = 20
-        let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
-
-        // Check if an address matches any transaction output
-        func matchesTransaction(_ address: String) -> Bool {
-            details.outputs.contains { $0.scriptpubkeyAddress == address }
-        }
-
-        // Find matching address from a list, preferring exact value match
-        func findMatch(in addresses: [String]) -> String? {
-            // Try exact value match first
-            for address in addresses {
-                for output in details.outputs {
-                    if output.scriptpubkeyAddress == address, output.value == value {
-                        return address
-                    }
-                }
-            }
-            // Fallback to any address match
-            return addresses.first { matchesTransaction($0) }
-        }
-
-        // First, check pre-activity metadata for addresses in the transaction
         if let address = await findAddressInPreActivityMetadata(details: details, value: value) {
             return address
         }
 
-        // Check current address if it exists
-        if !currentWalletAddress.isEmpty && matchesTransaction(currentWalletAddress) {
-            return currentWalletAddress
+        let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+        let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+
+        if let address = try await addressSearchCoordinator.runAddressSearch(
+            details: details,
+            value: value,
+            currentWalletAddress: currentWalletAddress,
+            selectedAddressType: selectedAddressType
+        ) {
+            return address
         }
 
-        // Search addresses forward in batches across all address types
-        func searchAddresses(isChange: Bool, addressTypeString: String) async throws -> String? {
-            var index: UInt32 = 0
-            var currentAddressIndex: UInt32?
-            let hasCurrentAddress = !currentWalletAddress.isEmpty
-            let maxIndex: UInt32 = hasCurrentAddress ? min(Self.maxAddressSearchIndex, 500) : batchSize
-
-            while index < maxIndex {
-                let accountAddresses = try await coreService.utility.getAccountAddresses(
-                    walletIndex: 0,
-                    isChange: isChange,
-                    startIndex: index,
-                    count: batchSize,
-                    addressTypeString: addressTypeString
-                )
-
-                let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
-
-                // Track when we find the current address
-                if hasCurrentAddress, currentAddressIndex == nil, addresses.contains(currentWalletAddress) {
-                    currentAddressIndex = index
-                }
-
-                if let match = findMatch(in: addresses) {
-                    return match
-                }
-
-                // Stop if we've checked one batch after finding current address
-                if let foundIndex = currentAddressIndex, index >= foundIndex + batchSize {
-                    break
-                }
-
-                // Stop if we've reached the end
-                if addresses.count < Int(batchSize) {
-                    break
-                }
-
-                index += batchSize
-            }
-            return nil
-        }
-
-        let selectedAddressTypeString = UserDefaults.standard.string(forKey: "selectedAddressType") ?? "nativeSegwit"
-
-        // Search all address types, prioritizing the selected type
-        let addressTypesToSearch: [String] = {
-            var types = [selectedAddressTypeString]
-            for type in ["legacy", "nestedSegwit", "nativeSegwit", "taproot"] where !types.contains(type) {
-                types.append(type)
-            }
-            return types
-        }()
-
-        // Try receiving addresses first, then change addresses
-        for addressTypeString in addressTypesToSearch {
-            if let address = try await searchAddresses(isChange: false, addressTypeString: addressTypeString) {
-                return address
-            }
-        }
-        for addressTypeString in addressTypesToSearch {
-            if let address = try await searchAddresses(isChange: true, addressTypeString: addressTypeString) {
-                return address
-            }
-        }
-
-        // Fallback: return first output address
         return details.outputs.first?.scriptpubkeyAddress
     }
 
@@ -1318,6 +1220,115 @@ class ActivityService {
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
             self.activitiesChangedSubject.send()
         }
+    }
+}
+
+// MARK: - Address search (actor for single-flight concurrency)
+
+private actor AddressSearchCoordinator {
+    private let coreService: CoreService
+    private var isSearching = false
+
+    init(coreService: CoreService) {
+        self.coreService = coreService
+    }
+
+    /// Runs the batch address search at most one at a time. Returns nil if already searching.
+    func runAddressSearch(
+        details: BitkitCore.TransactionDetails,
+        value: UInt64,
+        currentWalletAddress: String,
+        selectedAddressType: LDKNode.AddressType
+    ) async throws -> String? {
+        guard !isSearching else { return nil }
+        isSearching = true
+        defer { isSearching = false }
+        return try await searchReceivingAddress(
+            details: details, value: value,
+            currentWalletAddress: currentWalletAddress,
+            selectedAddressType: selectedAddressType
+        )
+    }
+
+    private func searchReceivingAddress(
+        details: BitkitCore.TransactionDetails,
+        value: UInt64,
+        currentWalletAddress: String,
+        selectedAddressType: LDKNode.AddressType
+    ) async throws -> String? {
+        let batchSize: UInt32 = 20
+
+        func matchesTransaction(_ address: String) -> Bool {
+            details.outputs.contains { $0.scriptpubkeyAddress == address }
+        }
+
+        func findMatch(in addresses: [String]) -> String? {
+            for address in addresses {
+                for output in details.outputs {
+                    if output.scriptpubkeyAddress == address, output.value == value {
+                        return address
+                    }
+                }
+            }
+            return addresses.first { matchesTransaction($0) }
+        }
+
+        if !currentWalletAddress.isEmpty && matchesTransaction(currentWalletAddress) {
+            return currentWalletAddress
+        }
+
+        func searchAddresses(isChange: Bool, addressTypeString: String) async throws -> String? {
+            var index: UInt32 = 0
+            var currentAddressIndex: UInt32?
+            let hasCurrentAddress = !currentWalletAddress.isEmpty
+            let maxIndex: UInt32 = hasCurrentAddress ? 100_000 : batchSize
+
+            while index < maxIndex {
+                let accountAddresses = try await coreService.utility.getAccountAddresses(
+                    walletIndex: 0,
+                    isChange: isChange,
+                    startIndex: index,
+                    count: batchSize,
+                    addressTypeString: addressTypeString
+                )
+
+                let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
+
+                if hasCurrentAddress, currentAddressIndex == nil, addresses.contains(currentWalletAddress) {
+                    currentAddressIndex = index
+                }
+
+                if let match = findMatch(in: addresses) {
+                    return match
+                }
+
+                if let foundIndex = currentAddressIndex, index >= foundIndex + batchSize {
+                    break
+                }
+
+                if addresses.count < Int(batchSize) {
+                    break
+                }
+
+                index += batchSize
+            }
+            return nil
+        }
+
+        let addressTypesToSearch = LDKNode.AddressType.prioritized(selected: selectedAddressType)
+
+        for addressType in addressTypesToSearch {
+            if let address = try await searchAddresses(isChange: false, addressTypeString: addressType.stringValue) {
+                return address
+            }
+        }
+        for addressType in addressTypesToSearch {
+            if let address = try await searchAddresses(isChange: true, addressTypeString: addressType.stringValue) {
+                return address
+            }
+        }
+
+        return nil
     }
 }
 
@@ -1743,24 +1754,8 @@ class UtilityService {
 
             // Create the correct derivation path based on address type and network
             let coinType = Env.network == .bitcoin ? "0" : "1"
-            let derivationPath = if let addressTypeString {
-                // Use specified address type
-                switch addressTypeString.lowercased() {
-                case "legacy":
-                    "m/44'/\(coinType)'/0'/0" // BIP 44
-                case "nestedsegwit", "nested_segwit":
-                    "m/49'/\(coinType)'/0'/0" // BIP 49
-                case "nativesegwit", "native_segwit":
-                    "m/84'/\(coinType)'/0'/0" // BIP 84
-                case "taproot":
-                    "m/86'/\(coinType)'/0'/0" // BIP 86
-                default:
-                    "m/84'/\(coinType)'/0'/0" // Default to native segwit
-                }
-            } else {
-                // Default to native segwit (BIP 84) for backward compatibility
-                "m/84'/\(coinType)'/0'/0"
-            }
+            let addressType = LDKNode.AddressType.fromStorage(addressTypeString)
+            let derivationPath = addressType.derivationPath(coinType: coinType)
 
             let response = try deriveBitcoinAddresses(
                 mnemonicPhrase: mnemonic,

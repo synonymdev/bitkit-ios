@@ -58,7 +58,8 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Getting channel fundable balance", context: "AddressTypeIntegrationTests")
-        let fundable = try await lightning.getChannelFundableBalance()
+        let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
+        let fundable = try await lightning.getChannelFundableBalance(selectedType: selectedType, monitoredTypes: monitoredTypes)
         XCTAssertGreaterThanOrEqual(fundable, 0)
         Logger.test("Channel fundable: \(fundable) sats", context: "AddressTypeIntegrationTests")
     }
@@ -166,7 +167,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         let monitored = settings.addressTypesToMonitor
         XCTAssertLessThanOrEqual(monitored.count, 4)
         Logger.test(
-            "Pruned monitored types: \(monitored.map { SettingsViewModel.addressTypeToString($0) }.joined(separator: ","))",
+            "Pruned monitored types: \(monitored.map(\.stringValue).joined(separator: ","))",
             context: "AddressTypeIntegrationTests"
         )
     }

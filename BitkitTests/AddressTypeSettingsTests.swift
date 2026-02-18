@@ -28,28 +28,28 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertTrue(SettingsBackupConfig.settingsKeys.contains("addressTypesToMonitor"))
     }
 
-    // MARK: - addressTypeToString
+    // MARK: - LDKNode.AddressType stringValue (storage string)
 
-    func testAddressTypeToString() {
-        XCTAssertEqual(SettingsViewModel.addressTypeToString(.legacy), "legacy")
-        XCTAssertEqual(SettingsViewModel.addressTypeToString(.nestedSegwit), "nestedSegwit")
-        XCTAssertEqual(SettingsViewModel.addressTypeToString(.nativeSegwit), "nativeSegwit")
-        XCTAssertEqual(SettingsViewModel.addressTypeToString(.taproot), "taproot")
+    func testAddressTypeStringValue() {
+        XCTAssertEqual(LDKNode.AddressType.legacy.stringValue, "legacy")
+        XCTAssertEqual(LDKNode.AddressType.nestedSegwit.stringValue, "nestedSegwit")
+        XCTAssertEqual(LDKNode.AddressType.nativeSegwit.stringValue, "nativeSegwit")
+        XCTAssertEqual(LDKNode.AddressType.taproot.stringValue, "taproot")
     }
 
-    // MARK: - stringToAddressType
+    // MARK: - LDKNode.AddressType from(string:)
 
-    func testStringToAddressType() {
-        XCTAssertEqual(SettingsViewModel.stringToAddressType("legacy"), .legacy)
-        XCTAssertEqual(SettingsViewModel.stringToAddressType("nestedSegwit"), .nestedSegwit)
-        XCTAssertEqual(SettingsViewModel.stringToAddressType("nativeSegwit"), .nativeSegwit)
-        XCTAssertEqual(SettingsViewModel.stringToAddressType("taproot"), .taproot)
+    func testAddressTypeFromString() {
+        XCTAssertEqual(LDKNode.AddressType.from(string: "legacy"), .legacy)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "nestedSegwit"), .nestedSegwit)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "nativeSegwit"), .nativeSegwit)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "taproot"), .taproot)
     }
 
-    func testStringToAddressTypeInvalidReturnsNil() {
-        XCTAssertNil(SettingsViewModel.stringToAddressType("invalid"))
-        XCTAssertNil(SettingsViewModel.stringToAddressType(""))
-        XCTAssertNil(SettingsViewModel.stringToAddressType("p2wpkh"))
+    func testAddressTypeFromStringInvalidReturnsNil() {
+        XCTAssertNil(LDKNode.AddressType.from(string: "invalid"))
+        XCTAssertNil(LDKNode.AddressType.from(string: ""))
+        XCTAssertNil(LDKNode.AddressType.from(string: "p2wpkh"))
     }
 
     // MARK: - addressTypesToMonitor round-trip
