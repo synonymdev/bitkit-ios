@@ -3,7 +3,7 @@ import LDKNode
 extension LDKNode.AddressType {
     // MARK: - All cases (ordered)
 
-    static var allAddressTypes: [LDKNode.AddressType] { [.legacy, .nestedSegwit, .nativeSegwit, .taproot] }
+    static let allAddressTypes: [LDKNode.AddressType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
 
     /// All address types with `selected` first, remaining in standard order.
     static func prioritized(selected: LDKNode.AddressType) -> [LDKNode.AddressType] {
@@ -41,6 +41,13 @@ extension LDKNode.AddressType {
     static func fromStorage(_ string: String?) -> LDKNode.AddressType {
         guard let s = string, let type = from(string: s) else { return .nativeSegwit }
         return type
+    }
+
+    /// Parses a comma-separated string of address types; filters invalid values.
+    static func parseCommaSeparated(_ string: String) -> [LDKNode.AddressType] {
+        string.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .compactMap { from(string: $0) }
     }
 
     // MARK: - Derivation path
