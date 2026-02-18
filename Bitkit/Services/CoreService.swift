@@ -1228,21 +1228,29 @@ class ActivityService {
 private actor AddressSearchCoordinator {
     private let coreService: CoreService
     private var isSearching = false
+    private var waitQueue: [CheckedContinuation<Void, Never>] = []
 
     init(coreService: CoreService) {
         self.coreService = coreService
     }
 
-    /// Runs the batch address search at most one at a time. Returns nil if already searching.
+    /// Runs the batch address search at most one at a time. Enqueues if a search is already in progress.
     func runAddressSearch(
         details: BitkitCore.TransactionDetails,
         value: UInt64,
         currentWalletAddress: String,
         selectedAddressType: LDKNode.AddressType
     ) async throws -> String? {
-        guard !isSearching else { return nil }
+        if isSearching {
+            await withCheckedContinuation { waitQueue.append($0) }
+        }
         isSearching = true
-        defer { isSearching = false }
+        defer {
+            isSearching = false
+            if !waitQueue.isEmpty {
+                waitQueue.removeFirst().resume()
+            }
+        }
         return try await searchReceivingAddress(
             details: details, value: value,
             currentWalletAddress: currentWalletAddress,

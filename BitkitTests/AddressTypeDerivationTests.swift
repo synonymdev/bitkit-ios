@@ -43,6 +43,23 @@ final class AddressTypeDerivationTests: XCTestCase {
         }
     }
 
+    // MARK: - parseCommaSeparated(_:)
+
+    func testParseCommaSeparated_ValidTypes() {
+        let result = LDKNode.AddressType.parseCommaSeparated("nativeSegwit,taproot")
+        XCTAssertEqual(result, [.nativeSegwit, .taproot])
+    }
+
+    func testParseCommaSeparated_HandlesWhitespace() {
+        let result = LDKNode.AddressType.parseCommaSeparated("nativeSegwit , taproot ")
+        XCTAssertEqual(result, [.nativeSegwit, .taproot])
+    }
+
+    func testParseCommaSeparated_FiltersInvalid() {
+        let result = LDKNode.AddressType.parseCommaSeparated("nativeSegwit,invalid,taproot")
+        XCTAssertEqual(result, [.nativeSegwit, .taproot])
+    }
+
     // MARK: - matchesAddressFormat(_:network:)
 
     func testMatchesAddressFormat_Mainnet_AcceptsCorrectPrefixes() {

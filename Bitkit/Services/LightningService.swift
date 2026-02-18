@@ -85,9 +85,7 @@ class LightningService {
         config.addressType = selectedAddressType
 
         let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypes = monitoredTypesString.split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .compactMap { LDKNode.AddressType.from(string: $0) }
+        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredTypesString)
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
 
         let builder = Builder.fromConfig(config: config)
@@ -933,9 +931,7 @@ extension LightningService {
     {
         let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
         let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypes = monitoredString.split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespaces) }
-            .compactMap { LDKNode.AddressType.from(string: $0) }
+        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
         return (selectedType, monitoredTypes)
     }
 

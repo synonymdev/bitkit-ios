@@ -281,8 +281,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// Parses a comma-separated string of address types, filtering invalid values.
     static func parseAddressTypesString(_ string: String) -> [AddressScriptType] {
-        let strings = string.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        return strings.compactMap { AddressScriptType.from(string: $0) }
+        LDKNode.AddressType.parseCommaSeparated(string)
     }
 
     var addressTypesToMonitor: [AddressScriptType] {

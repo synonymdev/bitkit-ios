@@ -43,6 +43,13 @@ extension LDKNode.AddressType {
         return type
     }
 
+    /// Parses a comma-separated string of address types; filters invalid values.
+    static func parseCommaSeparated(_ string: String) -> [LDKNode.AddressType] {
+        string.split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .compactMap { from(string: $0) }
+    }
+
     // MARK: - Derivation path
 
     /// BIP derivation path using current network (Env.network) for coin type.
