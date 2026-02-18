@@ -6,7 +6,6 @@ import XCTest
 
 final class AddressTypeIntegrationTests: XCTestCase {
     let walletIndex = 0
-    let lightning = LightningService.shared
     let settings = SettingsViewModel.shared
 
     override func setUp() async throws {
@@ -16,6 +15,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        let lightning = await MainActor.run { settings.lightningService }
         lightning.dumpLdkLogs()
         try Keychain.wipeEntireKeychain()
         let isRunning = await MainActor.run { lightning.status?.isRunning == true }
@@ -39,6 +39,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try skipIfNotRegtest()
         let mnemonic = try StartupHandler.createNewWallet(bip39Passphrase: nil, walletIndex: walletIndex)
         XCTAssertFalse(mnemonic.isEmpty)
+        let lightning = await MainActor.run { settings.lightningService }
         try await lightning.setup(walletIndex: walletIndex)
         try await lightning.start()
         try await lightning.sync()
@@ -49,17 +50,18 @@ final class AddressTypeIntegrationTests: XCTestCase {
         try await setupWalletAndNode()
 
         Logger.test("Getting balance for nativeSegwit", context: "AddressTypeIntegrationTests")
-        let balance = try await lightning.getBalanceForAddressType(.nativeSegwit)
+        let balance = try await settings.lightningService.getBalanceForAddressType(.nativeSegwit)
         XCTAssertGreaterThanOrEqual(balance.totalSats, 0)
         Logger.test("Balance: \(balance.totalSats) sats", context: "AddressTypeIntegrationTests")
     }
 
+    @MainActor
     func testGetChannelFundableBalance() async throws {
         try await setupWalletAndNode()
 
         Logger.test("Getting channel fundable balance", context: "AddressTypeIntegrationTests")
-        let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
-        let fundable = try await lightning.getChannelFundableBalance(selectedType: selectedType, monitoredTypes: monitoredTypes)
+        let (selectedType, monitoredTypes) = Bitkit.LightningService.addressTypeStateFromUserDefaults()
+        let fundable = try await settings.lightningService.getChannelFundableBalance(selectedType: selectedType, monitoredTypes: monitoredTypes)
         XCTAssertGreaterThanOrEqual(fundable, 0)
         Logger.test("Channel fundable: \(fundable) sats", context: "AddressTypeIntegrationTests")
     }
@@ -107,7 +109,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testSetMonitoringDisableForEmptyTypeSucceeds() async throws {
         try await setupWalletAndNode()
 
-        // Add taproot via setMonitoring (uses addAddressTypeToMonitor runtime API)
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
@@ -137,7 +138,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testSetMonitoringDisableSelectedTypeFails() async throws {
         try await setupWalletAndNode()
 
-        // Add taproot, then set taproot as selected; cannot disable selected type
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
@@ -157,8 +157,8 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
         UserDefaults.standard.synchronize()
-        try await lightning.addAddressTypeToMonitor(.taproot)
-        try await lightning.sync()
+        try await settings.lightningService.addAddressTypeToMonitor(.taproot)
+        try await settings.lightningService.sync()
 
         Logger.test("Pruning empty address types after restore", context: "AddressTypeIntegrationTests")
         await settings.pruneEmptyAddressTypesAfterRestore()
