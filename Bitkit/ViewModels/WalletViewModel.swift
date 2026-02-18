@@ -42,6 +42,8 @@ class WalletViewModel: ObservableObject {
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
 
+    @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
+
     private let lightningService: LightningService
     private let coreService: CoreService
     private let electrumConfigService: ElectrumConfigService
@@ -126,6 +128,8 @@ class WalletViewModel: ObservableObject {
                 )
                 MigrationsService.shared.pendingChannelMigration = nil
             }
+
+            await runLegacyNetworkGraphCleanupIfNeeded()
 
             try await lightningService.setup(
                 walletIndex: walletIndex,
@@ -536,6 +540,23 @@ class WalletViewModel: ObservableObject {
     func syncStateAsync() async {
         await lightningService.refreshCache()
         syncState()
+    }
+
+    /// One-time cleanup: remove network graph data from VSS and local cache.
+    private func runLegacyNetworkGraphCleanupIfNeeded() async {
+        guard !legacyNetworkGraphCleanupDone else { return }
+        Logger.info("Running legacy network graph cleanup", context: "WalletViewModel")
+        do {
+            _ = try await VssBackupClient.shared.deleteKey("network_graph")
+        } catch {
+            Logger.debug("VSS deleteKey(network_graph): \(error)", context: "WalletViewModel")
+        }
+        do {
+            try await lightningService.deleteNetworkGraph()
+        } catch {
+            Logger.debug("Local network graph cache cleanup: \(error)", context: "WalletViewModel")
+        }
+        legacyNetworkGraphCleanupDone = true
     }
 
     /// Refreshes cache and syncs all UI state including balance
