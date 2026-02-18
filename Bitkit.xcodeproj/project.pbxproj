@@ -81,6 +81,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
@@ -109,6 +110,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
