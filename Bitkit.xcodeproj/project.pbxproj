@@ -893,7 +893,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
 			requirement = {
-				branch = master;
+				branch = "master";
 				kind = branch;
 			};
 		};
