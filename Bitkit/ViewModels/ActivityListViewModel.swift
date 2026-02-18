@@ -143,7 +143,7 @@ class ActivityListViewModel: ObservableObject {
     func syncState() async {
         do {
             // Get latest activities first as that's displayed on the home view
-            let limitLatest: UInt32 = 3
+            let limitLatest: UInt32 = UIScreen.main.isSmall ? 2 : 3
             // Fetch extra to account for potential filtering of replaced transactions
             let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3)
             let filtered = await filterOutReplacedSentTransactions(latest)

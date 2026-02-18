@@ -6,6 +6,8 @@ struct SpendingWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    private var bottomPadding: CGFloat { 64 + 32 } // tab bar + spacing
+
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
@@ -40,8 +42,7 @@ struct SpendingWalletView: View {
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)
                         }
-                        /// Leave some space for TabBar
-                        .padding(.bottom, 130)
+                        .padding(.bottom, bottomPadding)
                     }
                     .accessibilityIdentifier("HomeScrollView")
                     .refreshable {
@@ -54,10 +55,14 @@ struct SpendingWalletView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 400)
                     .transition(.move(edge: .leading).combined(with: .opacity))
+                } else {
+                    Spacer()
+                    WalletOnboardingView(type: .spending)
+                        .padding(.bottom, bottomPadding)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .padding(.horizontal)
-            .frame(maxHeight: .infinity, alignment: .top)
             .background(alignment: .topTrailing) {
                 Image("coin-stack-x-2")
                     .resizable()
@@ -80,13 +85,6 @@ struct SpendingWalletView: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalLightningSats)
-        .overlay {
-            if wallet.totalLightningSats == 0 {
-                EmptyStateView(type: .spending)
-                    .padding(.horizontal)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
     }
 
     var transferButton: some View {

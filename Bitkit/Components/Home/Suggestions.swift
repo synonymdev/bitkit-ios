@@ -12,15 +12,31 @@ struct SuggestionCardData: Identifiable, Hashable {
 enum SuggestionAction: Hashable {
     case backup
     case buyBitcoin
+    // case hardware
     case invite
+    case notifications
     case profile
     case quickpay
-    case notifications
     case secure
     case shop
     case support
     case transferToSpending
 }
+
+/// Wallet state used to choose which suggestion cards to show and in what order.
+enum WalletSuggestionState {
+    case empty
+    case onchain
+    case spending
+}
+
+/// Ordered suggestion card IDs per wallet state (priority: first = highest).
+/// Max 4 cards are shown; when one is dismissed or completed, the next in this list is shown.
+private let suggestionOrderByState: [WalletSuggestionState: [String]] = [
+    .empty: ["buyBitcoin", "transferToSpending", "support", "backupSeedPhrase", "pin", "profile", "invite"],
+    .onchain: ["backupSeedPhrase", "pin", "transferToSpending", "support", "profile", "invite", "buyBitcoin"],
+    .spending: ["quickpay", "notifications", "shop", "profile", "support", "invite", "buyBitcoin"],
+]
 
 let cards: [SuggestionCardData] = [
     SuggestionCardData(
@@ -103,7 +119,17 @@ let cards: [SuggestionCardData] = [
         color: .brand24,
         action: .profile
     ),
+    // SuggestionCardData(
+    //     id: "hardware",
+    //     title: t("cards__hardware__title"),
+    //     description: t("cards__hardware__description"),
+    //     imageName: "trezor-card",
+    //     color: .blue24,
+    //     action: .hardware
+    // ),
 ]
+
+private let cardsById: [String: SuggestionCardData] = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
 
 extension SuggestionCardData {
     var accessibilityId: String {
@@ -112,14 +138,16 @@ extension SuggestionCardData {
             return "back_up"
         case .buyBitcoin:
             return "buy"
+        // case .hardware:
+        //     return "hardware"
         case .invite:
             return "invite"
+        case .notifications:
+            return "notifications"
         case .profile:
             return "profile"
         case .quickpay:
             return "quick_pay"
-        case .notifications:
-            return "notifications"
         case .secure:
             return "secure"
         case .shop:
@@ -133,41 +161,58 @@ extension SuggestionCardData {
 }
 
 struct Suggestions: View {
+    /// When true, show only two static cards and ignore taps (e.g. widget detail preview).
+    var isPreview: Bool = false
+
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var wallet: WalletViewModel
 
     @State private var showShareSheet = false
-    // Prevent duplicate item taps when the card is dismissed
-    @State private var ignoringCardTaps = false
 
-    let cardSize: CGFloat = 152
-    let cardSpacing: CGFloat = 16
+    private var walletSuggestionState: WalletSuggestionState {
+        if wallet.totalBalanceSats == 0 {
+            return .empty
+        }
+        if wallet.totalLightningSats > 0 {
+            return .spending
+        }
+        return .onchain
+    }
 
-    // Filter out cards that have already been completed or dismissed
+    /// Up to 4 cards for the current wallet state, in priority order; completed and dismissed cards are skipped and the next in the set is shown. In
+    /// preview, exactly 2 fixed cards.
     private var filteredCards: [SuggestionCardData] {
-        cards.filter { card in
-            // Filter out completed actions
-            if card.action == .backup && app.backupVerified {
-                return false
-            }
+        if isPreview {
+            return Array(cards.prefix(2))
+        }
+        let orderedIds = suggestionOrderByState[walletSuggestionState] ?? []
+        var result: [SuggestionCardData] = []
+        for id in orderedIds {
+            guard let card = cardsById[id] else { continue }
+            if isCardCompleted(card) { continue }
+            if suggestionsManager.isDismissed(card.id) { continue }
+            result.append(card)
+            if result.count >= 4 { break }
+        }
+        return result
+    }
 
-            if card.action == .secure && settings.pinEnabled {
-                return false
-            }
-
-            if card.action == .notifications && settings.enableNotifications {
-                return false
-            }
-
-            // Filter out dismissed cards
-            if suggestionsManager.isDismissed(card.id) {
-                return false
-            }
-
-            return true
+    private func isCardCompleted(_ card: SuggestionCardData) -> Bool {
+        switch card.action {
+        case .backup:
+            return app.backupVerified
+        case .notifications:
+            return settings.enableNotifications
+        case .quickpay:
+            return settings.enableQuickpay
+        case .secure:
+            return settings.pinEnabled
+        default:
+            return false
         }
     }
 
@@ -175,45 +220,22 @@ struct Suggestions: View {
         if filteredCards.isEmpty {
             EmptyView()
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                CaptionMText(t("cards__suggestions"))
-                    .padding(.horizontal)
-                    .padding(.bottom, 16)
-
-                SnapCarousel(
-                    items: filteredCards,
-                    itemSize: cardSize,
-                    itemSpacing: cardSpacing,
-                    onItemTap: { card in
-                        if !ignoringCardTaps {
-                            onItemTap(card)
-                        }
-                    }
-                ) { card in
-                    SuggestionCard(
-                        data: card,
-                        onDismiss: { dismissCard(card) }
-                    )
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 16),
+                    GridItem(.flexible(), spacing: 16),
+                ],
+                spacing: 16
+            ) {
+                ForEach(filteredCards) { card in
+                    SuggestionCard(data: card, onDismiss: { dismissCard(card) })
+                        .onTapGesture { if !isPreview { onItemTap(card) } }
+                        .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("Suggestions")
-                .id("suggestions-\(filteredCards.count)-\(suggestionsManager.dismissedIds.count)")
-                .frame(height: cardSize)
-                .padding(.bottom, 16)
             }
-            .padding(.top, 32)
-            .sheet(isPresented: $showShareSheet) {
-                ShareSheet(activityItems: [
-                    t(
-                        "settings__about__shareText",
-                        variables: [
-                            "appStoreUrl": Env.appStoreUrl,
-                            "playStoreUrl": Env.playStoreUrl,
-                        ]
-                    ),
-                ])
-            }
+            .allowsHitTesting(!isPreview)
         }
     }
 
@@ -239,6 +261,8 @@ struct Suggestions: View {
             route = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support:
             route = .support
+        // case .hardware:
+        //     route = .support
         case .transferToSpending:
             route = app.hasSeenTransferIntro ? .fundingOptions : .transferIntro
         }
@@ -249,24 +273,8 @@ struct Suggestions: View {
     }
 
     private func dismissCard(_ card: SuggestionCardData) {
-        ignoringCardTaps = true
-
-        // Force UI update by using withAnimation
         withAnimation(.easeInOut(duration: 0.3)) {
             suggestionsManager.dismiss(card.id)
         }
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            ignoringCardTaps = false
-        }
     }
-}
-
-#Preview {
-    VStack {
-        Suggestions()
-    }
-    .environmentObject(SheetViewModel())
-    .environmentObject(SettingsViewModel.shared)
-    .preferredColorScheme(.dark)
 }

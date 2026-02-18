@@ -283,7 +283,7 @@ struct MainNavView: View {
         Group {
             switch navigation.activeDrawerMenuItem {
             case .wallet:
-                HomeView()
+                HomeScreen()
             case .activity:
                 AllActivityView()
             case .contacts:
