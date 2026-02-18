@@ -279,31 +279,10 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
 
-    static let allAddressTypes: [AddressScriptType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
-
-    static func addressTypeToString(_ addressType: AddressScriptType) -> String {
-        switch addressType {
-        case .legacy: return "legacy"
-        case .nestedSegwit: return "nestedSegwit"
-        case .nativeSegwit: return "nativeSegwit"
-        case .taproot: return "taproot"
-        }
-    }
-
-    static func stringToAddressType(_ string: String) -> AddressScriptType? {
-        switch string {
-        case "legacy": return .legacy
-        case "nestedSegwit": return .nestedSegwit
-        case "nativeSegwit": return .nativeSegwit
-        case "taproot": return .taproot
-        default: return nil
-        }
-    }
-
     /// Parses a comma-separated string of address types, filtering invalid values.
     static func parseAddressTypesString(_ string: String) -> [AddressScriptType] {
         let strings = string.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
-        return strings.compactMap { stringToAddressType($0) }
+        return strings.compactMap { AddressScriptType.from(string: $0) }
     }
 
     var addressTypesToMonitor: [AddressScriptType] {
@@ -311,7 +290,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             Self.parseAddressTypesString(_addressTypesToMonitor)
         }
         set {
-            _addressTypesToMonitor = newValue.map { Self.addressTypeToString($0) }.joined(separator: ",")
+            _addressTypesToMonitor = newValue.map(\.stringValue).joined(separator: ",")
         }
     }
 
@@ -387,7 +366,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     func monitorAllAddressTypes() {
-        addressTypesToMonitor = Self.allAddressTypes
+        addressTypesToMonitor = AddressScriptType.allAddressTypes
     }
 
     private static let pendingRestoreAddressTypePruneKey = "pendingRestoreAddressTypePrune"
@@ -441,7 +420,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             try await lightningService.restart()
             try await lightningService.sync()
             Logger.info(
-                "Pruned empty address types after restore: \(newMonitored.map { Self.addressTypeToString($0) }.joined(separator: ","))",
+                "Pruned empty address types after restore: \(newMonitored.map(\.stringValue).joined(separator: ","))",
                 context: "SettingsViewModel"
             )
         } catch {
@@ -460,30 +439,10 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     var selectedAddressType: AddressScriptType {
         get {
-            switch _selectedAddressType {
-            case "legacy":
-                return .legacy
-            case "nestedSegwit":
-                return .nestedSegwit
-            case "nativeSegwit":
-                return .nativeSegwit
-            case "taproot":
-                return .taproot
-            default:
-                return .nativeSegwit
-            }
+            LDKNode.AddressType.fromStorage(_selectedAddressType)
         }
         set {
-            switch newValue {
-            case .legacy:
-                _selectedAddressType = "legacy"
-            case .nestedSegwit:
-                _selectedAddressType = "nestedSegwit"
-            case .nativeSegwit:
-                _selectedAddressType = "nativeSegwit"
-            case .taproot:
-                _selectedAddressType = "taproot"
-            }
+            _selectedAddressType = newValue.stringValue
         }
     }
 
@@ -537,10 +496,11 @@ class SettingsViewModel: NSObject, ObservableObject {
     private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {
         do {
             let newAddress = try await lightningService.newAddressForType(addressType)
-
+            guard addressType.matchesAddressFormat(newAddress, network: Env.network) else {
+                Logger.error("Generated address did not match expected format for \(addressType.stringValue): \(newAddress)")
+                return
+            }
             UserDefaults.standard.set(newAddress, forKey: "onchainAddress")
-            UserDefaults.standard.synchronize()
-
             if let wallet {
                 wallet.onchainAddress = newAddress
                 wallet.bip21 = "bitcoin:\(newAddress)"
@@ -548,7 +508,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         } catch {
             Logger.error("Failed to generate new address: \(error)")
             UserDefaults.standard.set("", forKey: "onchainAddress")
-            UserDefaults.standard.synchronize()
             if let wallet {
                 wallet.onchainAddress = ""
             }

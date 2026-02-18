@@ -6,19 +6,6 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject var settings: SettingsViewModel
     @State private var showingResetAlert = false
 
-    private func addressTypeDisplayName(_ addressType: AddressScriptType) -> String {
-        switch addressType {
-        case .legacy:
-            return "Legacy"
-        case .nestedSegwit:
-            return "Nested Segwit"
-        case .nativeSegwit:
-            return "Native Segwit"
-        case .taproot:
-            return "Taproot"
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__advanced_title"))
@@ -34,7 +21,7 @@ struct AdvancedSettingsView: View {
                         NavigationLink(value: Route.addressTypePreference) {
                             SettingsListLabel(
                                 title: t("settings__adv__address_type"),
-                                rightText: addressTypeDisplayName(settings.selectedAddressType)
+                                rightText: settings.selectedAddressType.localizedTitle
                             )
                         }
                         .accessibilityIdentifier("AddressTypePreference")

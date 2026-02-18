@@ -1,60 +1,6 @@
 import LDKNode
 import SwiftUI
 
-extension AddressScriptType {
-    var localizedTitle: String {
-        switch self {
-        case .legacy:
-            return "Legacy"
-        case .nestedSegwit:
-            return "Nested Segwit"
-        case .nativeSegwit:
-            return "Native Segwit"
-        case .taproot:
-            return "Taproot"
-        }
-    }
-
-    var localizedDescription: String {
-        switch self {
-        case .legacy:
-            return "Pay-to-public-key-hash (1x...)"
-        case .nestedSegwit:
-            return "Pay-to-Script-Hash (3x...)"
-        case .nativeSegwit:
-            return "Pay-to-witness-public-key-hash (bc1x...)"
-        case .taproot:
-            return "Pay-to-Taproot (bc1px...)"
-        }
-    }
-
-    var example: String {
-        switch self {
-        case .legacy:
-            return "(1x...)"
-        case .nestedSegwit:
-            return "(3x...)"
-        case .nativeSegwit:
-            return "(bc1x...)"
-        case .taproot:
-            return "(bc1px...)"
-        }
-    }
-
-    var shortExample: String {
-        switch self {
-        case .legacy:
-            return "1x..."
-        case .nestedSegwit:
-            return "3x..."
-        case .nativeSegwit:
-            return "bc1q..."
-        case .taproot:
-            return "bc1p..."
-        }
-    }
-}
-
 struct AddressTypeOption: View {
     let addressType: AddressScriptType
     let isSelected: Bool
@@ -86,21 +32,6 @@ struct AddressTypeOption: View {
         }
         .buttonStyle(PlainButtonStyle())
         .accessibilityIdentifier(addressType.testId)
-    }
-}
-
-extension AddressScriptType {
-    var testId: String {
-        switch self {
-        case .legacy:
-            return "p2pkh"
-        case .nestedSegwit:
-            return "p2sh-p2wpkh"
-        case .nativeSegwit:
-            return "p2wpkh"
-        case .taproot:
-            return "p2tr"
-        }
     }
 }
 
@@ -176,7 +107,7 @@ struct AddressTypePreferenceView: View {
                             .padding(.bottom, 8)
 
                         VStack(spacing: 0) {
-                            ForEach([AddressScriptType.legacy, .nestedSegwit, .nativeSegwit, .taproot], id: \.self) { addressType in
+                            ForEach(AddressScriptType.allAddressTypes, id: \.self) { addressType in
                                 AddressTypeOption(
                                     addressType: addressType,
                                     isSelected: settingsViewModel.selectedAddressType == addressType
@@ -247,7 +178,7 @@ struct AddressTypePreferenceView: View {
                             }
 
                             VStack(spacing: 0) {
-                                ForEach([AddressScriptType.legacy, .nestedSegwit, .nativeSegwit, .taproot], id: \.self) { addressType in
+                                ForEach(AddressScriptType.allAddressTypes, id: \.self) { addressType in
                                     MonitoredAddressTypeToggle(
                                         addressType: addressType,
                                         isMonitored: settingsViewModel.isMonitoring(addressType),
