@@ -3,7 +3,7 @@ import LDKNode
 extension LDKNode.AddressType {
     // MARK: - All cases (ordered)
 
-    static var allAddressTypes: [LDKNode.AddressType] { [.legacy, .nestedSegwit, .nativeSegwit, .taproot] }
+    static let allAddressTypes: [LDKNode.AddressType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
 
     /// All address types with `selected` first, remaining in standard order.
     static func prioritized(selected: LDKNode.AddressType) -> [LDKNode.AddressType] {
