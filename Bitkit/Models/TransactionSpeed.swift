@@ -42,55 +42,33 @@ public enum TransactionSpeed: Equatable, Hashable, RawRepresentable {
 // MARK: - Display Properties
 
 public extension TransactionSpeed {
-    var displayTitle: String {
+    /// Component used to build fee localization keys (e.g. "fee__fast__title", "fee__fast__longTitle").
+    var feeKeyComponent: String {
         switch self {
-        case .fast: return t("fee__fast__title")
-        case .normal: return t("fee__normal__title")
-        case .slow: return t("fee__slow__title")
-        case .custom: return t("fee__custom__title")
+        case .fast: return "fast"
+        case .normal: return "normal"
+        case .slow: return "slow"
+        case .custom: return "custom"
         }
     }
 
-    var displayDescription: String {
-        switch self {
-        case .fast: return t("fee__fast__description")
-        case .normal: return t("fee__normal__description")
-        case .slow: return t("fee__slow__description")
-        case .custom: return t("fee__custom__description")
-        }
+    var title: String { t("fee__\(feeKeyComponent)__title") }
+    var longTitle: String { t("fee__\(feeKeyComponent)__longTitle") }
+    var description: String { t("fee__\(feeKeyComponent)__description") }
+    var shortDescription: String { t("fee__\(feeKeyComponent)__shortDescription") }
+    var range: String { t("fee__\(feeKeyComponent)__range") }
+    var longRange: String { t("fee__\(feeKeyComponent)__longRange") }
+
+    var isCustom: Bool {
+        if case .custom = self { return true }
+        return false
     }
 
     var customSetSpeed: String? {
         guard case let .custom(satsPerVByte) = self else { return nil }
         return "\(satsPerVByte) \(t("common__sat_vbyte_compact"))"
     }
-}
 
-// MARK: - Settings Display Properties
-
-public extension TransactionSpeed {
-    var displayLabel: String {
-        switch self {
-        case .fast: return t("settings__fee__fast__label")
-        case .normal: return t("settings__fee__normal__label")
-        case .slow: return t("settings__fee__slow__label")
-        case .custom: return t("settings__fee__custom__label")
-        }
-    }
-
-    var displayValue: String {
-        switch self {
-        case .fast: return t("settings__fee__fast__value")
-        case .normal: return t("settings__fee__normal__value")
-        case .slow: return t("settings__fee__slow__value")
-        case .custom: return t("settings__fee__custom__value")
-        }
-    }
-}
-
-// MARK: - UI Properties
-
-public extension TransactionSpeed {
     var iconName: String {
         switch self {
         case .fast: return "speed-fast"
@@ -113,6 +91,16 @@ public extension TransactionSpeed {
 // MARK: - Business Logic
 
 public extension TransactionSpeed {
+    /// Key suffix for fee tier localization (matches "fee__{tier}__{variant}" in Localizable.strings).
+    enum FeeTierVariant: String {
+        case title
+        case longTitle
+        case description
+        case shortDescription
+        case range
+        case longRange
+    }
+
     /// Returns the fee rate in satoshis per virtual byte for this speed
     /// - Parameter feeRates: Current network fee rates
     /// - Returns: Fee rate in sat/vB
@@ -135,51 +123,18 @@ public extension TransactionSpeed {
         return rate >= minRate && rate <= maxRate
     }
 
-    /// Determines the appropriate fee description for a given fee rate
-    /// - Parameters:
-    ///   - feeRate: The fee rate in satoshis per virtual byte
-    ///   - feeEstimates: Current network fee estimates
-    /// - Returns: Localized fee description string
-    static func getFeeDescription(feeRate: UInt64, feeEstimates: FeeRates) -> String {
-        // Check against fee estimates in order of priority (highest to lowest)
-        if feeRate >= UInt64(feeEstimates.fast) {
-            return t("fee__fast__shortDescription")
-        } else if feeRate >= UInt64(feeEstimates.mid) {
-            return t("fee__normal__shortDescription")
-        } else if feeRate >= UInt64(feeEstimates.slow) {
-            return t("fee__slow__shortDescription")
-        } else {
-            // For rates below slow, use minimum
-            return t("fee__minimum__shortDescription")
-        }
+    /// Tier derived from a fee rate and current estimates (fast/normal/slow/minimum). Use with fee localization keys or getFeeTierLocalized.
+    static func feeTierKeyComponent(for feeRate: UInt64, feeEstimates: FeeRates?) -> String {
+        guard let estimates = feeEstimates else { return "normal" }
+        if feeRate >= UInt64(estimates.fast) { return "fast" }
+        if feeRate >= UInt64(estimates.mid) { return "normal" }
+        if feeRate >= UInt64(estimates.slow) { return "slow" }
+        return "minimum"
     }
 
-    /// Determines the appropriate fee description for a given fee rate with fallback
-    /// - Parameters:
-    ///   - feeRate: The fee rate in satoshis per virtual byte
-    ///   - feeEstimates: Current network fee estimates (optional)
-    /// - Returns: Localized fee description string with fallback
-    static func getFeeDescription(feeRate: UInt64, feeEstimates: FeeRates?) -> String {
-        guard let estimates = feeEstimates else {
-            // Fallback when no fee estimates are available
-            return t("fee__normal__shortDescription")
-        }
-
-        return getFeeDescription(feeRate: feeRate, feeEstimates: estimates)
-    }
-}
-
-// MARK: - Equatable Implementation
-
-public extension TransactionSpeed {
-    static func == (lhs: TransactionSpeed, rhs: TransactionSpeed) -> Bool {
-        switch (lhs, rhs) {
-        case (.fast, .fast), (.normal, .normal), (.slow, .slow):
-            return true
-        case let (.custom(lhsRate), .custom(rhsRate)):
-            return lhsRate == rhsRate
-        default:
-            return false
-        }
+    /// Returns the localized string for a fee rate's tier and the given variant (e.g. title, description, shortDescription).
+    static func getFeeTierLocalized(feeRate: UInt64, feeEstimates: FeeRates?, variant: FeeTierVariant) -> String {
+        let tier = feeTierKeyComponent(for: feeRate, feeEstimates: feeEstimates)
+        return t("fee__\(tier)__\(variant.rawValue)")
     }
 }

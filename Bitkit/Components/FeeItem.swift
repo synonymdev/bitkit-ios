@@ -6,9 +6,15 @@ struct FeeItem: View {
     let amount: UInt64
     let isSelected: Bool
     let isDisabled: Bool
+    /// When set (e.g. for custom speed with fee estimates), shown instead of `speed.range` as the subtitle.
+    var rangeOverride: String?
     let onPress: () -> Void
 
     @EnvironmentObject var currency: CurrencyViewModel
+
+    private var rangeText: String {
+        rangeOverride ?? speed.range
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,8 +29,8 @@ struct FeeItem: View {
 
                     HStack {
                         VStack(alignment: .leading, spacing: 0) {
-                            BodyMSBText(speed.displayTitle, textColor: isDisabled ? .gray3 : .textPrimary)
-                            BodySSBText(speed.displayDescription, textColor: isDisabled ? .gray3 : .textSecondary)
+                            BodyMSBText(speed.title, textColor: isDisabled ? .gray3 : .textPrimary)
+                            BodySSBText(rangeText, textColor: isDisabled ? .gray3 : .textSecondary)
                         }
 
                         Spacer()

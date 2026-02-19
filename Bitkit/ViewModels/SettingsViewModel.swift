@@ -96,7 +96,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false // TODO: remove this
+    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 

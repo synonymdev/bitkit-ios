@@ -5,15 +5,10 @@ struct TransactionSpeedSettingsRow: View {
     let isSelected: Bool
     let onSelect: () -> Void
     var customSetSpeed: String?
-    var testIdentifier: String?
+    var rangeOverride: String?
 
-    var iconColor: Color {
-        switch speed {
-        case .custom:
-            return .textSecondary
-        default:
-            return .brandAccent
-        }
+    private var rangeText: String {
+        rangeOverride ?? speed.longRange
     }
 
     var body: some View {
@@ -22,13 +17,13 @@ struct TransactionSpeedSettingsRow: View {
                 Image(speed.iconName)
                     .resizable()
                     .scaledToFit()
-                    .foregroundColor(iconColor)
+                    .foregroundColor(speed.iconColor)
                     .frame(width: 32, height: 32)
                     .padding(.trailing, 16)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    BodyMSBText(speed.displayTitle, textColor: .textPrimary)
-                    BodySSBText(speed.displayDescription, textColor: .textSecondary)
+                    BodyMSBText(speed.longTitle, textColor: .textPrimary)
+                    BodySSBText(rangeText, textColor: .textSecondary)
                 }
 
                 Spacer()
@@ -49,16 +44,20 @@ struct TransactionSpeedSettingsRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .accessibilityIdentifierIfPresent(testIdentifier)
+        .accessibilityIdentifierIfPresent(speed.feeKeyComponent)
     }
 }
 
 struct TransactionSpeedSettingsView: View {
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
 
-    @State private var showingCustomAlert = false
-    @State private var customRate: String = ""
+    /// When custom default fee rate is set, returns the tier-based range description (e.g. "± 10-20 minutes").
+    private func customSpeedRange() -> String? {
+        guard case let .custom(rate) = settings.defaultTransactionSpeed else { return nil }
+        return TransactionSpeed.getFeeTierLocalized(feeRate: UInt64(rate), feeEstimates: feeEstimatesManager.estimates, variant: .longRange)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,7 +67,7 @@ struct TransactionSpeedSettingsView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
                     CaptionMText(t("settings__general__speed_default"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 50)
 
                     VStack(spacing: 0) {
                         TransactionSpeedSettingsRow(
@@ -77,8 +76,7 @@ struct TransactionSpeedSettingsView: View {
                             onSelect: {
                                 settings.defaultTransactionSpeed = .fast
                                 navigation.navigateBack()
-                            },
-                            testIdentifier: "fast"
+                            }
                         )
 
                         Divider()
@@ -89,8 +87,7 @@ struct TransactionSpeedSettingsView: View {
                             onSelect: {
                                 settings.defaultTransactionSpeed = .normal
                                 navigation.navigateBack()
-                            },
-                            testIdentifier: "normal"
+                            }
                         )
 
                         Divider()
@@ -101,22 +98,19 @@ struct TransactionSpeedSettingsView: View {
                             onSelect: {
                                 settings.defaultTransactionSpeed = .slow
                                 navigation.navigateBack()
-                            },
-                            testIdentifier: "slow"
+                            }
                         )
 
                         Divider()
 
                         TransactionSpeedSettingsRow(
                             speed: .custom(satsPerVByte: 1), // Placeholder
-                            isSelected: {
-                                if case .custom = settings.defaultTransactionSpeed { true } else { false }
-                            }(),
+                            isSelected: settings.defaultTransactionSpeed.isCustom,
                             onSelect: {
                                 navigation.navigate(.customSpeedSettings)
                             },
                             customSetSpeed: settings.defaultTransactionSpeed.customSetSpeed,
-                            testIdentifier: "custom"
+                            rangeOverride: customSpeedRange()
                         )
                     }
                 }
@@ -125,13 +119,16 @@ struct TransactionSpeedSettingsView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .task { await feeEstimatesManager.getEstimates() }
     }
 }
 
 #Preview {
     NavigationStack {
         TransactionSpeedSettingsView()
+            .environmentObject(NavigationViewModel())
             .environmentObject(SettingsViewModel.shared)
+            .environmentObject(FeeEstimatesManager())
     }
     .preferredColorScheme(.dark)
 }

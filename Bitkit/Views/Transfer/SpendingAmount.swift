@@ -4,6 +4,7 @@ struct SpendingAmount: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -146,13 +147,12 @@ struct SpendingAmount: View {
             return
         }
 
-        let coreService = CoreService.shared
         let lightningService = LightningService.shared
 
         do {
             let address = try await lightningService.newAddress()
 
-            guard let feeRates = try await coreService.blocktank.fees(refresh: true) else {
+            guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else {
                 await MainActor.run {
                     let balance = UInt64(wallet.spendableOnchainBalanceSats)
                     availableAmount = balance
@@ -161,7 +161,7 @@ struct SpendingAmount: View {
                 }
                 return
             }
-            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
+            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeEstimates)
 
             // Calculate max sendable amount (balance minus transaction fee)
             let calculatedAvailableAmount = try await wallet.calculateMaxSendableAmount(

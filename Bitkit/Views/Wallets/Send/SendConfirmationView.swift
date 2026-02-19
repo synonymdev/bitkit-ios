@@ -2,9 +2,9 @@ import BitkitCore
 import SwiftUI
 
 struct SendConfirmationView: View {
-    @EnvironmentObject var activityListViewModel: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -400,7 +400,7 @@ struct SendConfirmationView: View {
                                 .padding(.trailing, 4)
 
                             if transactionFee > 0 {
-                                let feeText = "\(wallet.selectedSpeed.displayTitle) ("
+                                let feeText = "\(wallet.selectedSpeed.title) ("
                                 HStack(spacing: 0) {
                                     BodySSBText(feeText)
                                     MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
@@ -427,7 +427,13 @@ struct SendConfirmationView: View {
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
 
-                        BodySSBText(wallet.selectedSpeed.displayDescription)
+                        BodySSBText(
+                            TransactionSpeed.getFeeTierLocalized(
+                                feeRate: UInt64(wallet.selectedFeeRateSatsPerVByte ?? 0),
+                                feeEstimates: feeEstimatesManager.estimates,
+                                variant: .range
+                            )
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

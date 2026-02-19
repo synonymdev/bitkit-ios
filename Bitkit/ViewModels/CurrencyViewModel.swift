@@ -2,8 +2,8 @@ import Foundation
 import SwiftUI
 
 enum PrimaryDisplay: String {
-    case bitcoin = "Bitcoin"
-    case fiat = "Fiat"
+    case bitcoin
+    case fiat
 }
 
 @MainActor
