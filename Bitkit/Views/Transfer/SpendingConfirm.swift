@@ -201,8 +201,11 @@ struct SpendingConfirm: View {
 
             // Check if change would be dust (use sendAll in that case)
             // This also covers the "max" case where expectedChange = 0
-            let expectedChange = Int64(balance) - Int64(currentOrder.feeSat) - Int64(normalFee)
-            let useSendAll = expectedChange >= 0 && expectedChange < Int64(Env.dustLimit)
+            let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
+                totalInput: balance,
+                amountSats: currentOrder.feeSat,
+                normalFee: normalFee
+            )
 
             if useSendAll {
                 // Use sendAll: change would be dust or zero (max case)

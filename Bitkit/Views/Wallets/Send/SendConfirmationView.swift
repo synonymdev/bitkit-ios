@@ -585,8 +585,11 @@ struct SendConfirmationView: View {
                 utxosToSpend: wallet.selectedUtxos
             )
             let totalInput = wallet.selectedUtxos?.reduce(0) { $0 + $1.valueSats } ?? spendableBalance
-            let expectedChange = Int64(totalInput) - Int64(amountSats) - Int64(normalFee)
-            let useSendAll = expectedChange >= 0 && expectedChange < Int64(Env.dustLimit)
+            let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
+                totalInput: totalInput,
+                amountSats: amountSats,
+                normalFee: normalFee
+            )
 
             if useSendAll {
                 // Change would be dust - use sendAll and add dust to fee
