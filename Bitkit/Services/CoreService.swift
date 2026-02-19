@@ -480,22 +480,39 @@ class ActivityService {
     // MARK: - Onchain Event Handlers
 
     private func processOnchainTransaction(txid: String, details: BitkitCore.TransactionDetails, context: String) async throws {
-        guard let payments = LightningService.shared.payments else {
-            Logger.warn("No payments available for transaction \(txid)", context: context)
-            return
-        }
+        let maxRetries = 3
+        let retryIntervalMs: UInt64 = 300
 
-        guard let payment = payments.first(where: { payment in
-            if case let .onchain(paymentTxid, _) = payment.kind {
-                return paymentTxid == txid
+        for attempt in 1 ... maxRetries {
+            guard let payments = LightningService.shared.payments else {
+                if attempt < maxRetries {
+                    try await Task.sleep(nanoseconds: retryIntervalMs * 1_000_000)
+                    continue
+                }
+                Logger.warn("No payments available for transaction \(txid) after \(maxRetries) attempts", context: context)
+                return
             }
-            return false
-        }) else {
-            Logger.warn("Payment not found for transaction \(txid)", context: context)
-            return
-        }
 
-        try await processOnchainPayment(payment, transactionDetails: details)
+            if let payment = payments.first(where: { payment in
+                if case let .onchain(paymentTxid, _) = payment.kind {
+                    return paymentTxid == txid
+                }
+                return false
+            }) {
+                try await processOnchainPayment(payment, transactionDetails: details)
+                return
+            }
+
+            if attempt < maxRetries {
+                Logger.debug(
+                    "Payment not found for transaction \(txid), retrying in \(retryIntervalMs)ms (attempt \(attempt)/\(maxRetries))",
+                    context: context
+                )
+                try await Task.sleep(nanoseconds: retryIntervalMs * 1_000_000)
+            } else {
+                Logger.warn("Payment not found for transaction \(txid) after \(maxRetries) attempts - activity not created", context: context)
+            }
+        }
     }
 
     func handleOnchainTransactionReceived(txid: String, details: LDKNode.TransactionDetails) async throws {
