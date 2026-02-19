@@ -181,49 +181,48 @@ struct SpendingConfirm: View {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
             }
 
-            // Calculate sendAll fee to check if change would be dust
-            let allUtxos = try await lightningService.listSpendableOutputs()
             let balance = UInt64(wallet.spendableOnchainBalanceSats)
-            let sendAllFee = try await wallet.calculateTotalFee(
-                address: address,
-                amountSats: balance,
-                satsPerVByte: fastFeeRate,
-                utxosToSpend: allUtxos
+            let allUtxos = try await lightningService.listSpendableOutputs()
+
+            // Fee for normal send (recipient + change) - used to check if change would be dust
+            let utxos = try await lightningService.selectUtxosWithAlgorithm(
+                targetAmountSats: currentOrder.feeSat,
+                satsPerVbyte: fastFeeRate,
+                coinSelectionAlgorythm: .largestFirst,
+                utxos: nil
             )
-            let maxSendable = balance >= sendAllFee ? balance - sendAllFee : 0
+            let normalFee = try await wallet.calculateTotalFee(
+                address: address,
+                amountSats: currentOrder.feeSat,
+                satsPerVByte: fastFeeRate,
+                utxosToSpend: utxos
+            )
+            let maxSendable = balance >= normalFee ? balance - normalFee : 0
 
             // Check if change would be dust (use sendAll in that case)
             // This also covers the "max" case where expectedChange = 0
-            let expectedChange = Int64(balance) - Int64(currentOrder.feeSat) - Int64(sendAllFee)
+            let expectedChange = Int64(balance) - Int64(currentOrder.feeSat) - Int64(normalFee)
             let useSendAll = expectedChange >= 0 && expectedChange < Int64(Env.dustLimit)
 
             if useSendAll {
                 // Use sendAll: change would be dust or zero (max case)
+                let sendAllFee = try await wallet.calculateTotalFee(
+                    address: address,
+                    amountSats: balance,
+                    satsPerVByte: fastFeeRate,
+                    utxosToSpend: allUtxos
+                )
                 await MainActor.run {
                     transactionFee = sendAllFee
                     selectedUtxos = allUtxos
                     satsPerVbyte = fastFeeRate
-                    maxSendableAmount = maxSendable
+                    maxSendableAmount = balance >= sendAllFee ? balance - sendAllFee : 0
                     shouldUseSendAll = true
                 }
             } else {
                 // Normal send with change output
-                let utxos = try await lightningService.selectUtxosWithAlgorithm(
-                    targetAmountSats: currentOrder.feeSat,
-                    satsPerVbyte: fastFeeRate,
-                    coinSelectionAlgorythm: .largestFirst,
-                    utxos: nil
-                )
-
-                let fee = try await wallet.calculateTotalFee(
-                    address: address,
-                    amountSats: currentOrder.feeSat,
-                    satsPerVByte: fastFeeRate,
-                    utxosToSpend: utxos
-                )
-
                 await MainActor.run {
-                    transactionFee = fee
+                    transactionFee = normalFee
                     selectedUtxos = utxos
                     satsPerVbyte = fastFeeRate
                     shouldUseSendAll = false
