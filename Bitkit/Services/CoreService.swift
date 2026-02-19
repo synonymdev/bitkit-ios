@@ -480,8 +480,8 @@ class ActivityService {
     // MARK: - Onchain Event Handlers
 
     private func processOnchainTransaction(txid: String, details: BitkitCore.TransactionDetails, context: String) async throws {
-        let maxRetries = 3
-        let retryIntervalMs: UInt64 = 300
+        let maxRetries = 10
+        let retryIntervalMs: UInt64 = 500
 
         for attempt in 1 ... maxRetries {
             guard let payments = LightningService.shared.payments else {
@@ -995,6 +995,54 @@ class ActivityService {
             try upsertActivity(activity: activity)
             self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
+        }
+    }
+
+    /// Creates sent onchain activity immediately from send result, so it appears in the activity list
+    /// before the LDK onchainTransactionReceived event (which can be delayed by core queue congestion).
+    /// When LDK processes the event later, processOnchainPayment will update this activity with confirmation status.
+    func createSentOnchainActivityFromSendResult(
+        txid: String,
+        address: String,
+        amount: UInt64,
+        fee: UInt64,
+        feeRate: UInt32
+    ) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                if let _ = try? BitkitCore.getActivityByTxId(txId: txid) {
+                    Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
+                    return
+                }
+                let now = UInt64(Date().timeIntervalSince1970)
+                let onchain = OnchainActivity(
+                    id: txid,
+                    txType: .sent,
+                    txId: txid,
+                    value: amount,
+                    fee: fee,
+                    feeRate: UInt64(feeRate),
+                    address: address,
+                    confirmed: false,
+                    timestamp: now,
+                    isBoosted: false,
+                    boostTxIds: [],
+                    isTransfer: false,
+                    doesExist: true,
+                    confirmTimestamp: nil,
+                    channelId: nil,
+                    transferTxId: nil,
+                    createdAt: now,
+                    updatedAt: now,
+                    seenAt: nil
+                )
+                try upsertActivity(activity: .onchain(onchain))
+                self.updateBoostTxIdsCache(for: .onchain(onchain))
+                self.activitiesChangedSubject.send()
+                Logger.info("Created sent onchain activity for txid \(txid) from send result", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
         }
     }
 
