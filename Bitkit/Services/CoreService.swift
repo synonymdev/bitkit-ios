@@ -984,9 +984,7 @@ class ActivityService {
         }
     }
 
-    /// Creates sent onchain activity immediately from send result, so it appears in the activity list
-    /// before the LDK onchainTransactionReceived event (which can be delayed by core queue congestion).
-    /// When LDK processes the event later, processOnchainPayment will update this activity with confirmation status.
+    /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
     func createSentOnchainActivityFromSendResult(
         txid: String,
         address: String,
@@ -1020,7 +1018,7 @@ class ActivityService {
                     transferTxId: nil,
                     createdAt: now,
                     updatedAt: now,
-                    seenAt: nil
+                    seenAt: now
                 )
                 try upsertActivity(activity: .onchain(onchain))
                 self.updateBoostTxIdsCache(for: .onchain(onchain))
