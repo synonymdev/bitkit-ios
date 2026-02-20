@@ -400,6 +400,18 @@ struct AppError: LocalizedError {
         case let .BackgroundSyncNotEnabled(ldkMessage):
             message = "Background sync not enabled"
             debugMessage = ldkMessage
+        case let .AddressTypeAlreadyMonitored(message: ldkMessage):
+            message = "Address type already monitored"
+            debugMessage = ldkMessage
+        case let .AddressTypeIsPrimary(message: ldkMessage):
+            message = "Address type is primary"
+            debugMessage = ldkMessage
+        case let .AddressTypeNotMonitored(message: ldkMessage):
+            message = "Address type not monitored"
+            debugMessage = ldkMessage
+        case let .InvalidSeedBytes(message: ldkMessage):
+            message = "Invalid seed bytes"
+            debugMessage = ldkMessage
         }
         Logger.error("\(message) [\(debugMessage ?? "")]", context: "ldk-node error")
     }

@@ -738,10 +738,6 @@
 "settings__adv__section_other" = "Other";
 "settings__adv__address_type" = "Bitcoin Address Type";
 "settings__adv__monitored_address_types" = "Monitored Address Types";
-"settings__adv__monitored_address_types_update_title" = "Monitored Address Types Updated";
-"settings__adv__monitored_address_types_update_description" = "Changes will take full effect after app restarts.";
-"settings__adv__addr_type_timeout_title" = "Timeout";
-"settings__adv__addr_type_timeout_desc" = "The operation took too long. Please try again.";
 "settings__adv__addr_type_failed_title" = "Failed";
 "settings__adv__addr_type_change_failed_desc" = "Could not change address type. Please try again.";
 "settings__adv__addr_type_applying" = "Applying changes…";
@@ -755,11 +751,6 @@
 "settings__adv__addr_type_monitored_failed_desc" = "Could not update monitoring settings. Please try again.";
 "settings__adv__addr_type_currently_selected" = "Currently selected";
 "settings__adv__addr_type_monitored_note" = "Enable monitoring to track funds received at different address types. The app will watch these addresses for incoming transactions. Disabling monitoring for a type with balance may hide your funds.";
-"settings__adv__addr_type_loading_nav_address" = "Address Type";
-"settings__adv__addr_type_loading_nav_monitoring" = "Address Monitoring";
-"settings__adv__addr_type_loading_headline" = "Switching to <accent>{type}</accent>";
-"settings__adv__addr_type_loading_updating" = "Updating Wallet";
-"settings__adv__addr_type_loading_desc" = "Please wait while the wallet restarts...";
 "settings__adv__gap_limit" = "Address Gap Limit";
 "settings__adv__coin_selection" = "Coin Selection";
 "settings__adv__cs_method" = "Coin Selection Method";

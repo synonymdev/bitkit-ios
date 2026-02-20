@@ -109,7 +109,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testSetMonitoringDisableForEmptyTypeSucceeds() async throws {
         try await setupWalletAndNode()
 
-        // Add taproot via setMonitoring (handles restart internally so LDK creates taproot wallet)
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
@@ -139,7 +138,6 @@ final class AddressTypeIntegrationTests: XCTestCase {
     func testSetMonitoringDisableSelectedTypeFails() async throws {
         try await setupWalletAndNode()
 
-        // Add taproot, then set taproot as selected; cannot disable selected type
         settings.addressTypesToMonitor = [.nativeSegwit]
         UserDefaults.standard.synchronize()
         let addSuccess = await settings.setMonitoring(.taproot, enabled: true, wallet: nil)
@@ -159,7 +157,7 @@ final class AddressTypeIntegrationTests: XCTestCase {
 
         settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
         UserDefaults.standard.synchronize()
-        try await settings.lightningService.restart()
+        try await settings.lightningService.addAddressTypeToMonitor(.taproot)
         try await settings.lightningService.sync()
 
         Logger.test("Pruning empty address types after restore", context: "AddressTypeIntegrationTests")
