@@ -245,6 +245,15 @@ struct SendConfirmationView: View {
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
 
+                // Create sent onchain activity immediately so it appears before LDK event (which can be delayed)
+                await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+                    txid: txid,
+                    address: invoice.address,
+                    amount: amount,
+                    fee: UInt64(transactionFee),
+                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1
+                )
+
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
 

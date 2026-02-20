@@ -722,8 +722,6 @@
 "settings__adv__section_other" = "Другое";
 "settings__adv__address_type" = "Тип Биткойн-Адреса";
 "settings__adv__monitored_address_types" = "Отслеживаемые Типы Адресов";
-"settings__adv__monitored_address_types_update_title" = "Отслеживаемые Типы Адресов Обновлены";
-"settings__adv__monitored_address_types_update_description" = "Изменения вступят в силу после перезапуска приложения.";
 "settings__adv__gap_limit" = "Gap Limit Адресов";
 "settings__adv__coin_selection" = "Выбор Монет";
 "settings__adv__cs_method" = "Метод Выбора Монет";

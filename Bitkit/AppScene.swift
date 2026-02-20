@@ -87,8 +87,6 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
-                    SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
-
                     if migrations.needsPostMigrationSync {
                         app.toast(
                             type: .warning,

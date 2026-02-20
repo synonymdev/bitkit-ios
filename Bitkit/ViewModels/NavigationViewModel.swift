@@ -78,6 +78,7 @@ enum Route: Hashable {
 
     // Advanced settings
     case coinSelection
+    case addressTypePreference
     case connections
     case connectionDetail(channelId: String)
     case closeConnection(channel: ChannelDetails)
@@ -85,11 +86,6 @@ enum Route: Hashable {
     case electrumSettings
     case rgsSettings
     case addressViewer
-    case sweep
-    case sweepConfirm
-    case sweepFeeRate
-    case sweepFeeCustom
-    case sweepSuccess(txid: String)
 
     // Support settings
     case reportIssue

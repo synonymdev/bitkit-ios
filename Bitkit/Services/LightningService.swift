@@ -81,6 +81,13 @@ class LightningService {
         )
         config.includeUntrustedPendingInSpendable = true
 
+        let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        config.addressType = selectedAddressType
+
+        let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredTypesString)
+        config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
+
         let builder = Builder.fromConfig(config: config)
         builder.setCustomLogger(logWriter: LdkLogWriter())
 
@@ -188,7 +195,6 @@ class LightningService {
                 try await stop()
             } catch {
                 Logger.error("Failed to stop node during recovery: \(error)")
-                // Clear the node reference anyway
                 node = nil
                 try? StateLocker.unlock(.lightning)
             }
@@ -391,6 +397,16 @@ class LightningService {
 
         return try await ServiceQueue.background(.ldk) {
             try node.onchainPayment().newAddress()
+        }
+    }
+
+    func newAddressForType(_ addressType: LDKNode.AddressType) async throws -> String {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().newAddressForType(addressType: addressType)
         }
     }
 
@@ -864,6 +880,99 @@ extension LightningService {
         return try await ServiceQueue.background(.ldk) {
             try node.getAddressBalance(addressStr: address)
         }
+    }
+
+    func getBalanceForAddressType(_ addressType: LDKNode.AddressType) async throws -> AddressTypeBalance {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.getBalanceForAddressType(addressType: addressType)
+        }
+    }
+
+    func addAddressTypeToMonitor(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: currentWalletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try? Keychain.loadString(key: .bip39Passphrase(index: currentWalletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
+
+        try await ServiceQueue.background(.ldk) {
+            try node.addAddressTypeToMonitorWithMnemonic(addressType: addressType, mnemonic: mnemonic, passphrase: passphrase)
+        }
+    }
+
+    func removeAddressTypeFromMonitor(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            try node.removeAddressTypeFromMonitor(addressType: addressType)
+        }
+    }
+
+    func setPrimaryAddressType(_ addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+        guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: currentWalletIndex)) else {
+            throw CustomServiceError.mnemonicNotFound
+        }
+        let passphraseRaw = try? Keychain.loadString(key: .bip39Passphrase(index: currentWalletIndex))
+        let passphrase = passphraseRaw?.isEmpty == true ? nil : passphraseRaw
+
+        try await ServiceQueue.background(.ldk) {
+            try node.setPrimaryAddressTypeWithMnemonic(addressType: addressType, mnemonic: mnemonic, passphrase: passphrase)
+        }
+    }
+
+    /// Sum of spendable on-chain balance for non-legacy address types (selected + monitored), for channel funding.
+    /// - Parameters:
+    ///   - selectedType: Current primary address type.
+    ///   - monitoredTypes: Address types currently monitored (from settings).
+    func getChannelFundableBalance(selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType]) async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        var typesToSum = Set<LDKNode.AddressType>()
+        if selectedType != .legacy {
+            typesToSum.insert(selectedType)
+        }
+        for type in monitoredTypes where type != .legacy {
+            typesToSum.insert(type)
+        }
+
+        var totalFundable: UInt64 = 0
+
+        for addressType in typesToSum {
+            do {
+                let balance = try await ServiceQueue.background(.ldk) {
+                    try node.getBalanceForAddressType(addressType: addressType)
+                }
+                totalFundable += balance.spendableSats
+            } catch {
+                Logger.warn("Failed to get balance for \(addressType) when calculating channel fundable balance: \(error)")
+            }
+        }
+
+        return totalFundable
+    }
+
+    /// Reads selected and monitored address types from UserDefaults. Use when calling from UI/balance flow.
+    static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
+        -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
+    {
+        let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
+        let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
+        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        return (selectedType, monitoredTypes)
     }
 
     /// Returns LSP (Blocktank) peer node IDs

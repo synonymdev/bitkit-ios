@@ -2,7 +2,6 @@ import SwiftUI
 
 struct WalletRestoreSuccess: View {
     @EnvironmentObject var app: AppViewModel
-    @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var tagManager: TagManager
     @EnvironmentObject var wallet: WalletViewModel
@@ -36,7 +35,9 @@ struct WalletRestoreSuccess: View {
                 // Mark backup as verified since user just restored with their phrase
                 app.backupVerified = true
                 wallet.isRestoringWallet = false
-                SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
+
+                // Prune empty address types on next syncCompleted
+                SettingsViewModel.shared.pendingRestoreAddressTypePrune = true
             }
             .accessibilityIdentifier("GetStartedButton")
         }

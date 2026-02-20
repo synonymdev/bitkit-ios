@@ -128,7 +128,6 @@ jobs:
           - { name: migration_1-restore, setup_type: standard }
           - { name: migration_2-migration, setup_type: standard }
           - { name: migration_3-with-passphrase, setup_type: passphrase }
-          - { name: migration_4-with-sweep, setup_type: sweep }
     with:
       e2e_branch: ${{ needs.e2e-branch.outputs.branch }}
       rn_version: ${{ matrix.rn_version }}
@@ -149,7 +148,6 @@ jobs:
           - { name: migration_1-restore, setup_type: standard, grep: "@migration_1" }
           - { name: migration_2-migration, setup_type: standard, grep: "@migration_2" }
           - { name: migration_3-with-passphrase, setup_type: passphrase, grep: "@migration_3" }
-          - { name: migration_4-with-sweep, setup_type: sweep, grep: "@migration_4" }
 
     name: e2e-tests - ${{ matrix.rn_version }} - ${{ matrix.scenario.name }}
 

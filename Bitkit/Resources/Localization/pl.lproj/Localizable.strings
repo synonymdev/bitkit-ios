@@ -722,8 +722,6 @@
 "settings__adv__section_other" = "Inne";
 "settings__adv__address_type" = "Typ adresu Bitcoin";
 "settings__adv__monitored_address_types" = "Monitorowane typy adresów";
-"settings__adv__monitored_address_types_update_title" = "Zaktualizowano monitorowane typy adresów";
-"settings__adv__monitored_address_types_update_description" = "Zmiany zostaną zastosowane po ponownym uruchomieniu aplikacji.";
 "settings__adv__gap_limit" = "Limit odstępu adresów";
 "settings__adv__coin_selection" = "Wybór monet";
 "settings__adv__cs_method" = "Metoda wyboru monet";

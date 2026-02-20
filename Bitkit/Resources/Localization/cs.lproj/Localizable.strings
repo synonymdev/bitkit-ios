@@ -710,8 +710,6 @@
 "settings__adv__section_other" = "Další";
 "settings__adv__address_type" = "Typ bitcoinové adresy";
 "settings__adv__monitored_address_types" = "Sledované typy adres";
-"settings__adv__monitored_address_types_update_title" = "Aktualizace sledovaných typů adres";
-"settings__adv__monitored_address_types_update_description" = "Změny se plně projeví po restartu aplikace.";
 "settings__adv__gap_limit" = "Limit mezery v adrese";
 "settings__adv__coin_selection" = "Výběr mince";
 "settings__adv__cs_method" = "Metoda výběru mince";

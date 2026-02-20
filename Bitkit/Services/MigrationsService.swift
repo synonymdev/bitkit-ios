@@ -166,11 +166,13 @@ struct RNWalletBackup: Codable {
 
 struct RNWalletState: Codable {
     var wallets: [String: RNWalletData]?
+    var addressTypesToMonitor: [String]?
 }
 
 struct RNWalletData: Codable {
     var boostedTransactions: [String: [String: RNBoostedTransaction]]?
     var transfers: [String: [RNTransfer]]?
+    var addressType: [String: String]?
 }
 
 struct RNLightningState: Codable {
@@ -898,6 +900,63 @@ extension MigrationsService {
         }
     }
 
+    private static let rnAddressTypeMapping: [String: String] = [
+        "p2pkh": "legacy",
+        "p2sh": "nestedSegwit",
+        "p2wpkh": "nativeSegwit",
+        "p2tr": "taproot",
+    ]
+
+    func extractRNAddressTypeSettings(from mmkvData: [String: String]) -> (selectedAddressType: String?, addressTypesToMonitor: [String]?)? {
+        guard let rootJson = mmkvData["persist:root"],
+              let jsonStart = rootJson.firstIndex(of: "{")
+        else { return nil }
+
+        let jsonString = String(rootJson[jsonStart...])
+        guard let data = jsonString.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let walletJson = root["wallet"] as? String,
+              let walletData = walletJson.data(using: .utf8),
+              let walletDict = try? JSONSerialization.jsonObject(with: walletData) as? [String: Any]
+        else {
+            return nil
+        }
+
+        var selectedAddressType: String?
+        var addressTypesToMonitor: [String]?
+
+        // wallets.wallet0.addressType.<network>
+        if let wallets = walletDict["wallets"] as? [String: Any],
+           let wallet0 = wallets["wallet0"] as? [String: Any],
+           let addressTypePerNetwork = wallet0["addressType"] as? [String: String]
+        {
+            let rnNetworkKey = rnNetworkString
+            if let rnValue = addressTypePerNetwork[rnNetworkKey],
+               let iosValue = Self.rnAddressTypeMapping[rnValue]
+            {
+                selectedAddressType = iosValue
+            }
+        }
+
+        // Top-level addressTypesToMonitor
+        if let rnMonitoredTypes = walletDict["addressTypesToMonitor"] as? [String] {
+            let iosTypes = rnMonitoredTypes.compactMap { Self.rnAddressTypeMapping[$0] }
+            if !iosTypes.isEmpty {
+                addressTypesToMonitor = iosTypes
+            }
+        }
+
+        if selectedAddressType == nil, addressTypesToMonitor == nil {
+            return nil
+        }
+
+        Logger.debug(
+            "Extracted RN address type settings: selected=\(selectedAddressType ?? "nil"), monitored=\(addressTypesToMonitor?.joined(separator: ",") ?? "nil")",
+            context: "Migration"
+        )
+        return (selectedAddressType: selectedAddressType, addressTypesToMonitor: addressTypesToMonitor)
+    }
+
     func extractRNTodos(from mmkvData: [String: String]) -> RNTodos? {
         guard let rootJson = mmkvData["persist:root"],
               let jsonStart = rootJson.firstIndex(of: "{")
@@ -1175,6 +1234,29 @@ extension MigrationsService {
         Logger.info("Applied RN settings to UserDefaults", context: "Migration")
     }
 
+    func applyRNAddressTypeSettings(selectedAddressType: String?, addressTypesToMonitor: [String]?) {
+        let defaults = UserDefaults.standard
+
+        if let selected = selectedAddressType {
+            defaults.set(selected, forKey: "selectedAddressType")
+            Logger.info("Migrated selectedAddressType: \(selected)", context: "Migration")
+        }
+
+        if var monitored = addressTypesToMonitor {
+            let nativeWitnessTypes = ["nativeSegwit", "taproot"]
+            let hasNativeWitness = monitored.contains(where: { nativeWitnessTypes.contains($0) })
+            // Lightning requires at least one native witness type
+            if !hasNativeWitness {
+                monitored.append("nativeSegwit")
+                Logger.info("Added nativeSegwit to monitored types (required for Lightning channel scripts)", context: "Migration")
+            }
+
+            let monitoredString = monitored.joined(separator: ",")
+            defaults.set(monitoredString, forKey: "addressTypesToMonitor")
+            Logger.info("Migrated addressTypesToMonitor: \(monitoredString)", context: "Migration")
+        }
+    }
+
     func applyRNWidgets(_ widgetsWithOptions: RNWidgetsWithOptions) {
         let widgets = widgetsWithOptions.widgets
         let widgetOptions = widgetsWithOptions.widgetOptions
@@ -1381,6 +1463,16 @@ extension MigrationsService {
             applyRNSettings(settings)
         } else {
             Logger.warn("Failed to extract settings from MMKV", context: "Migration")
+        }
+
+        if let addressTypeSettings = extractRNAddressTypeSettings(from: mmkvData) {
+            Logger.info("Migrating address type settings", context: "Migration")
+            applyRNAddressTypeSettings(
+                selectedAddressType: addressTypeSettings.selectedAddressType,
+                addressTypesToMonitor: addressTypeSettings.addressTypesToMonitor
+            )
+        } else {
+            Logger.debug("No address type settings found in MMKV", context: "Migration")
         }
 
         if let metadata = extractRNMetadata(from: mmkvData) {
