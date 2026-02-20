@@ -1313,78 +1313,57 @@ private actor AddressSearchCoordinator {
         currentWalletAddress: String,
         selectedAddressType: LDKNode.AddressType
     ) async throws -> String? {
-        let batchSize: UInt32 = 20
+        let batchSize: UInt32 = 200
+        let searchWindow: UInt32 = 1000
 
         func matchesTransaction(_ address: String) -> Bool {
             details.outputs.contains { $0.scriptpubkeyAddress == address }
         }
 
         func findMatch(in addresses: [String]) -> String? {
-            for address in addresses {
-                for output in details.outputs {
-                    if output.scriptpubkeyAddress == address, output.value == value {
-                        return address
-                    }
-                }
-            }
+            if let exact = details.outputs.first(where: { $0.value == value }),
+               let addr = exact.scriptpubkeyAddress, addresses.contains(addr)
+            { return addr }
             return addresses.first { matchesTransaction($0) }
         }
 
-        if !currentWalletAddress.isEmpty && matchesTransaction(currentWalletAddress) {
+        if !currentWalletAddress.isEmpty, matchesTransaction(currentWalletAddress) {
             return currentWalletAddress
-        }
-
-        func searchAddresses(isChange: Bool, addressTypeString: String) async throws -> String? {
-            var index: UInt32 = 0
-            var currentAddressIndex: UInt32?
-            let hasCurrentAddress = !currentWalletAddress.isEmpty
-            let maxIndex: UInt32 = hasCurrentAddress ? 100_000 : batchSize
-
-            while index < maxIndex {
-                let accountAddresses = try await coreService.utility.getAccountAddresses(
-                    walletIndex: 0,
-                    isChange: isChange,
-                    startIndex: index,
-                    count: batchSize,
-                    addressTypeString: addressTypeString
-                )
-
-                let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
-
-                if hasCurrentAddress, currentAddressIndex == nil, addresses.contains(currentWalletAddress) {
-                    currentAddressIndex = index
-                }
-
-                if let match = findMatch(in: addresses) {
-                    return match
-                }
-
-                if let foundIndex = currentAddressIndex, index >= foundIndex + batchSize {
-                    break
-                }
-
-                if addresses.count < Int(batchSize) {
-                    break
-                }
-
-                index += batchSize
-            }
-            return nil
         }
 
         let addressTypesToSearch = LDKNode.AddressType.prioritized(selected: selectedAddressType)
 
-        for addressType in addressTypesToSearch {
-            if let address = try await searchAddresses(isChange: false, addressTypeString: addressType.stringValue) {
-                return address
-            }
-        }
-        for addressType in addressTypesToSearch {
-            if let address = try await searchAddresses(isChange: true, addressTypeString: addressType.stringValue) {
-                return address
-            }
-        }
+        for isChange in [false, true] {
+            for addressType in addressTypesToSearch {
+                let key = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
+                let lastUsed: UInt32? = (UserDefaults.standard.object(forKey: key) as? Int).flatMap { $0 >= 0 ? UInt32($0) : nil }
+                let endIndex = lastUsed.map { $0 + searchWindow } ?? searchWindow
 
+                var index: UInt32 = 0
+                var currentAddressBatch: UInt32?
+                while index < endIndex {
+                    let accountAddresses = try await coreService.utility.getAccountAddresses(
+                        walletIndex: 0,
+                        isChange: isChange,
+                        startIndex: index,
+                        count: batchSize,
+                        addressTypeString: addressType.stringValue
+                    )
+                    let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
+
+                    if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
+                        currentAddressBatch = index
+                    }
+                    if let match = findMatch(in: addresses) {
+                        UserDefaults.standard.set(Int(index), forKey: key)
+                        return match
+                    }
+                    if let found = currentAddressBatch, index >= found + batchSize { break }
+                    if addresses.count < Int(batchSize) { break }
+                    index += batchSize
+                }
+            }
+        }
         return nil
     }
 }
