@@ -480,39 +480,25 @@ class ActivityService {
     // MARK: - Onchain Event Handlers
 
     private func processOnchainTransaction(txid: String, details: BitkitCore.TransactionDetails, context: String) async throws {
-        let maxRetries = 10
-        let retryIntervalMs: UInt64 = 500
-
-        for attempt in 1 ... maxRetries {
-            guard let payments = LightningService.shared.payments else {
-                if attempt < maxRetries {
-                    try await Task.sleep(nanoseconds: retryIntervalMs * 1_000_000)
-                    continue
-                }
-                Logger.warn("No payments available for transaction \(txid) after \(maxRetries) attempts", context: context)
-                return
-            }
-
-            if let payment = payments.first(where: { payment in
-                if case let .onchain(paymentTxid, _) = payment.kind {
-                    return paymentTxid == txid
-                }
-                return false
-            }) {
-                try await processOnchainPayment(payment, transactionDetails: details)
-                return
-            }
-
-            if attempt < maxRetries {
-                Logger.debug(
-                    "Payment not found for transaction \(txid), retrying in \(retryIntervalMs)ms (attempt \(attempt)/\(maxRetries))",
-                    context: context
-                )
-                try await Task.sleep(nanoseconds: retryIntervalMs * 1_000_000)
-            } else {
-                Logger.warn("Payment not found for transaction \(txid) after \(maxRetries) attempts - activity not created", context: context)
-            }
+        guard let payments = LightningService.shared.payments else {
+            Logger.warn("No payments available for transaction \(txid)", context: context)
+            return
         }
+
+        guard let payment = payments.first(where: { payment in
+            if case let .onchain(paymentTxid, _) = payment.kind {
+                return paymentTxid == txid
+            }
+            return false
+        }) else {
+            Logger.warn(
+                "Payment not found for transaction \(txid) - activity not created (see docs/ldk-onchain-activity-timing-issue.md)",
+                context: context
+            )
+            return
+        }
+
+        try await processOnchainPayment(payment, transactionDetails: details)
     }
 
     func handleOnchainTransactionReceived(txid: String, details: LDKNode.TransactionDetails) async throws {
