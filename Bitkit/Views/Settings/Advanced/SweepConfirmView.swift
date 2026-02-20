@@ -76,7 +76,7 @@ struct SweepConfirmView: View {
 
                                         if viewModel.estimatedFee > 0, !viewModel.isPreparingTransaction {
                                             HStack(spacing: 0) {
-                                                BodySSBText("\(viewModel.selectedSpeed.displayTitle) (")
+                                                BodySSBText("\(viewModel.selectedSpeed.title) (")
                                                 MoneyText(sats: Int(viewModel.estimatedFee), size: .bodySSB, symbol: true, symbolColor: .textPrimary)
                                                 BodySSBText(")")
                                             }
@@ -86,7 +86,7 @@ struct SweepConfirmView: View {
                                                 .frame(width: 12, height: 12)
                                                 .padding(.leading, 6)
                                         } else {
-                                            BodySSBText(viewModel.selectedSpeed.displayTitle)
+                                            BodySSBText(viewModel.selectedSpeed.title)
                                         }
                                     }
                                 }
@@ -101,7 +101,7 @@ struct SweepConfirmView: View {
                                             .frame(width: 16, height: 16)
                                             .padding(.trailing, 4)
 
-                                        BodySSBText(viewModel.selectedSpeed.displayDescription)
+                                        BodySSBText(viewModel.selectedSpeed.description)
                                     }
                                 }
                             }

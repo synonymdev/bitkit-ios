@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FundManualConfirmView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -13,15 +14,10 @@ struct FundManualConfirmView: View {
     @State private var networkFeeSat: UInt64 = 0
 
     private func loadFees(refresh: Bool) async {
-        do {
-            let coreService = CoreService.shared
-            if let feeRates = try await coreService.blocktank.fees(refresh: refresh) {
-                let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
-                let estimatedTxSize: UInt64 = 250 // TODO: find a way to pre calculate actual tx size
-                networkFeeSat = UInt64(fastFeeRate) * estimatedTxSize
-            }
-        } catch {
-            Logger.error("Failed to fetch fee rates: \(error)")
+        if let feeRates = await feeEstimatesManager.getEstimates(refresh: refresh) {
+            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
+            let estimatedTxSize: UInt64 = 250 // TODO: find a way to pre calculate actual tx size
+            networkFeeSat = UInt64(fastFeeRate) * estimatedTxSize
         }
     }
 
@@ -110,6 +106,7 @@ struct FundManualConfirmView: View {
         .environmentObject(AppViewModel())
         .environmentObject(CurrencyViewModel())
         .environmentObject(TransferViewModel())
+        .environmentObject(FeeEstimatesManager())
     }
     .preferredColorScheme(.dark)
 }

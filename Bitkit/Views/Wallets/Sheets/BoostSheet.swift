@@ -26,6 +26,7 @@ struct BoostSheet: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var activityList: ActivityListViewModel
+    @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
     let config: BoostSheetItem
 
@@ -82,7 +83,7 @@ struct BoostSheet: View {
         else {
             return ""
         }
-        return converted.formattedWithSymbol()
+        return converted.formattedWithSymbol(withSpace: true)
     }
 
     var body: some View {
@@ -90,12 +91,8 @@ struct BoostSheet: View {
             VStack(alignment: .leading, spacing: 0) {
                 SheetHeader(title: t("wallet__boost_title"))
 
-                VStack(spacing: 16) {
-                    BodyMText(
-                        t("wallet__boost_fee_recomended"),
-                        textColor: .textSecondary
-                    )
-                    .multilineTextAlignment(.center)
+                VStack(alignment: .leading, spacing: 16) {
+                    BodySText(t("wallet__boost_fee_recomended"))
 
                     // Fee display section
                     if isEditingFee {
@@ -121,9 +118,25 @@ struct BoostSheet: View {
                                 Spacer()
 
                                 VStack(spacing: 4) {
-                                    BodySSBText("₿ \(currentFeeRate)/vbyte (\(fiatFeeString))")
+                                    BodySSBText("₿ \(currentFeeRate)/vbyte")
                                     if currentFeeRate > 0 {
-                                        BodySSBText("₿ \(estimatedFeeSats)", textColor: Color.textSecondary)
+                                        HStack(spacing: 6) {
+                                            MoneyText(
+                                                sats: Int(estimatedFeeSats),
+                                                size: .bodySSB,
+                                                symbol: true,
+                                                color: Color.textSecondary
+                                            )
+
+                                            BodySSBText(
+                                                TransactionSpeed.getFeeTierLocalized(
+                                                    feeRate: UInt64(currentFeeRate),
+                                                    feeEstimates: feeEstimatesManager.estimates,
+                                                    variant: .description
+                                                ),
+                                                textColor: .textSecondary
+                                            )
+                                        }
                                     }
                                 }
 
@@ -146,7 +159,7 @@ struct BoostSheet: View {
                                 .accessibilityIdentifier("Plus")
                             }
 
-                            CustomButton(title: "Use Suggested Fee", size: .small) {
+                            CustomButton(title: "Use Suggested Fee", variant: .secondary, size: .small) {
                                 isEditingFee = false
                                 editedFeeRate = nil
                             }
@@ -163,15 +176,8 @@ struct BoostSheet: View {
                                 .foregroundColor(.yellowAccent)
 
                             VStack(alignment: .leading, spacing: 2) {
-                                BodyMSBText(
-                                    t("wallet__boost"),
-                                    textColor: .white
-                                )
-
-                                FootnoteText(
-                                    "\(t("settings__fee__fast__description"))",
-                                    textColor: .textSecondary
-                                )
+                                BodyMSBText(t("wallet__boost"), textColor: .textPrimary)
+                                BodySSBText(TransactionSpeed.fast.description, textColor: .textSecondary)
                             }
 
                             Spacer()
@@ -183,7 +189,16 @@ struct BoostSheet: View {
                                 HStack(spacing: 8) {
                                     VStack(alignment: .trailing, spacing: 2) {
                                         if let feeRate {
-                                            BodySSBText("₿ \(estimatedFeeSats)")
+                                            HStack(spacing: 2) {
+                                                BodySSBText("₿ \(estimatedFeeSats)")
+
+                                                if !fetchingFees {
+                                                    Image("pencil")
+                                                        .resizable()
+                                                        .frame(width: 16, height: 16)
+                                                        .foregroundColor(feeRate != nil ? .textPrimary : .gray)
+                                                }
+                                            }
                                         } else if fetchingFees {
                                             ProgressView()
                                                 .scaleEffect(0.8)
@@ -191,17 +206,7 @@ struct BoostSheet: View {
                                             BodySSBText("--")
                                         }
 
-                                        BodySSBText(
-                                            fiatFeeString,
-                                            textColor: .textSecondary
-                                        )
-                                    }
-
-                                    if !fetchingFees {
-                                        Image("pencil")
-                                            .resizable()
-                                            .frame(width: 16, height: 16)
-                                            .foregroundColor(feeRate != nil ? .textSecondary : .gray)
+                                        BodySSBText(fiatFeeString, textColor: .textSecondary)
                                     }
                                 }
                             }
@@ -216,10 +221,7 @@ struct BoostSheet: View {
 
                 Spacer()
 
-                SwipeButton(
-                    title: t("wallet__boost_swipe"),
-                    accentColor: .yellowAccent
-                ) {
+                SwipeButton(title: t("wallet__boost_swipe"), accentColor: .yellowAccent) {
                     try await performBoost()
                 }
             }
@@ -454,6 +456,7 @@ struct BoostSheet: View {
                 .environmentObject(WalletViewModel())
                 .environmentObject(CurrencyViewModel())
                 .environmentObject(ActivityListViewModel())
+                .environmentObject(FeeEstimatesManager())
                 .presentationDetents([.height(400)])
             }
         )

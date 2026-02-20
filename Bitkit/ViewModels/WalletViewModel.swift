@@ -50,6 +50,7 @@ class WalletViewModel: ObservableObject {
     private let balanceManager: BalanceManager
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
+    private let feeEstimatesManager: FeeEstimatesManager
 
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
@@ -63,7 +64,8 @@ class WalletViewModel: ObservableObject {
         electrumConfigService: ElectrumConfigService = ElectrumConfigService(),
         rgsConfigService: RgsConfigService = RgsConfigService(),
         transferService: TransferService,
-        sheetViewModel: SheetViewModel
+        sheetViewModel: SheetViewModel,
+        feeEstimatesManager: FeeEstimatesManager
     ) {
         self.lightningService = lightningService
         self.coreService = coreService
@@ -71,6 +73,7 @@ class WalletViewModel: ObservableObject {
         self.rgsConfigService = rgsConfigService
         self.transferService = transferService
         self.sheetViewModel = sheetViewModel
+        self.feeEstimatesManager = feeEstimatesManager
         balanceManager = BalanceManager(
             lightningService: lightningService,
             transferService: transferService,
@@ -84,7 +87,7 @@ class WalletViewModel: ObservableObject {
             lightningService: .shared,
             blocktankService: CoreService.shared.blocktank
         )
-        self.init(transferService: transferService, sheetViewModel: SheetViewModel())
+        self.init(transferService: transferService, sheetViewModel: SheetViewModel(), feeEstimatesManager: FeeEstimatesManager())
     }
 
     func setWalletExistsState() throws {
@@ -337,17 +340,17 @@ class WalletViewModel: ObservableObject {
     /// Sets the fee rate for the send flow
     /// - Parameter speed: The transaction speed determining the fee rate. If nil, the user's default transaction speed will be used.
     func setFeeRate(speed: TransactionSpeed) async throws {
-        var fees = try? await coreService.blocktank.fees(refresh: true)
-        if fees == nil {
+        var feeEstimates = await feeEstimatesManager.getEstimates(refresh: true)
+        if feeEstimates == nil {
             Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
-            fees = try await coreService.blocktank.fees(refresh: false)
+            feeEstimates = await feeEstimatesManager.getEstimates(refresh: false)
         }
 
-        guard let fees else {
+        guard let feeEstimates else {
             throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
         }
 
-        selectedFeeRateSatsPerVByte = speed.getFeeRate(from: fees)
+        selectedFeeRateSatsPerVByte = speed.getFeeRate(from: feeEstimates)
 
         Logger.info("Selected fee rate: \(selectedFeeRateSatsPerVByte ?? 0) sats/vbyte for speed: \(speed)")
     }
@@ -383,35 +386,19 @@ class WalletViewModel: ObservableObject {
     /// Gets fee limits for custom fee input
     /// - Returns: Tuple with (minFee, maxFee) in sat/vB
     func getFeeLimits() async -> (minFee: UInt32, maxFee: UInt32) {
-        do {
-            guard let fees = try await coreService.blocktank.fees(refresh: false) else {
-                return (minFee: 1, maxFee: 999)
-            }
-
-            let slowRate = TransactionSpeed.slow.getFeeRate(from: fees)
-            let fastRate = TransactionSpeed.fast.getFeeRate(from: fees)
-
-            // Set minimum to slow rate, maximum to 3x fast rate (capped at 999)
-            let minFee = slowRate
-            // TODO: check what the max fee rate should be
-            let maxFee = min(fastRate * 3, 999)
-
-            return (minFee: minFee, maxFee: maxFee)
-        } catch {
-            Logger.error("Failed to get fee limits: \(error)")
+        guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: false) else {
             return (minFee: 1, maxFee: 999)
         }
-    }
 
-    /// Gets the current fee estimates for display
-    /// - Returns: FeeRates object with current network rates, or nil if unavailable
-    func getCurrentFeeEstimates() async -> FeeRates? {
-        do {
-            return try await coreService.blocktank.fees(refresh: false)
-        } catch {
-            Logger.error("Failed to get fee estimates: \(error)")
-            return nil
-        }
+        let slowRate = TransactionSpeed.slow.getFeeRate(from: feeEstimates)
+        let fastRate = TransactionSpeed.fast.getFeeRate(from: feeEstimates)
+
+        // Set minimum to slow rate, maximum to 3x fast rate (capped at 999)
+        let minFee = slowRate
+        // TODO: check what the max fee rate should be
+        let maxFee = min(fastRate * 3, 999)
+
+        return (minFee: minFee, maxFee: maxFee)
     }
 
     /// Calculates the fee for a transaction

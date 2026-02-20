@@ -4,28 +4,18 @@ import SwiftUI
 struct SendFeeRate: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
 
-    @State private var feeEstimates: FeeRates?
     @State private var transactionFees: [TransactionSpeed: UInt64] = [:]
 
-    private var onchainBalance: UInt64 {
-        // This would come from wallet balance
-        return UInt64(wallet.totalBalanceSats)
-    }
-
     private var currentCustomFeeRate: UInt32 {
-        // Get the current custom fee rate from wallet or settings
-        if let walletFeeRate = wallet.selectedFeeRateSatsPerVByte {
-            return walletFeeRate
-        } else if case let .custom(rate) = settings.defaultTransactionSpeed {
-            return rate
-        } else {
-            return 1 // Default fallback
-        }
+        if let rate = wallet.selectedFeeRateSatsPerVByte { return rate }
+        if case let .custom(rate) = settings.defaultTransactionSpeed { return rate }
+        return 1
     }
 
     private func getFee(for speed: TransactionSpeed) -> UInt64 {
@@ -34,10 +24,9 @@ struct SendFeeRate: View {
 
     private func isDisabled(for speed: TransactionSpeed) -> Bool {
         let fee = getFee(for: speed)
-        let hasEnoughBalance = onchainBalance >= wallet.sendAmountSats! + fee
-
+        guard let amount = wallet.sendAmountSats else { return true }
         // Disable if not enough balance and not already selected
-        return !hasEnoughBalance && wallet.selectedSpeed != speed
+        return wallet.totalBalanceSats < amount + fee && wallet.selectedSpeed != speed
     }
 
     private func selectFee(_ speed: TransactionSpeed) {
@@ -54,17 +43,22 @@ struct SendFeeRate: View {
         }
     }
 
-    private func loadFeeEstimates() async {
-        let estimates = await wallet.getCurrentFeeEstimates()
-        await MainActor.run {
-            feeEstimates = estimates
-        }
+    /// Tier-based range for custom fee (e.g. "10–20 min") from current estimates.
+    private var customFeeRangeOverride: String {
+        TransactionSpeed.getFeeTierLocalized(
+            feeRate: UInt64(currentCustomFeeRate),
+            feeEstimates: feeEstimatesManager.estimates,
+            variant: .range
+        )
+    }
 
+    private func loadFeeEstimates() async {
+        await feeEstimatesManager.getEstimates()
         await calculateTransactionFees()
     }
 
     private func calculateTransactionFees() async {
-        guard let estimates = feeEstimates,
+        guard let estimates = feeEstimatesManager.estimates,
               let address = app.scannedOnchainInvoice?.address,
               let amountSats = wallet.sendAmountSats
         else {
@@ -141,7 +135,8 @@ struct SendFeeRate: View {
                             speed: .custom(satsPerVByte: currentCustomFeeRate),
                             amount: getFee(for: .custom(satsPerVByte: currentCustomFeeRate)),
                             isSelected: wallet.selectedSpeed == .custom(satsPerVByte: currentCustomFeeRate),
-                            isDisabled: isDisabled(for: .custom(satsPerVByte: currentCustomFeeRate))
+                            isDisabled: isDisabled(for: .custom(satsPerVByte: currentCustomFeeRate)),
+                            rangeOverride: customFeeRangeOverride
                         ) {
                             navigationPath.append(.feeCustom)
                         }

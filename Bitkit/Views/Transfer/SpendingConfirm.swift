@@ -6,6 +6,7 @@ struct SpendingConfirm: View {
     let order: IBtOrder
 
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var transfer: TransferViewModel
@@ -136,6 +137,7 @@ struct SpendingConfirm: View {
     }
 
     private func onConfirm() async {
+        guard let rate = satsPerVbyte else { return }
         isPaying = true
 
         do {
@@ -143,8 +145,8 @@ struct SpendingConfirm: View {
                 order: currentOrder,
                 speed: .fast,
                 txFee: transactionFee,
+                satsPerVbyte: rate,
                 utxosToSpend: selectedUtxos,
-                satsPerVbyte: satsPerVbyte,
                 isMaxAmount: shouldUseSendAll,
                 maxSendableAmount: maxSendableAmount
             )
@@ -167,15 +169,14 @@ struct SpendingConfirm: View {
 
     private func calculateTransactionFee() async {
         do {
-            let coreService = CoreService.shared
             let lightningService = LightningService.shared
 
-            guard let feeRates = try await coreService.blocktank.fees(refresh: true) else {
-                Logger.error("SpendingConfirm: feeRates is nil")
+            guard let feeEstimates = await feeEstimatesManager.getEstimates(refresh: true) else {
+                Logger.error("SpendingConfirm: feeEstimates is nil")
                 return
             }
 
-            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeRates)
+            let fastFeeRate = TransactionSpeed.fast.getFeeRate(from: feeEstimates)
 
             guard let address = currentOrder.payment?.onchain?.address else {
                 throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
