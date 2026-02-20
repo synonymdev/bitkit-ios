@@ -107,7 +107,12 @@ struct AddressTypePreferenceView: View {
                                 ) {
                                     guard settingsViewModel.selectedAddressType != addressType else { return }
 
-                                    app.toast(type: .info, title: t("settings__adv__addr_type_applying"), autoHide: false)
+                                    app.toast(
+                                        type: .info,
+                                        title: t("settings__adv__addr_type_applying"),
+                                        autoHide: false,
+                                        accessibilityIdentifier: "AddressTypeApplyingToast"
+                                    )
 
                                     Task {
                                         let success = await settingsViewModel.updateAddressType(addressType, wallet: wallet)
@@ -119,7 +124,8 @@ struct AddressTypePreferenceView: View {
                                                 description: t(
                                                     "settings__adv__addr_type_changed_desc",
                                                     variables: ["type": addressType.localizedTitle]
-                                                )
+                                                ),
+                                                accessibilityIdentifier: "AddressTypeSettingsUpdatedToast"
                                             )
                                         } else {
                                             app.toast(
