@@ -177,7 +177,7 @@ enum Env {
             return [
                 .init(nodeId: "039b8b4dd1d88c2c5db374290cda397a8f5d79f312d6ea5d5bfdfc7c6ff363eae3", host: "34.65.111.104", port: 9735),
                 .init(nodeId: "03816141f1dce7782ec32b66a300783b1d436b19777e7c686ed00115bd4b88ff4b", host: "34.65.191.64", port: 9735),
-                .init(nodeId: "02a371038863605300d0b3fc9de0cf5ccb57728b7f8906535709a831b16e311187", host: "34.65.186.40", port: 9735),
+                .init(nodeId: "02a371038863605300d0b3fc9de0cf5ccb57728b7f8906535709a831b16e311187", host: "34.65.153.174", port: 9735),
             ]
         case .signet:
             return []
