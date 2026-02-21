@@ -206,7 +206,8 @@ class WalletViewModel: ObservableObject {
         syncState()
 
         do {
-            try await lightningService.connectToTrustedPeers()
+            let remotePeers = await fetchTrustedPeersFromBlocktank()
+            try await lightningService.connectToTrustedPeers(remotePeers: remotePeers)
         } catch {
             Logger.error("Failed to connect to trusted peers")
         }
@@ -230,6 +231,28 @@ class WalletViewModel: ObservableObject {
         Task { @MainActor in
             try await sync()
         }
+    }
+
+    private func fetchTrustedPeersFromBlocktank() async -> [LnPeer]? {
+        var info: IBtInfo?
+        do {
+            info = try await coreService.blocktank.info(refresh: true)
+        } catch {
+            Logger.warn("Blocktank API refresh failed, trying cache: \(error)")
+        }
+        if info == nil {
+            info = try? await coreService.blocktank.info(refresh: false)
+        }
+        guard let nodes = info?.nodes, !nodes.isEmpty else { return nil }
+        let peers = nodes.compactMap { node -> LnPeer? in
+            guard let connString = node.connectionStrings.first else { return nil }
+            let address = connString.contains("@") ? String(connString.split(separator: "@").last ?? "") : connString
+            let parts = address.split(separator: ":")
+            guard parts.count == 2, let port = UInt16(parts[1]) else { return nil }
+            return LnPeer(nodeId: node.pubkey, host: String(parts[0]), port: port)
+        }
+        Logger.info("Fetched \(peers.count) trusted peers from Blocktank API")
+        return peers.isEmpty ? nil : peers
     }
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
