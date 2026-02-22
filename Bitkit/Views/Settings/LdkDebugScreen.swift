@@ -124,6 +124,7 @@ struct LdkDebugScreen: View {
             isRestartingNode = true
             let lightningService = LightningService.shared
             try await lightningService.restart()
+            await wallet.reconnectTrustedPeers()
             app.toast(type: .success, title: "Node Restarted", description: "Node restarted successfully")
         } catch {
             Logger.error("Failed to restart node: \(error)")

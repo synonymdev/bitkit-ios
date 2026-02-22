@@ -213,12 +213,7 @@ class WalletViewModel: ObservableObject {
 
         syncState()
 
-        do {
-            let remotePeers = await fetchTrustedPeersFromBlocktank()
-            try await lightningService.connectToTrustedPeers(remotePeers: remotePeers)
-        } catch {
-            Logger.error("Failed to connect to trusted peers")
-        }
+        await reconnectTrustedPeers()
 
         // Migration only: fetch peers from remote backup (once) and persist in ldk-node
         let peerUris = await MigrationsService.shared.tryFetchMigrationPeersFromBackup(walletIndex: walletIndex)
@@ -276,6 +271,15 @@ class WalletViewModel: ObservableObject {
         }
         Logger.info("Fetched \(peers.count) trusted peers from Blocktank API")
         return peers.isEmpty ? nil : peers
+    }
+
+    func reconnectTrustedPeers() async {
+        do {
+            let remotePeers = await fetchTrustedPeersFromBlocktank()
+            try await lightningService.connectToTrustedPeers(remotePeers: remotePeers)
+        } catch {
+            Logger.error("Failed to connect to trusted peers")
+        }
     }
 
     func stopLightningNode(clearEventCallback: Bool = false) async throws {
