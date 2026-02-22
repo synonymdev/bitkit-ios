@@ -51,6 +51,14 @@ class WalletViewModel: ObservableObject {
     private let transferService: TransferService
     private let sheetViewModel: SheetViewModel
 
+    enum BlocktankPeerSimulation: String, CaseIterable {
+        case none = "None"
+        case apiFailure = "API Failure"
+        case unreachablePeers = "Unreachable Peers"
+    }
+
+    static var peerSimulation: BlocktankPeerSimulation = .none
+
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
@@ -234,6 +242,21 @@ class WalletViewModel: ObservableObject {
     }
 
     private func fetchTrustedPeersFromBlocktank() async -> [LnPeer]? {
+        switch Self.peerSimulation {
+        case .apiFailure:
+            Logger.warn("⚠️ [DEBUG] Simulating Blocktank API failure — returning nil")
+            return nil
+        case .unreachablePeers:
+            Logger.warn("⚠️ [DEBUG] Simulating unreachable API peers")
+            return [
+                LnPeer(nodeId: "000000000000000000000000000000000000000000000000000000000000000001",
+                       host: "192.0.2.1", port: 9735),
+            ]
+        case .none:
+            break
+        }
+
+
         var info: IBtInfo?
         do {
             info = try await coreService.blocktank.info(refresh: true)
