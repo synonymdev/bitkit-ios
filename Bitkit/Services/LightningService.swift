@@ -81,11 +81,8 @@ class LightningService {
         )
         config.includeUntrustedPendingInSpendable = true
 
-        let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+        let (selectedAddressType, monitoredTypes) = Self.addressTypeStateFromUserDefaults()
         config.addressType = selectedAddressType
-
-        let monitoredTypesString = UserDefaults.standard.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
-        let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredTypesString)
         config.addressTypesToMonitor = monitoredTypes.filter { $0 != selectedAddressType }
 
         let builder = Builder.fromConfig(config: config)

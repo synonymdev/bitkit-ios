@@ -79,16 +79,6 @@ extension LDKNode.AddressType {
         }
     }
 
-    /// Short label for compact UI (e.g. "Native").
-    var shortLabel: String {
-        switch self {
-        case .legacy: return "Legacy"
-        case .nestedSegwit: return "Nested"
-        case .nativeSegwit: return "Native"
-        case .taproot: return "Taproot"
-        }
-    }
-
     var localizedDescription: String {
         switch self {
         case .legacy: return "Pay-to-public-key-hash (1x...)"

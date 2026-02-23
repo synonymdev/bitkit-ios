@@ -133,14 +133,14 @@ struct AddressViewer: View {
             .cornerRadius(32)
             .padding(.bottom, 16)
 
-            // Address script type selector (Legacy, Nested, Native, Taproot)
+            // Address script type selector
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(scriptTypes, id: \.self) { scriptType in
                         Button {
                             selectedScriptType = scriptType
                         } label: {
-                            Text(scriptType.shortLabel)
+                            Text(scriptType.localizedTitle)
                                 .font(.custom(Fonts.medium, size: 14))
                                 .foregroundColor(selectedScriptType == scriptType ? .white : .white80)
                                 .padding(.horizontal, 12)
