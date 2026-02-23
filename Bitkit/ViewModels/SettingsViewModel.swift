@@ -48,7 +48,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     private let defaults = UserDefaults.standard
 
-    private var isChangingAddressType = false
+    @Published private(set) var isChangingAddressType = false
+    /// Set during restore when backup contained explicit monitored address types.
+    private(set) var restoredMonitoredTypesFromBackup = false
     private var observedKeys: Set<String> = []
 
     // Reactive publishers for settings changes (used by BackupService)
@@ -211,6 +213,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         _addressTypesToMonitor = "nativeSegwit"
         pinEnabled = false
         isChangingAddressType = false
+        restoredMonitoredTypesFromBackup = false
     }
 
     // MARK: - Computed Properties
@@ -275,6 +278,9 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     // Address Type Settings
+    /// Address types that support native SegWit scripts (required for Lightning).
+    private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
+
     @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
 
     @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
@@ -337,8 +343,7 @@ class SettingsViewModel: NSObject, ObservableObject {
                 return false
             }
 
-            let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
-            let remainingNativeWitness = current.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
+            let remainingNativeWitness = current.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
             if remainingNativeWitness.isEmpty {
                 return false
             }
@@ -372,6 +377,14 @@ class SettingsViewModel: NSObject, ObservableObject {
         addressTypesToMonitor = AddressScriptType.allAddressTypes
     }
 
+    /// Syncs monitored address types from ldk-node's runtime state into UserDefaults.
+    func syncMonitoredTypesFromNode() {
+        let nodeMonitored = lightningService.listMonitoredAddressTypes()
+        var combined = Set(nodeMonitored)
+        combined.insert(selectedAddressType)
+        addressTypesToMonitor = AddressScriptType.allAddressTypes.filter { combined.contains($0) }
+    }
+
     private static let pendingRestoreAddressTypePruneKey = "pendingRestoreAddressTypePrune"
 
     /// Tracks whether to prune empty address types after restore (set when user taps Get Started; cleared when prune runs).
@@ -385,7 +398,6 @@ class SettingsViewModel: NSObject, ObservableObject {
     func pruneEmptyAddressTypesAfterRestore() async {
         guard !isChangingAddressType else { return }
 
-        let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
         var newMonitored = addressTypesToMonitor
         var changed = false
 
@@ -407,7 +419,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         // Ensure at least one native witness type
-        if !newMonitored.contains(where: { nativeWitnessTypes.contains($0) }) {
+        if !newMonitored.contains(where: { Self.nativeWitnessTypes.contains($0) }) {
             if !newMonitored.contains(.nativeSegwit) {
                 newMonitored.append(.nativeSegwit)
                 changed = true
@@ -438,10 +450,9 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     /// True if disabling this would leave no native witness wallet (required for Lightning).
     func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
-        let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
-        guard nativeWitnessTypes.contains(addressType) else { return false }
+        guard Self.nativeWitnessTypes.contains(addressType) else { return false }
 
-        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && nativeWitnessTypes.contains($0) }
+        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
         return remainingNativeWitness.isEmpty
     }
 
@@ -471,6 +482,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
         do {
             try await lightningService.setPrimaryAddressType(addressType)
+            syncMonitoredTypesFromNode()
             try await lightningService.sync()
             await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
         } catch {
@@ -727,6 +739,39 @@ class SettingsViewModel: NSObject, ObservableObject {
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {
             rgsConfigService.saveServerUrl(rgsServerUrl)
         }
+
+        syncAppStorageFromDefaults()
+
+        let restoredMonitored = addressTypesToMonitor
+        let restoredPrimary = selectedAddressType
+        restoredMonitoredTypesFromBackup = restoredMonitored.count > 1
+            || (restoredMonitored.count == 1 && restoredMonitored.first != restoredPrimary)
+
+        Logger.debug(
+            "Restored settings: selectedAddressType=\(_selectedAddressType), addressTypesToMonitor=\(_addressTypesToMonitor), fromBackup=\(restoredMonitoredTypesFromBackup)",
+            context: "SettingsRestore"
+        )
+    }
+
+    /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
+    private func syncAppStorageFromDefaults() {
+        _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
+        defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "") ?? .normal
+        hideBalance = defaults.bool(forKey: "hideBalance")
+        hideBalanceOnOpen = defaults.bool(forKey: "hideBalanceOnOpen")
+        readClipboard = defaults.bool(forKey: "readClipboard")
+        warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
+        enableQuickpay = defaults.bool(forKey: "enableQuickpay")
+        quickpayAmount = defaults.double(forKey: "quickpayAmount")
+        enableNotifications = defaults.bool(forKey: "enableNotifications")
+        requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
+        useBiometrics = defaults.bool(forKey: "useBiometrics")
+        showWidgets = defaults.object(forKey: "showWidgets") as? Bool ?? true
+        showWidgetTitles = defaults.bool(forKey: "showWidgetTitles")
+        _coinSelectionMethod = defaults.string(forKey: "coinSelectionMethod") ?? CoinSelectionMethod.autopilot.rawValue
+        _coinSelectionAlgorithm = defaults.string(forKey: "coinSelectionAlgorithm") ?? CoinSelectionAlgorithm.branchAndBound.stringValue
+        _selectedAddressType = defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit"
+        _addressTypesToMonitor = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
     }
 
     /// Gets the current app cache data for backup

@@ -36,8 +36,11 @@ struct WalletRestoreSuccess: View {
                 app.backupVerified = true
                 wallet.isRestoringWallet = false
 
-                // Prune empty address types on next syncCompleted
-                SettingsViewModel.shared.pendingRestoreAddressTypePrune = true
+                // Skip pruning if backup had explicit monitored address types
+                let settings = SettingsViewModel.shared
+                if !settings.restoredMonitoredTypesFromBackup {
+                    settings.pendingRestoreAddressTypePrune = true
+                }
             }
             .accessibilityIdentifier("GetStartedButton")
         }

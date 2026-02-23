@@ -1,3 +1,4 @@
+import Combine
 import LDKNode
 import XCTest
 
@@ -198,5 +199,81 @@ final class AddressTypeSettingsTests: XCTestCase {
         XCTAssertEqual(raw, "nativeSegwit,invalid,taproot", "Restore should write raw string")
         let monitored = SettingsViewModel.parseAddressTypesString(raw ?? "")
         XCTAssertEqual(monitored, [.nativeSegwit, .taproot], "Invalid types should be filtered when parsing")
+    }
+
+    // MARK: - KVO / Publisher notification
+
+    func testSettingsPublisherFiresOnAddressTypeChange() {
+        let expectation = XCTestExpectation(description: "settingsPublisher should fire when selectedAddressType changes")
+        var receivedDict: [String: Any]?
+
+        settings.selectedAddressType = .nativeSegwit
+        UserDefaults.standard.synchronize()
+
+        let cancellable = settings.settingsPublisher
+            .first()
+            .sink { dict in
+                receivedDict = dict
+                expectation.fulfill()
+            }
+
+        settings.selectedAddressType = .taproot
+
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(receivedDict?["selectedAddressType"] as? String, "taproot",
+                       "Publisher should contain updated selectedAddressType")
+        cancellable.cancel()
+    }
+
+    func testSettingsPublisherFiresOnMonitoredTypesChange() {
+        let expectation = XCTestExpectation(description: "settingsPublisher should fire when addressTypesToMonitor changes")
+        var receivedDict: [String: Any]?
+
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        UserDefaults.standard.synchronize()
+
+        let cancellable = settings.settingsPublisher
+            .first()
+            .sink { dict in
+                receivedDict = dict
+                expectation.fulfill()
+            }
+
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(receivedDict?["addressTypesToMonitor"] as? String, "nativeSegwit,taproot",
+                       "Publisher should contain updated addressTypesToMonitor")
+        cancellable.cancel()
+    }
+
+    func testFullBackupRestoreRoundTrip() {
+        settings.selectedAddressType = .taproot
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot, .legacy]
+        settings.hideBalance = true
+        settings.enableQuickpay = true
+        UserDefaults.standard.synchronize()
+
+        let backupDict = settings.getSettingsDictionary()
+
+        settings.resetToDefaults()
+        UserDefaults.standard.synchronize()
+
+        XCTAssertEqual(settings.selectedAddressType, .nativeSegwit, "Should be default after reset")
+        XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit], "Should be default after reset")
+
+        settings.restoreSettingsDictionary(backupDict)
+        UserDefaults.standard.synchronize()
+
+        XCTAssertEqual(settings.selectedAddressType, .taproot,
+                       "selectedAddressType should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit, .taproot, .legacy],
+                       "addressTypesToMonitor should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.hideBalance, true,
+                       "hideBalance should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.enableQuickpay, true,
+                       "enableQuickpay should survive full backup→reset→restore cycle")
     }
 }

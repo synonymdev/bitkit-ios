@@ -914,6 +914,11 @@ extension LightningService {
         }
     }
 
+    func listMonitoredAddressTypes() -> [LDKNode.AddressType] {
+        guard let node else { return [] }
+        return node.listMonitoredAddressTypes()
+    }
+
     func setPrimaryAddressType(_ addressType: LDKNode.AddressType) async throws {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

@@ -105,6 +105,7 @@ struct AddressTypePreferenceView: View {
                                     addressType: addressType,
                                     isSelected: settingsViewModel.selectedAddressType == addressType
                                 ) {
+                                    guard !settingsViewModel.isChangingAddressType else { return }
                                     guard settingsViewModel.selectedAddressType != addressType else { return }
 
                                     app.toast(
@@ -138,6 +139,7 @@ struct AddressTypePreferenceView: View {
                                 }
                             }
                         }
+                        .disabled(settingsViewModel.isChangingAddressType)
                     }
 
                     if showDevSettings {
@@ -168,6 +170,8 @@ struct AddressTypePreferenceView: View {
                                         isMonitored: settingsViewModel.isMonitoring(addressType),
                                         isSelectedType: settingsViewModel.selectedAddressType == addressType
                                     ) { enabled in
+                                        guard !settingsViewModel.isChangingAddressType else { return }
+
                                         app.toast(type: .info, title: t("settings__adv__addr_type_applying"), autoHide: false)
 
                                         Task {
@@ -207,6 +211,7 @@ struct AddressTypePreferenceView: View {
                                     }
                                 }
                             }
+                            .disabled(settingsViewModel.isChangingAddressType)
                         }
                     }
 
