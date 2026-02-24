@@ -22,15 +22,15 @@ struct HomeScreen: View {
             Header(showWidgetEditButton: currentPage == 1, isEditingWidgets: $isEditingWidgets)
 
             GeometryReader { geometry in
-                ScrollView(.vertical, showsIndicators: false) {
+                ScrollView(showsIndicators: false) {
                     LazyVStack {
                         HomeWalletView()
-                            .containerRelativeFrame(.vertical)
+                            .frame(height: geometry.size.height)
                             .id(0)
 
                         if settings.showWidgets {
                             HomeWidgetsView(isEditingWidgets: $isEditingWidgets)
-                                .frame(minHeight: geometry.size.height)
+                                .frame(height: geometry.size.height)
                                 .id(1)
                         }
                     }
