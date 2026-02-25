@@ -537,7 +537,7 @@ enum WidgetEditItemFactory {
             return getPriceItems(priceOptions: priceOptions, priceDataByPeriod: priceDataByPeriod)
         case .weather:
             return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
-        case .calculator:
+        case .calculator, .suggestions:
             return []
         }
     }

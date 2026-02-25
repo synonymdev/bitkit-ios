@@ -70,7 +70,7 @@ struct SettingsListLabel: View {
                                 .foregroundColor(.textSecondary)
                                 .frame(width: 24, height: 24)
                         case .checkmark:
-                            Image("checkmark")
+                            Image("check-mark")
                                 .resizable()
                                 .foregroundColor(.brandAccent)
                                 .frame(width: 32, height: 32)

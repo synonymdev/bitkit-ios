@@ -32,7 +32,7 @@ struct WidgetDetailView: View {
         switch id {
         case .blocks, .facts, .news, .price, .weather:
             return true
-        case .calculator:
+        case .suggestions, .calculator:
             return false
         }
     }
@@ -55,7 +55,7 @@ struct WidgetDetailView: View {
     @ViewBuilder
     private func renderWidget() -> some View {
         let widget = Widget(type: id)
-        widget.view(widgetsViewModel: widgets, isEditing: false)
+        widget.view(widgetsViewModel: widgets, isEditing: false, isPreview: true)
     }
 
     var body: some View {

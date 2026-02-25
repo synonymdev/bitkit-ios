@@ -69,7 +69,7 @@ enum WidgetsBackupConverter {
                             "showSource": options.showSource,
                         ]
                     }
-                case .calculator:
+                case .calculator, .suggestions:
                     break
                 }
             }
@@ -186,7 +186,7 @@ enum WidgetsBackupConverter {
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
-            case .calculator:
+            case .calculator, .suggestions:
                 break
             }
 

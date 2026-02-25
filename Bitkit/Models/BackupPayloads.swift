@@ -26,13 +26,77 @@ struct AppCacheData: Codable {
     let hasSeenTransferToSpendingIntro: Bool
     let hasSeenTransferToSavingsIntro: Bool
     let hasSeenWidgetsIntro: Bool
-    let showHomeViewEmptyState: Bool
+    let hasDismissedWidgetsOnboardingHint: Bool
     let appUpdateIgnoreTimestamp: TimeInterval
     let backupIgnoreTimestamp: TimeInterval
     let highBalanceIgnoreCount: Int
     let highBalanceIgnoreTimestamp: TimeInterval
     let dismissedSuggestions: [String]
     let lastUsedTags: [String]
+
+    init(
+        hasSeenContactsIntro: Bool,
+        hasSeenProfileIntro: Bool,
+        hasSeenNotificationsIntro: Bool,
+        hasSeenQuickpayIntro: Bool,
+        hasSeenShopIntro: Bool,
+        hasSeenTransferIntro: Bool,
+        hasSeenTransferToSpendingIntro: Bool,
+        hasSeenTransferToSavingsIntro: Bool,
+        hasSeenWidgetsIntro: Bool,
+        hasDismissedWidgetsOnboardingHint: Bool,
+        appUpdateIgnoreTimestamp: TimeInterval,
+        backupIgnoreTimestamp: TimeInterval,
+        highBalanceIgnoreCount: Int,
+        highBalanceIgnoreTimestamp: TimeInterval,
+        dismissedSuggestions: [String],
+        lastUsedTags: [String]
+    ) {
+        self.hasSeenContactsIntro = hasSeenContactsIntro
+        self.hasSeenProfileIntro = hasSeenProfileIntro
+        self.hasSeenNotificationsIntro = hasSeenNotificationsIntro
+        self.hasSeenQuickpayIntro = hasSeenQuickpayIntro
+        self.hasSeenShopIntro = hasSeenShopIntro
+        self.hasSeenTransferIntro = hasSeenTransferIntro
+        self.hasSeenTransferToSpendingIntro = hasSeenTransferToSpendingIntro
+        self.hasSeenTransferToSavingsIntro = hasSeenTransferToSavingsIntro
+        self.hasSeenWidgetsIntro = hasSeenWidgetsIntro
+        self.hasDismissedWidgetsOnboardingHint = hasDismissedWidgetsOnboardingHint
+        self.appUpdateIgnoreTimestamp = appUpdateIgnoreTimestamp
+        self.backupIgnoreTimestamp = backupIgnoreTimestamp
+        self.highBalanceIgnoreCount = highBalanceIgnoreCount
+        self.highBalanceIgnoreTimestamp = highBalanceIgnoreTimestamp
+        self.dismissedSuggestions = dismissedSuggestions
+        self.lastUsedTags = lastUsedTags
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hasSeenContactsIntro = try c.decode(Bool.self, forKey: .hasSeenContactsIntro)
+        hasSeenProfileIntro = try c.decode(Bool.self, forKey: .hasSeenProfileIntro)
+        hasSeenNotificationsIntro = try c.decode(Bool.self, forKey: .hasSeenNotificationsIntro)
+        hasSeenQuickpayIntro = try c.decode(Bool.self, forKey: .hasSeenQuickpayIntro)
+        hasSeenShopIntro = try c.decode(Bool.self, forKey: .hasSeenShopIntro)
+        hasSeenTransferIntro = try c.decode(Bool.self, forKey: .hasSeenTransferIntro)
+        hasSeenTransferToSpendingIntro = try c.decode(Bool.self, forKey: .hasSeenTransferToSpendingIntro)
+        hasSeenTransferToSavingsIntro = try c.decode(Bool.self, forKey: .hasSeenTransferToSavingsIntro)
+        hasSeenWidgetsIntro = try c.decode(Bool.self, forKey: .hasSeenWidgetsIntro)
+        hasDismissedWidgetsOnboardingHint = try c.decodeIfPresent(Bool.self, forKey: .hasDismissedWidgetsOnboardingHint) ?? false
+        appUpdateIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .appUpdateIgnoreTimestamp)
+        backupIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .backupIgnoreTimestamp)
+        highBalanceIgnoreCount = try c.decode(Int.self, forKey: .highBalanceIgnoreCount)
+        highBalanceIgnoreTimestamp = try c.decode(TimeInterval.self, forKey: .highBalanceIgnoreTimestamp)
+        dismissedSuggestions = try c.decode([String].self, forKey: .dismissedSuggestions)
+        lastUsedTags = try c.decode([String].self, forKey: .lastUsedTags)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case hasSeenContactsIntro, hasSeenProfileIntro, hasSeenNotificationsIntro, hasSeenQuickpayIntro
+        case hasSeenShopIntro, hasSeenTransferIntro, hasSeenTransferToSpendingIntro, hasSeenTransferToSavingsIntro
+        case hasSeenWidgetsIntro, hasDismissedWidgetsOnboardingHint
+        case appUpdateIgnoreTimestamp, backupIgnoreTimestamp, highBalanceIgnoreCount, highBalanceIgnoreTimestamp
+        case dismissedSuggestions, lastUsedTags
+    }
 }
 
 struct BlocktankBackupV1: Codable {

@@ -52,7 +52,7 @@ struct SwipeButton: View {
                                     .foregroundColor(.gray7)
                                     .opacity(Double(1.0 - (offset / (geometry.size.width / 2))))
 
-                                Image("checkmark")
+                                Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)

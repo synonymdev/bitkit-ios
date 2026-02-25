@@ -471,7 +471,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
-            showHomeViewEmptyState: defaults.bool(forKey: "showHomeViewEmptyState"),
+            hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
             appUpdateIgnoreTimestamp: defaults.double(forKey: "appUpdateIgnoreTimestamp"),
             backupIgnoreTimestamp: defaults.double(forKey: "backupIgnoreTimestamp"),
             highBalanceIgnoreCount: defaults.integer(forKey: "highBalanceIgnoreCount"),
@@ -492,7 +492,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
-        defaults.set(cache.showHomeViewEmptyState, forKey: "showHomeViewEmptyState")
+        defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
         defaults.set(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
         defaults.set(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
         defaults.set(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")

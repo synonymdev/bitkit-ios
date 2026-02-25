@@ -322,7 +322,7 @@ struct LightningConnectionDetailView: View {
                 return (
                     text: t("lightning__order_state__paid"),
                     color: .purpleAccent,
-                    icon: "checkmark"
+                    icon: "check-mark"
                 )
             }
         }
