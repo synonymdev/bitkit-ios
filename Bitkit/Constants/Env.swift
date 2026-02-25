@@ -163,7 +163,7 @@ enum Env {
 
     static var ldkScorerUrl: String? {
         switch network {
-        case .bitcoin: "https://api.blocktank.to/scorer.bin"
+        case .bitcoin: "https://api.blocktank.to/scorer-prod"
         case .signet: nil
         case .testnet: nil
         case .regtest: "https://api.stag0.blocktank.to/scorer"
