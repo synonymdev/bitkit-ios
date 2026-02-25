@@ -66,6 +66,21 @@ struct LdkDebugScreen: View {
                             }
                         }
                     }
+
+                    // Peer Simulation
+                    VStack(alignment: .leading, spacing: 8) {
+                        CaptionMText("Peer Simulation")
+
+                        Picker("Peer Simulation", selection: Binding(
+                            get: { WalletViewModel.peerSimulation },
+                            set: { WalletViewModel.peerSimulation = $0 }
+                        )) {
+                            ForEach(WalletViewModel.BlocktankPeerSimulation.allCases, id: \.self) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                    }
                 }
             }
         }
@@ -109,6 +124,7 @@ struct LdkDebugScreen: View {
             isRestartingNode = true
             let lightningService = LightningService.shared
             try await lightningService.restart()
+            await wallet.reconnectTrustedPeers()
             app.toast(type: .success, title: "Node Restarted", description: "Node restarted successfully")
         } catch {
             Logger.error("Failed to restart node: \(error)")
