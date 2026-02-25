@@ -95,7 +95,7 @@ class LightningService {
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
-        // Set pathfinding scores source from scorer.bin file
+        // Set pathfinding scores source from external scorer
         if let scorerUrl = Env.ldkScorerUrl {
             Logger.info("Setting pathfinding scores source from scorer url: \(scorerUrl)")
             builder.setPathfindingScoresSource(url: scorerUrl)
