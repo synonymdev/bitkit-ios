@@ -1005,6 +1005,11 @@ class ActivityService {
         }
     }
 
+    /// Checks if an on-chain activity exists for a given txid (e.g., a sweep tx has been synced)
+    func hasOnchainActivityForTxid(txid: String) async -> Bool {
+        await (try? getOnchainActivityByTxId(txid: txid)) != nil
+    }
+
     /// Checks if an on-chain activity exists for a given channel (e.g., close tx has been synced)
     func hasOnchainActivityForChannel(channelId: String) async -> Bool {
         guard let activities = try? await get(filter: .onchain, limit: 50, sortDirection: .desc) else {

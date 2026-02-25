@@ -165,12 +165,23 @@ class TransferService {
                             // When LDK batches sweeps from multiple channels into one transaction,
                             // the onchain activity may only be linked to one channel. Fall back to
                             // checking if there are no remaining pending sweep balances for this channel.
+                            var sweepSpendingTxid: String?
                             let hasPendingSweep = balances?.pendingBalancesFromChannelClosures.contains(where: { sweep in
                                 switch sweep {
-                                case let .pendingBroadcast(sweepChannelId, _),
-                                     let .broadcastAwaitingConfirmation(sweepChannelId, _, _, _),
-                                     let .awaitingThresholdConfirmations(sweepChannelId, _, _, _, _):
+                                case let .pendingBroadcast(sweepChannelId, _):
                                     return sweepChannelId == channelId
+                                case let .broadcastAwaitingConfirmation(sweepChannelId, _, latestSpendingTxid, _):
+                                    if sweepChannelId == channelId {
+                                        sweepSpendingTxid = latestSpendingTxid.description
+                                        return true
+                                    }
+                                    return false
+                                case let .awaitingThresholdConfirmations(sweepChannelId, latestSpendingTxid, _, _, _):
+                                    if sweepChannelId == channelId {
+                                        sweepSpendingTxid = latestSpendingTxid.description
+                                        return true
+                                    }
+                                    return false
                                 }
                             }) ?? false
 
@@ -178,6 +189,16 @@ class TransferService {
                                 try await markSettled(id: transfer.id)
                                 Logger.debug(
                                     "Force close sweep completed (no pending sweeps), settled transfer: \(transfer.id)",
+                                    context: "TransferService"
+                                )
+                            } else if let sweepTxid = sweepSpendingTxid,
+                                      await coreService.activity.hasOnchainActivityForTxid(txid: sweepTxid)
+                            {
+                                // The sweep tx was already synced as an onchain activity (linked to another
+                                // channel in the same batched sweep). Safe to settle this transfer.
+                                try await markSettled(id: transfer.id)
+                                Logger.debug(
+                                    "Force close batched sweep detected via txid \(sweepTxid), settled transfer: \(transfer.id)",
                                     context: "TransferService"
                                 )
                             } else {
