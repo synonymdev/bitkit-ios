@@ -162,7 +162,27 @@ class TransferService {
                             try await markSettled(id: transfer.id)
                             Logger.debug("Force close sweep detected, settled transfer: \(transfer.id)", context: "TransferService")
                         } else {
-                            Logger.debug("Force close awaiting sweep detection for transfer: \(transfer.id)", context: "TransferService")
+                            // When LDK batches sweeps from multiple channels into one transaction,
+                            // the onchain activity may only be linked to one channel. Fall back to
+                            // checking if there are no remaining pending sweep balances for this channel.
+                            let hasPendingSweep = balances?.pendingBalancesFromChannelClosures.contains(where: { sweep in
+                                switch sweep {
+                                case let .pendingBroadcast(sweepChannelId, _),
+                                     let .broadcastAwaitingConfirmation(sweepChannelId, _, _, _),
+                                     let .awaitingThresholdConfirmations(sweepChannelId, _, _, _, _):
+                                    return sweepChannelId == channelId
+                                }
+                            }) ?? false
+
+                            if !hasPendingSweep {
+                                try await markSettled(id: transfer.id)
+                                Logger.debug(
+                                    "Force close sweep completed (no pending sweeps), settled transfer: \(transfer.id)",
+                                    context: "TransferService"
+                                )
+                            } else {
+                                Logger.debug("Force close awaiting sweep detection for transfer: \(transfer.id)", context: "TransferService")
+                            }
                         }
                     } else {
                         // For coop closes and other types, settle immediately when balance is gone
