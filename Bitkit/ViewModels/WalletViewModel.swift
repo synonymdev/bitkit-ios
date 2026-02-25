@@ -238,7 +238,7 @@ class WalletViewModel: ObservableObject {
         }
 
         // One-time check for orphaned channel monitors from RN migration
-        Task { @MainActor in
+        Task {
             await checkForOrphanedChannelMonitorRecovery()
         }
     }
