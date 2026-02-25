@@ -336,6 +336,7 @@ class MigrationsService: ObservableObject {
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
     private static let rnDidAttemptPeerRecoveryKey = "rnDidAttemptMigrationPeerRecovery"
+    private static let rnChannelRecoveryCheckedKey = "rnChannelRecoveryChecked"
 
     @Published var isShowingMigrationLoading = false {
         didSet {
@@ -431,6 +432,12 @@ class MigrationsService: ObservableObject {
     var didAttemptPeerRecovery: Bool {
         get { UserDefaults.standard.bool(forKey: Self.rnDidAttemptPeerRecoveryKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.rnDidAttemptPeerRecoveryKey) }
+    }
+
+    /// True after we've checked for orphaned channel monitors (so we don't retry every node start if all succeeded).
+    var isChannelRecoveryChecked: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.rnChannelRecoveryCheckedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnChannelRecoveryCheckedKey) }
     }
 
     /// True if the user completed RN migration (local or remote).
