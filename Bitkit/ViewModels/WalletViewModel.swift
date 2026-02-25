@@ -264,15 +264,35 @@ class WalletViewModel: ObservableObject {
             let retrieved = await migrations.fetchRNRemoteLdkData()
 
             if let migration = migrations.pendingChannelMigration {
+                let monitorCount = migration.channelMonitors.count
                 Logger.info(
-                    "Found \(migration.channelMonitors.count) monitors on RN backup, attempting recovery",
+                    "Found \(monitorCount) monitors on RN backup, attempting recovery",
                     context: "WalletViewModel"
                 )
 
-                try await stopLightningNode()
-                try await Task.sleep(nanoseconds: Self.channelRecoveryRestartDelayMs * 1_000_000)
-                try await start()
+                let channelMigration = ChannelDataMigration(
+                    channelManager: [UInt8](migration.channelManager),
+                    channelMonitors: migration.channelMonitors.map { [UInt8]($0) }
+                )
+                migrations.pendingChannelMigration = nil
 
+                // Stop and restart the lightning service directly (not via self.start())
+                // to avoid the nodeLifecycleState guard racing with concurrent sync Tasks
+                try await lightningService.stop()
+                try await Task.sleep(nanoseconds: Self.channelRecoveryRestartDelayMs * 1_000_000)
+
+                let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
+                let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
+                try await lightningService.setup(
+                    walletIndex: 0,
+                    electrumServerUrl: electrumServerUrl,
+                    rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
+                    channelMigration: channelMigration
+                )
+                try await lightningService.start()
+
+                nodeLifecycleState = .running
+                syncState()
                 Logger.info("Channel monitor recovery complete", context: "WalletViewModel")
             } else {
                 Logger.info("No channel monitors found on RN backup", context: "WalletViewModel")
