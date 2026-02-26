@@ -2280,14 +2280,16 @@ extension MigrationsService {
                 continue
             }
 
-            if order.state2 == .executed {
+            // Only create transfers for orders actually paid and awaiting channel
+            guard order.state2 == .paid else {
+                Logger.debug("Skipping order \(orderId) with state \(order.state2) for transfer creation", context: "Migration")
                 continue
             }
 
             let transfer = Transfer(
                 id: txId,
                 type: .toSpending,
-                amountSats: order.clientBalanceSat + order.feeSat,
+                amountSats: order.clientBalanceSat,
                 channelId: nil,
                 fundingTxId: nil,
                 lspOrderId: orderId,
