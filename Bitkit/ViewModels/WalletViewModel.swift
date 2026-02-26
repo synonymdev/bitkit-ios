@@ -251,7 +251,6 @@ class WalletViewModel: ObservableObject {
             break
         }
 
-
         var info: IBtInfo?
         do {
             info = try await coreService.blocktank.info(refresh: true)
@@ -517,6 +516,30 @@ class WalletViewModel: ObservableObject {
     /// Estimates the routing fees for a lightning payment
     func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
         return try await lightningService.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+    }
+
+    /// Sends a lightning payment with an optional timeout.
+    /// If the payment does not complete within `timeoutSeconds`, throws `PaymentTimeoutError.timedOut`.
+    /// The payment continues in the background; caller should navigate to pending screen on timeout.
+    /// `onTimeout` is called when the timeout fires (before throwing), so the UI can navigate even if the throw doesn't propagate.
+    @discardableResult
+    func sendWithTimeout(
+        bolt11: String,
+        sats: UInt64? = nil,
+        timeoutSeconds: TimeInterval = 10,
+        onTimeout: (@MainActor () -> Void)? = nil
+    ) async throws -> PaymentHash {
+        try await withThrowingTaskGroup(of: PaymentHash.self) { group in
+            group.addTask { try await self.send(bolt11: bolt11, sats: sats) }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+                if let onTimeout { await MainActor.run { onTimeout() } }
+                throw PaymentTimeoutError.timedOut
+            }
+            let first = try await group.next()!
+            group.cancelAll()
+            return first
+        }
     }
 
     /// Sends a lightning payment and waits for the result using async/await

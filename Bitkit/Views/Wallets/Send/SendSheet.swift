@@ -10,7 +10,8 @@ enum SendRoute: Hashable {
     case feeCustom
     case tag
     case quickpay
-    case success(String)
+    case pending(paymentHash: String)
+    case success(paymentId: String)
     case failure
     case lnurlPayAmount
     case lnurlPayConfirm
@@ -277,6 +278,8 @@ struct SendSheet: View {
             SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
             SendQuickpay(navigationPath: $navigationPath)
+        case let .pending(paymentHash):
+            SendPendingScreen(paymentHash: paymentHash, navigationPath: $navigationPath)
         case let .success(paymentId):
             SendSuccess(paymentId: paymentId)
         case .failure:
