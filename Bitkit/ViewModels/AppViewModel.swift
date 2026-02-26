@@ -3,6 +3,13 @@ import Combine
 import LDKNode
 import SwiftUI
 
+/// Published when a payment shown on the pending screen succeeds or fails.
+/// SendPendingScreen observes this and navigates accordingly.
+struct SendSheetPendingResolution: Equatable {
+    let paymentHash: String
+    let success: Bool
+}
+
 enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
@@ -53,6 +60,14 @@ class AppViewModel: ObservableObject {
 
     // Drawer menu
     @Published var showDrawer = false
+
+    /// Payment hashes for which we navigated to the pending screen.
+    /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
+    private var pendingPaymentHashes: Set<String> = []
+
+    /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
+    /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
+    @Published var sendSheetPendingResolution: SendSheetPendingResolution?
 
     // App status init - shows "ready" until node is actually running
     // This prevents flashing error status during startup/background transitions
@@ -273,6 +288,24 @@ extension AppViewModel {
 
     func hideToast() {
         ToastWindowManager.shared.hideToast()
+    }
+}
+
+// MARK: Pending payment tracking
+
+extension AppViewModel {
+    func addPendingPaymentHash(_ hash: String) {
+        pendingPaymentHashes.insert(hash)
+    }
+
+    func removePendingPaymentHash(_ hash: String) {
+        pendingPaymentHashes.remove(hash)
+    }
+
+    /// Called by SendPendingScreen when it consumes a resolution. Clears the published value.
+    func consumeSendSheetPendingResolution(paymentHash hash: String) {
+        guard sendSheetPendingResolution?.paymentHash == hash else { return }
+        sendSheetPendingResolution = nil
     }
 }
 
@@ -785,18 +818,32 @@ extension AppViewModel {
             }
         case .channelClosed(channelId: _, userChannelId: _, counterpartyNodeId: _, reason: _):
             break
-        case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
-            // TODO: fee is not the sats sent. Need to get this amount from elsewhere like send flow or something.
-            break
+        case let .paymentSuccessful(paymentId, paymentHash, _, _):
+            let hash = paymentId ?? paymentHash
+            if pendingPaymentHashes.contains(hash) {
+                pendingPaymentHashes.remove(hash)
+                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: true)
+                toast(
+                    type: .lightning,
+                    title: t("wallet__toast_payment_success_title"),
+                    description: t("wallet__toast_payment_success_description"),
+                    accessibilityIdentifier: "PaymentSuccessToast"
+                )
+            }
+        case let .paymentFailed(paymentId, paymentHash, _):
+            let hash = paymentId ?? paymentHash
+            if let hash, pendingPaymentHashes.contains(hash) {
+                pendingPaymentHashes.remove(hash)
+                sendSheetPendingResolution = SendSheetPendingResolution(paymentHash: hash, success: false)
+                toast(
+                    type: .error,
+                    title: t("wallet__toast_payment_failed_title"),
+                    description: t("wallet__toast_payment_failed_description"),
+                    accessibilityIdentifier: "PaymentFailedToast"
+                )
+            }
         case .paymentClaimable:
             break
-        case .paymentFailed(paymentId: _, paymentHash: _, reason: _):
-            toast(
-                type: .error,
-                title: t("wallet__toast_payment_failed_title"),
-                description: t("wallet__toast_payment_failed_description"),
-                accessibilityIdentifier: "PaymentFailedToast"
-            )
         case .paymentForwarded:
             break
 

@@ -62,6 +62,10 @@ enum KeychainError: LocalizedError {
     }
 }
 
+enum PaymentTimeoutError: Error {
+    case timedOut
+}
+
 enum BlocktankError_deprecated: Error {
     case missingResponse
     case invalidResponse
