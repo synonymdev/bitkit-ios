@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ActivityLatest: View {
     @EnvironmentObject private var activity: ActivityListViewModel
+    @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
@@ -46,7 +47,7 @@ struct ActivityLatest: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(zip(items.indices, items)), id: \.1) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item, feeEstimates: activity.feeEstimates)
+                            ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
                         }
                         .accessibilityIdentifier("ActivityShort-\(index)")
                     }
@@ -72,5 +73,8 @@ struct ActivityLatest: View {
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shouldShowBanner)
+        .task {
+            await feeEstimatesManager.getEstimates(refresh: false)
+        }
     }
 }

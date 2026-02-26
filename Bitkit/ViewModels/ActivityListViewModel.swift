@@ -46,7 +46,6 @@ class ActivityListViewModel: ObservableObject {
     private var activitiesChangedCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
-    @Published private(set) var feeEstimates: FeeRates? = nil
 
     private func updateAvailableTags() async {
         do {
@@ -54,15 +53,6 @@ class ActivityListViewModel: ObservableObject {
         } catch {
             Logger.error(error, context: "Failed to get available tags")
             availableTags = []
-        }
-    }
-
-    private func updateFeeEstimates() async {
-        do {
-            feeEstimates = try await coreService.blocktank.fees(refresh: false)
-        } catch {
-            Logger.error("Failed to load fee estimates: \(error)", context: "ActivityListViewModel")
-            feeEstimates = nil
         }
     }
 
@@ -157,9 +147,8 @@ class ActivityListViewModel: ObservableObject {
             let onchain = try await coreService.activity.get(filter: .onchain)
             onchainActivities = await filterOutReplacedSentTransactions(onchain)
 
-            // Update available tags and fee estimates
+            // Update available tags
             await updateAvailableTags()
-            await updateFeeEstimates()
         } catch {
             Logger.error(error, context: "Failed to sync activities")
         }

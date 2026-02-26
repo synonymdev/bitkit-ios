@@ -1,30 +1,10 @@
 import BitkitCore
 import SwiftUI
 
-private struct ActivityStatus: View {
-    let txType: PaymentType
-    let confirmed: Bool
-    let isTransfer: Bool
-    let isCpfpChild: Bool
-
-    var body: some View {
-        if isTransfer {
-            BodyMSBText(t("wallet__activity_transfer"))
-        } else {
-            if isCpfpChild {
-                BodyMSBText(t("wallet__activity_boost_fee"))
-            } else if txType == .sent {
-                BodyMSBText(t("wallet__activity_sent"))
-            } else {
-                BodyMSBText(t("wallet__activity_received"))
-            }
-        }
-    }
-}
-
 struct ActivityRowOnchain: View {
     let item: OnchainActivity
     let feeEstimates: FeeRates?
+
     @State private var isCpfpChild: Bool = false
 
     private var amountPrefix: String {
@@ -39,17 +19,21 @@ struct ActivityRowOnchain: View {
         }
     }
 
-    private var formattedTime: String {
-        return DateFormatterHelpers.getActivityItemDate(item.timestamp)
-    }
-
     private var feeDescription: String {
-        TransactionSpeed.getFeeDescription(feeRate: item.feeRate, feeEstimates: feeEstimates)
+        TransactionSpeed.getFeeTierLocalized(feeRate: item.feeRate, feeEstimates: feeEstimates, variant: .shortDescription)
     }
 
-    private var durationWithoutSymbol: String {
-        // Remove ± symbol since localization strings already include it
-        feeDescription.replacingOccurrences(of: "±", with: "")
+    private var status: String {
+        if item.isTransfer {
+            return item.confirmed ? t("wallet__activity_transfer") : t("wallet__activity_transferring")
+        }
+        if isCpfpChild {
+            return t("wallet__activity_boost_fee")
+        }
+        if item.isBoosted && !item.confirmed {
+            return t("wallet__activity_boosting")
+        }
+        return item.txType == .sent ? t("wallet__activity_sent") : t("wallet__activity_received")
     }
 
     private var description: String {
@@ -66,15 +50,15 @@ struct ActivityRowOnchain: View {
             case .sent:
                 return item.confirmed ?
                     t("wallet__activity_transfer_spending_done") :
-                    t("wallet__activity_transfer_spending_pending", variables: ["duration": durationWithoutSymbol])
+                    t("wallet__activity_transfer_spending_pending", variables: ["duration": feeDescription])
             case .received:
                 return item.confirmed ?
                     t("wallet__activity_transfer_savings_done") :
-                    t("wallet__activity_transfer_savings_pending", variables: ["duration": durationWithoutSymbol])
+                    t("wallet__activity_transfer_savings_pending", variables: ["duration": feeDescription])
             }
         } else {
             if item.confirmed {
-                return formattedTime
+                return DateFormatterHelpers.getActivityItemDate(item.timestamp)
             } else {
                 return t("wallet__activity_confirms_in", variables: ["feeRateDescription": feeDescription])
             }
@@ -83,18 +67,11 @@ struct ActivityRowOnchain: View {
 
     var body: some View {
         HStack(spacing: 16) {
-            ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild)
+            ActivityIcon(activity: .onchain(item), size: 40, isCpfpChild: isCpfpChild, context: .row)
 
             VStack(alignment: .leading, spacing: 2) {
-                ActivityStatus(
-                    txType: item.txType,
-                    confirmed: item.confirmed,
-                    isTransfer: item.isTransfer,
-                    isCpfpChild: isCpfpChild
-                )
-                .lineLimit(1)
-                CaptionBText(description)
-                    .lineLimit(1)
+                BodyMSBText(status).lineLimit(1)
+                CaptionBText(description).lineLimit(1)
             }
             .fixedSize(horizontal: false, vertical: true)
 

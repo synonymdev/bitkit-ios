@@ -19,6 +19,10 @@ enum MoneyUnitType {
 struct MoneyText: View {
     let sats: Int
     var unitType: MoneyUnitType = .primary
+    /// When set, overrides user preference so the value is always shown in this unit.
+    var forceUnit: PrimaryDisplay?
+    /// When set, overrides user preference so the value is always shown in this denomination.
+    var forceDisplayUnit: BitcoinDisplayUnit?
     var size: MoneySize = .display
     var symbol: Bool?
     var enableHide: Bool = false
@@ -33,7 +37,8 @@ struct MoneyText: View {
     // MARK: - Computed Properties
 
     private var unit: PrimaryDisplay {
-        unitType == .secondary ? (currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin) : currency.primaryDisplay
+        if let forceUnit { return forceUnit }
+        return unitType == .secondary ? (currency.primaryDisplay == .bitcoin ? .fiat : .bitcoin) : currency.primaryDisplay
     }
 
     private var showSymbol: Bool {
@@ -138,7 +143,8 @@ extension MoneyText {
             case .fiat:
                 return converted.formatted
             case .bitcoin:
-                return converted.bitcoinDisplay(unit: currency.displayUnit).value
+                let displayUnit = forceDisplayUnit ?? currency.displayUnit
+                return converted.bitcoinDisplay(unit: displayUnit).value
             }
         }
 
