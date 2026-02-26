@@ -251,7 +251,6 @@ class WalletViewModel: ObservableObject {
             break
         }
 
-
         var info: IBtInfo?
         do {
             info = try await coreService.blocktank.info(refresh: true)
@@ -658,6 +657,7 @@ class WalletViewModel: ObservableObject {
         await lightningService.refreshCache()
 
         do {
+            await MigrationsService.shared.cleanupInvalidMigrationTransfers()
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
