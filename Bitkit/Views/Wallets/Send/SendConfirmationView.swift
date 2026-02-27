@@ -223,7 +223,7 @@ struct SendConfirmationView: View {
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
-                // Set the amount for the success screen
+                // Set the amount for other screens
                 wallet.sendAmountSats = amount
 
                 // Create pre-activity metadata for tags and activity address
@@ -231,11 +231,24 @@ struct SendConfirmationView: View {
                 createdMetadataPaymentId = paymentHash
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
-                // Perform the Lightning payment
-                try await wallet.send(bolt11: invoice.bolt11, sats: amount)
-                Logger.info("Lightning payment successful: \(paymentHash)")
-
-                navigationPath.append(.success(paymentHash))
+                // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+                do {
+                    try await wallet.sendWithTimeout(
+                        bolt11: invoice.bolt11,
+                        sats: amount,
+                        onTimeout: {
+                            app.addPendingPaymentHash(paymentHash)
+                            navigationPath.append(.pending(paymentHash: paymentHash))
+                        }
+                    )
+                    Logger.info("Lightning payment successful: \(paymentHash)")
+                    navigationPath.append(.success(paymentId: paymentHash))
+                } catch is PaymentTimeoutError {
+                    // onTimeout callback already navigated to .pending; suppress throw
+                    return
+                } catch {
+                    throw error
+                }
             } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                 let amount = wallet.sendAmountSats ?? invoice.amountSatoshis
                 // Use sendAll if explicitly MAX or if change would be dust
@@ -250,7 +263,7 @@ struct SendConfirmationView: View {
 
                 Logger.info("Onchain send result txid: \(txid)")
 
-                navigationPath.append(.success(txid))
+                navigationPath.append(.success(paymentId: txid))
             } else {
                 throw NSError(
                     domain: "Payment", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid payment method or missing invoice data"]

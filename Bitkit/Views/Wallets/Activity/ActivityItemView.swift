@@ -105,6 +105,10 @@ struct ActivityItemView: View {
             return t("wallet__activity_boost_fee")
         }
 
+        if case let .lightning(activity) = viewModel.activity, activity.status == .pending {
+            return t("wallet__activity_pending_nav_title")
+        }
+
         return isSent
             ? t("wallet__activity_bitcoin_sent")
             : t("wallet__activity_bitcoin_received")

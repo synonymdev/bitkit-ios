@@ -1094,6 +1094,7 @@
 "wallet__activity_sent" = "Sent";
 "wallet__activity_received" = "Received";
 "wallet__activity_pending" = "Pending";
+"wallet__activity_pending_nav_title" = "Payment Pending";
 "wallet__activity_failed" = "Failed";
 "wallet__activity_transfer" = "Transfer";
 "wallet__activity_transfer_savings_pending" = "From Spending (±{duration})";

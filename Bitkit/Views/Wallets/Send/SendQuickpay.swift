@@ -1,3 +1,4 @@
+import LDKNode
 import SwiftUI
 
 struct LoadingView: View {
@@ -106,10 +107,24 @@ struct SendQuickpay: View {
             )
         }
 
+        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+        let paymentHash = String(describing: parsedInvoice.paymentHash())
+        let amount = wallet.sendAmountSats
+
         do {
-            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats)
+            try await wallet.sendWithTimeout(
+                bolt11: bolt11,
+                sats: amount,
+                onTimeout: {
+                    app.addPendingPaymentHash(paymentHash)
+                    navigationPath.append(.pending(paymentHash: paymentHash))
+                }
+            )
             Logger.info("Quickpay payment successful: \(paymentHash)")
-            navigationPath.append(.success(paymentHash))
+            navigationPath.append(.success(paymentId: paymentHash))
+        } catch is PaymentTimeoutError {
+            // onTimeout callback already navigated to .pending; suppress throw
+            return
         } catch {
             Logger.error("Quickpay payment failed: \(error)")
 
