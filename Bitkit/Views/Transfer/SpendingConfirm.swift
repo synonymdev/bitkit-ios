@@ -184,31 +184,38 @@ struct SpendingConfirm: View {
             let balance = UInt64(wallet.spendableOnchainBalanceSats)
             let allUtxos = try await lightningService.listSpendableOutputs()
 
-            // Fee for normal send (recipient + change) - used to check if change would be dust
-            let utxos = try await lightningService.selectUtxosWithAlgorithm(
-                targetAmountSats: currentOrder.feeSat,
-                satsPerVbyte: fastFeeRate,
-                coinSelectionAlgorythm: .largestFirst,
-                utxos: nil
-            )
-            let normalFee = try await wallet.calculateTotalFee(
-                address: address,
-                amountSats: currentOrder.feeSat,
-                satsPerVByte: fastFeeRate,
-                utxosToSpend: utxos
-            )
-            let maxSendable = balance >= normalFee ? balance - normalFee : 0
+            // Try normal coin selection first; if it fails (e.g. insufficient funds
+            // to cover amount + fee when sending near-max), fall through to sendAll.
+            var useSendAll = false
+            var normalFee: UInt64 = 0
+            var normalUtxos: [SpendableUtxo]?
 
-            // Check if change would be dust (use sendAll in that case)
-            // This also covers the "max" case where expectedChange = 0
-            let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
-                totalInput: balance,
-                amountSats: currentOrder.feeSat,
-                normalFee: normalFee
-            )
+            do {
+                let utxos = try await lightningService.selectUtxosWithAlgorithm(
+                    targetAmountSats: currentOrder.feeSat,
+                    satsPerVbyte: fastFeeRate,
+                    coinSelectionAlgorythm: .largestFirst,
+                    utxos: nil
+                )
+                normalFee = try await wallet.calculateTotalFee(
+                    address: address,
+                    amountSats: currentOrder.feeSat,
+                    satsPerVByte: fastFeeRate,
+                    utxosToSpend: utxos
+                )
+                normalUtxos = utxos
+
+                useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
+                    totalInput: balance,
+                    amountSats: currentOrder.feeSat,
+                    normalFee: normalFee
+                )
+            } catch {
+                Logger.info("Normal coin selection failed, using sendAll: \(error)")
+                useSendAll = true
+            }
 
             if useSendAll {
-                // Use sendAll: change would be dust or zero (max case)
                 let sendAllFee = try await wallet.calculateTotalFee(
                     address: address,
                     amountSats: balance,
@@ -223,10 +230,9 @@ struct SpendingConfirm: View {
                     shouldUseSendAll = true
                 }
             } else {
-                // Normal send with change output
                 await MainActor.run {
                     transactionFee = normalFee
-                    selectedUtxos = utxos
+                    selectedUtxos = normalUtxos
                     satsPerVbyte = fastFeeRate
                     shouldUseSendAll = false
                 }
