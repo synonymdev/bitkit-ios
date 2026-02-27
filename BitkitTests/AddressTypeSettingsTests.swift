@@ -1,0 +1,279 @@
+import Combine
+import LDKNode
+import XCTest
+
+@testable import Bitkit
+
+/// Tests for the multi-address-type feature in SettingsViewModel.
+/// Covers address type conversion, monitoring, native witness rules, and backup/restore.
+@MainActor
+final class AddressTypeSettingsTests: XCTestCase {
+    private let settings = SettingsViewModel.shared
+
+    override func setUp() {
+        super.setUp()
+        settings.resetToDefaults()
+    }
+
+    override func tearDown() {
+        settings.resetToDefaults()
+        super.tearDown()
+    }
+
+    // MARK: - SettingsBackupConfig (address type keys)
+
+    func testSettingsBackupConfigContainsAddressTypeKeys() {
+        XCTAssertTrue(SettingsBackupConfig.settingsKeyTypes.keys.contains("selectedAddressType"))
+        XCTAssertTrue(SettingsBackupConfig.settingsKeyTypes.keys.contains("addressTypesToMonitor"))
+        XCTAssertTrue(SettingsBackupConfig.settingsKeys.contains("selectedAddressType"))
+        XCTAssertTrue(SettingsBackupConfig.settingsKeys.contains("addressTypesToMonitor"))
+    }
+
+    // MARK: - LDKNode.AddressType stringValue (storage string)
+
+    func testAddressTypeStringValue() {
+        XCTAssertEqual(LDKNode.AddressType.legacy.stringValue, "legacy")
+        XCTAssertEqual(LDKNode.AddressType.nestedSegwit.stringValue, "nestedSegwit")
+        XCTAssertEqual(LDKNode.AddressType.nativeSegwit.stringValue, "nativeSegwit")
+        XCTAssertEqual(LDKNode.AddressType.taproot.stringValue, "taproot")
+    }
+
+    // MARK: - LDKNode.AddressType from(string:)
+
+    func testAddressTypeFromString() {
+        XCTAssertEqual(LDKNode.AddressType.from(string: "legacy"), .legacy)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "nestedSegwit"), .nestedSegwit)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "nativeSegwit"), .nativeSegwit)
+        XCTAssertEqual(LDKNode.AddressType.from(string: "taproot"), .taproot)
+    }
+
+    func testAddressTypeFromStringInvalidReturnsNil() {
+        XCTAssertNil(LDKNode.AddressType.from(string: "invalid"))
+        XCTAssertNil(LDKNode.AddressType.from(string: ""))
+        XCTAssertNil(LDKNode.AddressType.from(string: "p2wpkh"))
+    }
+
+    // MARK: - addressTypesToMonitor round-trip
+
+    func testAddressTypesToMonitorHandlesWhitespace() {
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+        // Simulate comma-separated string with spaces (as could come from restore/migration)
+        UserDefaults.standard.set("nativeSegwit , taproot", forKey: "addressTypesToMonitor")
+        UserDefaults.standard.synchronize()
+        let monitored = settings.addressTypesToMonitor
+        XCTAssertTrue(monitored.contains(.nativeSegwit))
+        XCTAssertTrue(monitored.contains(.taproot))
+    }
+
+    func testSelectedAddressTypeReturnsDefaultForInvalidStoredValue() {
+        UserDefaults.standard.set("invalidType", forKey: "selectedAddressType")
+        UserDefaults.standard.synchronize()
+        XCTAssertEqual(settings.selectedAddressType, .nativeSegwit)
+    }
+
+    func testAddressTypesToMonitorRoundTrip() {
+        let types: [LDKNode.AddressType] = [.nativeSegwit, .taproot]
+        settings.addressTypesToMonitor = types
+        XCTAssertEqual(settings.addressTypesToMonitor, types)
+
+        let allTypes: [LDKNode.AddressType] = [.legacy, .nestedSegwit, .nativeSegwit, .taproot]
+        settings.addressTypesToMonitor = allTypes
+        XCTAssertEqual(settings.addressTypesToMonitor, allTypes)
+    }
+
+    // MARK: - isMonitoring
+
+    func testIsMonitoring() {
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        XCTAssertTrue(settings.isMonitoring(.nativeSegwit))
+        XCTAssertFalse(settings.isMonitoring(.taproot))
+        XCTAssertFalse(settings.isMonitoring(.legacy))
+
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+        XCTAssertTrue(settings.isMonitoring(.nativeSegwit))
+        XCTAssertTrue(settings.isMonitoring(.taproot))
+        XCTAssertFalse(settings.isMonitoring(.legacy))
+    }
+
+    // MARK: - ensureMonitoring
+
+    func testEnsureMonitoringAddsType() {
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        settings.ensureMonitoring(.taproot)
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
+        XCTAssertEqual(settings.addressTypesToMonitor.count, 2)
+    }
+
+    func testEnsureMonitoringNoOpWhenAlreadyPresent() {
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+        settings.ensureMonitoring(.taproot)
+        XCTAssertEqual(settings.addressTypesToMonitor.count, 2)
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
+    }
+
+    // MARK: - monitorAllAddressTypes
+
+    func testMonitorAllAddressTypes() {
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        settings.monitorAllAddressTypes()
+        XCTAssertEqual(settings.addressTypesToMonitor.count, 4)
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.legacy))
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.nestedSegwit))
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.nativeSegwit))
+        XCTAssertTrue(settings.addressTypesToMonitor.contains(.taproot))
+    }
+
+    // MARK: - isLastRequiredNativeWitnessWallet
+
+    func testIsLastRequiredNativeWitnessWalletWhenOnlyNativeSegwit() {
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
+    }
+
+    func testIsLastRequiredNativeWitnessWalletWhenOnlyTaproot() {
+        settings.addressTypesToMonitor = [.taproot]
+        XCTAssertTrue(settings.isLastRequiredNativeWitnessWallet(.taproot))
+    }
+
+    func testIsLastRequiredNativeWitnessWalletFalseForLegacy() {
+        settings.addressTypesToMonitor = [.legacy]
+        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.legacy))
+    }
+
+    func testIsLastRequiredNativeWitnessWalletFalseForNestedSegwit() {
+        settings.addressTypesToMonitor = [.nestedSegwit]
+        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nestedSegwit))
+    }
+
+    func testIsLastRequiredNativeWitnessWalletFalseWhenOtherNativeWitnessExists() {
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.nativeSegwit))
+        XCTAssertFalse(settings.isLastRequiredNativeWitnessWallet(.taproot))
+    }
+
+    // MARK: - resetToDefaults
+
+    func testResetToDefaultsSetsAddressTypes() {
+        settings.addressTypesToMonitor = [.legacy, .taproot]
+        settings.selectedAddressType = .taproot
+
+        settings.resetToDefaults()
+
+        XCTAssertEqual(settings.selectedAddressType, .nativeSegwit)
+        XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit])
+    }
+
+    // MARK: - Backup/Restore
+
+    func testGetSettingsDictionaryIncludesAddressTypes() {
+        settings.selectedAddressType = .taproot
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+        UserDefaults.standard.synchronize()
+
+        let dict = settings.getSettingsDictionary()
+
+        XCTAssertEqual(dict["selectedAddressType"] as? String, "taproot")
+        XCTAssertEqual(dict["addressTypesToMonitor"] as? String, "nativeSegwit,taproot")
+    }
+
+    func testRestoreSettingsDictionaryAddressTypes() {
+        let dict: [String: Any] = [
+            "selectedAddressType": "taproot",
+            "addressTypesToMonitor": "nativeSegwit,taproot",
+        ]
+
+        settings.restoreSettingsDictionary(dict)
+
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "selectedAddressType"), "taproot")
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "addressTypesToMonitor"), "nativeSegwit,taproot")
+    }
+
+    func testRestoreSettingsDictionaryFiltersInvalidAddressTypes() {
+        // Restore writes raw string; parseAddressTypesString filters invalid when reading
+        let dict: [String: Any] = [
+            "addressTypesToMonitor": "nativeSegwit,invalid,taproot",
+        ]
+        settings.restoreSettingsDictionary(dict)
+
+        let raw = UserDefaults.standard.string(forKey: "addressTypesToMonitor")
+        XCTAssertEqual(raw, "nativeSegwit,invalid,taproot", "Restore should write raw string")
+        let monitored = SettingsViewModel.parseAddressTypesString(raw ?? "")
+        XCTAssertEqual(monitored, [.nativeSegwit, .taproot], "Invalid types should be filtered when parsing")
+    }
+
+    // MARK: - KVO / Publisher notification
+
+    func testSettingsPublisherFiresOnAddressTypeChange() {
+        let expectation = XCTestExpectation(description: "settingsPublisher should fire when selectedAddressType changes")
+        var receivedDict: [String: Any]?
+
+        settings.selectedAddressType = .nativeSegwit
+        UserDefaults.standard.synchronize()
+
+        let cancellable = settings.settingsPublisher
+            .first()
+            .sink { dict in
+                receivedDict = dict
+                expectation.fulfill()
+            }
+
+        settings.selectedAddressType = .taproot
+
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(receivedDict?["selectedAddressType"] as? String, "taproot",
+                       "Publisher should contain updated selectedAddressType")
+        cancellable.cancel()
+    }
+
+    func testSettingsPublisherFiresOnMonitoredTypesChange() {
+        let expectation = XCTestExpectation(description: "settingsPublisher should fire when addressTypesToMonitor changes")
+        var receivedDict: [String: Any]?
+
+        settings.addressTypesToMonitor = [.nativeSegwit]
+        UserDefaults.standard.synchronize()
+
+        let cancellable = settings.settingsPublisher
+            .first()
+            .sink { dict in
+                receivedDict = dict
+                expectation.fulfill()
+            }
+
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot]
+
+        wait(for: [expectation], timeout: 2.0)
+
+        XCTAssertEqual(receivedDict?["addressTypesToMonitor"] as? String, "nativeSegwit,taproot",
+                       "Publisher should contain updated addressTypesToMonitor")
+        cancellable.cancel()
+    }
+
+    func testFullBackupRestoreRoundTrip() {
+        settings.selectedAddressType = .taproot
+        settings.addressTypesToMonitor = [.nativeSegwit, .taproot, .legacy]
+        settings.hideBalance = true
+        settings.enableQuickpay = true
+        UserDefaults.standard.synchronize()
+
+        let backupDict = settings.getSettingsDictionary()
+
+        settings.resetToDefaults()
+        UserDefaults.standard.synchronize()
+
+        XCTAssertEqual(settings.selectedAddressType, .nativeSegwit, "Should be default after reset")
+        XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit], "Should be default after reset")
+
+        settings.restoreSettingsDictionary(backupDict)
+        UserDefaults.standard.synchronize()
+
+        XCTAssertEqual(settings.selectedAddressType, .taproot,
+                       "selectedAddressType should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.addressTypesToMonitor, [.nativeSegwit, .taproot, .legacy],
+                       "addressTypesToMonitor should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.hideBalance, true,
+                       "hideBalance should survive full backup→reset→restore cycle")
+        XCTAssertEqual(settings.enableQuickpay, true,
+                       "enableQuickpay should survive full backup→reset→restore cycle")
+    }
+}

@@ -3,6 +3,7 @@ import SwiftUI
 struct AdvancedSettingsView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var settings: SettingsViewModel
     @State private var showingResetAlert = false
 
     var body: some View {
@@ -17,13 +18,13 @@ struct AdvancedSettingsView: View {
                         CaptionMText(t("settings__adv__section_payments"))
                             .padding(.bottom, 8)
 
-                        // Maybe never implemented
-                        // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(
-                        //         title: t("settings__adv__address_type"),
-                        //         rightText: "Native Segwit"
-                        //     )
-                        // }
+                        NavigationLink(value: Route.addressTypePreference) {
+                            SettingsListLabel(
+                                title: t("settings__adv__address_type"),
+                                rightText: settings.selectedAddressType.localizedTitle
+                            )
+                        }
+                        .accessibilityIdentifier("AddressTypePreference")
 
                         NavigationLink(value: Route.coinSelection) {
                             SettingsListLabel(title: t("settings__adv__coin_selection"))
@@ -78,11 +79,6 @@ struct AdvancedSettingsView: View {
                             SettingsListLabel(title: t("settings__adv__address_viewer"))
                         }
                         .accessibilityIdentifier("AddressViewer")
-
-                        NavigationLink(value: Route.sweep) {
-                            SettingsListLabel(title: t("settings__adv__sweep_funds"))
-                        }
-                        .accessibilityIdentifier("SweepFunds")
 
                         // SettingsListLabel(title: t("settings__adv__rescan"), rightIcon: nil)
 

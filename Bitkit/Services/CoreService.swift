@@ -22,8 +22,7 @@ class ActivityService {
 
     // MARK: - Constants
 
-    /// Maximum address index to search when current address exists
-    private static let maxAddressSearchIndex: UInt32 = 100_000
+    private let addressSearchCoordinator: AddressSearchCoordinator
 
     // MARK: - BoostTxIds Cache
 
@@ -124,10 +123,8 @@ class ActivityService {
     }
 
     func isOnchainActivitySeen(txid: String) async -> Bool {
-        if let activity = try? await getOnchainActivityByTxId(txid: txid) {
-            return activity.seenAt != nil
-        }
-        return false
+        let activity = try? await getOnchainActivityByTxId(txid: txid)
+        return activity?.seenAt != nil
     }
 
     func markActivityAsSeen(id: String, seenAt: UInt64? = nil) async {
@@ -286,6 +283,7 @@ class ActivityService {
 
     init(coreService: CoreService) {
         self.coreService = coreService
+        addressSearchCoordinator = AddressSearchCoordinator(coreService: coreService)
     }
 
     func removeAll() async throws {
@@ -348,7 +346,7 @@ class ActivityService {
         _ payment: PaymentDetails,
         transactionDetails: BitkitCore.TransactionDetails? = nil
     ) async throws {
-        guard case let .onchain(txid, _) = payment.kind else { return }
+        guard case let .onchain(txid, txStatus) = payment.kind else { return }
 
         let paymentTimestamp = payment.latestUpdateTimestamp
 
@@ -358,10 +356,15 @@ class ActivityService {
             existingActivity = try BitkitCore.getActivityByTxId(txId: txid).map { .onchain($0) }
         }
 
-        // Skip if existing activity has newer timestamp to avoid overwriting local data
+        // Determine if confirmation status is changing
+        let ldkConfirmed = if case .confirmed = txStatus { true } else { false }
+
+        // Skip if existing activity has newer timestamp, unless confirmation status is changing
         if let existingActivity, case let .onchain(existing) = existingActivity {
             let existingUpdatedAt = existing.updatedAt ?? 0
-            if existingUpdatedAt > paymentTimestamp {
+            let confirmationStatusChanging = existing.confirmed != ldkConfirmed
+
+            if existingUpdatedAt > paymentTimestamp && !confirmationStatusChanging {
                 return
             }
         }
@@ -396,6 +399,7 @@ class ActivityService {
         let doesExist = existingOnchain?.doesExist ?? true
         let seenAt = existingOnchain?.seenAt
 
+        // Preserve existing value if it's larger than what LDK reports
         let ldkValue = payment.amountSats ?? 0
         let value: UInt64 = if let existingValue = existingOnchain?.value, existingValue > ldkValue {
             existingValue
@@ -487,7 +491,10 @@ class ActivityService {
             }
             return false
         }) else {
-            Logger.warn("Payment not found for transaction \(txid) - LDK should have updated payment store before emitting event", context: context)
+            Logger.warn(
+                "Payment not found for transaction \(txid) - activity not created (see docs/ldk-onchain-activity-timing-issue.md)",
+                context: context
+            )
             return
         }
 
@@ -659,15 +666,18 @@ class ActivityService {
         let existingActivity = try getActivityById(activityId: payment.id)
         let existingLightning: LightningActivity? = if let existingActivity, case let .lightning(ln) = existingActivity { ln } else { nil }
 
-        // Skip if existing activity has newer timestamp to avoid overwriting local data
-        if let existingUpdatedAt = existingLightning?.updatedAt, existingUpdatedAt > paymentTimestamp {
-            return
-        }
-
         let state: BitkitCore.PaymentState = switch payment.status {
         case .failed: .failed
         case .pending: .pending
         case .succeeded: .succeeded
+        }
+
+        // Skip if existing activity has newer timestamp, unless payment status is changing
+        if let existing = existingLightning, let existingUpdatedAt = existing.updatedAt {
+            let statusChanging = existing.status != state
+            if existingUpdatedAt > paymentTimestamp && !statusChanging {
+                return
+            }
         }
 
         let ln = LightningActivity(
@@ -780,18 +790,10 @@ class ActivityService {
                     switch sweepBalance {
                     case let .broadcastAwaitingConfirmation(channelId, _, latestSpendingTxid, _):
                         if latestSpendingTxid.description == txid, let channelId {
-                            Logger.info(
-                                "Matched sweep tx \(txid) to channel \(channelId) via pendingSweepBalance (awaiting confirmation)",
-                                context: "findClosedChannelForTransaction"
-                            )
                             return channelId.description
                         }
                     case let .awaitingThresholdConfirmations(channelId, latestSpendingTxid, _, _, _):
                         if latestSpendingTxid.description == txid, let channelId {
-                            Logger.info(
-                                "Matched sweep tx \(txid) to channel \(channelId) via pendingSweepBalance (threshold confirmations)",
-                                context: "findClosedChannelForTransaction"
-                            )
                             return channelId.description
                         }
                     case .pendingBroadcast:
@@ -898,98 +900,22 @@ class ActivityService {
             return nil
         }
 
-        let batchSize: UInt32 = 20
-        let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
-
-        // Check if an address matches any transaction output
-        func matchesTransaction(_ address: String) -> Bool {
-            details.outputs.contains { output in
-                output.scriptpubkeyAddress == address
-            }
-        }
-
-        // Find matching address from a list, preferring exact value match
-        func findMatch(in addresses: [String]) -> String? {
-            // Try exact value match first
-            for address in addresses {
-                for output in details.outputs {
-                    if output.scriptpubkeyAddress == address,
-                       output.value == value
-                    {
-                        return address
-                    }
-                }
-            }
-            // Fallback to any address match
-            for address in addresses {
-                if matchesTransaction(address) {
-                    return address
-                }
-            }
-            return nil
-        }
-
-        // First, check pre-activity metadata for addresses in the transaction
         if let address = await findAddressInPreActivityMetadata(details: details, value: value) {
             return address
         }
 
-        // Check current address if it exists
-        if !currentWalletAddress.isEmpty && matchesTransaction(currentWalletAddress) {
-            return currentWalletAddress
-        }
+        let currentWalletAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+        let selectedAddressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
 
-        // Search addresses forward in batches
-        func searchAddresses(isChange: Bool) async throws -> String? {
-            var index: UInt32 = 0
-            var currentAddressIndex: UInt32? = nil
-            let hasCurrentAddress = !currentWalletAddress.isEmpty
-            let maxIndex: UInt32 = hasCurrentAddress ? Self.maxAddressSearchIndex : batchSize
-
-            while index < maxIndex {
-                let accountAddresses = try await coreService.utility.getAccountAddresses(
-                    walletIndex: 0,
-                    isChange: isChange,
-                    startIndex: index,
-                    count: batchSize
-                )
-
-                let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
-
-                // Track when we find the current address
-                if hasCurrentAddress, currentAddressIndex == nil, addresses.contains(currentWalletAddress) {
-                    currentAddressIndex = index
-                }
-
-                // Check for matches
-                if let match = findMatch(in: addresses) {
-                    return match
-                }
-
-                // Stop if we've checked one batch after finding current address
-                if let foundIndex = currentAddressIndex, index >= foundIndex + batchSize {
-                    break
-                }
-
-                // Stop if we've reached the end
-                if addresses.count < Int(batchSize) {
-                    break
-                }
-
-                index += batchSize
-            }
-            return nil
-        }
-
-        // Try receiving addresses first, then change addresses
-        if let address = try await searchAddresses(isChange: false) {
-            return address
-        }
-        if let address = try await searchAddresses(isChange: true) {
+        if let address = try await addressSearchCoordinator.runAddressSearch(
+            details: details,
+            value: value,
+            currentWalletAddress: currentWalletAddress,
+            selectedAddressType: selectedAddressType
+        ) {
             return address
         }
 
-        // Fallback: return first output address
         return details.outputs.first?.scriptpubkeyAddress
     }
 
@@ -1055,6 +981,52 @@ class ActivityService {
             try upsertActivity(activity: activity)
             self.updateBoostTxIdsCache(for: activity)
             self.activitiesChangedSubject.send()
+        }
+    }
+
+    /// Create sent onchain activity from send result so it appears immediately; LDK events update it later (e.g. confirmation).
+    func createSentOnchainActivityFromSendResult(
+        txid: String,
+        address: String,
+        amount: UInt64,
+        fee: UInt64,
+        feeRate: UInt32
+    ) async {
+        do {
+            try await ServiceQueue.background(.core) {
+                if let _ = try? BitkitCore.getActivityByTxId(txId: txid) {
+                    Logger.debug("Activity already exists for txid \(txid), skipping immediate creation", context: "ActivityService")
+                    return
+                }
+                let now = UInt64(Date().timeIntervalSince1970)
+                let onchain = OnchainActivity(
+                    id: txid,
+                    txType: .sent,
+                    txId: txid,
+                    value: amount,
+                    fee: fee,
+                    feeRate: UInt64(feeRate),
+                    address: address,
+                    confirmed: false,
+                    timestamp: now,
+                    isBoosted: false,
+                    boostTxIds: [],
+                    isTransfer: false,
+                    doesExist: true,
+                    confirmTimestamp: nil,
+                    channelId: nil,
+                    transferTxId: nil,
+                    createdAt: now,
+                    updatedAt: now,
+                    seenAt: now
+                )
+                try upsertActivity(activity: .onchain(onchain))
+                self.updateBoostTxIdsCache(for: .onchain(onchain))
+                self.activitiesChangedSubject.send()
+                Logger.info("Created sent onchain activity for txid \(txid) from send result", context: "ActivityService")
+            }
+        } catch {
+            Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
         }
     }
 
@@ -1297,6 +1269,102 @@ class ActivityService {
             Logger.info("Generated \(activityId) test activities across all time periods", context: "CoreService")
             self.activitiesChangedSubject.send()
         }
+    }
+}
+
+// MARK: - Address search (actor for single-flight concurrency)
+
+private actor AddressSearchCoordinator {
+    private let coreService: CoreService
+    private var isSearching = false
+    private var waitQueue: [CheckedContinuation<Void, Never>] = []
+
+    init(coreService: CoreService) {
+        self.coreService = coreService
+    }
+
+    /// Runs the batch address search at most one at a time. Enqueues if a search is already in progress.
+    func runAddressSearch(
+        details: BitkitCore.TransactionDetails,
+        value: UInt64,
+        currentWalletAddress: String,
+        selectedAddressType: LDKNode.AddressType
+    ) async throws -> String? {
+        if isSearching {
+            await withCheckedContinuation { waitQueue.append($0) }
+        }
+        isSearching = true
+        defer {
+            isSearching = false
+            if !waitQueue.isEmpty {
+                waitQueue.removeFirst().resume()
+            }
+        }
+        return try await searchReceivingAddress(
+            details: details, value: value,
+            currentWalletAddress: currentWalletAddress,
+            selectedAddressType: selectedAddressType
+        )
+    }
+
+    private func searchReceivingAddress(
+        details: BitkitCore.TransactionDetails,
+        value: UInt64,
+        currentWalletAddress: String,
+        selectedAddressType: LDKNode.AddressType
+    ) async throws -> String? {
+        let batchSize: UInt32 = 200
+        let searchWindow: UInt32 = 1000
+
+        func matchesTransaction(_ address: String) -> Bool {
+            details.outputs.contains { $0.scriptpubkeyAddress == address }
+        }
+
+        func findMatch(in addresses: [String]) -> String? {
+            if let exact = details.outputs.first(where: { $0.value == value }),
+               let addr = exact.scriptpubkeyAddress, addresses.contains(addr)
+            { return addr }
+            return addresses.first { matchesTransaction($0) }
+        }
+
+        if !currentWalletAddress.isEmpty, matchesTransaction(currentWalletAddress) {
+            return currentWalletAddress
+        }
+
+        let addressTypesToSearch = LDKNode.AddressType.prioritized(selected: selectedAddressType)
+
+        for isChange in [false, true] {
+            for addressType in addressTypesToSearch {
+                let key = isChange ? "addressSearch_lastUsedChangeIndex_\(addressType.stringValue)" : "addressSearch_lastUsedReceiveIndex_\(addressType.stringValue)"
+                let lastUsed: UInt32? = (UserDefaults.standard.object(forKey: key) as? Int).flatMap { $0 >= 0 ? UInt32($0) : nil }
+                let endIndex = lastUsed.map { $0 + searchWindow } ?? searchWindow
+
+                var index: UInt32 = 0
+                var currentAddressBatch: UInt32?
+                while index < endIndex {
+                    let accountAddresses = try await coreService.utility.getAccountAddresses(
+                        walletIndex: 0,
+                        isChange: isChange,
+                        startIndex: index,
+                        count: batchSize,
+                        addressTypeString: addressType.stringValue
+                    )
+                    let addresses = accountAddresses.unused.map(\.address) + accountAddresses.used.map(\.address)
+
+                    if !currentWalletAddress.isEmpty, currentAddressBatch == nil, addresses.contains(currentWalletAddress) {
+                        currentAddressBatch = index
+                    }
+                    if let match = findMatch(in: addresses) {
+                        UserDefaults.standard.set(Int(index), forKey: key)
+                        return match
+                    }
+                    if let found = currentAddressBatch, index >= found + batchSize { break }
+                    if addresses.count < Int(batchSize) { break }
+                    index += batchSize
+                }
+            }
+        }
+        return nil
     }
 }
 
@@ -1710,7 +1778,8 @@ class UtilityService {
         walletIndex: Int = 0,
         isChange: Bool? = nil,
         startIndex: UInt32? = nil,
-        count: UInt32? = nil
+        count: UInt32? = nil,
+        addressTypeString: String? = nil
     ) async throws -> AccountAddresses {
         return try await ServiceQueue.background(.core) {
             guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
@@ -1719,9 +1788,10 @@ class UtilityService {
 
             let passphrase = try Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
 
-            // Create the correct derivation path based on network
+            // Create the correct derivation path based on address type and network
             let coinType = Env.network == .bitcoin ? "0" : "1"
-            let derivationPath = "m/84'/\(coinType)'/0'/0"
+            let addressType = LDKNode.AddressType.fromStorage(addressTypeString)
+            let derivationPath = addressType.derivationPath(coinType: coinType)
 
             let response = try deriveBitcoinAddresses(
                 mnemonicPhrase: mnemonic,

@@ -11,6 +11,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("spendableOnchainBalanceSats") var spendableOnchainBalanceSats: Int = 0 // The spendable balance of our on-chain wallet
     @AppStorage("maxSendLightningSats") var maxSendLightningSats: Int = 0 // Maximum amount that can be sent via lightning (outbound capacity)
+    @AppStorage("channelFundableBalanceSats") var channelFundableBalanceSats: Int = 0 // Balance usable for channel funding (excludes Legacy UTXOs)
 
     // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -642,10 +643,10 @@ class WalletViewModel: ObservableObject {
 
     /// Sync balance details only
     private func syncBalances() {
-        balanceDetails = lightningService.balances
-
-        if let balanceDetails {
-            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        // Only update balanceDetails if we have valid data (don't overwrite with nil during restart)
+        if let newBalances = lightningService.balances {
+            balanceDetails = newBalances
+            spendableOnchainBalanceSats = Int(newBalances.spendableOnchainBalanceSats)
         }
 
         Task { @MainActor in
@@ -668,6 +669,15 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(state.totalLightningSats)
             totalBalanceSats = Int(state.totalBalanceSats)
             maxSendLightningSats = Int(state.maxSendLightningSats)
+
+            // Update channel fundable balance (excludes Legacy UTXOs which can't be used for channels)
+            let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
+            if let fundableBalance = try? await lightningService.getChannelFundableBalance(
+                selectedType: selectedType,
+                monitoredTypes: monitoredTypes
+            ) {
+                channelFundableBalanceSats = Int(fundableBalance)
+            }
 
             // Get force close timelock from active transfers
             let activeTransfers = try? transferService.getActiveTransfers()

@@ -717,8 +717,6 @@
 "settings__adv__section_other" = "Otros";
 "settings__adv__address_type" = "Tipo de dirección Bitcoin";
 "settings__adv__monitored_address_types" = "Tipos de Direcciones en monitoreo";
-"settings__adv__monitored_address_types_update_title" = "Tipos de dirección monitoreados actualizados";
-"settings__adv__monitored_address_types_update_description" = "Los cambios surtirán pleno efecto tras reiniciar la aplicación.";
 "settings__adv__gap_limit" = "Límite de la brecha de direcciones";
 "settings__adv__coin_selection" = "Selección de monedas";
 "settings__adv__cs_method" = "Método de selección de monedas";

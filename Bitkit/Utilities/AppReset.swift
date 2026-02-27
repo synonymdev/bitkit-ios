@@ -38,6 +38,9 @@ enum AppReset {
             UserDefaults.standard.removePersistentDomain(forName: bundleID)
         }
 
+        // Singleton retains stale @AppStorage values after removePersistentDomain
+        SettingsViewModel.shared.resetToDefaults()
+
         // Prevent RN migration from triggering after wipe
         MigrationsService.shared.markMigrationChecked()
 

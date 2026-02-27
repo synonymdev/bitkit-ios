@@ -257,9 +257,17 @@ struct RestoreWalletView: View {
             wallet.nodeLifecycleState = .initializing
             wallet.isRestoringWallet = true
             app.showAllEmptyStates(false)
+
+            // Prevent settings changes from triggering backups before the actual restore runs
+            BackupService.shared.setRestoring(true)
+
+            // When restoring a wallet, monitor all address types to catch any existing funds
+            SettingsViewModel.shared.monitorAllAddressTypes()
+
             _ = try StartupHandler.restoreWallet(mnemonic: bip39Mnemonic, bip39Passphrase: bip39Passphrase)
             try wallet.setWalletExistsState()
         } catch {
+            BackupService.shared.setRestoring(false)
             app.toast(error)
         }
     }

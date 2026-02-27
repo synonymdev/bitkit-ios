@@ -81,6 +81,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
@@ -109,6 +110,7 @@
 			membershipExceptions = (
 				Constants/Env.swift,
 				Extensions/HexBytes.swift,
+				"Extensions/LDKNode+AddressType.swift",
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
@@ -926,7 +928,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = revision;
-				revision = d2a82a2d111e5eb84a0eec02f4754e39fea4189a;
+				revision = 5618fc74a5a2617b9c41d4e6c013db7984d6efb1;
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {

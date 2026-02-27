@@ -139,9 +139,13 @@ struct ActivityExplorerView: View {
         }
     }
 
+    private var navTitle: String {
+        activity.txType == .sent ? t("wallet__activity_bitcoin_sent") : t("wallet__activity_bitcoin_received")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("wallet__activity_bitcoin_received"))
+            NavigationBar(title: navTitle)
                 .padding(.bottom, 16)
 
             HStack(alignment: .bottom) {

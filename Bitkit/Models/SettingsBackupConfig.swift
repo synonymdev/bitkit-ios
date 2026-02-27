@@ -41,6 +41,8 @@ enum SettingsBackupConfig {
         "defaultTransactionSpeed": .string(optional: true),
         "coinSelectionMethod": .string(optional: true),
         "coinSelectionAlgorithm": .string(optional: true),
+        "selectedAddressType": .string(optional: true),
+        "addressTypesToMonitor": .string(optional: true),
         "enableQuickpay": .bool,
         "showWidgets": .bool,
         "showWidgetTitles": .bool,

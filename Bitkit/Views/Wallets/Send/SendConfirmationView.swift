@@ -245,6 +245,15 @@ struct SendConfirmationView: View {
                 // Create pre-activity metadata for tags and activity address
                 await createPreActivityMetadata(paymentId: txid, address: invoice.address, txId: txid, feeRate: wallet.selectedFeeRateSatsPerVByte)
 
+                // Create sent onchain activity immediately so it appears before LDK event (which can be delayed)
+                await CoreService.shared.activity.createSentOnchainActivityFromSendResult(
+                    txid: txid,
+                    address: invoice.address,
+                    amount: amount,
+                    fee: UInt64(transactionFee),
+                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1
+                )
+
                 // Set the amount for the success screen
                 wallet.sendAmountSats = amount
 
@@ -577,35 +586,37 @@ struct SendConfirmationView: View {
             let lightningService = LightningService.shared
             let spendableBalance = UInt64(wallet.spendableOnchainBalanceSats)
 
-            // Calculate fee for sendAll to check if change would be dust
-            let allUtxos = try await lightningService.listSpendableOutputs()
-            let sendAllFee = try await wallet.calculateTotalFee(
+            // Fee for normal send (recipient + change outputs) - used to check if change would be dust
+            let normalFee = try await wallet.calculateTotalFee(
                 address: address,
-                amountSats: spendableBalance,
+                amountSats: amountSats,
                 satsPerVByte: feeRate,
-                utxosToSpend: allUtxos
+                utxosToSpend: wallet.selectedUtxos
             )
-
-            let expectedChange = Int64(spendableBalance) - Int64(amountSats) - Int64(sendAllFee)
-            let useSendAll = expectedChange >= 0 && expectedChange < Int64(Env.dustLimit)
+            let totalInput = wallet.selectedUtxos?.reduce(0) { $0 + $1.valueSats } ?? spendableBalance
+            let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
+                totalInput: totalInput,
+                amountSats: amountSats,
+                normalFee: normalFee
+            )
 
             if useSendAll {
                 // Change would be dust - use sendAll and add dust to fee
+                let allUtxos = try await lightningService.listSpendableOutputs()
+                let sendAllFee = try await wallet.calculateTotalFee(
+                    address: address,
+                    amountSats: spendableBalance,
+                    satsPerVByte: feeRate,
+                    utxosToSpend: allUtxos
+                )
                 await MainActor.run {
                     transactionFee = Int(sendAllFee)
                     shouldUseSendAll = true
                 }
             } else {
                 // Normal send with change output
-                let fee = try await wallet.calculateTotalFee(
-                    address: address,
-                    amountSats: amountSats,
-                    satsPerVByte: feeRate,
-                    utxosToSpend: wallet.selectedUtxos
-                )
-
                 await MainActor.run {
-                    transactionFee = Int(fee)
+                    transactionFee = Int(normalFee)
                     shouldUseSendAll = false
                 }
             }

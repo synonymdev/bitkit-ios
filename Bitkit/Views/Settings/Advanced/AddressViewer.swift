@@ -1,7 +1,8 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
-enum AddressType: CaseIterable, CustomStringConvertible {
+enum AddressKind: CaseIterable, CustomStringConvertible {
     case receiving, change
 
     var description: String {
@@ -16,13 +17,15 @@ enum AddressType: CaseIterable, CustomStringConvertible {
 
 struct AddressViewer: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var settings: SettingsViewModel
 
     @State private var addresses: [BitkitCore.AddressInfo] = []
     @State private var addressBalances: [String: UInt64] = [:]
     @State private var loadedCount: UInt32 = 20
     @State private var isLoading = false
     @State private var isLoadingBalances = false
-    @State private var selectedAddressType: AddressType = .receiving
+    @State private var selectedAddressKind: AddressKind = .receiving
+    @State private var selectedScriptType: LDKNode.AddressType = .nativeSegwit
     @State private var searchText = ""
     @State private var selectedAddress: String = ""
     @State private var showScrollToTop = false
@@ -30,20 +33,17 @@ struct AddressViewer: View {
     private let initialLoadCount: UInt32 = 20
     private let loadMoreCount: UInt32 = 20
     private let walletIndex = 0
+    private let scriptTypes: [LDKNode.AddressType] = LDKNode.AddressType.allAddressTypes
 
-    private var addressTypeTabItems: [TabItem<AddressType>] {
+    private var addressKindTabItems: [TabItem<AddressKind>] {
         [
             TabItem(.receiving),
             TabItem(.change),
         ]
     }
 
-    private var defaultDerivationPath: String {
-        // BIP44 derivation path: m/purpose'/coin_type'/account'/change/address_index
-        // Purpose 84 = P2WPKH (Native SegWit)
-        // Coin type: 0 = Bitcoin mainnet, 1 = Bitcoin testnet/regtest
-        let coinType = Env.network == .bitcoin ? "0" : "1"
-        return "m/84'/\(coinType)'/0'/0" // P2WPKH path
+    private var currentDerivationPath: String {
+        selectedScriptType.derivationPath
     }
 
     // Get the first address for QR display
@@ -97,7 +97,7 @@ struct AddressViewer: View {
 
                     VStack(alignment: .leading, spacing: 4) {
                         CaptionText("Index: \(selectedAddressIndex)", textColor: .white80)
-                        CaptionText("Path: \(defaultDerivationPath)/\(selectedAddressIndex)", textColor: .white80)
+                        CaptionText("Path: \(currentDerivationPath)/\(selectedAddressIndex)", textColor: .white80)
                         Button {
                             guard !displayAddress.isEmpty else { return }
 
@@ -133,8 +133,30 @@ struct AddressViewer: View {
             .cornerRadius(32)
             .padding(.bottom, 16)
 
-            // Address Type Toggle
-            SegmentedControl(selectedTab: $selectedAddressType, tabItems: addressTypeTabItems)
+            // Address script type selector
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(scriptTypes, id: \.self) { scriptType in
+                        Button {
+                            selectedScriptType = scriptType
+                        } label: {
+                            Text(scriptType.localizedTitle)
+                                .font(.custom(Fonts.medium, size: 14))
+                                .foregroundColor(selectedScriptType == scriptType ? .white : .white80)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(selectedScriptType == scriptType ? Color.brandAccent : Color.white10)
+                                .cornerRadius(20)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(.bottom, 12)
+
+            // Receiving / Change toggle
+            SegmentedControl(selectedTab: $selectedAddressKind, tabItems: addressKindTabItems)
                 .padding(.bottom, 16)
 
             // Address List with Sticky Bottom Buttons
@@ -177,8 +199,17 @@ struct AddressViewer: View {
                                 .frame(height: 80)
                         }
                     }
-                    .onChange(of: selectedAddressType) { _ in
-                        // Reset scroll position when switching address types
+                    .onChange(of: selectedAddressKind) { _ in
+                        selectedAddress = ""
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            proxy.scrollTo("top", anchor: .top)
+                            showScrollToTop = false
+                        }
+                        Task {
+                            await loadAddresses()
+                        }
+                    }
+                    .onChange(of: selectedScriptType) { _ in
                         selectedAddress = ""
                         withAnimation(.easeInOut(duration: 0.5)) {
                             proxy.scrollTo("top", anchor: .top)
@@ -252,6 +283,7 @@ struct AddressViewer: View {
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
         .task {
+            selectedScriptType = settings.selectedAddressType
             await loadAddresses()
         }
     }
@@ -263,9 +295,10 @@ struct AddressViewer: View {
         do {
             let accountAddresses = try await CoreService.shared.utility.getAccountAddresses(
                 walletIndex: walletIndex,
-                isChange: selectedAddressType == .change,
+                isChange: selectedAddressKind == .change,
                 startIndex: 0,
-                count: initialLoadCount
+                count: initialLoadCount,
+                addressTypeString: selectedScriptType.stringValue
             )
 
             await MainActor.run {
@@ -297,9 +330,10 @@ struct AddressViewer: View {
         do {
             let accountAddresses = try await CoreService.shared.utility.getAccountAddresses(
                 walletIndex: walletIndex,
-                isChange: selectedAddressType == .change,
+                isChange: selectedAddressKind == .change,
                 startIndex: nextStartIndex,
-                count: loadMoreCount
+                count: loadMoreCount,
+                addressTypeString: selectedScriptType.stringValue
             )
 
             await MainActor.run {
@@ -411,6 +445,8 @@ struct AddressRow: View {
 #Preview {
     NavigationView {
         AddressViewer()
+            .environmentObject(AppViewModel())
+            .environmentObject(SettingsViewModel.shared)
             .preferredColorScheme(.dark)
     }
 }

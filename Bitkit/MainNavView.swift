@@ -10,8 +10,6 @@ struct MainNavView: View {
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
-    @StateObject private var sweepViewModel = SweepViewModel()
-
     @State private var showClipboardAlert = false
     @State private var clipboardUri: String?
 
@@ -163,14 +161,6 @@ struct MainNavView: View {
             }
         ) {
             config in ForceTransferSheet(config: config)
-        }
-        .sheet(
-            item: $sheets.sweepPromptSheetItem,
-            onDismiss: {
-                sheets.hideSheet()
-            }
-        ) {
-            config in SweepPromptSheet(config: config)
         }
         .accentColor(.white)
         .overlay {
@@ -403,6 +393,7 @@ struct MainNavView: View {
 
             // Advanced settings
             case .coinSelection: CoinSelectionSettingsView()
+            case .addressTypePreference: AddressTypePreferenceView()
             case .connections: LightningConnectionsView()
             case let .connectionDetail(channelId): LightningConnectionDetailView(channelId: channelId)
             case let .closeConnection(channel: channel): CloseConnectionConfirmation(channel: channel)
@@ -410,11 +401,6 @@ struct MainNavView: View {
             case .electrumSettings: ElectrumSettingsScreen()
             case .rgsSettings: RgsSettingsScreen()
             case .addressViewer: AddressViewer()
-            case .sweep: SweepSettingsView().environmentObject(sweepViewModel)
-            case .sweepConfirm: SweepConfirmView().environmentObject(sweepViewModel)
-            case .sweepFeeRate: SweepFeeRateView().environmentObject(sweepViewModel)
-            case .sweepFeeCustom: SweepFeeCustomView().environmentObject(sweepViewModel)
-            case let .sweepSuccess(txid): SweepSuccessView(txid: txid).environmentObject(sweepViewModel)
 
             // Dev settings
             case .blocktankRegtest: BlocktankRegtestView()
