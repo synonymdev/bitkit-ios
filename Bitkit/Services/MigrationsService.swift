@@ -336,6 +336,7 @@ class MigrationsService: ObservableObject {
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
     private static let rnDidAttemptPeerRecoveryKey = "rnDidAttemptMigrationPeerRecovery"
+    private static let rnChannelRecoveryCheckedKey = "rnChannelRecoveryChecked"
 
     @Published var isShowingMigrationLoading = false {
         didSet {
@@ -431,6 +432,12 @@ class MigrationsService: ObservableObject {
     var didAttemptPeerRecovery: Bool {
         get { UserDefaults.standard.bool(forKey: Self.rnDidAttemptPeerRecoveryKey) }
         set { UserDefaults.standard.set(newValue, forKey: Self.rnDidAttemptPeerRecoveryKey) }
+    }
+
+    /// True after we've checked for orphaned channel monitors (so we don't retry every node start if all succeeded).
+    var isChannelRecoveryChecked: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.rnChannelRecoveryCheckedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.rnChannelRecoveryCheckedKey) }
     }
 
     /// True if the user completed RN migration (local or remote).
@@ -1956,13 +1963,16 @@ extension MigrationsService {
         return nil
     }
 
-    private func fetchRNRemoteLdkData() async {
+    /// Fetches channel manager and monitors from RN remote backup.
+    /// Returns `true` if all monitors were successfully retrieved (or none exist), `false` if some failed.
+    @discardableResult
+    func fetchRNRemoteLdkData() async -> Bool {
         do {
             let files = try await RNBackupClient.shared.listFiles(fileGroup: "ldk")
 
             guard let managerData = try? await RNBackupClient.shared.retrieve(label: "channel_manager", fileGroup: "ldk") else {
                 Logger.debug("No channel_manager found in remote LDK backup", context: "Migration")
-                return
+                return true
             }
 
             let expectedCount = files.channel_monitors.count
@@ -2004,8 +2014,11 @@ extension MigrationsService {
                 )
                 Logger.info("Prepared \(monitors.count)/\(expectedCount) channel monitors for migration", context: "Migration")
             }
+
+            return failedMonitors.isEmpty
         } catch {
             Logger.error("Failed to fetch remote LDK data: \(error)", context: "Migration")
+            return false
         }
     }
 
