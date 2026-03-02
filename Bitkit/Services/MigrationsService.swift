@@ -336,6 +336,7 @@ class MigrationsService: ObservableObject {
     private static let rnPendingChannelMigrationKey = "rnPendingChannelMigration"
     private static let rnPendingBlocktankOrderIdsKey = "rnPendingBlocktankOrderIds"
     private static let rnDidAttemptPeerRecoveryKey = "rnDidAttemptMigrationPeerRecovery"
+    private static let didCleanupInvalidTransfersKey = "didCleanupInvalidMigrationTransfers"
 
     @Published var isShowingMigrationLoading = false {
         didSet {
@@ -757,6 +758,47 @@ extension MigrationsService {
             return false
         }
         return true
+    }
+
+    /// One-time cleanup for transfers created from unpaid/expired Blocktank orders during migration.
+    /// The RN backup's paidOrders map could contain orders that were never actually paid.
+    func cleanupInvalidMigrationTransfers() async {
+        guard !UserDefaults.standard.bool(forKey: Self.didCleanupInvalidTransfersKey) else { return }
+        guard rnMigrationCompleted else { return }
+
+        guard let transfers = try? TransferStorage.shared.getActiveTransfers() else { return }
+        let orderTransfers = transfers.filter { $0.type.isToSpending() && $0.lspOrderId != nil }
+
+        guard !orderTransfers.isEmpty else {
+            UserDefaults.standard.set(true, forKey: Self.didCleanupInvalidTransfersKey)
+            return
+        }
+
+        let orderIds = orderTransfers.compactMap(\.lspOrderId)
+
+        guard let orders = try? await CoreService.shared.blocktank.orders(orderIds: orderIds, filter: nil, refresh: true) else {
+            // Don't mark as done if we can't reach Blocktank — retry next launch
+            Logger.warn("Cannot cleanup migration transfers: Blocktank unreachable", context: "Migration")
+            return
+        }
+
+        let now = UInt64(Date().timeIntervalSince1970)
+        for transfer in orderTransfers {
+            guard let orderId = transfer.lspOrderId,
+                  let order = orders.first(where: { $0.id == orderId })
+            else { continue }
+
+            if order.state2 != .paid {
+                try? TransferStorage.shared.markSettled(id: transfer.id, settledAt: now)
+                Logger.info(
+                    "Cleanup: settled invalid migration transfer \(transfer.id) for order \(orderId) (state: \(order.state2))",
+                    context: "Migration"
+                )
+            }
+        }
+
+        UserDefaults.standard.set(true, forKey: Self.didCleanupInvalidTransfersKey)
+        Logger.info("Migration transfer cleanup completed", context: "Migration")
     }
 
     /// Clears all persisted pending migration data from UserDefaults
@@ -2280,14 +2322,16 @@ extension MigrationsService {
                 continue
             }
 
-            if order.state2 == .executed {
+            // Only create transfers for orders actually paid and awaiting channel
+            guard order.state2 == .paid else {
+                Logger.debug("Skipping order \(orderId) with state \(order.state2) for transfer creation", context: "Migration")
                 continue
             }
 
             let transfer = Transfer(
                 id: txId,
                 type: .toSpending,
-                amountSats: order.clientBalanceSat + order.feeSat,
+                amountSats: order.clientBalanceSat,
                 channelId: nil,
                 fundingTxId: nil,
                 lspOrderId: orderId,
