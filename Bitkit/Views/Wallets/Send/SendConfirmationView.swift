@@ -583,9 +583,6 @@ struct SendConfirmationView: View {
         }
 
         do {
-            let lightningService = LightningService.shared
-            let spendableBalance = UInt64(wallet.spendableOnchainBalanceSats)
-
             // Fee for normal send (recipient + change outputs) - used to check if change would be dust
             let normalFee = try await wallet.calculateTotalFee(
                 address: address,
@@ -593,7 +590,8 @@ struct SendConfirmationView: View {
                 satsPerVByte: feeRate,
                 utxosToSpend: wallet.selectedUtxos
             )
-            let totalInput = wallet.selectedUtxos?.reduce(0) { $0 + $1.valueSats } ?? spendableBalance
+            let totalInput = wallet.selectedUtxos?.reduce(0) { $0 + $1.valueSats }
+                ?? UInt64(wallet.spendableOnchainBalanceSats)
             let useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
                 totalInput: totalInput,
                 amountSats: amountSats,
@@ -602,12 +600,9 @@ struct SendConfirmationView: View {
 
             if useSendAll {
                 // Change would be dust - use sendAll and add dust to fee
-                let allUtxos = try await lightningService.listSpendableOutputs()
-                let sendAllFee = try await wallet.calculateTotalFee(
+                let sendAllFee = try await wallet.estimateSendAllFee(
                     address: address,
-                    amountSats: spendableBalance,
-                    satsPerVByte: feeRate,
-                    utxosToSpend: allUtxos
+                    satsPerVByte: feeRate
                 )
                 await MainActor.run {
                     transactionFee = Int(sendAllFee)
@@ -625,6 +620,7 @@ struct SendConfirmationView: View {
             await MainActor.run {
                 transactionFee = 0
                 shouldUseSendAll = false
+                app.toast(type: .error, title: t("other__try_again"))
             }
         }
     }

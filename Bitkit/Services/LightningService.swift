@@ -1387,6 +1387,24 @@ extension LightningService {
         }
     }
 
+    /// Estimates the mining fee for a send-all (drain) transaction.
+    func estimateSendAllFee(
+        address: String,
+        satsPerVByte: UInt32
+    ) async throws -> UInt64 {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().calculateSendAllFee(
+                address: address,
+                retainReserves: true,
+                feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVByte)
+            )
+        }
+    }
+
     func estimateRoutingFees(bolt11: String, amountSats: UInt64? = nil) async throws -> UInt64 {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)

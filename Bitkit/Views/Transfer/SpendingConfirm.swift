@@ -172,6 +172,9 @@ struct SpendingConfirm: View {
 
             guard let feeRates = try await coreService.blocktank.fees(refresh: true) else {
                 Logger.error("SpendingConfirm: feeRates is nil")
+                await MainActor.run {
+                    app.toast(type: .error, title: t("other__try_again"))
+                }
                 return
             }
 
@@ -184,8 +187,7 @@ struct SpendingConfirm: View {
             let balance = UInt64(wallet.spendableOnchainBalanceSats)
             let allUtxos = try await lightningService.listSpendableOutputs()
 
-            // Try normal coin selection first; if it fails (e.g. insufficient funds
-            // to cover amount + fee when sending near-max), fall through to sendAll.
+            // Try normal coin selection first; fall through to sendAll on failure
             var useSendAll = false
             var normalFee: UInt64 = 0
             var normalUtxos: [SpendableUtxo]?
@@ -205,8 +207,9 @@ struct SpendingConfirm: View {
                 )
                 normalUtxos = utxos
 
+                let totalInput = utxos.reduce(UInt64(0)) { $0 + $1.valueSats }
                 useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
-                    totalInput: balance,
+                    totalInput: totalInput,
                     amountSats: currentOrder.feeSat,
                     normalFee: normalFee
                 )
@@ -216,17 +219,29 @@ struct SpendingConfirm: View {
             }
 
             if useSendAll {
-                let sendAllFee = try await wallet.calculateTotalFee(
+                let sendAllFee = try await wallet.estimateSendAllFee(
                     address: address,
-                    amountSats: balance,
-                    satsPerVByte: fastFeeRate,
-                    utxosToSpend: allUtxos
+                    satsPerVByte: fastFeeRate
                 )
+                // Use spendable balance (not utxoTotal) to respect anchor reserves
+                let maxSendable = balance >= sendAllFee ? balance - sendAllFee : 0
+
+                if maxSendable < currentOrder.feeSat {
+                    Logger.error(
+                        "Insufficient balance for transfer: maxSendable=\(maxSendable), orderFee=\(currentOrder.feeSat)",
+                        context: "SpendingConfirm"
+                    )
+                    await MainActor.run {
+                        app.toast(type: .error, title: t("other__pay_insufficient_savings"))
+                    }
+                    return
+                }
+
                 await MainActor.run {
                     transactionFee = sendAllFee
                     selectedUtxos = allUtxos
                     satsPerVbyte = fastFeeRate
-                    maxSendableAmount = balance >= sendAllFee ? balance - sendAllFee : 0
+                    maxSendableAmount = maxSendable
                     shouldUseSendAll = true
                 }
             } else {
@@ -238,13 +253,14 @@ struct SpendingConfirm: View {
                 }
             }
         } catch {
-            Logger.error("Failed to calculate actual fee: \(error)")
+            Logger.error("Failed to calculate actual fee: \(error)", context: "SpendingConfirm")
             await MainActor.run {
                 transactionFee = 0
                 selectedUtxos = nil
                 satsPerVbyte = nil
                 maxSendableAmount = nil
                 shouldUseSendAll = false
+                app.toast(type: .error, title: t("other__try_again"))
             }
         }
     }

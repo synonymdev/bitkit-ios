@@ -252,7 +252,6 @@ class WalletViewModel: ObservableObject {
             break
         }
 
-
         var info: IBtInfo?
         do {
             info = try await coreService.blocktank.info(refresh: true)
@@ -487,6 +486,17 @@ class WalletViewModel: ObservableObject {
         )
     }
 
+    /// Estimates the fee for a send-all (drain) transaction
+    func estimateSendAllFee(
+        address: String,
+        satsPerVByte: UInt32
+    ) async throws -> UInt64 {
+        return try await lightningService.estimateSendAllFee(
+            address: address,
+            satsPerVByte: satsPerVByte
+        )
+    }
+
     /// Calculates the maximum sendable amount for onchain transactions
     /// - Parameters:
     ///   - address: The destination address
@@ -498,20 +508,14 @@ class WalletViewModel: ObservableObject {
         satsPerVByte: UInt32
     ) async throws -> UInt64 {
         let spendableBalance = UInt64(spendableOnchainBalanceSats)
-
         availableUtxos = try await lightningService.listSpendableOutputs()
 
-        // Use LDK-Node's special handling - when we pass the spendable balance as amount,
-        // it will automatically calculate the fee for sending all available funds
-        // if the exact amount would result in insufficient funds due to fees
-        let fee = try await lightningService.calculateTotalFee(
+        let fee = try await lightningService.estimateSendAllFee(
             address: address,
-            amountSats: spendableBalance,
-            satsPerVByte: satsPerVByte,
-            utxosToSpend: availableUtxos
+            satsPerVByte: satsPerVByte
         )
 
-        // The max sendable amount is the spendable balance minus the fee
+        // Use spendableBalance (not utxoTotal) to respect anchor channel reserves
         return spendableBalance >= fee ? spendableBalance - fee : 0
     }
 
