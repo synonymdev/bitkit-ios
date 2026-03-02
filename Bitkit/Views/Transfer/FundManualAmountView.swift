@@ -82,10 +82,12 @@ struct FundManualAmountView: View {
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
                 amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats) / 4, currency: currency)
             }
+            .accessibilityIdentifier("ExternalAmountQuarter")
 
             NumberPadActionButton(text: t("common__max")) {
                 amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)
             }
+            .accessibilityIdentifier("ExternalAmountMax")
         }
     }
 
