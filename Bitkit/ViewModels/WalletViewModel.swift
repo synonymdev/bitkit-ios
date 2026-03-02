@@ -497,6 +497,26 @@ class WalletViewModel: ObservableObject {
         )
     }
 
+    private func maxChannelFundableAmount(fundableBalance: UInt64) async -> UInt64 {
+        guard fundableBalance > 0 else { return 0 }
+
+        do {
+            guard let feeRates = try await coreService.blocktank.fees(refresh: false) else {
+                return fundableBalance
+            }
+            let feeRate = TransactionSpeed.normal.getFeeRate(from: feeRates)
+            let fee = try await lightningService.calculateTotalFee(
+                address: onchainAddress,
+                amountSats: fundableBalance,
+                satsPerVByte: feeRate
+            )
+            return fundableBalance >= fee ? fundableBalance - fee : 0
+        } catch {
+            Logger.debug("Could not calculate channel funding fee", context: "WalletViewModel")
+            return fundableBalance
+        }
+    }
+
     /// Calculates the maximum sendable amount for onchain transactions
     /// - Parameters:
     ///   - address: The destination address
@@ -674,13 +694,13 @@ class WalletViewModel: ObservableObject {
             totalBalanceSats = Int(state.totalBalanceSats)
             maxSendLightningSats = Int(state.maxSendLightningSats)
 
-            // Update channel fundable balance (excludes Legacy UTXOs which can't be used for channels)
+            // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
             let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
             if let fundableBalance = try? await lightningService.getChannelFundableBalance(
                 selectedType: selectedType,
                 monitoredTypes: monitoredTypes
             ) {
-                channelFundableBalanceSats = Int(fundableBalance)
+                channelFundableBalanceSats = await Int(maxChannelFundableAmount(fundableBalance: fundableBalance))
             }
 
             // Get force close timelock from active transfers
