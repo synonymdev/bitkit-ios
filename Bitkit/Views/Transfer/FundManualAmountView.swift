@@ -24,11 +24,15 @@ struct FundManualAmountView: View {
                 DisplayText(t("lightning__external_amount__title"), accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
 
-                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                    .onTapGesture {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
-                    }
-                    .padding(.vertical, 32)
+                NumberPadTextField(
+                    viewModel: amountViewModel,
+                    showConversion: false,
+                    testIdentifier: "ExternalAmountNumberField"
+                )
+                .onTapGesture {
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
+                }
+                .padding(.vertical, 32)
 
                 Spacer()
 
