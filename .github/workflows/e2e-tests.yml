@@ -420,6 +420,12 @@ jobs:
         working-directory: bitkit-e2e-tests
         run: npm ci
 
+      - name: Install ffmpeg
+        run: |
+          echo "Installing ffmpeg with Homebrew..."
+          brew install ffmpeg
+          echo "ffmpeg version: $(ffmpeg -version | head -1)"
+
       - name: Boot Simulator
         run: |
           echo "Erasing simulator..."
