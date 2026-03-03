@@ -6,6 +6,12 @@ struct SavingsWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    /// Whether there are any onchain activities to display
+    private var hasOnchainActivities: Bool {
+        guard let activities = activity.onchainActivities else { return false }
+        return !activities.isEmpty
+    }
+
     /// Calculate remaining duration for force close transfers
     private var forceCloseRemainingDuration: String? {
         guard let claimableAtHeight = wallet.forceCloseClaimableAtHeight,
@@ -42,8 +48,8 @@ struct SavingsWalletView: View {
                     .padding(.top, 16)
                 }
 
-                if wallet.totalOnchainSats > 0 {
-                    if !GeoService.shared.isGeoBlocked {
+                if wallet.totalOnchainSats > 0 || hasOnchainActivities {
+                    if wallet.totalOnchainSats > 0, !GeoService.shared.isGeoBlocked {
                         transferButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 32)
@@ -96,7 +102,7 @@ struct SavingsWalletView: View {
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
         .overlay {
-            if wallet.totalOnchainSats == 0 {
+            if wallet.totalOnchainSats == 0 && !hasOnchainActivities {
                 EmptyStateView(type: .savings)
                     .padding(.horizontal)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
