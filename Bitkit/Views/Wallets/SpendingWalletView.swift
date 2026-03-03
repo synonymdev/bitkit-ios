@@ -6,6 +6,12 @@ struct SpendingWalletView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    /// Whether there are any lightning activities to display
+    private var hasLightningActivities: Bool {
+        guard let activities = activity.lightningActivities else { return false }
+        return !activities.isEmpty
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
@@ -27,8 +33,8 @@ struct SpendingWalletView: View {
                         .padding(.top, 16)
                 }
 
-                if wallet.totalLightningSats > 0 {
-                    if let channels = wallet.channels, !channels.isEmpty {
+                if wallet.totalLightningSats > 0 || hasLightningActivities {
+                    if wallet.totalLightningSats > 0, let channels = wallet.channels, !channels.isEmpty {
                         transferButton
                             .transition(.move(edge: .leading).combined(with: .opacity))
                             .padding(.top, 32)
@@ -81,7 +87,7 @@ struct SpendingWalletView: View {
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalLightningSats)
         .overlay {
-            if wallet.totalLightningSats == 0 {
+            if wallet.totalLightningSats == 0 && !hasLightningActivities {
                 EmptyStateView(type: .spending)
                     .padding(.horizontal)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
