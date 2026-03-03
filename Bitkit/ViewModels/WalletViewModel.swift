@@ -731,6 +731,7 @@ class WalletViewModel: ObservableObject {
         await lightningService.refreshCache()
 
         do {
+            await MigrationsService.shared.cleanupInvalidMigrationTransfers()
             try? await transferService.syncTransferStates()
             let state = try await balanceManager.deriveBalanceState()
             balanceInTransferToSavings = Int(state.balanceInTransferToSavings)
