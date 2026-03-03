@@ -59,8 +59,6 @@ class WalletViewModel: ObservableObject {
 
     static var peerSimulation: BlocktankPeerSimulation = .none
 
-    private static let channelRecoveryRestartDelayMs: UInt64 = 500
-
     @Published var isRestoringWallet = false
     @Published var balanceInTransferToSavings: Int = 0
     @Published var balanceInTransferToSpending: Int = 0
@@ -136,6 +134,21 @@ class WalletViewModel: ObservableObject {
                     channelMonitors: migration.channelMonitors.map { [UInt8]($0) }
                 )
                 MigrationsService.shared.pendingChannelMigration = nil
+            }
+
+            // If no local migration data, try fetching from RN remote backup (one-time)
+            if channelMigration == nil {
+                let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
+                if let remoteMigration {
+                    channelMigration = ChannelDataMigration(
+                        channelManager: [UInt8](remoteMigration.channelManager),
+                        channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
+                    )
+                    MigrationsService.shared.pendingChannelMigration = nil
+                }
+                if allRetrieved {
+                    MigrationsService.shared.isChannelRecoveryChecked = true
+                }
             }
 
             await runLegacyNetworkGraphCleanupIfNeeded()
@@ -236,77 +249,42 @@ class WalletViewModel: ObservableObject {
         Task { @MainActor in
             try await sync()
         }
-
-        // One-time check for orphaned channel monitors from RN migration
-        Task {
-            await checkForOrphanedChannelMonitorRecovery()
-        }
     }
 
-    private func checkForOrphanedChannelMonitorRecovery() async {
+    /// Fetches orphaned channel monitors from RN remote backup before LDK setup.
+    /// Returns (migration data if found, whether all monitors were successfully retrieved).
+    private func fetchOrphanedChannelMonitorsIfNeeded(walletIndex: Int) async -> (PendingChannelMigration?, Bool) {
         let migrations = MigrationsService.shared
-        guard !migrations.isChannelRecoveryChecked else { return }
+        guard !migrations.isChannelRecoveryChecked else { return (nil, true) }
 
-        Logger.info("Running one-time channel monitor recovery check", context: "WalletViewModel")
+        Logger.info("Running pre-startup channel monitor recovery check", context: "WalletViewModel")
 
-        var allMonitorsRetrieved = false
         do {
-            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: 0)) else {
+            guard let mnemonic = try Keychain.loadString(key: .bip39Mnemonic(index: walletIndex)) else {
                 Logger.debug("Channel recovery: no mnemonic, skipping", context: "WalletViewModel")
                 migrations.isChannelRecoveryChecked = true
-                return
+                return (nil, true)
             }
-            let passphrase = try? Keychain.loadString(key: .bip39Passphrase(index: 0))
+            let passphrase = try? Keychain.loadString(key: .bip39Passphrase(index: walletIndex))
 
             RNBackupClient.shared.reset()
             try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
 
-            let retrieved = await migrations.fetchRNRemoteLdkData()
+            let allRetrieved = await migrations.fetchRNRemoteLdkData()
 
             if let migration = migrations.pendingChannelMigration {
-                let monitorCount = migration.channelMonitors.count
                 Logger.info(
-                    "Found \(monitorCount) monitors on RN backup, attempting recovery",
+                    "Found \(migration.channelMonitors.count) monitors on RN backup for pre-startup recovery",
                     context: "WalletViewModel"
                 )
-
-                let channelMigration = ChannelDataMigration(
-                    channelManager: [UInt8](migration.channelManager),
-                    channelMonitors: migration.channelMonitors.map { [UInt8]($0) }
-                )
-                migrations.pendingChannelMigration = nil
-
-                // Stop and restart the lightning service directly (not via self.start())
-                // to avoid the nodeLifecycleState guard racing with concurrent sync Tasks
-                try await lightningService.stop()
-                try await Task.sleep(nanoseconds: Self.channelRecoveryRestartDelayMs * 1_000_000)
-
-                let electrumServerUrl = electrumConfigService.getCurrentServer().fullUrl
-                let rgsServerUrl = rgsConfigService.getCurrentServerUrl()
-                try await lightningService.setup(
-                    walletIndex: 0,
-                    electrumServerUrl: electrumServerUrl,
-                    rgsServerUrl: rgsServerUrl.isEmpty ? nil : rgsServerUrl,
-                    channelMigration: channelMigration
-                )
-                try await lightningService.start()
-
-                nodeLifecycleState = .running
-                syncState()
-                Logger.info("Channel monitor recovery complete", context: "WalletViewModel")
+                return (migration, allRetrieved)
             } else {
                 Logger.info("No channel monitors found on RN backup", context: "WalletViewModel")
+                return (nil, allRetrieved)
             }
-
-            allMonitorsRetrieved = retrieved
         } catch {
-            Logger.error("Channel monitor recovery check failed: \(error)", context: "WalletViewModel")
-        }
-
-        if allMonitorsRetrieved {
-            migrations.isChannelRecoveryChecked = true
-        } else {
-            Logger.warn("Some monitors failed to download, will retry on next startup", context: "WalletViewModel")
+            Logger.error("Pre-startup channel monitor fetch failed: \(error)", context: "WalletViewModel")
+            return (nil, false)
         }
     }
 
