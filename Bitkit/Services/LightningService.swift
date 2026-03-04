@@ -380,6 +380,28 @@ class LightningService {
         }
     }
 
+    func reconnectPeers() async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        let peers = node.listPeers()
+        Logger.info("Reconnecting to \(peers.count) peers")
+        for peer in peers {
+            do {
+                try await ServiceQueue.background(.ldk) {
+                    try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
+                }
+                Logger.info("Reconnected to peer: \(peer.nodeId)@\(peer.address)")
+            } catch {
+                Logger.error(error, context: "Failed to reconnect to peer: \(peer.nodeId)@\(peer.address)")
+                throw error
+            }
+        }
+
+        Logger.info("Reconnected to all peers")
+    }
+
     /// Temp fix for regtest where nodes might not agree on current fee rates
     private func setMaxDustHtlcExposureForCurrentChannels() throws {
         guard Env.network == .regtest else {
