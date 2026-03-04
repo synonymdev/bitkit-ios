@@ -389,20 +389,20 @@ class LightningService {
         }
 
         let peers = node.listPeers()
-        Logger.info("Reconnecting to \(peers.count) peers")
+        Logger.debug("Reconnecting to \(peers.count) peers", context: "LightningService")
         for peer in peers {
             do {
                 try await ServiceQueue.background(.ldk) {
                     try node.connect(nodeId: peer.nodeId, address: peer.address, persist: true)
                 }
-                Logger.info("Reconnected to peer: \(peer.nodeId)@\(peer.address)")
+                Logger.info("Reconnected to peer: \(peer.nodeId)@\(peer.address)", context: "LightningService")
             } catch {
                 Logger.error(error, context: "Failed to reconnect to peer: \(peer.nodeId)@\(peer.address)")
-                throw error
+                // Best effort: continue to next peer instead of aborting
             }
         }
 
-        Logger.info("Reconnected to all peers")
+        Logger.debug("Reconnected to all peers", context: "LightningService")
     }
 
     /// Temp fix for regtest where nodes might not agree on current fee rates
