@@ -519,6 +519,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = "-framework CoreBluetooth";
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -547,6 +548,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = "-framework CoreBluetooth";
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -706,6 +708,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = "-framework CoreBluetooth";
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
@@ -749,6 +752,7 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = "-framework CoreBluetooth";
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = auto;
