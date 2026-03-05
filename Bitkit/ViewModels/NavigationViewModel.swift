@@ -13,6 +13,7 @@ enum Route: Hashable {
     case contactsIntro
     case profile
     case profileIntro
+    case pubkyRingAuth
     case transferIntro
     case fundingOptions
     case spendingIntro

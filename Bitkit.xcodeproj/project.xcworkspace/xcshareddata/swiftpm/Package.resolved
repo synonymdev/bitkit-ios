@@ -1,5 +1,5 @@
 {
-  "originHash" : "17302aed9b1f94b6f928fd7e06b45ebec95883553cab0849836d3e292cab01d7",
+  "originHash" : "5fd9d80e9c87ee89ed51e22fc50e63b290378728f8d780e87e69391d33af8aa5",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
         "branch" : "master",
-        "revision" : "76a63a2654f717accde5268905897b73e4f7d3c4"
+        "revision" : "0e4de89cd08b16ac89cd5e0500abf528f5970c0b"
       }
     },
     {
@@ -34,6 +34,15 @@
       "state" : {
         "revision" : "a004050748dc197c56256a14dca49a035d74726c",
         "version" : "4.5.2"
+      }
+    },
+    {
+      "identity" : "paykit-rs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pubky/paykit-rs",
+      "state" : {
+        "branch" : "master",
+        "revision" : "cd1253291b1582759d569372d5942b8871527ea1"
       }
     },
     {
