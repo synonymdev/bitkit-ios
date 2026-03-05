@@ -1,4 +1,5 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 struct LnurlPayConfirm: View {
@@ -214,11 +215,24 @@ struct LnurlPayConfirm: View {
             comment: comment.isEmpty ? nil : comment
         )
 
+        let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+        let paymentHash = String(describing: parsedInvoice.paymentHash())
+
         do {
-            // Perform the Lightning payment
-            let paymentHash = try await wallet.send(bolt11: bolt11, sats: wallet.sendAmountSats)
+            // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+            try await wallet.sendWithTimeout(
+                bolt11: bolt11,
+                sats: wallet.sendAmountSats,
+                onTimeout: {
+                    app.addPendingPaymentHash(paymentHash)
+                    navigationPath.append(.pending(paymentHash: paymentHash))
+                }
+            )
             Logger.info("LNURL payment successful: \(paymentHash)")
-            navigationPath.append(.success(paymentHash))
+            navigationPath.append(.success(paymentId: paymentHash))
+        } catch is PaymentTimeoutError {
+            // onTimeout callback already navigated to .pending; suppress throw
+            return
         } catch {
             Logger.error("LNURL payment failed: \(error)")
 
