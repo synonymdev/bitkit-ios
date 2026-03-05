@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		182817C12F59A7F10055A441 /* Paykit in Frameworks */ = {isa = PBXBuildFile; productRef = 182817C02F59A7F10055A441 /* Paykit */; };
 		18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65DFF2EB964B500252335 /* VssRustClientFfi */; };
 		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
@@ -161,6 +162,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				182817C12F59A7F10055A441 /* Paykit in Frameworks */,
 				4AFCA3702E05933800205CAE /* Zip in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
@@ -273,6 +275,7 @@
 				4AFCA36F2E05933800205CAE /* Zip */,
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
 				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
+				182817C02F59A7F10055A441 /* Paykit */,
 			);
 			productName = Bitkit;
 			productReference = 96FE1F612C2DE6AA006D0C8B /* Bitkit.app */;
@@ -380,6 +383,7 @@
 				968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */,
 				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 				18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */,
+				182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */,
 			);
 			productRefGroup = 96FE1F622C2DE6AA006D0C8B /* Products */;
 			projectDirPath = "";
@@ -893,6 +897,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/pubky/paykit-rs";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/vss-rust-client-ffi";
@@ -960,6 +972,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		182817C02F59A7F10055A441 /* Paykit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 182817BF2F59A7F10055A441 /* XCRemoteSwiftPackageReference "paykit-rs" */;
+			productName = Paykit;
+		};
 		18D65DFF2EB964B500252335 /* VssRustClientFfi */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */;

@@ -170,6 +170,7 @@ struct Suggestions: View {
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var wallet: WalletViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var showShareSheet = false
 
@@ -181,6 +182,7 @@ struct Suggestions: View {
         app: AppViewModel,
         settings: SettingsViewModel,
         suggestionsManager: SuggestionsManager,
+        pubkyProfile: PubkyProfileManager? = nil,
         isPreview: Bool = false
     ) -> [SuggestionCardData] {
         if isPreview {
@@ -197,7 +199,7 @@ struct Suggestions: View {
         var result: [SuggestionCardData] = []
         for id in orderedIds {
             guard let card = cardsById[id] else { continue }
-            if isCardCompleted(card, app: app, settings: settings) { continue }
+            if isCardCompleted(card, app: app, settings: settings, pubkyProfile: pubkyProfile) { continue }
             if suggestionsManager.isDismissed(card.id) { continue }
             result.append(card)
             if result.count >= 4 { break }
@@ -206,10 +208,13 @@ struct Suggestions: View {
     }
 
     /// Whether the user has completed this suggestion (e.g. backup verified, pin enabled, notifications on).
-    private static func isCardCompleted(_ card: SuggestionCardData, app: AppViewModel, settings: SettingsViewModel) -> Bool {
+    private static func isCardCompleted(_ card: SuggestionCardData, app: AppViewModel, settings: SettingsViewModel,
+                                        pubkyProfile: PubkyProfileManager? = nil) -> Bool
+    {
         switch card.action {
         case .backup: return app.backupVerified
         case .notifications: return settings.enableNotifications
+        case .profile: return pubkyProfile?.isAuthenticated ?? false
         case .quickpay: return settings.enableQuickpay
         case .secure: return settings.pinEnabled
         default: return false
@@ -218,7 +223,7 @@ struct Suggestions: View {
 
     /// Cards to display in this view; delegates to the static visibleCards (same logic as the widget list filter).
     private var visibleCards: [SuggestionCardData] {
-        Self.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager, isPreview: isPreview)
+        Self.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager, pubkyProfile: pubkyProfile, isPreview: isPreview)
     }
 
     var body: some View {
@@ -265,7 +270,13 @@ struct Suggestions: View {
         case .invite:
             showShareSheet = true
         case .profile:
-            route = app.hasSeenProfileIntro ? .profile : .profileIntro
+            if pubkyProfile.isAuthenticated {
+                route = .profile
+            } else if app.hasSeenProfileIntro {
+                route = .pubkyRingAuth
+            } else {
+                route = .profileIntro
+            }
         case .quickpay:
             route = app.hasSeenQuickpayIntro ? .quickpay : .quickpayIntro
         case .notifications:
@@ -292,4 +303,18 @@ struct Suggestions: View {
             suggestionsManager.dismiss(card.id)
         }
     }
+}
+
+#Preview {
+    VStack {
+        Suggestions()
+    }
+    .environmentObject(AppViewModel())
+    .environmentObject(NavigationViewModel())
+    .environmentObject(SheetViewModel())
+    .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SuggestionsManager())
+    .environmentObject(WalletViewModel())
+    .environmentObject(PubkyProfileManager())
+    .preferredColorScheme(.dark)
 }

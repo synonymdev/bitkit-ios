@@ -6,8 +6,9 @@ struct MainNavView: View {
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
-    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
@@ -307,8 +308,16 @@ struct MainNavView: View {
                 // Profile & Contacts
                 case .contacts: ComingSoonScreen()
                 case .contactsIntro: ComingSoonScreen()
-                case .profile: ComingSoonScreen()
-                case .profileIntro: ComingSoonScreen()
+                case .profile:
+                    if pubkyProfile.isAuthenticated {
+                        ProfileView()
+                    } else if app.hasSeenProfileIntro {
+                        PubkyRingAuthView()
+                    } else {
+                        ProfileIntroView()
+                    }
+                case .profileIntro: ProfileIntroView()
+                case .pubkyRingAuth: PubkyRingAuthView()
 
                 // Shop
                 case .shopIntro: ShopIntro()

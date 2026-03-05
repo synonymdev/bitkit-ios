@@ -6,7 +6,6 @@ struct QR: View {
     var imageAsset: String?
 
     @State private var cachedImage: UIImage?
-    @State private var cachedContent: String = ""
     var onPressed: (() -> Void)?
 
     private let context = CIContext()
@@ -14,14 +13,21 @@ struct QR: View {
 
     var body: some View {
         ZStack {
-            Image(uiImage: cachedImage ?? generateQRCode(from: content))
-                .interpolation(.none)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity)
-                .padding(8)
-                .background(Color.white)
-                .cornerRadius(8)
+            if let cachedImage {
+                Image(uiImage: cachedImage)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .padding(8)
+                    .background(Color.white)
+                    .cornerRadius(8)
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white)
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+            }
 
             if let imageAsset {
                 ZStack {
@@ -41,17 +47,8 @@ struct QR: View {
                 onPressed()
             }
         }
-        .onAppear {
-            // Generate initial QR code
-            if cachedImage == nil {
-                cachedContent = content
-                cachedImage = generateQRCode(from: content)
-            }
-        }
-        .onChange(of: content) { _, newContent in
-            // Regenerate when content changes
-            cachedContent = newContent
-            cachedImage = generateQRCode(from: newContent)
+        .task(id: content) {
+            cachedImage = generateQRCode(from: content)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("QRCode")
