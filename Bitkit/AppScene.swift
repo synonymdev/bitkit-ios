@@ -24,6 +24,7 @@ struct AppScene: View {
     @StateObject private var transferTracking: TransferTrackingManager
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
+    @StateObject private var pubkyProfile = PubkyProfileManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -120,6 +121,7 @@ struct AppScene: View {
             .environmentObject(tagManager)
             .environmentObject(transferTracking)
             .environmentObject(channelDetails)
+            .environmentObject(pubkyProfile)
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
@@ -380,6 +382,10 @@ struct AppScene: View {
 
     @Sendable
     private func setupTask() async {
+        // Start Pubky/Paykit initialization early so PKDNS bootstrapping
+        // runs concurrently with wallet setup instead of sequentially after it.
+        Task { await pubkyProfile.initialize() }
+
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()

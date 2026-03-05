@@ -138,6 +138,7 @@ struct Suggestions: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     @State private var showShareSheet = false
     // Prevent duplicate item taps when the card is dismissed
@@ -159,6 +160,10 @@ struct Suggestions: View {
             }
 
             if card.action == .notifications && settings.enableNotifications {
+                return false
+            }
+
+            if card.action == .profile && pubkyProfile.isAuthenticated {
                 return false
             }
 
@@ -228,7 +233,13 @@ struct Suggestions: View {
         case .invite:
             showShareSheet = true
         case .profile:
-            route = app.hasSeenProfileIntro ? .profile : .profileIntro
+            if pubkyProfile.isAuthenticated {
+                route = .profile
+            } else if app.hasSeenProfileIntro {
+                route = .pubkyRingAuth
+            } else {
+                route = .profileIntro
+            }
         case .quickpay:
             route = app.hasSeenQuickpayIntro ? .quickpay : .quickpayIntro
         case .notifications:
@@ -266,7 +277,11 @@ struct Suggestions: View {
     VStack {
         Suggestions()
     }
+    .environmentObject(AppViewModel())
+    .environmentObject(NavigationViewModel())
     .environmentObject(SheetViewModel())
     .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SuggestionsManager())
+    .environmentObject(PubkyProfileManager())
     .preferredColorScheme(.dark)
 }
