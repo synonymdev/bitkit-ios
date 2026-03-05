@@ -44,10 +44,10 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
-    // When to show empty state UI
+    /// When to show empty state UI
     @AppStorage("showHomeViewEmptyState") var showHomeViewEmptyState: Bool = false
 
-    // App update tracking
+    /// App update tracking
     @AppStorage("appUpdateIgnoreTimestamp") var appUpdateIgnoreTimestamp: TimeInterval = 0
 
     // Backup warning tracking
@@ -58,7 +58,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("highBalanceIgnoreCount") var highBalanceIgnoreCount: Int = 0
     @AppStorage("highBalanceIgnoreTimestamp") var highBalanceIgnoreTimestamp: TimeInterval = 0
 
-    // Drawer menu
+    /// Drawer menu
     @Published var showDrawer = false
 
     /// Payment hashes for which we navigated to the pending screen.
@@ -69,8 +69,8 @@ class AppViewModel: ObservableObject {
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
     @Published var sendSheetPendingResolution: SendSheetPendingResolution?
 
-    // App status init - shows "ready" until node is actually running
-    // This prevents flashing error status during startup/background transitions
+    /// App status init - shows "ready" until node is actually running
+    /// This prevents flashing error status during startup/background transitions
     @Published var appStatusInit: Bool = false
 
     func showAllEmptyStates(_ show: Bool) {
@@ -214,7 +214,7 @@ class AppViewModel: ObservableObject {
         }
     }
 
-    // Convenience initializer for previews and testing
+    /// Convenience initializer for previews and testing
     convenience init() {
         self.init(sheetViewModel: SheetViewModel(), navigationViewModel: NavigationViewModel())
     }
@@ -296,10 +296,6 @@ extension AppViewModel {
 extension AppViewModel {
     func addPendingPaymentHash(_ hash: String) {
         pendingPaymentHashes.insert(hash)
-    }
-
-    func removePendingPaymentHash(_ hash: String) {
-        pendingPaymentHashes.remove(hash)
     }
 
     /// Called by SendPendingScreen when it consumes a resolution. Clears the published value.

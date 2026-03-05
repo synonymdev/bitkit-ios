@@ -4,7 +4,9 @@ import SwiftUI
 struct HourglassLoadingView: View {
     @State private var rotation: Double = -16
 
-    private var size: CGFloat { UIScreen.main.isSmall ? 160 : 256 }
+    private var size: CGFloat {
+        UIScreen.main.isSmall ? 160 : 256
+    }
 
     var body: some View {
         Image("hourglass")
@@ -82,10 +84,6 @@ struct SendPendingScreen: View {
             } else {
                 navigationPath.append(.failure)
             }
-        }
-        .onDisappear {
-            // Remove the pending payment hash from the app model when the screen disappears
-            app.removePendingPaymentHash(paymentHash)
         }
     }
 
