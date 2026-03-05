@@ -24,18 +24,23 @@ struct FundManualAmountView: View {
                 DisplayText(t("lightning__external_amount__title"), accentColor: .purpleAccent)
                     .fixedSize(horizontal: false, vertical: true)
 
-                NumberPadTextField(viewModel: amountViewModel, showConversion: false)
-                    .onTapGesture {
-                        amountViewModel.togglePrimaryDisplay(currency: currency)
-                    }
-                    .padding(.vertical, 32)
+                NumberPadTextField(
+                    viewModel: amountViewModel,
+                    showConversion: false,
+                    testIdentifier: "ExternalAmountNumberField"
+                )
+                .onTapGesture {
+                    amountViewModel.togglePrimaryDisplay(currency: currency)
+                }
+                .padding(.vertical, 32)
 
                 Spacer()
 
                 HStack(alignment: .bottom) {
-                    AvailableAmount(label: t("wallet__send_available"), amount: wallet.totalOnchainSats)
+                    // Excludes Legacy (not usable for channel funding)
+                    AvailableAmount(label: t("wallet__send_available"), amount: wallet.channelFundableBalanceSats)
                         .onTapGesture {
-                            amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats), currency: currency)
+                            amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)
                         }
 
                     Spacer()
@@ -79,12 +84,14 @@ struct FundManualAmountView: View {
             }
 
             NumberPadActionButton(text: t("lightning__spending_amount__quarter")) {
-                amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats) / 4, currency: currency)
+                amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats) / 4, currency: currency)
             }
+            .accessibilityIdentifier("ExternalAmountQuarter")
 
             NumberPadActionButton(text: t("common__max")) {
-                amountViewModel.updateFromSats(UInt64(wallet.totalOnchainSats), currency: currency)
+                amountViewModel.updateFromSats(UInt64(wallet.channelFundableBalanceSats), currency: currency)
             }
+            .accessibilityIdentifier("ExternalAmountMax")
         }
     }
 

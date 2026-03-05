@@ -4,6 +4,9 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
+// Avoids conflict with AddressViewer.AddressType
+typealias AddressScriptType = LDKNode.AddressType
+
 enum CoinSelectionMethod: String, CaseIterable {
     case manual
     case autopilot
@@ -44,6 +47,10 @@ class SettingsViewModel: NSObject, ObservableObject {
     static let shared = SettingsViewModel()
 
     private let defaults = UserDefaults.standard
+
+    @Published private(set) var isChangingAddressType = false
+    /// Set during restore when backup contained explicit monitored address types.
+    private(set) var restoredMonitoredTypesFromBackup = false
     private var observedKeys: Set<String> = []
 
     // Reactive publishers for settings changes (used by BackupService)
@@ -181,6 +188,34 @@ class SettingsViewModel: NSObject, ObservableObject {
         appStateSubject.send()
     }
 
+    /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
+    func resetToDefaults() {
+        _swipeBalanceToHide = true
+        defaultTransactionSpeed = .normal
+        hideBalance = false
+        hideBalanceOnOpen = false
+        readClipboard = false
+        warnWhenSendingOver100 = false
+        enableQuickpay = false
+        quickpayAmount = 5
+        enableNotifications = false
+        enableNotificationsAmount = false
+        ignoresSwitchUnitToast = false
+        ignoresHideBalanceToast = false
+        pinFailedAttempts = 0
+        requirePinForPayments = false
+        useBiometrics = false
+        showWidgets = true
+        showWidgetTitles = false
+        _coinSelectionMethod = CoinSelectionMethod.autopilot.rawValue
+        _coinSelectionAlgorithm = CoinSelectionAlgorithm.branchAndBound.stringValue
+        _selectedAddressType = "nativeSegwit"
+        _addressTypesToMonitor = "nativeSegwit"
+        pinEnabled = false
+        isChangingAddressType = false
+        restoredMonitoredTypesFromBackup = false
+    }
+
     // MARK: - Computed Properties
 
     var electrumHasEdited: Bool {
@@ -239,6 +274,253 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
         set {
             _coinSelectionAlgorithm = newValue.stringValue
+        }
+    }
+
+    // Address Type Settings
+    /// Address types that support native SegWit scripts (required for Lightning).
+    private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
+
+    @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
+
+    @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
+
+    /// Parses a comma-separated string of address types, filtering invalid values.
+    static func parseAddressTypesString(_ string: String) -> [AddressScriptType] {
+        LDKNode.AddressType.parseCommaSeparated(string)
+    }
+
+    var addressTypesToMonitor: [AddressScriptType] {
+        get {
+            Self.parseAddressTypesString(_addressTypesToMonitor)
+        }
+        set {
+            _addressTypesToMonitor = newValue.map(\.stringValue).joined(separator: ",")
+        }
+    }
+
+    /// Check if an address type is being monitored
+    func isMonitoring(_ addressType: AddressScriptType) -> Bool {
+        addressTypesToMonitor.contains(addressType)
+    }
+
+    func getBalanceForAddressType(_ addressType: AddressScriptType) async throws -> UInt64 {
+        let balance = try await lightningService.getBalanceForAddressType(addressType)
+        return balance.totalSats
+    }
+
+    func setMonitoring(_ addressType: AddressScriptType, enabled: Bool, wallet: WalletViewModel? = nil) async -> Bool {
+        guard !isChangingAddressType else { return false }
+
+        isChangingAddressType = true
+        defer { isChangingAddressType = false }
+
+        let previousAddressTypesToMonitor = addressTypesToMonitor
+        var current = addressTypesToMonitor
+
+        if enabled {
+            if !current.contains(addressType) {
+                current.append(addressType)
+                addressTypesToMonitor = current
+
+                do {
+                    try await lightningService.addAddressTypeToMonitor(addressType)
+                    try await lightningService.sync()
+                } catch {
+                    Logger.error("Failed to add address type to monitor: \(error)")
+                    addressTypesToMonitor = previousAddressTypesToMonitor
+                    return false
+                }
+            }
+        } else {
+            if addressType == selectedAddressType { return false }
+
+            do {
+                let balance = try await getBalanceForAddressType(addressType)
+                if balance > 0 { return false }
+            } catch {
+                Logger.error("Failed to check balance for \(addressType), preventing disable: \(error)")
+                return false
+            }
+
+            let remainingNativeWitness = current.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
+            if remainingNativeWitness.isEmpty {
+                return false
+            }
+
+            current.removeAll { $0 == addressType }
+            addressTypesToMonitor = current
+
+            do {
+                try await lightningService.removeAddressTypeFromMonitor(addressType)
+                try await lightningService.sync()
+            } catch {
+                Logger.error("Failed to remove address type from monitor: \(error)")
+                addressTypesToMonitor = previousAddressTypesToMonitor
+                return false
+            }
+        }
+
+        wallet?.syncState()
+        return true
+    }
+
+    func ensureMonitoring(_ addressType: AddressScriptType) {
+        if !addressTypesToMonitor.contains(addressType) {
+            var current = addressTypesToMonitor
+            current.append(addressType)
+            addressTypesToMonitor = current
+        }
+    }
+
+    func monitorAllAddressTypes() {
+        addressTypesToMonitor = AddressScriptType.allAddressTypes
+    }
+
+    /// Syncs monitored address types from ldk-node's runtime state into UserDefaults.
+    func syncMonitoredTypesFromNode() {
+        let nodeMonitored = lightningService.listMonitoredAddressTypes()
+        var combined = Set(nodeMonitored)
+        combined.insert(selectedAddressType)
+        addressTypesToMonitor = AddressScriptType.allAddressTypes.filter { combined.contains($0) }
+    }
+
+    private static let pendingRestoreAddressTypePruneKey = "pendingRestoreAddressTypePrune"
+
+    /// Tracks whether to prune empty address types after restore (set when user taps Get Started; cleared when prune runs).
+    var pendingRestoreAddressTypePrune: Bool {
+        get { UserDefaults.standard.bool(forKey: Self.pendingRestoreAddressTypePruneKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pendingRestoreAddressTypePruneKey) }
+    }
+
+    /// After restore, disables monitoring for address types with zero balance.
+    /// Keeps nativeSegwit as primary and monitored; only types with funds stay monitored.
+    func pruneEmptyAddressTypesAfterRestore() async {
+        guard !isChangingAddressType else { return }
+
+        var newMonitored = addressTypesToMonitor
+        var changed = false
+
+        for type in addressTypesToMonitor {
+            // Always keep nativeSegwit (primary, required for Lightning)
+            if type == .nativeSegwit { continue }
+
+            do {
+                let balance = try await getBalanceForAddressType(type)
+                if balance == 0 {
+                    newMonitored.removeAll { $0 == type }
+                    changed = true
+                    Logger.debug("Pruned empty address type from monitoring: \(type)", context: "SettingsViewModel")
+                }
+            } catch {
+                Logger.warn("Could not check balance for \(type), keeping monitored: \(error)")
+                // Don't disable on error - fail safe
+            }
+        }
+
+        // Ensure at least one native witness type
+        if !newMonitored.contains(where: { Self.nativeWitnessTypes.contains($0) }) {
+            if !newMonitored.contains(.nativeSegwit) {
+                newMonitored.append(.nativeSegwit)
+                changed = true
+            }
+        }
+
+        guard changed else { return }
+
+        let toRemove = addressTypesToMonitor.filter { !newMonitored.contains($0) }
+        addressTypesToMonitor = newMonitored
+        for type in toRemove {
+            do {
+                try await lightningService.removeAddressTypeFromMonitor(type)
+            } catch {
+                Logger.error("Failed to remove address type \(type) from monitor: \(error)")
+            }
+        }
+        do {
+            try await lightningService.sync()
+            Logger.info(
+                "Pruned empty address types after restore: \(newMonitored.map(\.stringValue).joined(separator: ","))",
+                context: "SettingsViewModel"
+            )
+        } catch {
+            Logger.error("Failed to sync after prune: \(error)")
+        }
+    }
+
+    /// True if disabling this would leave no native witness wallet (required for Lightning).
+    func isLastRequiredNativeWitnessWallet(_ addressType: AddressScriptType) -> Bool {
+        guard Self.nativeWitnessTypes.contains(addressType) else { return false }
+
+        let remainingNativeWitness = addressTypesToMonitor.filter { $0 != addressType && Self.nativeWitnessTypes.contains($0) }
+        return remainingNativeWitness.isEmpty
+    }
+
+    var selectedAddressType: AddressScriptType {
+        get {
+            LDKNode.AddressType.fromStorage(_selectedAddressType)
+        }
+        set {
+            _selectedAddressType = newValue.stringValue
+        }
+    }
+
+    func updateAddressType(_ addressType: AddressScriptType, wallet: WalletViewModel? = nil) async -> Bool {
+        guard !isChangingAddressType else { return false }
+        guard addressType != selectedAddressType else { return true }
+
+        isChangingAddressType = true
+        defer { isChangingAddressType = false }
+
+        let previousSelectedAddressType = selectedAddressType
+        let previousAddressTypesToMonitor = addressTypesToMonitor
+        let previousOnchainAddress = UserDefaults.standard.string(forKey: "onchainAddress") ?? ""
+        let previousBip21 = UserDefaults.standard.string(forKey: "bip21") ?? ""
+
+        selectedAddressType = addressType
+        ensureMonitoring(addressType)
+
+        do {
+            try await lightningService.setPrimaryAddressType(addressType)
+            syncMonitoredTypesFromNode()
+            try await lightningService.sync()
+            await generateAndUpdateAddress(addressType: addressType, wallet: wallet)
+        } catch {
+            Logger.error("Failed to set primary address type: \(error)")
+            selectedAddressType = previousSelectedAddressType
+            addressTypesToMonitor = previousAddressTypesToMonitor
+            UserDefaults.standard.set(previousOnchainAddress, forKey: "onchainAddress")
+            UserDefaults.standard.set(previousBip21, forKey: "bip21")
+            if let wallet {
+                wallet.onchainAddress = previousOnchainAddress
+                wallet.bip21 = previousBip21
+            }
+            wallet?.syncState()
+            return false
+        }
+
+        wallet?.syncState()
+        return true
+    }
+
+    private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {
+        do {
+            let newAddress = try await lightningService.newAddressForType(addressType)
+            guard addressType.matchesAddressFormat(newAddress, network: Env.network) else {
+                Logger.error("Generated address did not match expected format for \(addressType.stringValue): \(newAddress)")
+                return
+            }
+            UserDefaults.standard.set(newAddress, forKey: "onchainAddress")
+            if let wallet {
+                wallet.onchainAddress = newAddress
+                wallet.bip21 = "bitcoin:\(newAddress)"
+            }
+        } catch {
+            Logger.error("Failed to generate new address: \(error)")
+            UserDefaults.standard.set("", forKey: "onchainAddress")
+            if let wallet {
+                wallet.onchainAddress = ""
+            }
         }
     }
 
@@ -457,6 +739,39 @@ class SettingsViewModel: NSObject, ObservableObject {
         if let rgsServerUrl = dict["rgsServerUrl"] as? String, !rgsServerUrl.isEmpty {
             rgsConfigService.saveServerUrl(rgsServerUrl)
         }
+
+        syncAppStorageFromDefaults()
+
+        let restoredMonitored = addressTypesToMonitor
+        let restoredPrimary = selectedAddressType
+        restoredMonitoredTypesFromBackup = restoredMonitored.count > 1
+            || (restoredMonitored.count == 1 && restoredMonitored.first != restoredPrimary)
+
+        Logger.debug(
+            "Restored settings: selectedAddressType=\(_selectedAddressType), addressTypesToMonitor=\(_addressTypesToMonitor), fromBackup=\(restoredMonitoredTypesFromBackup)",
+            context: "SettingsRestore"
+        )
+    }
+
+    /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
+    private func syncAppStorageFromDefaults() {
+        _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
+        defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "") ?? .normal
+        hideBalance = defaults.bool(forKey: "hideBalance")
+        hideBalanceOnOpen = defaults.bool(forKey: "hideBalanceOnOpen")
+        readClipboard = defaults.bool(forKey: "readClipboard")
+        warnWhenSendingOver100 = defaults.bool(forKey: "warnWhenSendingOver100")
+        enableQuickpay = defaults.bool(forKey: "enableQuickpay")
+        quickpayAmount = defaults.double(forKey: "quickpayAmount")
+        enableNotifications = defaults.bool(forKey: "enableNotifications")
+        requirePinForPayments = defaults.bool(forKey: "requirePinForPayments")
+        useBiometrics = defaults.bool(forKey: "useBiometrics")
+        showWidgets = defaults.object(forKey: "showWidgets") as? Bool ?? true
+        showWidgetTitles = defaults.bool(forKey: "showWidgetTitles")
+        _coinSelectionMethod = defaults.string(forKey: "coinSelectionMethod") ?? CoinSelectionMethod.autopilot.rawValue
+        _coinSelectionAlgorithm = defaults.string(forKey: "coinSelectionAlgorithm") ?? CoinSelectionAlgorithm.branchAndBound.stringValue
+        _selectedAddressType = defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit"
+        _addressTypesToMonitor = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
     }
 
     /// Gets the current app cache data for backup

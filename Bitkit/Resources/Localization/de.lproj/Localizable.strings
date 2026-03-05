@@ -708,8 +708,6 @@
 "settings__adv__section_other" = "Andere";
 "settings__adv__address_type" = "Bitcoin Adressen-Typ";
 "settings__adv__monitored_address_types" = "Überwachte Adress-Typen";
-"settings__adv__monitored_address_types_update_title" = "Überwachte Adress-Typen aktualisiert";
-"settings__adv__monitored_address_types_update_description" = "Änderungen werden nach dem Neustart der App vollständig wirksam.";
 "settings__adv__gap_limit" = "Address Gap Limit";
 "settings__adv__coin_selection" = "Coin-Auswahl";
 "settings__adv__cs_method" = "Coin-Auswahlmethode";

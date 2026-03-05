@@ -718,8 +718,6 @@
 "settings__adv__section_other" = "Overige";
 "settings__adv__address_type" = "Bitcoin adres type";
 "settings__adv__monitored_address_types" = "Bewaakte adrestypes";
-"settings__adv__monitored_address_types_update_title" = "Bewaakte adrestypes bijgewerkt";
-"settings__adv__monitored_address_types_update_description" = "Wijzigingen worden volledig van kracht nadat de app opnieuw is opgestart.";
 "settings__adv__gap_limit" = "Adres Gap Limit";
 "settings__adv__coin_selection" = "Coin selectie";
 "settings__adv__cs_method" = "Coin Selectie Methode";

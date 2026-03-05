@@ -76,6 +76,8 @@ class BackupService {
     }
 
     func startObservingBackups() {
+        guard !shouldSkipBackup() else { return }
+
         Task {
             let shouldStart = try? await ServiceQueue.background(.backup) {
                 guard !self.isObserving else { return false }
@@ -377,6 +379,10 @@ class BackupService {
                 }
             }
         }
+    }
+
+    func setRestoring(_ value: Bool) {
+        stateQueue.sync { isRestoring = value }
     }
 
     private func shouldSkipBackup() -> Bool {

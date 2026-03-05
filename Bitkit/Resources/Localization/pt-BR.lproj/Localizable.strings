@@ -722,8 +722,6 @@
 "settings__adv__section_other" = "Outros";
 "settings__adv__address_type" = "Tipo de endereço Bitcoin";
 "settings__adv__monitored_address_types" = "Tipos de Endereços Monitorados";
-"settings__adv__monitored_address_types_update_title" = "Tipos de Endereços Monitorados Atualizados";
-"settings__adv__monitored_address_types_update_description" = "As alterações terão após a reinicialização do aplicativo.";
 "settings__adv__gap_limit" = "Limite de Endereços";
 "settings__adv__coin_selection" = "Controle de Moedas";
 "settings__adv__cs_method" = "Método de Controle de Moedas";

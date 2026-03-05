@@ -11,6 +11,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("totalLightningSats") var totalLightningSats: Int = 0 // Combined LN
     @AppStorage("spendableOnchainBalanceSats") var spendableOnchainBalanceSats: Int = 0 // The spendable balance of our on-chain wallet
     @AppStorage("maxSendLightningSats") var maxSendLightningSats: Int = 0 // Maximum amount that can be sent via lightning (outbound capacity)
+    @AppStorage("channelFundableBalanceSats") var channelFundableBalanceSats: Int = 0 // Balance usable for channel funding (excludes Legacy UTXOs)
 
     // Receive flow
     @AppStorage("onchainAddress") var onchainAddress = ""
@@ -537,6 +538,37 @@ class WalletViewModel: ObservableObject {
         )
     }
 
+    /// Estimates the fee for a send-all (drain) transaction
+    func estimateSendAllFee(
+        address: String,
+        satsPerVByte: UInt32
+    ) async throws -> UInt64 {
+        return try await lightningService.estimateSendAllFee(
+            address: address,
+            satsPerVByte: satsPerVByte
+        )
+    }
+
+    private func maxChannelFundableAmount(fundableBalance: UInt64) async -> UInt64 {
+        guard fundableBalance > 0 else { return 0 }
+
+        do {
+            guard let feeRates = try await coreService.blocktank.fees(refresh: false) else {
+                return fundableBalance
+            }
+            let feeRate = TransactionSpeed.normal.getFeeRate(from: feeRates)
+            let fee = try await lightningService.calculateTotalFee(
+                address: onchainAddress,
+                amountSats: fundableBalance,
+                satsPerVByte: feeRate
+            )
+            return fundableBalance >= fee ? fundableBalance - fee : 0
+        } catch {
+            Logger.debug("Could not calculate channel funding fee", context: "WalletViewModel")
+            return fundableBalance
+        }
+    }
+
     /// Calculates the maximum sendable amount for onchain transactions
     /// - Parameters:
     ///   - address: The destination address
@@ -548,20 +580,14 @@ class WalletViewModel: ObservableObject {
         satsPerVByte: UInt32
     ) async throws -> UInt64 {
         let spendableBalance = UInt64(spendableOnchainBalanceSats)
-
         availableUtxos = try await lightningService.listSpendableOutputs()
 
-        // Use LDK-Node's special handling - when we pass the spendable balance as amount,
-        // it will automatically calculate the fee for sending all available funds
-        // if the exact amount would result in insufficient funds due to fees
-        let fee = try await lightningService.calculateTotalFee(
+        let fee = try await lightningService.estimateSendAllFee(
             address: address,
-            amountSats: spendableBalance,
-            satsPerVByte: satsPerVByte,
-            utxosToSpend: availableUtxos
+            satsPerVByte: satsPerVByte
         )
 
-        // The max sendable amount is the spendable balance minus the fee
+        // Use spendableBalance (not utxoTotal) to respect anchor channel reserves
         return spendableBalance >= fee ? spendableBalance - fee : 0
     }
 
@@ -693,10 +719,10 @@ class WalletViewModel: ObservableObject {
 
     /// Sync balance details only
     private func syncBalances() {
-        balanceDetails = lightningService.balances
-
-        if let balanceDetails {
-            spendableOnchainBalanceSats = Int(balanceDetails.spendableOnchainBalanceSats)
+        // Only update balanceDetails if we have valid data (don't overwrite with nil during restart)
+        if let newBalances = lightningService.balances {
+            balanceDetails = newBalances
+            spendableOnchainBalanceSats = Int(newBalances.spendableOnchainBalanceSats)
         }
 
         Task { @MainActor in
@@ -720,6 +746,15 @@ class WalletViewModel: ObservableObject {
             totalLightningSats = Int(state.totalLightningSats)
             totalBalanceSats = Int(state.totalBalanceSats)
             maxSendLightningSats = Int(state.maxSendLightningSats)
+
+            // Update channel fundable balance (excludes Legacy UTXOs and accounts for funding tx fee)
+            let (selectedType, monitoredTypes) = LightningService.addressTypeStateFromUserDefaults()
+            if let fundableBalance = try? await lightningService.getChannelFundableBalance(
+                selectedType: selectedType,
+                monitoredTypes: monitoredTypes
+            ) {
+                channelFundableBalanceSats = await Int(maxChannelFundableAmount(fundableBalance: fundableBalance))
+            }
 
             // Get force close timelock from active transfers
             let activeTransfers = try? transferService.getActiveTransfers()

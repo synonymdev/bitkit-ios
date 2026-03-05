@@ -71,6 +71,7 @@ jobs:
             -skip-testing:BitkitTests/UtxoSelectionTests \
             -skip-testing:BitkitTests/BlocktankTests \
             -skip-testing:BitkitTests/PaymentFlowTests \
+            -skip-testing:BitkitTests/AddressTypeIntegrationTests \
             | xcbeautify --report junit
           echo "✅ Unit tests completed at $(date)"
 

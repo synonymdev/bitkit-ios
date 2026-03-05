@@ -721,8 +721,6 @@
 "settings__adv__section_other" = "Autre";
 "settings__adv__address_type" = "Type d\'adresse Bitcoin";
 "settings__adv__monitored_address_types" = "Types d\'adresses suivies";
-"settings__adv__monitored_address_types_update_title" = "Mise à jour des types d\'adresses suivies";
-"settings__adv__monitored_address_types_update_description" = "Les modifications prendront effet après le redémarrage de l\'application.";
 "settings__adv__gap_limit" = "Limite de l\'écart d\'adresse";
 "settings__adv__coin_selection" = "Sélection des UTXOs";
 "settings__adv__cs_method" = "Méthode de sélection des UTXOs";

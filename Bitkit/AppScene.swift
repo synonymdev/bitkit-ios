@@ -87,8 +87,6 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
-                    SweepViewModel.checkAndPromptForSweepableFunds(sheets: sheets)
-
                     if migrations.needsPostMigrationSync {
                         app.toast(
                             type: .warning,
@@ -441,6 +439,9 @@ struct AppScene: View {
     }
 
     private func restoreFromMostRecentBackup() async {
+        BackupService.shared.setRestoring(true)
+        defer { BackupService.shared.setRestoring(false) }
+
         guard let mnemonicData = try? Keychain.load(key: .bip39Mnemonic(index: 0)),
               let mnemonic = String(data: mnemonicData, encoding: .utf8)
         else { return }
