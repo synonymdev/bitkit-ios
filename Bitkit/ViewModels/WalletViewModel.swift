@@ -557,9 +557,8 @@ class WalletViewModel: ObservableObject {
                 return fundableBalance
             }
             let feeRate = TransactionSpeed.normal.getFeeRate(from: feeRates)
-            let fee = try await lightningService.calculateTotalFee(
+            let fee = try await lightningService.estimateSendAllFee(
                 address: onchainAddress,
-                amountSats: fundableBalance,
                 satsPerVByte: feeRate
             )
             return fundableBalance >= fee ? fundableBalance - fee : 0
