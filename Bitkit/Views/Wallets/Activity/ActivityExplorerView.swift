@@ -140,7 +140,20 @@ struct ActivityExplorerView: View {
     }
 
     private var navTitle: String {
-        activity.txType == .sent ? t("wallet__activity_bitcoin_sent") : t("wallet__activity_bitcoin_received")
+        switch item {
+        case let .lightning(activity) where activity.status == .pending:
+            return t("wallet__activity_pending_nav_title")
+        case let .lightning(activity) where activity.txType == .sent:
+            return t("wallet__activity_bitcoin_sent")
+        case let .onchain(activity) where activity.isTransfer:
+            return activity.txType == .sent
+                ? t("wallet__activity_transfer_spending_done")
+                : t("wallet__activity_transfer_savings_done")
+        case let .onchain(activity) where activity.txType == .sent:
+            return t("wallet__activity_bitcoin_sent")
+        default:
+            return t("wallet__activity_bitcoin_received")
+        }
     }
 
     var body: some View {
