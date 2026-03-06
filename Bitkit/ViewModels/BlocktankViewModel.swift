@@ -7,7 +7,7 @@ class BlocktankViewModel: ObservableObject {
     @Published var cJitEntries: [IcJitEntry]? = nil
     @Published var info: IBtInfo? = nil
 
-    // Use -1 as a sentinel value to represent nil
+    /// Use -1 as a sentinel value to represent nil
     @AppStorage("minCjitSats") private var minCjitSatsStorage: Int = -1
 
     var minCjitSats: UInt64? {
@@ -16,7 +16,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     private let defaultChannelExpiryWeeks: UInt32 = 6
-    private let defaultSource = "bitkit"
+    private let defaultSource = "bitkit-ios"
 
     @Published private(set) var isRefreshing = false
 
