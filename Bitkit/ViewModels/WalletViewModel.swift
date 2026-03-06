@@ -27,7 +27,7 @@ class WalletViewModel: ObservableObject {
     @Published var availableUtxos: [SpendableUtxo] = []
     @Published var isMaxAmountSend: Bool = false
 
-    // LNURL withdraw flow
+    /// LNURL withdraw flow
     @Published var lnurlWithdrawAmount: UInt64?
 
     // For bolt11 details and bip21 params
@@ -142,7 +142,8 @@ class WalletViewModel: ObservableObject {
                 let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
                 if let remoteMigration {
                     channelMigration = ChannelDataMigration(
-                        channelManager: [UInt8](remoteMigration.channelManager),
+                        // don't overwrite channel manager, we only need the monitors for the sweep
+                        channelManager: nil,
                         channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
                     )
                     MigrationsService.shared.pendingChannelMigration = nil
