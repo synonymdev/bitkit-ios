@@ -10,10 +10,11 @@ struct AppScene: View {
     @StateObject private var navigation = NavigationViewModel()
     @StateObject private var network = NetworkMonitor()
     @StateObject private var sheets = SheetViewModel()
-    @StateObject private var wallet = WalletViewModel()
+    @StateObject private var wallet: WalletViewModel
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
-    @StateObject private var activity = ActivityListViewModel()
+    @StateObject private var activity: ActivityListViewModel
+    @StateObject private var feeEstimatesManager: FeeEstimatesManager
     @StateObject private var transfer: TransferViewModel
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var pushManager = PushNotificationManager.shared
@@ -32,7 +33,7 @@ struct AppScene: View {
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
-    // Check if there's a critical update available
+    /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
         AppUpdateService.shared.availableUpdate?.critical == true
     }
@@ -48,10 +49,16 @@ struct AppScene: View {
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
-        let walletVm = WalletViewModel(transferService: transferService, sheetViewModel: sheetViewModel)
+        let feeEstimatesManager = FeeEstimatesManager()
+        let walletVm = WalletViewModel(
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            feeEstimatesManager: feeEstimatesManager
+        )
         _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
+        _feeEstimatesManager = StateObject(wrappedValue: feeEstimatesManager)
         _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
@@ -110,6 +117,7 @@ struct AppScene: View {
             .environmentObject(wallet)
             .environmentObject(currency)
             .environmentObject(blocktank)
+            .environmentObject(feeEstimatesManager)
             .environmentObject(activity)
             .environmentObject(transfer)
             .environmentObject(widgets)
@@ -139,7 +147,6 @@ struct AppScene: View {
             }
     }
 
-    @ViewBuilder
     private var mainContent: some View {
         ZStack {
             if migrations.isShowingMigrationLoading {
@@ -160,7 +167,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var migrationLoadingContent: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("migration__title"), showBackButton: false, showMenuButton: false)
@@ -250,7 +256,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var onboardingContent: some View {
         NavigationStack {
             TermsView()
