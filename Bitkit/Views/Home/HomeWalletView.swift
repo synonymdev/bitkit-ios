@@ -26,13 +26,21 @@ struct HomeWalletView: View {
 
             HStack(spacing: 16) {
                 NavigationLink(value: Route.savingsWallet) {
-                    WalletBalanceView(type: .onchain, sats: UInt64(wallet.totalOnchainSats))
+                    WalletBalanceView(
+                        type: .onchain,
+                        sats: UInt64(wallet.totalOnchainSats),
+                        amountTestIdentifier: "ActivitySavings"
+                    )
                 }
 
                 CustomDivider(color: .gray4, type: .vertical)
 
                 NavigationLink(value: Route.spendingWallet) {
-                    WalletBalanceView(type: .lightning, sats: UInt64(wallet.totalLightningSats))
+                    WalletBalanceView(
+                        type: .lightning,
+                        sats: UInt64(wallet.totalLightningSats),
+                        amountTestIdentifier: "ActivitySpending"
+                    )
                 }
             }
             .frame(height: 50)
