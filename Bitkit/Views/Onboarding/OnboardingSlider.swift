@@ -31,24 +31,6 @@ private struct OnboardingToolbar: View {
     }
 }
 
-private struct Dots: View {
-    var currentTab: Int
-
-    var body: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 8) {
-                ForEach(0 ..< 4) { index in
-                    Circle()
-                        .fill(currentTab == index ? Color.textPrimary : Color.white32)
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .animation(.easeInOut(duration: 0.3), value: currentTab)
-        }
-    }
-}
-
 struct OnboardingSlider: View {
     @EnvironmentObject var app: AppViewModel
     @State var currentTab = 0
@@ -99,7 +81,7 @@ struct OnboardingSlider: View {
             }
 
             if currentTab != 3 {
-                Dots(currentTab: currentTab)
+                TabViewDots(numberOfTabs: 4, currentTab: currentTab)
             }
         }
         .navigationBarHidden(true)

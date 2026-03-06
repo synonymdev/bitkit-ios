@@ -1,89 +1,56 @@
 import SwiftUI
 
-enum EmptyStateType {
+enum WalletOnboardingType {
     case home
     case savings
     case spending
 
     var localizationKey: String {
         switch self {
-        case .home:
-            return "onboarding__empty_wallet"
-        case .savings:
-            return "wallet__savings__onboarding"
-        case .spending:
-            return "wallet__spending__onboarding"
+        case .home: return "onboarding__empty_wallet"
+        case .savings: return "wallet__savings__onboarding"
+        case .spending: return "wallet__spending__onboarding"
         }
     }
 
     var accentColor: Color {
         switch self {
-        case .spending:
-            return .purpleAccent
-        case .home, .savings:
-            return .brandAccent
+        case .spending: return .purpleAccent
+        case .home, .savings: return .brandAccent
         }
     }
 }
 
-struct EmptyStateView: View {
-    let type: EmptyStateType
-    var onClose: (() -> Void)?
+struct WalletOnboardingView: View {
+    let type: WalletOnboardingType
 
     var body: some View {
-        VStack {
+        HStack(alignment: .bottom, spacing: 0) {
+            DisplayText(t(type.localizationKey), accentColor: type.accentColor)
+                .frame(width: 240)
+
+            Image("empty-state-arrow")
+                .resizable()
+                .scaledToFit()
+                .frame(maxHeight: 144)
+
             Spacer()
-
-            HStack(alignment: .bottom, spacing: 0) {
-                DisplayText(t(type.localizationKey), accentColor: type.accentColor)
-                    .frame(width: 240)
-
-                Image("empty-state-arrow")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxHeight: 144)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.bottom, 100)
-            .overlay {
-                if let onClose {
-                    VStack {
-                        Button(action: {
-                            Haptics.play(.buttonTap)
-                            onClose()
-                        }) {
-                            Image("x-mark")
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .foregroundColor(.textSecondary)
-                                .frame(width: 16, height: 16)
-                                .frame(width: 44, height: 44) // Increase hit area
-                        }
-                        .offset(x: 16, y: -16)
-                        .accessibilityIdentifier("WalletOnboardingClose")
-
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topTrailing)
-                }
-            }
         }
+        .frame(maxWidth: .infinity)
     }
 }
 
 #Preview {
     VStack(spacing: 20) {
-        EmptyStateView(type: .home, onClose: {})
+        WalletOnboardingView(type: .home)
             .frame(height: 300)
             .background(Color.gray.opacity(0.1))
 
-        EmptyStateView(type: .savings, onClose: {})
+        WalletOnboardingView(type: .savings)
             .frame(height: 300)
             .background(Color.gray.opacity(0.1))
 
-        EmptyStateView(type: .spending, onClose: {})
+        WalletOnboardingView(type: .spending)
             .frame(height: 300)
             .background(Color.gray.opacity(0.1))
     }

@@ -12,6 +12,8 @@ protocol WidgetOptionsProtocol: Codable, Equatable {
 // Default options for each widget type
 func getDefaultOptions(for type: WidgetType) -> Any {
     switch type {
+    case .suggestions, .calculator:
+        return EmptyWidgetOptions()
     case .blocks:
         return BlocksWidgetOptions()
     case .facts:
@@ -22,8 +24,6 @@ func getDefaultOptions(for type: WidgetType) -> Any {
         return WeatherWidgetOptions()
     case .price:
         return PriceWidgetOptions()
-    case .calculator:
-        return EmptyWidgetOptions()
     }
 }
 
@@ -63,8 +63,10 @@ struct Widget: Identifiable {
 
     @MainActor
     @ViewBuilder
-    func view(widgetsViewModel: WidgetsViewModel, isEditing: Bool, onEditingEnd: (() -> Void)? = nil) -> some View {
+    func view(widgetsViewModel: WidgetsViewModel, isEditing: Bool, onEditingEnd: (() -> Void)? = nil, isPreview: Bool = false) -> some View {
         switch type {
+        case .suggestions:
+            SuggestionsWidget(isEditing: isEditing, onEditingEnd: onEditingEnd, isPreview: isPreview)
         case .blocks:
             BlocksWidget(
                 options: widgetsViewModel.getOptions(for: type, as: BlocksWidgetOptions.self),
@@ -143,6 +145,7 @@ struct PlaceholderWidget: View {
 // MARK: - Widget Types
 
 enum WidgetType: String, CaseIterable, Codable {
+    case suggestions
     case price
     case news
     case blocks
@@ -151,13 +154,27 @@ enum WidgetType: String, CaseIterable, Codable {
     case weather
 }
 
+// MARK: - Widgets tab row
+
+/// A single row in the widgets tab (each row is a widget, including suggestions).
+enum WidgetsTabRow: Identifiable {
+    case widget(Widget)
+
+    var id: String {
+        switch self {
+        case let .widget(widget):
+            return widget.type.rawValue
+        }
+    }
+}
+
 // MARK: - WidgetsViewModel
 
 @MainActor
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    // Single AppStorage key for widgets with their options
+    // Single AppStorage key for widgets with their options (array order = display order)
     @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
 
     // In-memory storage for saved widgets with options
@@ -165,13 +182,18 @@ class WidgetsViewModel: ObservableObject {
 
     // Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
+        SavedWidget(type: .suggestions),
         SavedWidget(type: .price),
-        SavedWidget(type: .news),
         SavedWidget(type: .blocks),
     ]
 
     init() {
         loadSavedWidgets()
+    }
+
+    /// Rows to display in the widgets tab in the user's order (same as savedWidgets order).
+    var orderedRows: [WidgetsTabRow] {
+        savedWidgets.map { .widget($0) }
     }
 
     // MARK: - Public Methods
@@ -199,19 +221,15 @@ class WidgetsViewModel: ObservableObject {
         persistSavedWidgets()
     }
 
-    /// Reorder widgets
-    func reorderWidgets(from sourceIndex: Int, to destinationIndex: Int) {
+    /// Reorder the widgets tab list by moving one widget to a new index.
+    func reorderWidgetsTab(from sourceIndex: Int, to destinationIndex: Int) {
         guard sourceIndex != destinationIndex,
-              sourceIndex >= 0, sourceIndex < savedWidgets.count,
-              destinationIndex >= 0, destinationIndex < savedWidgets.count
+              sourceIndex >= 0, sourceIndex < savedWidgetsWithOptions.count,
+              destinationIndex >= 0, destinationIndex < savedWidgetsWithOptions.count
         else { return }
-
-        let savedWidget = savedWidgetsWithOptions.remove(at: sourceIndex)
-        savedWidgetsWithOptions.insert(savedWidget, at: destinationIndex)
-
-        let widget = savedWidgets.remove(at: sourceIndex)
-        savedWidgets.insert(widget, at: destinationIndex)
-
+        let moved = savedWidgetsWithOptions.remove(at: sourceIndex)
+        savedWidgetsWithOptions.insert(moved, at: destinationIndex)
+        savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
         persistSavedWidgets()
     }
 
@@ -264,6 +282,8 @@ class WidgetsViewModel: ObservableObject {
     /// Check if widget has custom options (different from default)
     func hasCustomOptions(for type: WidgetType) -> Bool {
         switch type {
+        case .suggestions, .calculator:
+            return false
         case .blocks:
             let current: BlocksWidgetOptions = getOptions(for: type, as: BlocksWidgetOptions.self)
             let defaultOptions = BlocksWidgetOptions()
@@ -284,8 +304,6 @@ class WidgetsViewModel: ObservableObject {
             let current: PriceWidgetOptions = getOptions(for: type, as: PriceWidgetOptions.self)
             let defaultOptions = PriceWidgetOptions()
             return current != defaultOptions
-        case .calculator:
-            return false // No customization available yet
         }
     }
 

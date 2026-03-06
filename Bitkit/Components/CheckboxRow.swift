@@ -34,7 +34,7 @@ struct CheckboxRow: View {
                     )
 
                 if isChecked {
-                    Image("checkmark")
+                    Image("check-mark")
                         .resizable()
                         .frame(width: 22, height: 22)
                         .foregroundColor(.brandAccent)

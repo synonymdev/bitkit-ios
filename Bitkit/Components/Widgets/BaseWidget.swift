@@ -73,6 +73,9 @@ struct BaseWidget<Content: View>: View {
     /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
 
+    /// When false, the widget content has no gray background (e.g. suggestions).
+    var hasBackground: Bool = true
+
     /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
@@ -101,11 +104,13 @@ struct BaseWidget<Content: View>: View {
     init(
         type: WidgetType,
         isEditing: Bool = false,
+        hasBackground: Bool = true,
         onEditingEnd: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.type = type
         self.isEditing = isEditing
+        self.hasBackground = hasBackground
         self.onEditingEnd = onEditingEnd
         self.content = content()
     }
@@ -149,7 +154,6 @@ struct BaseWidget<Content: View>: View {
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
-                                .trackButtonLocation { _ in }
                                 .accessibilityIdentifier("\(metadata.name)_WidgetActionDelete")
 
                                 // Edit button
@@ -163,13 +167,20 @@ struct BaseWidget<Content: View>: View {
                                 }
                                 .frame(width: 32, height: 32)
                                 .contentShape(Rectangle())
-                                .trackButtonLocation { _ in }
                                 .accessibilityIdentifier("\(metadata.name)_WidgetActionEdit")
 
                                 Image("burger")
                                     .resizable()
                                     .foregroundColor(.textPrimary)
                                     .frame(width: 24, height: 24)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                                    .overlay {
+                                        Color.clear
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
+                                            .trackDragHandle()
+                                    }
                                     .accessibilityIdentifier("\(metadata.name)_WidgetActionReorder")
                             }
                         }
@@ -192,9 +203,9 @@ struct BaseWidget<Content: View>: View {
         .accessibilityIdentifier("\(type.rawValue.capitalized)Widget")
         .buttonStyle(WidgetButtonStyle())
         .frame(maxWidth: .infinity)
-        .padding(16)
-        .background(Color.gray6)
-        .cornerRadius(16)
+        .padding((hasBackground || isEditing) ? 16 : 0)
+        .background((hasBackground || isEditing) ? Color.gray6 : Color.clear)
+        .cornerRadius(hasBackground || isEditing ? 16 : 0)
         .alert(
             t("widgets__delete__title"),
             isPresented: $showDeleteDialog,
