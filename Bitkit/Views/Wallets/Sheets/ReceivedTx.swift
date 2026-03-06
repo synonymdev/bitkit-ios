@@ -22,10 +22,10 @@ struct ReceivedTx: View {
 
     @EnvironmentObject private var sheets: SheetViewModel
 
-    // Keep in state so we don't get a new random text on each render
+    /// Keep in state so we don't get a new random text on each render
     @State private var buttonText: String = localizedRandom("common__ok_random")
 
-    // Load the confetti animation
+    /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
         let isOnchain = config.details.type == .onchain
         let animationName = isOnchain ? "confetti-orange" : "confetti-purple"

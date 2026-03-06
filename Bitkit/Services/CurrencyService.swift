@@ -65,9 +65,7 @@ class CurrencyService {
             raiseOnDivideByZero: false
         )
         let roundedNumber = decimalNumber.rounding(accordingToBehavior: roundingBehavior)
-        let result = roundedNumber.uint64Value
-
-        return result
+        return roundedNumber.uint64Value
     }
 }
 

@@ -40,7 +40,9 @@ struct ConvertedAmount {
     let sats: UInt64
     let btcValue: Decimal
 
-    var isSymbolSuffix: Bool { isSuffixSymbolCurrency(currency) }
+    var isSymbolSuffix: Bool {
+        isSuffixSymbolCurrency(currency)
+    }
 
     init(value: Decimal, formatted: String, symbol: String, currency: String, flag: String, sats: UInt64) {
         self.value = value

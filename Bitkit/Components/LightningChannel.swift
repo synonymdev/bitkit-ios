@@ -151,14 +151,14 @@ struct LightningChannel: View {
     }
 }
 
-// Extension to apply rounded corners to specific corners
+/// Extension to apply rounded corners to specific corners
 extension View {
     func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
         clipShape(RoundedCornerShape(radius: radius, corners: corners))
     }
 }
 
-// Custom shape for specific rounded corners
+/// Custom shape for specific rounded corners
 struct RoundedCornerShape: Shape {
     var radius: CGFloat = .infinity
     var corners: UIRectCorner = .allCorners

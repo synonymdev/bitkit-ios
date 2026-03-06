@@ -233,7 +233,7 @@ struct WidgetButtonStyle: ButtonStyle {
     }
 }
 
-/// Preview for the BaseWidget
+// Preview for the BaseWidget
 #Preview {
     VStack {
         BaseWidget(

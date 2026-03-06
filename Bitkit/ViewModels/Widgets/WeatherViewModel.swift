@@ -30,7 +30,7 @@ class WeatherViewModel: ObservableObject {
 
     private let vbytesSize = 140 // average native segwit transaction size
 
-    // Currency conversion dependency - will be set by views that need currency conversion
+    /// Currency conversion dependency - will be set by views that need currency conversion
     weak var currencyViewModel: CurrencyViewModel?
 
     /// Private initializer for the singleton instance

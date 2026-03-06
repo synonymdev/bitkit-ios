@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MoneyCell - Cell/row style display for lists (right-aligned, compact layout)
+/// MoneyCell - Cell/row style display for lists (right-aligned, compact layout)
 struct MoneyCell: View {
     let sats: Int
     let prefix: String

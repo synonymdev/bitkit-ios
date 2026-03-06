@@ -11,10 +11,6 @@ struct BoostSheetItem: SheetItem, Equatable {
     let size: SheetSize = .small
     let onchainActivity: OnchainActivity
 
-    init(onchainActivity: OnchainActivity) {
-        self.onchainActivity = onchainActivity
-    }
-
     static func == (lhs: BoostSheetItem, rhs: BoostSheetItem) -> Bool {
         return lhs.onchainActivity.id == rhs.onchainActivity.id
     }
@@ -43,7 +39,9 @@ struct BoostSheet: View {
     }
 
     // TODO: get real estimation
-    private var estimatedTxSize: UInt64 { 250 }
+    private var estimatedTxSize: UInt64 {
+        250
+    }
 
     private var currentFeeRate: UInt32 {
         return isEditingFee ? (editedFeeRate ?? feeRate ?? 0) : (feeRate ?? 0)

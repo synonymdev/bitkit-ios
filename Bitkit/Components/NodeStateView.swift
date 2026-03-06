@@ -1,7 +1,7 @@
 import LDKNode
 import SwiftUI
 
-// So we can iterate through the balances
+/// So we can iterate through the balances
 extension LightningBalance {
     var channelIdString: String {
         switch self {
@@ -16,7 +16,7 @@ extension LightningBalance {
     }
 }
 
-// Create a wrapper struct that conforms to Identifiable
+/// Create a wrapper struct that conforms to Identifiable
 struct IdentifiableLightningBalance: Identifiable {
     let id: String
     let balance: LightningBalance

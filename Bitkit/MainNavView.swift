@@ -268,7 +268,6 @@ struct MainNavView: View {
 
     // MARK: - Computed Properties for Better Organization
 
-    @ViewBuilder
     private var navigationContent: some View {
         Group {
             switch navigation.activeDrawerMenuItem {

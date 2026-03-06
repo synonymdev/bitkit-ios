@@ -123,7 +123,7 @@ struct SettingUpView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
 
-    // Keep in state so we don't get a new random text on each render
+    /// Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random")
 
     var isTransferring: Bool {

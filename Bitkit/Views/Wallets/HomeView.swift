@@ -62,7 +62,7 @@ struct HomeView: View {
                             .padding(.top, 32)
                             .padding(.horizontal)
                     }
-                    /// Leave some space for TabBar
+                    // Leave some space for TabBar
                     .padding(.bottom, 130)
                 }
             }
@@ -93,7 +93,7 @@ struct HomeView: View {
             // Header on top
             Header()
         }
-        /// Dismiss (calculator widget) keyboard when scrolling
+        // Dismiss (calculator widget) keyboard when scrolling
         .scrollDismissesKeyboard(.immediately)
         .animation(.spring(response: 0.3), value: app.showHomeViewEmptyState)
         .overlay {

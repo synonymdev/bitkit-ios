@@ -9,7 +9,7 @@ protocol WidgetOptionsProtocol: Codable, Equatable {
 
 // MARK: - Widget Options Types
 
-// Default options for each widget type
+/// Default options for each widget type
 func getDefaultOptions(for type: WidgetType) -> Any {
     switch type {
     case .blocks:
@@ -27,7 +27,7 @@ func getDefaultOptions(for type: WidgetType) -> Any {
     }
 }
 
-// Empty options for widgets that don't have customization yet
+/// Empty options for widgets that don't have customization yet
 struct EmptyWidgetOptions: Codable, Equatable {}
 
 // MARK: - Widget Metadata
@@ -49,14 +49,12 @@ struct WidgetMetadata {
 struct Widget: Identifiable {
     let type: WidgetType
 
-    // Use type as identifier since only one widget per type is allowed
-    var id: WidgetType { type }
-
-    init(type: WidgetType) {
-        self.type = type
+    /// Use type as identifier since only one widget per type is allowed
+    var id: WidgetType {
+        type
     }
 
-    // Widget metadata computed on demand
+    /// Widget metadata computed on demand
     func metadata(fiatSymbol: String = "$") -> WidgetMetadata {
         return WidgetMetadata(type: type, fiatSymbol: fiatSymbol)
     }
@@ -101,26 +99,28 @@ struct Widget: Identifiable {
     }
 }
 
-// Saved widget with options
+/// Saved widget with options
 struct SavedWidget: Codable, Identifiable {
     let type: WidgetType
     let optionsData: Data?
 
-    // Use type as identifier since only one widget per type is allowed
-    var id: WidgetType { type }
+    /// Use type as identifier since only one widget per type is allowed
+    var id: WidgetType {
+        type
+    }
 
     init(type: WidgetType, optionsData: Data? = nil) {
         self.type = type
         self.optionsData = optionsData
     }
 
-    // Convert to Widget for UI
+    /// Convert to Widget for UI
     func toWidget() -> Widget {
         return Widget(type: type)
     }
 }
 
-// Placeholder widget for unimplemented widgets
+/// Placeholder widget for unimplemented widgets
 struct PlaceholderWidget: View {
     let type: WidgetType
     let message: String
@@ -157,13 +157,13 @@ enum WidgetType: String, CaseIterable, Codable {
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    // Single AppStorage key for widgets with their options
+    /// Single AppStorage key for widgets with their options
     @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
 
-    // In-memory storage for saved widgets with options
+    /// In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
 
-    // Default widgets for new installs and resets
+    /// Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
         SavedWidget(type: .price),
         SavedWidget(type: .news),

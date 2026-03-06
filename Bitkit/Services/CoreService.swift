@@ -26,7 +26,7 @@ class ActivityService {
 
     // MARK: - BoostTxIds Cache
 
-    // Cached set of transaction IDs that appear in boostTxIds (for filtering replaced transactions)
+    /// Cached set of transaction IDs that appear in boostTxIds (for filtering replaced transactions)
     private var cachedTxIdsInBoostTxIds: Set<String> = []
 
     /// Get the set of transaction IDs that appear in boostTxIds (cached for performance)

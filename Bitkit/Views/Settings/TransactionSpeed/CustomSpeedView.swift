@@ -7,7 +7,7 @@ struct CustomSpeedView: View {
 
     @State private var feeRate: UInt32 = 0
 
-    // Average transaction size for fee calculation
+    /// Average transaction size for fee calculation
     private let avgTransactionSize: UInt32 = 256 // vBytes for typical transaction
 
     private var totalFee: UInt64 {

@@ -1,7 +1,6 @@
+@testable import Bitkit
 import BitkitCore
 import XCTest
-
-@testable import Bitkit
 
 final class ActivityTests: XCTestCase {
     let testDbPath = NSTemporaryDirectory()

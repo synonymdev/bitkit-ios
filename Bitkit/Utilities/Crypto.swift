@@ -84,9 +84,7 @@ class Crypto {
         do {
             let nonce = try AES.GCM.Nonce(data: payload.iv)
             let sealedBox = try AES.GCM.SealedBox(nonce: nonce, ciphertext: payload.cipher, tag: payload.tag)
-            let decryptedData = try AES.GCM.open(sealedBox, using: key)
-
-            return decryptedData
+            return try AES.GCM.open(sealedBox, using: key)
         } catch {
             if let ce = error as? CryptoKit.CryptoKitError {
                 Logger.warn(ce)

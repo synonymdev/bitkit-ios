@@ -32,9 +32,7 @@ class LogService {
             dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
             let timestamp = dateFormatter.string(from: Date())
             let fileName = "bitkit_logs_\(timestamp)"
-            let zipURL = try Zip.quickZipFiles(logFiles, fileName: fileName)
-
-            return zipURL
+            return try Zip.quickZipFiles(logFiles, fileName: fileName)
 
         } catch {
             Logger.error(error, context: "Failed to create zip file for logs")

@@ -12,7 +12,7 @@ final class LdkMigrationTests: XCTestCase {
         dumpLdkLogs()
     }
 
-    func testLdkToLdkNode() async throws {
+    func testLdkToLdkNode() {
         //        try Keychain.wipeEntireKeychain()
         //        try await LightningService.shared.wipeStorage(walletIndex: walletIndex)
         //

@@ -56,12 +56,6 @@ struct SettingsBackupV1 {
     let createdAt: UInt64
     let settings: [String: Any]
 
-    init(version: Int, createdAt: UInt64, settings: [String: Any]) {
-        self.version = version
-        self.createdAt = createdAt
-        self.settings = settings
-    }
-
     static func decode(from data: Data) throws -> SettingsBackupV1 {
         guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let version = dict["version"] as? Int,
@@ -87,12 +81,6 @@ struct WidgetsBackupV1 {
     let version: Int
     let createdAt: UInt64
     let widgets: [String: Any]
-
-    init(version: Int, createdAt: UInt64, widgets: [String: Any]) {
-        self.version = version
-        self.createdAt = createdAt
-        self.widgets = widgets
-    }
 
     static func decode(from data: Data) throws -> WidgetsBackupV1 {
         guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],

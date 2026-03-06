@@ -3,22 +3,22 @@ import SwiftUI
 
 @MainActor
 final class NetworkMonitor: ObservableObject {
-    // This will be used to track the network connectivity
+    /// This will be used to track the network connectivity
     @Published
     var isConnected = true
 
-    // This will be used to track if the network is expensive (e.g. cellular data)
+    /// This will be used to track if the network is expensive (e.g. cellular data)
     @Published
     var isExpensive = false
 
     @Published
     var networkType: NWInterface.InterfaceType? = .other
 
-    // This will be used to track the network path (e.g. Wi-Fi, cellular data, etc.)
+    /// This will be used to track the network path (e.g. Wi-Fi, cellular data, etc.)
     @Published
     var nwPath: NWPath?
 
-    // Create an instance of NWPathMonitor
+    /// Create an instance of NWPathMonitor
     let monitor = NWPathMonitor()
 
     init() {

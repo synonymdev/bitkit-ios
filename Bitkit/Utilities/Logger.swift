@@ -99,7 +99,7 @@ class Logger {
         }
     }
 
-    // Cleans up log files
+    /// Cleans up log files
     static func cleanUpOldLogFiles(maxTotalSizeMB: Int = 20) {
         queue.async {
             let baseDir = Env.logDirectory

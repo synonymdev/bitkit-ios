@@ -140,13 +140,13 @@ struct Suggestions: View {
     @EnvironmentObject var suggestionsManager: SuggestionsManager
 
     @State private var showShareSheet = false
-    // Prevent duplicate item taps when the card is dismissed
+    /// Prevent duplicate item taps when the card is dismissed
     @State private var ignoringCardTaps = false
 
     let cardSize: CGFloat = 152
     let cardSpacing: CGFloat = 16
 
-    // Filter out cards that have already been completed or dismissed
+    /// Filter out cards that have already been completed or dismissed
     private var filteredCards: [SuggestionCardData] {
         cards.filter { card in
             // Filter out completed actions
