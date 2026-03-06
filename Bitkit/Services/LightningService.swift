@@ -859,14 +859,30 @@ class LightningService {
 // MARK: UI Helpers (Published via WalletViewModel)
 
 extension LightningService {
-    var nodeId: String? { node?.nodeId() }
+    var nodeId: String? {
+        node?.nodeId()
+    }
 
-    // Use cached values to avoid blocking LDK calls on main thread
-    @MainActor var balances: BalanceDetails? { cachedBalances }
-    @MainActor var status: NodeStatus? { cachedStatus }
-    @MainActor var peers: [PeerDetails]? { cachedPeers }
-    @MainActor var channels: [ChannelDetails]? { cachedChannels }
-    var payments: [PaymentDetails]? { node?.listPayments() }
+    /// Use cached values to avoid blocking LDK calls on main thread
+    @MainActor var balances: BalanceDetails? {
+        cachedBalances
+    }
+
+    @MainActor var status: NodeStatus? {
+        cachedStatus
+    }
+
+    @MainActor var peers: [PeerDetails]? {
+        cachedPeers
+    }
+
+    @MainActor var channels: [ChannelDetails]? {
+        cachedChannels
+    }
+
+    var payments: [PaymentDetails]? {
+        node?.listPayments()
+    }
 
     /// Refresh all cached values asynchronously
     /// Fetches from LDK on background queue, updates cache on main actor
@@ -1376,14 +1392,12 @@ extension LightningService {
         }
 
         return try await ServiceQueue.background(.ldk) {
-            let fee = try node.onchainPayment().calculateTotalFee(
+            return try node.onchainPayment().calculateTotalFee(
                 address: address,
                 amountSats: amountSats,
                 feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVByte),
                 utxosToSpend: utxosToSpend
             )
-
-            return fee
         }
     }
 
@@ -1421,9 +1435,7 @@ extension LightningService {
                 feesMsat = try node.bolt11Payment().estimateRoutingFees(invoice: invoice)
             }
 
-            let feeSat = feesMsat / 1000
-
-            return feeSat
+            return feesMsat / 1000
         }
     }
 

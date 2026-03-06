@@ -1,7 +1,6 @@
+@testable import Bitkit
 import BitkitCore
 import XCTest
-
-@testable import Bitkit
 
 final class BlocktankTests: XCTestCase {
     let testDbPath = NSTemporaryDirectory()
@@ -127,7 +126,7 @@ final class BlocktankTests: XCTestCase {
         XCTAssertEqual(orders.first?.id, order.id, "Retrieved order should match created order")
     }
 
-    func testPerformanceExample() throws {
+    func testPerformanceExample() {
         // This is an example of a performance test case.
         measure {
             // Put the code you want to measure the time of here.

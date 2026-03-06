@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MoneyText - Single text display component for monetary values
+/// MoneyText - Single text display component for monetary values
 enum MoneySize {
     case display
     case title

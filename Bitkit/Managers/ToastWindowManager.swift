@@ -189,7 +189,7 @@ class ToastWindowManager: ObservableObject {
     }
 }
 
-// Custom window that only intercepts touches on interactive elements
+/// Custom window that only intercepts touches on interactive elements
 class PassThroughWindow: UIWindow {
     var hasToast: Bool = false
     var toastFrame: CGRect = .zero

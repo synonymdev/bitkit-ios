@@ -109,12 +109,7 @@ struct SavingsConfirmView: View {
             .environmentObject(WalletViewModel())
             .environmentObject(AppViewModel())
             .environmentObject(CurrencyViewModel())
-            .environmentObject(
-                {
-                    let vm = TransferViewModel()
-                    return vm
-                }()
-            )
+            .environmentObject(TransferViewModel())
     }
     .preferredColorScheme(.dark)
 }

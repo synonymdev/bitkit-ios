@@ -23,7 +23,7 @@ struct PinChangeView: View {
         case success
     }
 
-    // Computed properties for title and description
+    /// Computed properties for title and description
     var navTitle: String {
         switch step {
         case .verifyCurrentPin:

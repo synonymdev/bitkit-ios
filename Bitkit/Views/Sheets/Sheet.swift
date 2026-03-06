@@ -96,7 +96,7 @@ struct SheetHeader: View {
 
 // MARK: - Generic Reusable Sheet Component
 
-// Base protocol that all sheet items should conform to
+/// Base protocol that all sheet items should conform to
 protocol SheetItem: Identifiable {
     var size: SheetSize { get }
 }

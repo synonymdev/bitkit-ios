@@ -1,8 +1,7 @@
+@testable import Bitkit
 import Combine
 import LDKNode
 import XCTest
-
-@testable import Bitkit
 
 /// Tests for the multi-address-type feature in SettingsViewModel.
 /// Covers address type conversion, monitoring, native witness rules, and backup/restore.

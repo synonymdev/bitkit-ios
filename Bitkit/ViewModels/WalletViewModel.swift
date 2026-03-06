@@ -27,7 +27,7 @@ class WalletViewModel: ObservableObject {
     @Published var availableUtxos: [SpendableUtxo] = []
     @Published var isMaxAmountSend: Bool = false
 
-    // LNURL withdraw flow
+    /// LNURL withdraw flow
     @Published var lnurlWithdrawAmount: UInt64?
 
     // For bolt11 details and bip21 params

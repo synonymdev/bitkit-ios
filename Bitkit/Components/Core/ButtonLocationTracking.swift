@@ -17,11 +17,6 @@ private struct ButtonLocationModifier: ViewModifier {
     /// Callback when the view's location changes
     let onLocationChanged: (CGRect) -> Void
 
-    init(coordinateSpace: String, onLocationChanged: @escaping (CGRect) -> Void) {
-        self.coordinateSpace = coordinateSpace
-        self.onLocationChanged = onLocationChanged
-    }
-
     func body(content: Content) -> some View {
         content
             .background(

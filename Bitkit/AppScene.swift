@@ -32,7 +32,7 @@ struct AppScene: View {
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
-    // Check if there's a critical update available
+    /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
         AppUpdateService.shared.availableUpdate?.critical == true
     }
@@ -139,7 +139,6 @@ struct AppScene: View {
             }
     }
 
-    @ViewBuilder
     private var mainContent: some View {
         ZStack {
             if migrations.isShowingMigrationLoading {
@@ -160,7 +159,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var migrationLoadingContent: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("migration__title"), showBackButton: false, showMenuButton: false)
@@ -250,7 +248,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var onboardingContent: some View {
         NavigationStack {
             TermsView()

@@ -10,14 +10,14 @@ private struct HandleLightningStateOnScenePhaseChange: ViewModifier {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var blocktank: BlocktankViewModel
 
-    // Store the background task identifier
+    /// Store the background task identifier
     @State private var backgroundTaskID: UIBackgroundTaskIdentifier = .invalid
-    // Track if we need to start node after it finishes stopping
+    /// Track if we need to start node after it finishes stopping
     @State private var pendingStartAfterStop = false
-    // Delay before stopping node (don't stop for quick background trips)
+    /// Delay before stopping node (don't stop for quick background trips)
     @State private var stopNodeWorkItem: DispatchWorkItem?
 
-    // Only stop node if app has been in background for this long
+    /// Only stop node if app has been in background for this long
     private let backgroundStopDelay: TimeInterval = 90.0
 
     func body(content: Content) -> some View {

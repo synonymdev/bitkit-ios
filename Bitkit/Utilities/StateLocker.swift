@@ -45,7 +45,7 @@ public enum ExecutionContext: String, Codable {
         }
     }
 
-    // For log file names
+    /// For log file names
     var filenamePrefix: String {
         switch self {
         case .foregroundApp:

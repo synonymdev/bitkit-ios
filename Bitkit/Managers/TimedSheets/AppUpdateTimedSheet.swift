@@ -10,7 +10,7 @@ struct AppUpdateTimedSheet: TimedSheetItem {
     private let appViewModel: AppViewModel
     private let appUpdateService = AppUpdateService.shared
 
-    // App update constants
+    /// App update constants
     private static let ASK_INTERVAL: TimeInterval = 12 * 60 * 60 // 12 hours - how long this prompt will not show after user dismisses
 
     init(appViewModel: AppViewModel) {

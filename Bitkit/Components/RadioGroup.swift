@@ -30,11 +30,6 @@ struct RadioGroup<T: Hashable>: View {
 struct RadioOption<T: Hashable> {
     let title: String
     let value: T
-
-    init(title: String, value: T) {
-        self.title = title
-        self.value = value
-    }
 }
 
 private struct RadioButton: View {

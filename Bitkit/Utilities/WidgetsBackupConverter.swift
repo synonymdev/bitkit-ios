@@ -75,7 +75,7 @@ enum WidgetsBackupConverter {
             }
         }
 
-        let androidWidgetsData: [String: Any] = [
+        return [
             "widgets": widgetsArray,
             "headlinePreferences": newsPreferences ?? getDefaultNewsPreferences(),
             "factsPreferences": factsPreferences ?? getDefaultFactsPreferences(),
@@ -92,8 +92,6 @@ enum WidgetsBackupConverter {
             "weather": NSNull(),
             "price": NSNull(),
         ]
-
-        return androidWidgetsData
     }
 
     /// Converts Android `WidgetsData` format to iOS `[SavedWidget]`
