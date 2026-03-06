@@ -97,11 +97,9 @@ class TransferViewModel: ObservableObject {
             btNodeIds.contains(channel.counterpartyNodeId)
         }
 
-        let totalValue = btChannels.reduce(0) { sum, channel in
+        return btChannels.reduce(0) { sum, channel in
             sum + channel.channelValueSats
         }
-
-        return totalValue
     }
 
     func onOrderCreated(order: IBtOrder) {
@@ -125,26 +123,11 @@ class TransferViewModel: ObservableObject {
         order: IBtOrder,
         speed: TransactionSpeed,
         txFee: UInt64,
+        satsPerVbyte: UInt32,
         utxosToSpend: [SpendableUtxo]? = nil,
-        satsPerVbyte: UInt32? = nil,
         isMaxAmount: Bool = false,
         maxSendableAmount: UInt64? = nil
     ) async throws {
-        let rate: UInt32
-        if let satsPerVbyte {
-            rate = satsPerVbyte
-        } else {
-            var fees = try? await coreService.blocktank.fees(refresh: true)
-            if fees == nil {
-                Logger.warn("Failed to fetch fresh fee rate, using cached rate.")
-                fees = try await coreService.blocktank.fees(refresh: false)
-            }
-            guard let fees else {
-                throw AppError(message: "Fees unavailable from bitkit-core", debugMessage: nil)
-            }
-            rate = speed.getFeeRate(from: fees)
-        }
-
         guard let address = order.payment?.onchain?.address else {
             throw AppError(message: "Order payment onchain address is nil", debugMessage: nil)
         }
@@ -164,7 +147,7 @@ class TransferViewModel: ObservableObject {
         let txid = try await lightningService.send(
             address: address,
             sats: order.feeSat,
-            satsPerVbyte: rate,
+            satsPerVbyte: satsPerVbyte,
             utxosToSpend: utxosToSpend,
             isMaxAmount: isMaxAmount
         )
@@ -182,7 +165,7 @@ class TransferViewModel: ObservableObject {
                 txId: txid,
                 address: address,
                 isReceive: false,
-                feeRate: UInt64(rate),
+                feeRate: UInt64(satsPerVbyte),
                 isTransfer: true,
                 channelId: nil,
                 createdAt: currentTime

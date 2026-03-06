@@ -7,7 +7,7 @@ struct CustomSpeedView: View {
 
     @State private var feeRate: UInt32 = 0
 
-    // Average transaction size for fee calculation
+    /// Average transaction size for fee calculation
     private let avgTransactionSize: UInt32 = 256 // vBytes for typical transaction
 
     private var totalFee: UInt64 {
@@ -26,8 +26,14 @@ struct CustomSpeedView: View {
             CaptionMText(t("common__sat_vbyte"))
                 .padding(.bottom, 16)
 
-            MoneyText(sats: Int(feeRate), symbol: true)
-                .padding(.bottom, 16)
+            MoneyText(
+                sats: Int(feeRate),
+                forceUnit: .bitcoin,
+                forceDisplayUnit: .modern,
+                symbol: true,
+                color: feeRate == 0 ? .textSecondary : .textPrimary
+            )
+            .padding(.bottom, 16)
 
             // Total fee estimate
             if isValid {

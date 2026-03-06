@@ -2,6 +2,11 @@ import BitkitCore
 import SwiftUI
 
 struct ActivityIcon: View {
+    enum Context {
+        case row
+        case detail
+    }
+
     let isLightning: Bool
     let status: PaymentState?
     let confirmed: Bool?
@@ -11,10 +16,13 @@ struct ActivityIcon: View {
     let isTransfer: Bool
     let doesExist: Bool
     let isCpfpChild: Bool
+    let context: Context
 
-    init(activity: Activity, size: CGFloat = 32, isCpfpChild: Bool = false) {
+    init(activity: Activity, size: CGFloat = 32, isCpfpChild: Bool = false, context: Context = .detail) {
         self.size = size
         self.isCpfpChild = isCpfpChild
+        self.context = context
+
         switch activity {
         case let .lightning(ln):
             isLightning = true
@@ -38,28 +46,7 @@ struct ActivityIcon: View {
     var body: some View {
         Group {
             if isLightning {
-                if status == .failed {
-                    CircularIcon(
-                        icon: "x-circle",
-                        iconColor: .purpleAccent,
-                        backgroundColor: .purple16,
-                        size: size
-                    )
-                } else if status == .pending {
-                    CircularIcon(
-                        icon: "hourglass-simple",
-                        iconColor: .purpleAccent,
-                        backgroundColor: .purple16,
-                        size: size
-                    )
-                } else {
-                    CircularIcon(
-                        icon: txType == .sent ? "arrow-up" : "arrow-down",
-                        iconColor: .purpleAccent,
-                        backgroundColor: .purple16,
-                        size: size
-                    )
-                }
+                lightningIcon
             } else if !doesExist {
                 CircularIcon(
                     icon: "x-mark",
@@ -69,13 +56,20 @@ struct ActivityIcon: View {
                 )
             } else if isCpfpChild || (isBoosted && !(confirmed ?? false)) {
                 CircularIcon(
-                    icon: "timer-alt",
+                    icon: "clock-clockwise",
                     iconColor: .yellow,
                     backgroundColor: .yellow16,
                     size: size
                 )
+            } else if confirmed == false, txType == .sent, context == .row {
+                CircularIcon(
+                    icon: "hourglass-simple",
+                    iconColor: .brandAccent,
+                    backgroundColor: .brand16,
+                    size: size
+                )
             } else {
-                let paymentIcon = txType == PaymentType.sent ? "arrow-up" : "arrow-down"
+                let paymentIcon = txType == .sent ? "arrow-up" : "arrow-down"
                 let (iconColor, backgroundColor): (Color, Color) = if isTransfer {
                     // From savings (to spending) = sent = orange, From spending (to savings) = received = purple
                     txType == .sent ? (.brandAccent, .brand16) : (.purpleAccent, .purple16)
@@ -91,6 +85,22 @@ struct ActivityIcon: View {
             }
         }
         .accessibilityIdentifierIfPresent(iconAccessibilityIdentifier)
+    }
+
+    @ViewBuilder
+    private var lightningIcon: some View {
+        if status == .failed {
+            CircularIcon(icon: "x-circle", iconColor: .purpleAccent, backgroundColor: .purple16, size: size)
+        } else if status == .pending {
+            CircularIcon(icon: "hourglass-simple", iconColor: .purpleAccent, backgroundColor: .purple16, size: size)
+        } else {
+            CircularIcon(
+                icon: txType == .sent ? "arrow-up" : "arrow-down",
+                iconColor: .purpleAccent,
+                backgroundColor: .purple16,
+                size: size
+            )
+        }
     }
 
     private var iconAccessibilityIdentifier: String? {
