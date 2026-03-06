@@ -237,6 +237,17 @@ struct Suggestions: View {
                 .accessibilityIdentifier("Suggestions")
             }
             .allowsHitTesting(!isPreview)
+            .sheet(isPresented: $showShareSheet) {
+                ShareSheet(activityItems: [
+                    t(
+                        "settings__about__shareText",
+                        variables: [
+                            "appStoreUrl": Env.appStoreUrl,
+                            "playStoreUrl": Env.playStoreUrl,
+                        ]
+                    ),
+                ])
+            }
         }
     }
 
