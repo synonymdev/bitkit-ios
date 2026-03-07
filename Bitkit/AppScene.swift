@@ -1,6 +1,7 @@
 import Combine
 import LDKNode
 import SwiftUI
+import UserNotifications
 
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
@@ -73,7 +74,6 @@ struct AppScene: View {
                 config in ForgotPinSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .handleLightningStateOnScenePhaseChange()
             .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
             .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
@@ -496,11 +496,35 @@ struct AppScene: View {
         }
     }
 
-    private func handleScenePhaseChange(_: ScenePhase) {
-        // If PIN is enabled, lock the app when the app goes to the background
-        if scenePhase == .background && settings.pinEnabled {
-            isPinVerified = false
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        Logger.debug("Scene phase changed: \(newPhase)")
+
+        if newPhase == .background {
+            if settings.pinEnabled {
+                // If PIN is enabled, lock the app when the app goes to the background
+                isPinVerified = false
+            }
+            if wallet.walletExists == true {
+                app.resetAppStatusInit()
+            }
         }
+
+        if newPhase == .active {
+            if wallet.walletExists == true {
+                Task {
+                    await clearDeliveredNotifications()
+                    try? await LightningService.shared.reconnectPeers()
+                }
+            }
+        }
+    }
+
+    /// Removes all delivered notifications from Notification Center so the app can handle them when opened.
+    private func clearDeliveredNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let deliveredNotifications = await center.deliveredNotifications()
+        guard !deliveredNotifications.isEmpty else { return }
+        center.removeDeliveredNotifications(withIdentifiers: deliveredNotifications.map(\.request.identifier))
     }
 
     private func handleNetworkRestored() {
