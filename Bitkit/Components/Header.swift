@@ -56,7 +56,7 @@ struct Header: View {
                             .padding(.leading, 16)
                             .contentShape(Rectangle())
                     }
-                    .accessibilityIdentifier("HeaderWidgetEdit")
+                    .accessibilityIdentifier("WidgetsEdit")
                 }
 
                 Button {
