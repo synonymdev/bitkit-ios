@@ -1,7 +1,6 @@
+@testable import Bitkit
 import BitkitCore
 import XCTest
-
-@testable import Bitkit
 
 final class BlocktankTests: XCTestCase {
     let testDbPath = NSTemporaryDirectory()
@@ -57,7 +56,7 @@ final class BlocktankTests: XCTestCase {
         let invoiceDescription = "Test CJIT order"
         let nodeId = "03e7156ae33b0a208d0744199163177e909e80176e55d97a2f221ede0f934dd9ad" // Example node ID
         let channelExpiryWeeks: UInt32 = 6
-        let options = CreateCjitOptions(source: "bitkit", discountCode: nil)
+        let options = CreateCjitOptions(source: "bitkit-ios", discountCode: nil)
 
         let cjitEntry = try await service.createCjit(
             channelSizeSat: channelSizeSat,
@@ -72,7 +71,7 @@ final class BlocktankTests: XCTestCase {
         XCTAssertNotNil(cjitEntry)
         XCTAssertFalse(cjitEntry.id.isEmpty, "CJIT entry ID should not be empty")
         XCTAssertEqual(cjitEntry.channelSizeSat, channelSizeSat, "Channel size should match requested amount")
-        XCTAssertEqual(cjitEntry.source, "bitkit", "Source should be bitkit")
+        XCTAssertEqual(cjitEntry.source, "bitkit-ios", "Source should be bitkit-ios")
         XCTAssertNotNil(cjitEntry.lspNode, "LSP node should not be nil")
         XCTAssertFalse(cjitEntry.lspNode.pubkey.isEmpty, "LSP node pubkey should not be empty")
         XCTAssertEqual(cjitEntry.nodeId, nodeId, "Node ID should match requested ID")
@@ -127,7 +126,7 @@ final class BlocktankTests: XCTestCase {
         XCTAssertEqual(orders.first?.id, order.id, "Retrieved order should match created order")
     }
 
-    func testPerformanceExample() throws {
+    func testPerformanceExample() {
         // This is an example of a performance test case.
         measure {
             // Put the code you want to measure the time of here.
