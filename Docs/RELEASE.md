@@ -166,9 +166,11 @@ Test the build on TestFlight.
 
 ### Patching Issues During QA
 
-If bugs are found and fixed in the release branch:
+If bugs are found and fixed in the release branch, you need to bump the build number, re-tag, and upload a new build to TestFlight. App Store Connect rejects duplicate build numbers, so every TestFlight upload must have a unique `CURRENT_PROJECT_VERSION`.
 
-1. Increment **only** the build number (`CURRENT_PROJECT_VERSION`), not the marketing version:
+1. **Fix the issue** -- commit the fix to the release branch.
+
+2. **Bump the build number** (`CURRENT_PROJECT_VERSION` only, not `MARKETING_VERSION`):
    ```bash
    sed -i '' 's/CURRENT_PROJECT_VERSION = 181;/CURRENT_PROJECT_VERSION = 182;/g' Bitkit.xcodeproj/project.pbxproj
    git add Bitkit.xcodeproj/project.pbxproj
@@ -176,7 +178,7 @@ If bugs are found and fixed in the release branch:
    git push
    ```
 
-2. Re-tag the release (delete old tag, create new one pointing to latest commit):
+3. **Re-tag** the release (move the tag to the latest commit on the release branch):
    ```bash
    git tag -d v2.0.7
    git push origin :refs/tags/v2.0.7
@@ -184,9 +186,11 @@ If bugs are found and fixed in the release branch:
    git push origin v2.0.7
    ```
 
-3. Update the draft GitHub release to regenerate notes if needed.
+4. **Update the draft GitHub release** to regenerate notes if needed.
 
-4. Build and upload to TestFlight again (repeat step 2).
+5. **Build and upload to TestFlight again** (repeat step 2).
+
+Repeat this cycle for each round of fixes. Keep incrementing the build number each time (182, 183, ...).
 
 ---
 
