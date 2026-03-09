@@ -500,7 +500,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -528,7 +528,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = BitkitNotification/BitkitNotification.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitNotification/Info.plist;
@@ -674,7 +674,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -717,7 +717,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
 				DEVELOPMENT_TEAM = KYH47R284B;
 				ENABLE_HARDENED_RUNTIME = YES;
