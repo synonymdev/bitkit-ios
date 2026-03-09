@@ -383,9 +383,10 @@ class LightningService {
         }
     }
 
-    func reconnectPeers() async throws {
+    func reconnectPeers() async {
         guard let node else {
-            throw AppError(serviceError: .nodeNotSetup)
+            Logger.debug("Node not setup, skipping peer reconnection", context: "LightningService")
+            return
         }
 
         let peers = node.listPeers()
@@ -398,11 +399,10 @@ class LightningService {
                 Logger.info("Reconnected to peer: \(peer.nodeId)@\(peer.address)", context: "LightningService")
             } catch {
                 Logger.error(error, context: "Failed to reconnect to peer: \(peer.nodeId)@\(peer.address)")
-                // Best effort: continue to next peer instead of aborting
             }
         }
 
-        Logger.debug("Reconnected to all peers", context: "LightningService")
+        Logger.debug("Finished peer reconnection attempt", context: "LightningService")
     }
 
     /// Temp fix for regtest where nodes might not agree on current fee rates
@@ -881,14 +881,30 @@ class LightningService {
 // MARK: UI Helpers (Published via WalletViewModel)
 
 extension LightningService {
-    var nodeId: String? { node?.nodeId() }
+    var nodeId: String? {
+        node?.nodeId()
+    }
 
-    // Use cached values to avoid blocking LDK calls on main thread
-    @MainActor var balances: BalanceDetails? { cachedBalances }
-    @MainActor var status: NodeStatus? { cachedStatus }
-    @MainActor var peers: [PeerDetails]? { cachedPeers }
-    @MainActor var channels: [ChannelDetails]? { cachedChannels }
-    var payments: [PaymentDetails]? { node?.listPayments() }
+    /// Use cached values to avoid blocking LDK calls on main thread
+    @MainActor var balances: BalanceDetails? {
+        cachedBalances
+    }
+
+    @MainActor var status: NodeStatus? {
+        cachedStatus
+    }
+
+    @MainActor var peers: [PeerDetails]? {
+        cachedPeers
+    }
+
+    @MainActor var channels: [ChannelDetails]? {
+        cachedChannels
+    }
+
+    var payments: [PaymentDetails]? {
+        node?.listPayments()
+    }
 
     /// Refresh all cached values asynchronously
     /// Fetches from LDK on background queue, updates cache on main actor
@@ -1398,14 +1414,12 @@ extension LightningService {
         }
 
         return try await ServiceQueue.background(.ldk) {
-            let fee = try node.onchainPayment().calculateTotalFee(
+            return try node.onchainPayment().calculateTotalFee(
                 address: address,
                 amountSats: amountSats,
                 feeRate: Self.convertVByteToKwu(satsPerVByte: satsPerVByte),
                 utxosToSpend: utxosToSpend
             )
-
-            return fee
         }
     }
 
@@ -1443,9 +1457,7 @@ extension LightningService {
                 feesMsat = try node.bolt11Payment().estimateRoutingFees(invoice: invoice)
             }
 
-            let feeSat = feesMsat / 1000
-
-            return feeSat
+            return feesMsat / 1000
         }
     }
 
