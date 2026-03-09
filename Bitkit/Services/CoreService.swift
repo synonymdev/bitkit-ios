@@ -1189,8 +1189,10 @@ class ActivityService {
 
                 Logger.info("RBF transaction created successfully: \(txid)", context: "CoreService.boostOnchainTransaction")
 
-                // For RBF, mark the original activity as boosted until the replacement comes
+                // For RBF, mark the original activity as boosted and update the fee rate
+                // so the UI shows the correct confirmation time estimate until the replacement arrives
                 onchainActivity.isBoosted = true
+                onchainActivity.feeRate = UInt64(feeRate)
                 try await self.update(id: activityId, activity: .onchain(onchainActivity))
                 Logger.info(
                     "Successfully marked activity \(activityId) as replaced by fee",
