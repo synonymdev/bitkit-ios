@@ -17,11 +17,6 @@ struct LnurlAuthSheetItem: SheetItem {
     let size: SheetSize = .large
     let lnurl: String
     let authData: LnurlAuthData
-
-    init(lnurl: String, authData: LnurlAuthData) {
-        self.lnurl = lnurl
-        self.authData = authData
-    }
 }
 
 struct LnurlAuthSheet: View {

@@ -10,7 +10,7 @@ var hasHomeIndicator: Bool {
     return window.safeAreaInsets.bottom > 0
 }
 
-// For phones without a home indicator, we add padding to the bottom of the view
+/// For phones without a home indicator, we add padding to the bottom of the view
 struct BottomSafeAreaPadding: ViewModifier {
     func body(content: Content) -> some View {
         content

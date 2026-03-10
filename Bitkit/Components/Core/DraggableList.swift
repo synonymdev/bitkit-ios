@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Helper component that implements reorderable list functionality
-struct DraggableList<Data, ID, Content>: View
-    where Data: RandomAccessCollection, ID: Hashable, Content: View, Data.Element: Identifiable
+struct DraggableList<Data: RandomAccessCollection, ID: Hashable, Content: View>: View
+    where Data.Element: Identifiable
 {
     /// The data to render in the list
     let data: Data
@@ -174,7 +174,7 @@ struct DraggableList<Data, ID, Content>: View
     }
 }
 
-// Default initializer for DraggableList that uses Element.id
+/// Default initializer for DraggableList that uses Element.id
 extension DraggableList where ID == Data.Element.ID {
     /// Convenience initializer that uses the element's id property
     /// - Parameters:

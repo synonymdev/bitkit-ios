@@ -70,7 +70,7 @@ struct CustomButton: View {
 
     @State private var isPressed = false
 
-    // Base initializer for optional action
+    /// Base initializer for optional action
     init(
         title: String,
         variant: Variant = .primary,
@@ -93,7 +93,7 @@ struct CustomButton: View {
         destination = nil
     }
 
-    // Trailing closure initializer
+    /// Trailing closure initializer
     init(
         title: String,
         variant: Variant = .primary,
@@ -117,7 +117,7 @@ struct CustomButton: View {
         destination = nil
     }
 
-    // Navigation link initializer
+    /// Navigation link initializer
     init(
         title: String,
         variant: Variant = .primary,

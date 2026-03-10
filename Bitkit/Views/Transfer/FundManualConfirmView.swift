@@ -9,7 +9,7 @@ struct FundManualConfirmView: View {
     let lnPeer: LnPeer
     let amountSats: UInt64
 
-    // Placeholder values - in a real implementation these would be calculated
+    /// Placeholder values - in a real implementation these would be calculated
     @State private var networkFeeSat: UInt64 = 0
 
     private func loadFees(refresh: Bool) async {

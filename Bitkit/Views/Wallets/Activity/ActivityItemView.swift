@@ -136,8 +136,7 @@ struct ActivityItemView: View {
                 if activity.txType == .sent {
                     return true
                 } else {
-                    let hasCPFP = activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
-                    return hasCPFP
+                    return activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
                 }
             }
 
@@ -248,7 +247,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             CaptionMText(t("wallet__activity_status"))
@@ -313,7 +311,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var timestampSection: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 0) {
@@ -453,7 +450,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var buttons: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
