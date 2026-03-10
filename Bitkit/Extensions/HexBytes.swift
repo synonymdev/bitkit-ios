@@ -7,8 +7,13 @@ extension Data {
 }
 
 extension StringProtocol {
-    var hexaData: Data { .init(hexa) }
-    var hexaBytes: [UInt8] { .init(hexa) }
+    var hexaData: Data {
+        .init(hexa)
+    }
+
+    var hexaBytes: [UInt8] {
+        .init(hexa)
+    }
 
     private var hexa: UnfoldSequence<UInt8, Index> {
         sequence(state: startIndex) { startIndex in

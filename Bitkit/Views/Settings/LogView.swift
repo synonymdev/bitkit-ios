@@ -101,14 +101,17 @@ struct LogView: View {
     }
 }
 
-// Model representing a log file
+/// Model representing a log file
 struct LogFile: Identifiable {
-    var id: String { url.lastPathComponent }
+    var id: String {
+        url.lastPathComponent
+    }
+
     let displayName: String
     let url: URL
 }
 
-// View to display the content of a log file
+/// View to display the content of a log file
 struct LogContentView: View {
     let logFile: LogFile
     @State private var lines: [String] = []

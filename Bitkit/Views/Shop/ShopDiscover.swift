@@ -1,6 +1,6 @@
 import SwiftUI
 
-// Category data structure
+/// Category data structure
 struct ShopCategory: Identifiable {
     let id = UUID()
     let title: String
@@ -8,7 +8,7 @@ struct ShopCategory: Identifiable {
     let iconName: String
 }
 
-// Shop discover cards data
+/// Shop discover cards data
 struct ShopCard: Identifiable {
     let id = UUID()
     let title: String
@@ -36,7 +36,7 @@ struct ShopDiscover: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @State private var selectedTab: ShopTab = .shop
 
-    // Categories data
+    /// Categories data
     private let categories: [ShopCategory] = [
         ShopCategory(title: "Apparel", route: "buy/apparel", iconName: "pedestrian"),
         ShopCategory(title: "Automobiles", route: "buy/automobiles", iconName: "car"),
@@ -62,7 +62,7 @@ struct ShopDiscover: View {
         ShopCategory(title: "VoIP", route: "buy/voip", iconName: "phone-call"),
     ]
 
-    // Featured cards data
+    /// Featured cards data
     private let cards: [ShopCard] = [
         ShopCard(
             title: t("other__shop__discover__gift-cards__title"),

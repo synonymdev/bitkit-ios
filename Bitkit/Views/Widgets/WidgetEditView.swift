@@ -20,7 +20,7 @@ struct WidgetEditView: View {
     @StateObject private var priceViewModel = PriceViewModel.shared
     @StateObject private var weatherViewModel = WeatherViewModel.shared
 
-    // Widget data computed from the ID
+    /// Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
         let name = t("widgets__\(id.rawValue)__name")
         let fiatSymbol = currency.symbol

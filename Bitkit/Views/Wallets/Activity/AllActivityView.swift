@@ -22,7 +22,7 @@ struct AllActivityView: View {
 
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .all)
-                        /// Leave some space for TabBar
+                        // Leave some space for TabBar
                         .padding(.bottom, 130)
                         .scrollDismissesKeyboard(.interactively)
                         .highPriorityGesture(

@@ -30,10 +30,10 @@ class ActivityListViewModel: ObservableObject {
     @Published var selectedTags: Set<String> = []
     @Published var selectedTab: ActivityTab = .all
 
-    // Latest activities for home screen
+    /// Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
 
-    // Grouped activities for display
+    /// Grouped activities for display
     @Published var groupedActivities: [ActivityGroupItem] = []
 
     private let coreService: CoreService

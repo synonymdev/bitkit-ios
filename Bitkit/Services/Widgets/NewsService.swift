@@ -31,8 +31,7 @@ class NewsService {
 
         do {
             let decoder = JSONDecoder()
-            let articles = try decoder.decode([Article].self, from: data)
-            return articles
+            return try decoder.decode([Article].self, from: data)
         } catch {
             throw error
         }

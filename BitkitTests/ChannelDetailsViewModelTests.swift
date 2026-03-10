@@ -1,7 +1,6 @@
+@testable import Bitkit
 import BitkitCore
 import XCTest
-
-@testable import Bitkit
 
 final class ChannelDetailsViewModelTests: XCTestCase {
     @MainActor
@@ -13,7 +12,7 @@ final class ChannelDetailsViewModelTests: XCTestCase {
         let expiredPaid = makeOrder(id: "expiredPaid", state2: .expired)
 
         let orders = [createdPaid, paidPaid, createdUnpaid, executedPaid, expiredPaid]
-        let paidOrderIds: Set<String> = ["createdPaid", "paidPaid", "executedPaid", "expiredPaid"]
+        let paidOrderIds: Set = ["createdPaid", "paidPaid", "executedPaid", "expiredPaid"]
 
         let result = ChannelDetailsViewModel.pendingOrders(
             orders: orders,

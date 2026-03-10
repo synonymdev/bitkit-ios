@@ -10,15 +10,14 @@ struct LnurlChannel: View {
 
     @State private var isConnecting = false
 
-    // Parse the node URI to extract node, host, and port
+    /// Parse the node URI to extract node, host, and port
     private var parsedUri: LnPeer {
         parseNodeUri(channelData.uri)
     }
 
     func parseNodeUri(_ uri: String) -> LnPeer {
         do {
-            let lnPeer = try LnPeer(connection: uri)
-            return lnPeer
+            return try LnPeer(connection: uri)
         } catch {
             Logger.error("Failed to parse node URI: \(uri), error: \(error)")
             return LnPeer(nodeId: "", host: "", port: 0)
