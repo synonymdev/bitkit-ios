@@ -46,6 +46,9 @@ struct AppScene: View {
             blocktankService: CoreService.shared.blocktank
         )
 
+        // Run app data migrations before any feature code loads migrated state
+        AppDataMigrations.run()
+
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
