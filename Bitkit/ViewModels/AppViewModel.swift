@@ -45,7 +45,7 @@ class AppViewModel: ObservableObject {
     @AppStorage("hasSeenTransferToSavingsIntro") var hasSeenTransferToSavingsIntro: Bool = false
     @AppStorage("hasSeenWidgetsIntro") var hasSeenWidgetsIntro: Bool = false
 
-    // App update tracking
+    /// App update tracking
     @AppStorage("appUpdateIgnoreTimestamp") var appUpdateIgnoreTimestamp: TimeInterval = 0
 
     // Backup warning tracking

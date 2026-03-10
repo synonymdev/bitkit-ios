@@ -174,13 +174,13 @@ enum WidgetsTabRow: Identifiable {
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    // Single AppStorage key for widgets with their options (array order = display order)
+    /// Single AppStorage key for widgets with their options (array order = display order)
     @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
 
     /// In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
 
-    // Default widgets for new installs and resets
+    /// Default widgets for new installs and resets
     private static let defaultSavedWidgets: [SavedWidget] = [
         SavedWidget(type: .suggestions),
         SavedWidget(type: .price),

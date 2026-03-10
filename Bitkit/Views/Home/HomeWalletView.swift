@@ -10,8 +10,15 @@ struct HomeWalletView: View {
         return activity.latestActivities?.isEmpty == false
     }
 
-    private var topPadding: CGFloat { windowSafeAreaInsets.top + 48 + 16 } // safe area + header + spacing
-    private var bottomPadding: CGFloat { windowSafeAreaInsets.bottom + 64 + 32 } // safe area + tab bar + spacing
+    /// Safe area + header + spacing
+    private var topPadding: CGFloat {
+        windowSafeAreaInsets.top + 48 + 16
+    }
+
+    /// Safe area + tab bar + spacing
+    private var bottomPadding: CGFloat {
+        windowSafeAreaInsets.bottom + 64 + 32
+    }
 
     var body: some View {
         VStack(spacing: 0) {
