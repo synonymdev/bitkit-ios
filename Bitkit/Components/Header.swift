@@ -3,7 +3,7 @@ import SwiftUI
 struct Header: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-    @Environment(PubkyProfileManager.self) var pubkyProfile
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
