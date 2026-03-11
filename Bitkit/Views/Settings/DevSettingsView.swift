@@ -4,6 +4,7 @@ import UIKit
 struct DevSettingsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var notificationManager: PushNotificationManager
     @EnvironmentObject var session: SessionManager
     @EnvironmentObject var wallet: WalletViewModel
@@ -11,6 +12,7 @@ struct DevSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__dev_title"))
+                .padding(.horizontal, 16)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -18,6 +20,14 @@ struct DevSettingsView: View {
                         NavigationLink(value: Route.blocktankRegtest) {
                             SettingsListLabel(title: "Blocktank Regtest")
                         }
+                    }
+
+                    if Env.network == .regtest {
+                        SettingsListLabel(
+                            title: "Override Fees",
+                            rightIcon: nil,
+                            toggle: $feeEstimatesManager.devOverrideFeeEstimates
+                        )
                     }
 
                     NavigationLink(value: Route.ldkDebug) {
@@ -132,20 +142,21 @@ struct DevSettingsView: View {
                         SettingsListLabel(title: "Wipe Wallet", rightIcon: nil)
                     }
                 }
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
     }
 }
 
 #Preview {
     DevSettingsView()
-        .environmentObject(WalletViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(ActivityListViewModel())
+        .environmentObject(FeeEstimatesManager())
         .environmentObject(NavigationViewModel())
+        .environmentObject(WalletViewModel())
         .environmentObject(WidgetsViewModel())
         .preferredColorScheme(.dark)
 }
