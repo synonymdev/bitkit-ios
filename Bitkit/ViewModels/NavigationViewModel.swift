@@ -11,6 +11,7 @@ enum Route: Hashable {
     case buyBitcoin
     case contacts
     case contactsIntro
+    case contactDetail(publicKey: String)
     case profile
     case profileIntro
     case pubkyRingAuth

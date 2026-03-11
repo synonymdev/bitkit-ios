@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
@@ -267,7 +268,16 @@ struct MainNavView: View {
         }
     }
 
-    // MARK: - Computed Properties for Better Organization
+    // MARK: - Loading View
+
+    private var pubkyLoadingView: some View {
+        VStack {
+            Spacer()
+            ActivityIndicator()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     private var navigationContent: some View {
         HomeScreen()
@@ -303,10 +313,26 @@ struct MainNavView: View {
                 case .savingsProgress: SavingsProgressView()
 
                 // Profile & Contacts
-                case .contacts: ComingSoonScreen()
-                case .contactsIntro: ComingSoonScreen()
+                case .contacts:
+                    if app.hasSeenContactsIntro {
+                        if !pubkyProfile.isInitialized {
+                            pubkyLoadingView
+                        } else if pubkyProfile.isAuthenticated {
+                            ContactsListView()
+                        } else if app.hasSeenProfileIntro {
+                            PubkyRingAuthView()
+                        } else {
+                            ProfileIntroView()
+                        }
+                    } else {
+                        ContactsIntroView()
+                    }
+                case .contactsIntro: ContactsIntroView()
+                case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
                 case .profile:
-                    if pubkyProfile.isAuthenticated {
+                    if !pubkyProfile.isInitialized {
+                        pubkyLoadingView
+                    } else if pubkyProfile.isAuthenticated {
                         ProfileView()
                     } else if app.hasSeenProfileIntro {
                         PubkyRingAuthView()
