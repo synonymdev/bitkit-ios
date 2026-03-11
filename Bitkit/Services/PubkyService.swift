@@ -97,9 +97,9 @@ enum PubkyService {
 
     // MARK: - Profile
 
-    static func getProfile(publicKey: String) async throws -> FfiProfile {
+    static func getProfile(publicKey: String) async throws -> BitkitCore.PubkyProfile {
         try await ServiceQueue.background(.core) {
-            try await paykitGetProfile(publicKey: publicKey)
+            try await fetchPubkyProfile(publicKey: publicKey)
         }
     }
 
@@ -107,7 +107,7 @@ enum PubkyService {
 
     static func getContacts(publicKey: String) async throws -> [String] {
         try await ServiceQueue.background(.core) {
-            try await paykitGetContacts(publicKey: publicKey)
+            try await fetchPubkyContacts(publicKey: publicKey)
         }
     }
 

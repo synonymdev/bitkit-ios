@@ -1,5 +1,5 @@
+import BitkitCore
 import Foundation
-import Paykit
 
 struct PubkyProfileLink: Identifiable, Sendable {
     let id = UUID()
@@ -22,7 +22,7 @@ struct PubkyProfile: Sendable {
         return "\(prefix)...\(suffix)"
     }
 
-    init(publicKey: String, ffiProfile: FfiProfile) {
+    init(publicKey: String, ffiProfile: BitkitCore.PubkyProfile) {
         self.publicKey = publicKey
         name = ffiProfile.name
         bio = ffiProfile.bio ?? ""
