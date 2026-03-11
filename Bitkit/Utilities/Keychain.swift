@@ -86,6 +86,11 @@ class Keychain {
 
         let status = SecItemDelete(query as CFDictionary)
 
+        if status == errSecItemNotFound {
+            Logger.debug("\(key.storageKey) not found in keychain, nothing to delete", context: "Keychain")
+            return
+        }
+
         if status != noErr {
             Logger.error("Failed to delete \(key.storageKey) from keychain. \(status.description)", context: "Keychain")
             throw KeychainError.failedToDelete
