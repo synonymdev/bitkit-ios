@@ -3,7 +3,7 @@ import SwiftUI
 struct Header: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-    @Environment(PubkyProfileManager.self) var pubkyProfile
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     /// When true, shows the widget edit button (only on the widgets tab).
     var showWidgetEditButton: Bool = false
