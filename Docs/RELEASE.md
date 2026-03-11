@@ -17,7 +17,7 @@ For **minor** and **major** releases, branch off `master`:
 ```bash
 git checkout master
 git pull origin master
-git checkout -b release-2.0.7
+git checkout -b release/181
 ```
 
 For **patch** releases, you may branch from `master` or from the previous release tag if only specific fixes are needed:
@@ -26,13 +26,15 @@ For **patch** releases, you may branch from `master` or from the previous releas
 # From a previous tag (e.g. hotfix on top of v2.0.6)
 git fetch origin
 git checkout v2.0.6
-git checkout -b release-2.0.7
+git checkout -b release/181
 
 # Cherry-pick the specific fixes needed
 git cherry-pick <commit-hash-1> <commit-hash-2> ...
 ```
 
 When branching from a tag, only the cherry-picked commits will be included. The PR to `master` will still be created so version bumps and patches are merged back after release.
+
+> **Branch naming convention:** Branches are named `release/{buildNumber}` (matching Android). The build number is `CURRENT_PROJECT_VERSION`.
 
 ### Bump Version
 
@@ -55,12 +57,12 @@ Commit and push:
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
 git commit -m "chore: version 2.0.7"
-git push -u origin release-2.0.7
+git push -u origin release/181
 ```
 
 ### Create PR
 
-Create a PR targeting `master` with title `chore: bump version 2.0.7`. This PR stays open during QA and is merged post-release.
+Create a PR from `release/181` targeting `master` with title `chore: bump version 2.0.7`. This PR stays open during QA and is merged post-release.
 
 ### Create Draft GitHub Release
 
@@ -72,7 +74,7 @@ gh release create v2.0.7 \
   --draft \
   --generate-notes \
   --notes-start-tag v2.0.6 \
-  --target release-2.0.7
+  --target release/181
 ```
 
 Send the draft link to whoever writes the user-facing release notes.
@@ -137,24 +139,18 @@ xcodebuild archive \
   -configuration Release
 ```
 
-**Export IPA:**
+**Export and upload to TestFlight:**
 
 ```bash
 xcodebuild -exportArchive \
   -archivePath ./build/Bitkit.xcarchive \
   -exportPath ./build/export \
-  -exportOptionsPlist ExportOptions.plist
+  -exportOptionsPlist ExportOptions.plist \
+  -authenticationKeyID $APPSTORE_KEY_ID \
+  -authenticationKeyIssuerID $APPSTORE_ISSUER_ID
 ```
 
-**Upload to TestFlight:**
-
-```bash
-xcrun altool --upload-app \
-  -f ./build/export/Bitkit.ipa \
-  --type ios \
-  --apiKey $APPSTORE_KEY_ID \
-  --apiIssuer $APPSTORE_ISSUER_ID
-```
+The `ExportOptions.plist` includes `destination: upload`, so this single command both exports the IPA and uploads it to App Store Connect. The API key must be in `~/.appstoreconnect/private_keys/` (see [CLI Prerequisites](#cli-prerequisites)).
 
 After upload, set compliance in App Store Connect (same as manual path above).
 
@@ -244,7 +240,7 @@ To use the CLI build and upload path, you need an App Store Connect API key.
 
 ### ExportOptions.plist
 
-The repo includes an `ExportOptions.plist` at the root. It declares the export method (`app-store-connect`) and automatic signing. No credentials are stored in this file.
+The repo includes an `ExportOptions.plist` at the root. It declares the export method (`app-store-connect`), `destination: upload` (so `xcodebuild -exportArchive` uploads directly to App Store Connect), and automatic signing. No credentials are stored in this file.
 
 ### Required Roles
 

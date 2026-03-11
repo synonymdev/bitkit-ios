@@ -214,6 +214,8 @@ Ensure `ExportOptions.plist` exists in the repo root with `app-store-connect` me
 <dict>
     <key>method</key>
     <string>app-store-connect</string>
+    <key>destination</key>
+    <string>upload</string>
     <key>signingStyle</key>
     <string>automatic</string>
     <key>stripSwiftSymbols</key>
@@ -231,21 +233,14 @@ xcodebuild archive \
   -configuration Release
 ```
 
-Export IPA:
+Export and upload to TestFlight (requires App Store Connect API key in `~/.appstoreconnect/private_keys/` — see `Docs/RELEASE.md` for setup):
 ```bash
 xcodebuild -exportArchive \
   -archivePath ./build/Bitkit.xcarchive \
   -exportPath ./build/export \
-  -exportOptionsPlist ExportOptions.plist
-```
-
-Upload to TestFlight (requires App Store Connect API key — see `Docs/RELEASE.md` for setup):
-```bash
-xcrun altool --upload-app \
-  -f ./build/export/Bitkit.ipa \
-  --type ios \
-  --apiKey $APPSTORE_KEY_ID \
-  --apiIssuer $APPSTORE_ISSUER_ID
+  -exportOptionsPlist ExportOptions.plist \
+  -authenticationKeyID $APPSTORE_KEY_ID \
+  -authenticationKeyIssuerID $APPSTORE_ISSUER_ID
 ```
 
 If any step fails, stop and report the error to the user.
