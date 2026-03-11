@@ -119,7 +119,8 @@ final class PubkyImageCache: @unchecked Sendable {
     static let shared = PubkyImageCache()
 
     private var memoryCache: [String: UIImage] = [:]
-    private let ioQueue = DispatchQueue(label: "pubky-image-cache", qos: .utility)
+    private let lock = NSLock()
+    private let diskQueue = DispatchQueue(label: "pubky-image-cache-disk", qos: .utility)
     private let diskDirectory: URL
 
     private init() {
@@ -128,18 +129,23 @@ final class PubkyImageCache: @unchecked Sendable {
         try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
     }
 
-    /// Fast memory-only check — safe to call from the main thread.
+    /// Fast memory-only check — never blocks behind disk I/O, safe from the main thread.
     func memoryImage(for uri: String) -> UIImage? {
-        ioQueue.sync { memoryCache[uri] }
+        lock.lock()
+        defer { lock.unlock() }
+        return memoryCache[uri]
     }
 
     /// Full lookup (memory + disk). Call from a background context to avoid blocking the main thread.
     func image(for uri: String) -> UIImage? {
-        ioQueue.sync {
-            if let memoryHit = memoryCache[uri] {
-                return memoryHit
-            }
+        lock.lock()
+        if let memoryHit = memoryCache[uri] {
+            lock.unlock()
+            return memoryHit
+        }
+        lock.unlock()
 
+        return diskQueue.sync {
             let path = diskPath(for: uri)
             guard let diskData = try? Data(contentsOf: path),
                   let diskImage = UIImage(data: diskData)
@@ -147,22 +153,30 @@ final class PubkyImageCache: @unchecked Sendable {
                 return nil
             }
 
+            lock.lock()
             memoryCache[uri] = diskImage
+            lock.unlock()
             return diskImage
         }
     }
 
     func store(_ image: UIImage, data: Data, for uri: String) {
-        ioQueue.sync {
-            memoryCache[uri] = image
+        lock.lock()
+        memoryCache[uri] = image
+        lock.unlock()
+
+        diskQueue.sync {
             let path = diskPath(for: uri)
             try? data.write(to: path, options: .atomic)
         }
     }
 
     func clear() {
-        ioQueue.sync {
-            memoryCache.removeAll()
+        lock.lock()
+        memoryCache.removeAll()
+        lock.unlock()
+
+        diskQueue.sync {
             try? FileManager.default.removeItem(at: diskDirectory)
             try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         }
