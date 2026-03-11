@@ -3,7 +3,7 @@ import SwiftUI
 struct PubkyRingAuthView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @Environment(PubkyProfileManager.self) var pubkyProfile
 
     @State private var isAuthenticating = false
     @State private var isWaitingForRing = false
@@ -151,7 +151,7 @@ struct PubkyRingAuthView: View {
         PubkyRingAuthView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
-            .environmentObject(PubkyProfileManager())
+            .environment(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)
 }
