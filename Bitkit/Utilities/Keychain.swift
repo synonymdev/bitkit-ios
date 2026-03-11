@@ -99,6 +99,34 @@ class Keychain {
         Logger.debug("Deleted \(key.storageKey)", context: "Keychain")
     }
 
+    /// Atomically inserts or updates a keychain entry, avoiding the delete-then-save race window.
+    class func upsert(key: KeychainEntryType, data: Data) throws {
+        Logger.debug("Upserting \(key.storageKey)", context: "Keychain")
+
+        let existingData = try load(key: key)
+
+        if existingData != nil {
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: key.storageKey,
+                kSecAttrAccessGroup as String: Env.keychainGroup,
+            ]
+            let updateAttributes: [String: Any] = [
+                kSecValueData as String: data,
+            ]
+
+            let status = SecItemUpdate(searchQuery as CFDictionary, updateAttributes as CFDictionary)
+            if status != noErr {
+                Logger.error("Failed to update \(key.storageKey) in keychain. \(status.description)", context: "Keychain")
+                throw KeychainError.failedToSave
+            }
+
+            Logger.info("Updated \(key.storageKey)", context: "Keychain")
+        } else {
+            try save(key: key, data: data)
+        }
+    }
+
     class func exists(key: KeychainEntryType) throws -> Bool {
         var value = try load(key: key)
         let exists = value != nil
