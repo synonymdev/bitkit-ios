@@ -231,10 +231,9 @@ struct Suggestions: View {
                 ForEach(filteredCards) { card in
                     SuggestionCard(data: card, onDismiss: { dismissCard(card) })
                         .onTapGesture { if !isPreview { onItemTap(card) } }
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("Suggestion-\(card.accessibilityId)")
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("Suggestions")
             }
             .allowsHitTesting(!isPreview)
             .sheet(isPresented: $showShareSheet) {
