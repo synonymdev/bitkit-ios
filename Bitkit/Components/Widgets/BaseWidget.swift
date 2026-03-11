@@ -127,7 +127,7 @@ struct BaseWidget<Content: View>: View {
     var body: some View {
         Button {} label: {
             VStack(spacing: 0) {
-                if settings.showWidgetTitles || isEditing {
+                if type == .suggestions ? isEditing : (settings.showWidgetTitles || isEditing) {
                     HStack {
                         HStack(spacing: 16) {
                             Image(metadata.icon)
