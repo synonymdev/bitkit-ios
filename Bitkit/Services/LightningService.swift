@@ -1050,9 +1050,13 @@ extension LightningService {
     static func addressTypeStateFromUserDefaults(_ defaults: UserDefaults = .standard)
         -> (selectedType: LDKNode.AddressType, monitoredTypes: [LDKNode.AddressType])
     {
-        let selectedType = LDKNode.AddressType.fromStorage(defaults.string(forKey: "selectedAddressType"))
+        let rawSelected = defaults.string(forKey: "selectedAddressType")
+        let selectedType = LDKNode.AddressType.fromStorage(rawSelected)
         let monitoredString = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
         let monitoredTypes = LDKNode.AddressType.parseCommaSeparated(monitoredString)
+        Logger.debug(
+            "Address type state from UserDefaults: selected=\(selectedType.stringValue) (raw=\(rawSelected ?? "nil")), monitored=\(monitoredString)"
+        )
         return (selectedType, monitoredTypes)
     }
 
