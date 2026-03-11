@@ -67,7 +67,7 @@ struct PubkyImage: View {
 
     /// All heavy work (disk cache, network/FFI) runs off the main actor.
     private nonisolated static func loadImageOffMain(uri: String) async throws -> UIImage {
-        if let cached = PubkyImageCache.shared.image(for: uri) {
+        if let cached = await PubkyImageCache.shared.image(for: uri) {
             return cached
         }
 
@@ -94,7 +94,7 @@ struct PubkyImage: View {
         let srcPubkey = src.dropFirst("pubky://".count).prefix(while: { $0 != "/" })
         guard !originalPubkey.isEmpty, originalPubkey == srcPubkey else {
             Logger.warn("Rejected cross-user src redirect: \(src)", context: "PubkyImage")
-            return data
+            throw PubkyImageError.crossUserRedirect
         }
 
         Logger.debug("File descriptor found, fetching blob from: \(src)", context: "PubkyImage")
@@ -104,11 +104,14 @@ struct PubkyImage: View {
 
 private enum PubkyImageError: LocalizedError {
     case decodingFailed(Int)
+    case crossUserRedirect
 
     var errorDescription: String? {
         switch self {
         case let .decodingFailed(bytes):
             return "Could not decode image blob (\(bytes) bytes)"
+        case .crossUserRedirect:
+            return "Image descriptor references a different user's namespace"
         }
     }
 }
@@ -136,8 +139,8 @@ final class PubkyImageCache: @unchecked Sendable {
         return memoryCache[uri]
     }
 
-    /// Full lookup (memory + disk). Call from a background context to avoid blocking the main thread.
-    func image(for uri: String) -> UIImage? {
+    /// Full lookup (memory + disk). Disk I/O runs on a dedicated queue to avoid blocking cooperative threads.
+    func image(for uri: String) async -> UIImage? {
         lock.lock()
         if let memoryHit = memoryCache[uri] {
             lock.unlock()
@@ -145,18 +148,21 @@ final class PubkyImageCache: @unchecked Sendable {
         }
         lock.unlock()
 
-        return diskQueue.sync {
-            let path = diskPath(for: uri)
-            guard let diskData = try? Data(contentsOf: path),
-                  let diskImage = UIImage(data: diskData)
-            else {
-                return nil
-            }
+        return await withCheckedContinuation { continuation in
+            diskQueue.async { [self] in
+                let path = diskPath(for: uri)
+                guard let diskData = try? Data(contentsOf: path),
+                      let diskImage = UIImage(data: diskData)
+                else {
+                    continuation.resume(returning: nil)
+                    return
+                }
 
-            lock.lock()
-            memoryCache[uri] = diskImage
-            lock.unlock()
-            return diskImage
+                lock.lock()
+                memoryCache[uri] = diskImage
+                lock.unlock()
+                continuation.resume(returning: diskImage)
+            }
         }
     }
 
@@ -165,8 +171,9 @@ final class PubkyImageCache: @unchecked Sendable {
         memoryCache[uri] = image
         lock.unlock()
 
-        diskQueue.sync {
-            let path = diskPath(for: uri)
+        diskQueue.async { [diskDirectory] in
+            let hash = Self.diskHash(for: uri)
+            let path = diskDirectory.appendingPathComponent(hash)
             try? data.write(to: path, options: .atomic)
         }
     }
@@ -176,15 +183,18 @@ final class PubkyImageCache: @unchecked Sendable {
         memoryCache.removeAll()
         lock.unlock()
 
-        diskQueue.sync {
+        diskQueue.async { [diskDirectory] in
             try? FileManager.default.removeItem(at: diskDirectory)
             try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
         }
     }
 
-    private func diskPath(for uri: String) -> URL {
+    private static func diskHash(for uri: String) -> String {
         let data = Data(uri.utf8)
-        let hash = SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
-        return diskDirectory.appendingPathComponent(hash)
+        return SHA256.hash(data: data).compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    private func diskPath(for uri: String) -> URL {
+        diskDirectory.appendingPathComponent(Self.diskHash(for: uri))
     }
 }

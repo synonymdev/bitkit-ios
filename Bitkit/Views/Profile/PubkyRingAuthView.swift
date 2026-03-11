@@ -139,6 +139,8 @@ struct PubkyRingAuthView: View {
             } else {
                 navigation.path = [.profile]
             }
+        } catch is CancellationError {
+            isWaitingForRing = false
         } catch {
             isWaitingForRing = false
             app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)

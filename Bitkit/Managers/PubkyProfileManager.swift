@@ -121,9 +121,16 @@ class PubkyProfileManager: ObservableObject {
                 let pk = try await PubkyService.importSession(secret: sessionSecret)
 
                 guard let data = sessionSecret.data(using: .utf8) else {
+                    await PubkyService.forceSignOut()
                     throw PubkyServiceError.authFailed("Failed to encode session secret")
                 }
-                try Keychain.upsert(key: .paykitSession, data: data)
+
+                do {
+                    try Keychain.upsert(key: .paykitSession, data: data)
+                } catch {
+                    await PubkyService.forceSignOut()
+                    throw error
+                }
 
                 return pk
             }.value
