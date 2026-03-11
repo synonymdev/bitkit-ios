@@ -51,11 +51,15 @@ enum PubkyService {
     }
 
     static func isAuthenticated() async -> Bool {
-        await paykitIsAuthenticated()
+        await (try? ServiceQueue.background(.core) {
+            await paykitIsAuthenticated()
+        }) ?? false
     }
 
     static func currentPublicKey() async -> String? {
-        await paykitGetCurrentPublicKey()
+        try? await ServiceQueue.background(.core) {
+            await paykitGetCurrentPublicKey()
+        }
     }
 
     // MARK: - Auth Flow (BitkitCore)
