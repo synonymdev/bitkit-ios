@@ -25,6 +25,7 @@ struct PubkyImage: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .accessibilityLabel(Text("Profile photo"))
         .task(id: uri) {
             await loadImage()
         }
@@ -71,7 +72,7 @@ struct PubkyImage: View {
         }
 
         let data = try await PubkyService.fetchFile(uri: uri)
-        let blobData = try await resolveImageData(data)
+        let blobData = try await resolveImageData(data, originalUri: uri)
 
         guard let image = UIImage(data: blobData) else {
             throw PubkyImageError.decodingFailed(blobData.count)
@@ -81,11 +82,18 @@ struct PubkyImage: View {
         return image
     }
 
-    private nonisolated static func resolveImageData(_ data: Data) async throws -> Data {
+    private nonisolated static func resolveImageData(_ data: Data, originalUri: String) async throws -> Data {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let src = json["src"] as? String,
               src.hasPrefix("pubky://")
         else {
+            return data
+        }
+
+        let originalPubkey = originalUri.dropFirst("pubky://".count).prefix(while: { $0 != "/" })
+        let srcPubkey = src.dropFirst("pubky://".count).prefix(while: { $0 != "/" })
+        guard !originalPubkey.isEmpty, originalPubkey == srcPubkey else {
+            Logger.warn("Rejected cross-user src redirect: \(src)", context: "PubkyImage")
             return data
         }
 
