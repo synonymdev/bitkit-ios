@@ -16,10 +16,7 @@ struct PubkyProfile: Sendable {
     let status: String?
 
     var truncatedPublicKey: String {
-        guard publicKey.count > 10 else { return publicKey }
-        let prefix = publicKey.prefix(4)
-        let suffix = publicKey.suffix(4)
-        return "\(prefix)...\(suffix)"
+        Self.truncate(publicKey)
     }
 
     init(publicKey: String, ffiProfile: BitkitCore.PubkyProfile) {
@@ -46,5 +43,21 @@ struct PubkyProfile: Sendable {
         self.imageUrl = imageUrl
         self.links = links
         self.status = status
+    }
+
+    static func placeholder(publicKey: String) -> PubkyProfile {
+        PubkyProfile(
+            publicKey: publicKey,
+            name: PubkyProfile.truncate(publicKey),
+            bio: "",
+            imageUrl: nil,
+            links: [],
+            status: nil
+        )
+    }
+
+    private static func truncate(_ key: String) -> String {
+        guard key.count > 10 else { return key }
+        return "\(key.prefix(4))...\(key.suffix(4))"
     }
 }

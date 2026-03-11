@@ -269,6 +269,15 @@ struct MainNavView: View {
 
     // MARK: - Computed Properties for Better Organization
 
+    private var pubkyLoadingView: some View {
+        VStack {
+            Spacer()
+            ActivityIndicator()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var navigationContent: some View {
         Group {
             switch navigation.activeDrawerMenuItem {
@@ -277,14 +286,23 @@ struct MainNavView: View {
             case .activity:
                 AllActivityView()
             case .contacts:
-                // if app.hasSeenContactsIntro {
-                //     ContactsView()
-                // } else {
-                //     ContactsIntroView()
-                // }
-                ComingSoonScreen()
+                if app.hasSeenContactsIntro {
+                    if !pubkyProfile.isInitialized {
+                        pubkyLoadingView
+                    } else if pubkyProfile.isAuthenticated {
+                        ContactsListView()
+                    } else if app.hasSeenProfileIntro {
+                        PubkyRingAuthView()
+                    } else {
+                        ProfileIntroView()
+                    }
+                } else {
+                    ContactsIntroView()
+                }
             case .profile:
-                if pubkyProfile.isAuthenticated {
+                if !pubkyProfile.isInitialized {
+                    pubkyLoadingView
+                } else if pubkyProfile.isAuthenticated {
                     ProfileView()
                 } else if app.hasSeenProfileIntro {
                     PubkyRingAuthView()
@@ -341,8 +359,9 @@ struct MainNavView: View {
             case .savingsProgress: SavingsProgressView()
 
             // Profile & Contacts
-            case .contacts: ComingSoonScreen()
-            case .contactsIntro: ComingSoonScreen()
+            case .contacts: ContactsListView()
+            case .contactsIntro: ContactsIntroView()
+            case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
             case .profile:
                 if pubkyProfile.isAuthenticated {
                     ProfileView()
