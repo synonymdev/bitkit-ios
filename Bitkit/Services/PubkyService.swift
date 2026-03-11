@@ -146,6 +146,8 @@ enum PubkyService {
     }
 
     static func forceSignOut() async {
-        await paykitForceSignOut()
+        _ = try? await ServiceQueue.background(.core) {
+            await paykitForceSignOut()
+        }
     }
 }
