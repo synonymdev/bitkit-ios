@@ -83,7 +83,8 @@ struct PubkyImage: View {
 
     private nonisolated static func resolveImageData(_ data: Data) async throws -> Data {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let src = json["src"] as? String
+              let src = json["src"] as? String,
+              src.hasPrefix("pubky://")
         else {
             return data
         }
