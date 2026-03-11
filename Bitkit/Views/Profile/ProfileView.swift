@@ -76,7 +76,7 @@ struct ProfileView: View {
     @ViewBuilder
     private var profileActions: some View {
         HStack(spacing: 16) {
-            profileActionButton(icon: "copy") {
+            profileActionButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
                     app.toast(type: .success, title: t("common__copied"))
@@ -84,12 +84,12 @@ struct ProfileView: View {
             }
             .accessibilityIdentifier("ProfileCopy")
 
-            profileActionButton(icon: "share") {
+            profileActionButton(icon: "share", accessibilityLabel: t("common__share")) {
                 shareProfile()
             }
             .accessibilityIdentifier("ProfileShare")
 
-            profileActionButton(systemIcon: "rectangle.portrait.and.arrow.right") {
+            profileActionButton(systemIcon: "rectangle.portrait.and.arrow.right", accessibilityLabel: t("profile__sign_out")) {
                 showSignOutConfirmation = true
             }
             .disabled(isSigningOut)
@@ -99,7 +99,9 @@ struct ProfileView: View {
     }
 
     @ViewBuilder
-    private func profileActionButton(icon: String? = nil, systemIcon: String? = nil, action: @escaping () -> Void) -> some View {
+    private func profileActionButton(icon: String? = nil, systemIcon: String? = nil, accessibilityLabel: String,
+                                     action: @escaping () -> Void) -> some View
+    {
         Button(action: action) {
             ZStack {
                 Circle()
@@ -130,6 +132,7 @@ struct ProfileView: View {
             }
             .frame(width: 48, height: 48)
         }
+        .accessibilityLabel(accessibilityLabel)
     }
 
     // MARK: - Header (name, key, avatar)
