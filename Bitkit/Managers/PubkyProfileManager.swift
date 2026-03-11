@@ -1,5 +1,4 @@
 import Foundation
-import Observation
 import SwiftUI
 
 enum PubkyAuthState: Equatable {
@@ -10,15 +9,14 @@ enum PubkyAuthState: Equatable {
 }
 
 @MainActor
-@Observable
-class PubkyProfileManager {
-    var authState: PubkyAuthState = .idle
-    var profile: PubkyProfile?
-    var publicKey: String?
-    var isLoadingProfile = false
-    var isInitialized = false
-    private(set) var cachedName: String?
-    private(set) var cachedImageUri: String?
+class PubkyProfileManager: ObservableObject {
+    @Published var authState: PubkyAuthState = .idle
+    @Published var profile: PubkyProfile?
+    @Published var publicKey: String?
+    @Published var isLoadingProfile = false
+    @Published var isInitialized = false
+    @Published private(set) var cachedName: String?
+    @Published private(set) var cachedImageUri: String?
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
