@@ -921,6 +921,14 @@
 "slashtags__onboarding_header" = "Dynamic\n<accent>contacts</accent>";
 "slashtags__onboarding_text" = "Get automatic updates from your Bitkit contacts, pay them, and follow their public profiles.";
 "slashtags__onboarding_button" = "Add First Contact";
+"contacts__detail_title" = "Contact";
+"contacts__empty_state" = "You don't have any contacts yet.";
+"contacts__intro_description" = "Get automatic updates from contacts, pay them, and follow their public profiles.";
+"contacts__intro_title" = "Dynamic\n<accent>contacts</accent>";
+"contacts__my_profile" = "MY PROFILE";
+"contacts__error_loading" = "Failed to load contacts";
+"contacts__nav_title" = "Contacts";
+"contacts__qr_scan_label" = "Scan to add {name}";
 "slashtags__onboarding_profile1_header" = "Own your\n<accent>profile</accent>";
 "slashtags__onboarding_profile1_text" = "Set up your public profile and links, so your Bitkit contacts can reach you or pay you anytime, anywhere.";
 "slashtags__onboarding_profile2_header" = "Pay <accent>Bitkit\ncontacts</accent>";

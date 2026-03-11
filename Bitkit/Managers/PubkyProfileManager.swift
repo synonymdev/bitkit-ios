@@ -49,7 +49,6 @@ class PubkyProfileManager: ObservableObject {
                     return InitResult.restored(publicKey: pk)
                 } catch {
                     Logger.warn("Failed to restore paykit session: \(error)", context: "PubkyProfileManager")
-                    try? Keychain.delete(key: .paykitSession)
                     return InitResult.restorationFailed
                 }
             }.value
