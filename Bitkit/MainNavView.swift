@@ -346,8 +346,10 @@ struct MainNavView: View {
             case .profile:
                 if pubkyProfile.isAuthenticated {
                     ProfileView()
-                } else {
+                } else if app.hasSeenProfileIntro {
                     PubkyRingAuthView()
+                } else {
+                    ProfileIntroView()
                 }
             case .profileIntro: ProfileIntroView()
             case .pubkyRingAuth: PubkyRingAuthView()

@@ -80,10 +80,10 @@ class PubkyProfileManager: ObservableObject {
             try await Task.detached {
                 try await PubkyService.cancelAuth()
             }.value
+            authState = .idle
         } catch {
             Logger.warn("Cancel auth failed: \(error)", context: "PubkyProfileManager")
         }
-        authState = .idle
     }
 
     func startAuthentication() async throws {
@@ -118,6 +118,7 @@ class PubkyProfileManager: ObservableObject {
         do {
             let pk = try await Task.detached {
                 let sessionSecret = try await PubkyService.completeAuth()
+                let pk = try await PubkyService.importSession(secret: sessionSecret)
 
                 try? Keychain.delete(key: .paykitSession)
                 guard let data = sessionSecret.data(using: .utf8) else {
@@ -125,7 +126,7 @@ class PubkyProfileManager: ObservableObject {
                 }
                 try Keychain.save(key: .paykitSession, data: data)
 
-                return try await PubkyService.importSession(secret: sessionSecret)
+                return pk
             }.value
 
             publicKey = pk
