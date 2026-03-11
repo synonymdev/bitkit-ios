@@ -281,9 +281,21 @@ class SettingsViewModel: NSObject, ObservableObject {
     /// Address types that support native SegWit scripts (required for Lightning).
     private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
 
-    @AppStorage("selectedAddressType") private var _selectedAddressType: String = "nativeSegwit"
+    private var _selectedAddressType: String {
+        get { defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit" }
+        set {
+            defaults.set(newValue, forKey: "selectedAddressType")
+            objectWillChange.send()
+        }
+    }
 
-    @AppStorage("addressTypesToMonitor") private var _addressTypesToMonitor: String = "nativeSegwit"
+    private var _addressTypesToMonitor: String {
+        get { defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit" }
+        set {
+            defaults.set(newValue, forKey: "addressTypesToMonitor")
+            objectWillChange.send()
+        }
+    }
 
     /// Parses a comma-separated string of address types, filtering invalid values.
     static func parseAddressTypesString(_ string: String) -> [AddressScriptType] {
@@ -770,8 +782,6 @@ class SettingsViewModel: NSObject, ObservableObject {
         showWidgetTitles = defaults.bool(forKey: "showWidgetTitles")
         _coinSelectionMethod = defaults.string(forKey: "coinSelectionMethod") ?? CoinSelectionMethod.autopilot.rawValue
         _coinSelectionAlgorithm = defaults.string(forKey: "coinSelectionAlgorithm") ?? CoinSelectionAlgorithm.branchAndBound.stringValue
-        _selectedAddressType = defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit"
-        _addressTypesToMonitor = defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit"
     }
 
     /// Gets the current app cache data for backup
