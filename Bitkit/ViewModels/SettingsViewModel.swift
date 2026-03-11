@@ -285,6 +285,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         get { defaults.string(forKey: "selectedAddressType") ?? "nativeSegwit" }
         set {
             defaults.set(newValue, forKey: "selectedAddressType")
+            defaults.synchronize()
             objectWillChange.send()
         }
     }
@@ -293,6 +294,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         get { defaults.string(forKey: "addressTypesToMonitor") ?? "nativeSegwit" }
         set {
             defaults.set(newValue, forKey: "addressTypesToMonitor")
+            defaults.synchronize()
             objectWillChange.send()
         }
     }

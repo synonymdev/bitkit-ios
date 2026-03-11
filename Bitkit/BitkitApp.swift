@@ -42,6 +42,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     // MARK: - App Termination
 
     func applicationWillTerminate(_ application: UIApplication) {
+        UserDefaults.standard.synchronize()
         try? StateLocker.unlock(.lightning)
     }
 }

@@ -505,6 +505,8 @@ struct AppScene: View {
         Logger.debug("Scene phase changed: \(newPhase)")
 
         if newPhase == .background {
+            UserDefaults.standard.synchronize()
+
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
                 isPinVerified = false
