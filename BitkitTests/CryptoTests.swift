@@ -43,7 +43,7 @@ final class CryptoTests: XCTestCase {
 
         // Message to encrypt
         let originalMessage = "Hello, secure world!"
-        let messageData = originalMessage.data(using: .utf8)!
+        let messageData = try XCTUnwrap(originalMessage.data(using: .utf8))
 
         // Encrypt the message using Alice's shared secret
         let encryptedData = try Crypto.encrypt(messageData, secretKey: aliceSharedSecret)

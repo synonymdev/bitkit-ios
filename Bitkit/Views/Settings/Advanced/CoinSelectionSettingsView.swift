@@ -49,7 +49,7 @@ extension CoinSelectionAlgorithm {
         }
     }
 
-    // Only return supported algorithms from the test
+    /// Only return supported algorithms from the test
     static var supportedAlgorithms: [CoinSelectionAlgorithm] {
         return [.branchAndBound, .largestFirst, .oldestFirst, .singleRandomDraw]
     }

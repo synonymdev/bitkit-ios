@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Quick Action Notification
 
-// Communication bridge between delegates and SwiftUI views
+/// Communication bridge between delegates and SwiftUI views
 extension Notification.Name {
     static let quickActionSelected = Notification.Name("quickActionSelected")
 }
@@ -28,7 +28,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     // MARK: - Scene Configuration
 
-    // Required for SwiftUI apps to handle quick actions
+    /// Required for SwiftUI apps to handle quick actions
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -58,7 +58,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         Logger.error("🔔 AppDelegate: didFailToRegisterForRemoteNotificationsWithError: \(error)")
     }
 
-    // Foreground notification presentation
+    /// Foreground notification presentation
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -73,7 +73,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         completionHandler([[.banner, .badge, .sound]])
     }
 
-    // Handle taps on notifications
+    /// Handle taps on notifications
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,

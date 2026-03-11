@@ -10,7 +10,7 @@ struct BackupTimedSheet: TimedSheetItem {
     private let walletViewModel: WalletViewModel
     private let appViewModel: AppViewModel
 
-    // Backup prompt constants
+    /// Backup prompt constants
     private static let ASK_INTERVAL: TimeInterval = 24 * 60 * 60 // 1 day - how long this prompt will not show after user dismisses
 
     init(appViewModel: AppViewModel, walletViewModel: WalletViewModel) {

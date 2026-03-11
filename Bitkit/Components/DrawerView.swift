@@ -10,7 +10,9 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case settings
     case appStatus
 
-    var id: Int { rawValue }
+    var id: Int {
+        rawValue
+    }
 
     var icon: String {
         switch self {
@@ -81,7 +83,6 @@ struct DrawerView: View {
         }
     }
 
-    @ViewBuilder
     private var backdrop: some View {
         Color.black.opacity(0.6)
             .ignoresSafeArea()
@@ -170,7 +171,6 @@ struct DrawerView: View {
         }
     }
 
-    @ViewBuilder
     private func menuItemContent(item: DrawerMenuItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {

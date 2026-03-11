@@ -61,7 +61,7 @@ struct SavingsWalletView: View {
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)
                         }
-                        /// Leave some space for TabBar
+                        // Leave some space for TabBar
                         .padding(.bottom, 130)
                     }
                     .accessibilityIdentifier("HomeScrollView")

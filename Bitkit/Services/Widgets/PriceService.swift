@@ -74,7 +74,7 @@ public let tradingPairs: [TradingPair] = [
     TradingPair(name: "BTC/JPY", base: "BTC", quote: "JPY", symbol: "¥"),
 ]
 
-// Convenience array for just the pair names
+/// Convenience array for just the pair names
 public let tradingPairNames: [String] = tradingPairs.map(\.name)
 
 // MARK: - Helper Models

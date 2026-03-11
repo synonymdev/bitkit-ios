@@ -97,11 +97,9 @@ class TransferViewModel: ObservableObject {
             btNodeIds.contains(channel.counterpartyNodeId)
         }
 
-        let totalValue = btChannels.reduce(0) { sum, channel in
+        return btChannels.reduce(0) { sum, channel in
             sum + channel.channelValueSats
         }
-
-        return totalValue
     }
 
     func onOrderCreated(order: IBtOrder) {

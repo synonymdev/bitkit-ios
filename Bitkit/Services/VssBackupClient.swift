@@ -236,8 +236,7 @@ class VssBackupClient {
         try await awaitLdkSetup()
         Logger.debug("VSS 'getObjectLdk' call for '\(key)'", context: "VssBackupClient")
         do {
-            let item = try await vssLdkGet(key: key, namespace: namespace)
-            return item
+            return try await vssLdkGet(key: key, namespace: namespace)
         } catch {
             Logger.debug("VSS 'getObjectLdk' error for '\(key)': \(error)", context: "VssBackupClient")
             throw error

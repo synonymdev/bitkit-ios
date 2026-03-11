@@ -1,8 +1,7 @@
+@testable import Bitkit
 import BitkitCore
 import LDKNode
 import XCTest
-
-@testable import Bitkit
 
 final class AddressTypeIntegrationTests: XCTestCase {
     let walletIndex = 0

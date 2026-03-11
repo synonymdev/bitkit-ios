@@ -74,7 +74,7 @@ enum Route: Hashable {
     case disablePin
     case changePin
 
-    // Backup settings
+    /// Backup settings
     case resetAndRestore
 
     // Advanced settings

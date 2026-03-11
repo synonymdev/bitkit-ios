@@ -24,7 +24,7 @@ struct ElectrumServer: Equatable, Codable {
         return String(port)
     }
 
-    // Convenience initializer for string port
+    /// Convenience initializer for string port
     init(host: String, portString: String, protocolType: ElectrumProtocol) {
         self.host = host
         port = Int(portString) ?? 50001

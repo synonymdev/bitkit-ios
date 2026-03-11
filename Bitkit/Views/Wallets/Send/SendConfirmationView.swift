@@ -19,7 +19,7 @@ struct SendConfirmationView: View {
     @State private var routingFee: Int = 0
     @State private var shouldUseSendAll: Bool = false
 
-    // Warning system
+    /// Warning system
     private enum WarningType: String, CaseIterable {
         case amount
         case balance
@@ -395,7 +395,6 @@ struct SendConfirmationView: View {
         try? await CoreService.shared.activity.addPreActivityMetadata(preActivityMetadata)
     }
 
-    @ViewBuilder
     func onchainView(_ invoice: OnChainInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             editableInvoiceSection(
@@ -461,7 +460,6 @@ struct SendConfirmationView: View {
         }
     }
 
-    @ViewBuilder
     func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             editableInvoiceSection(
@@ -538,7 +536,6 @@ struct SendConfirmationView: View {
         }
     }
 
-    @ViewBuilder
     private func editableInvoiceSection(title: String, value: String) -> some View {
         Button {
             navigateToManual(with: value)

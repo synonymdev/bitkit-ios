@@ -4,7 +4,7 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
-// Avoids conflict with AddressViewer.AddressType
+/// Avoids conflict with AddressViewer.AddressType
 typealias AddressScriptType = LDKNode.AddressType
 
 enum CoinSelectionMethod: String, CaseIterable {
@@ -81,7 +81,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         appStateSubject.eraseToAnyPublisher()
     }
 
-    // Security & Privacy Settings
+    /// Security & Privacy Settings
     @AppStorage("swipeBalanceToHide") private var _swipeBalanceToHide: Bool = true
 
     var swipeBalanceToHide: Bool {
@@ -277,7 +277,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    // Address Type Settings
+    /// Address Type Settings
     /// Address types that support native SegWit scripts (required for Lightning).
     private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
 

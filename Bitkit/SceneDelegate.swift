@@ -3,7 +3,7 @@ import UIKit
 
 // MARK: - Scene Delegate for Quick Actions
 
-// Handles scene lifecycle and quick actions for SwiftUI apps
+/// Handles scene lifecycle and quick actions for SwiftUI apps
 class SceneDelegate: NSObject, UIWindowSceneDelegate {
     // MARK: - Quick Action State
 
@@ -11,7 +11,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     // MARK: - Scene Connection
 
-    // Save quick action when scene is created
+    /// Save quick action when scene is created
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         if let shortcutItem = connectionOptions.shortcutItem {
             savedShortCutItem = shortcutItem
@@ -20,7 +20,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     // MARK: - Scene Activation
 
-    // Handle saved quick action when scene becomes active
+    /// Handle saved quick action when scene becomes active
     func sceneDidBecomeActive(_ scene: UIScene) {
         if let shortcutItem = savedShortCutItem {
             handleQuickAction(shortcutItem)
@@ -30,7 +30,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     // MARK: - Quick Action Handling (App Running)
 
-    // Handle quick action when app is already running
+    /// Handle quick action when app is already running
     func windowScene(
         _ windowScene: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem,
@@ -42,7 +42,7 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     // MARK: - Quick Action Processing
 
-    // Process quick action and notify SwiftUI views
+    /// Process quick action and notify SwiftUI views
     private func handleQuickAction(_ shortcutItem: UIApplicationShortcutItem) {
         let userInfo = ["shortcutType": shortcutItem.type]
         NotificationCenter.default.post(name: .quickActionSelected, object: nil, userInfo: userInfo)

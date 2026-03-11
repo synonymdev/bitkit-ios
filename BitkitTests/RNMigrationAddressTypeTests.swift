@@ -104,20 +104,20 @@ final class RNMigrationAddressTypeTests: XCTestCase {
         XCTAssertEqual(UserDefaults.standard.string(forKey: "addressTypesToMonitor"), "nativeSegwit,taproot")
     }
 
-    func testApplyRNAddressTypeSettingsNativeWitnessAdded() {
+    func testApplyRNAddressTypeSettingsNativeWitnessAdded() throws {
         migrations.applyRNAddressTypeSettings(selectedAddressType: nil, addressTypesToMonitor: ["legacy"])
         let monitored = UserDefaults.standard.string(forKey: "addressTypesToMonitor")
         XCTAssertNotNil(monitored)
-        XCTAssertTrue(monitored!.contains("nativeSegwit"))
-        XCTAssertTrue(monitored!.contains("legacy"))
+        XCTAssertTrue(try XCTUnwrap(monitored?.contains("nativeSegwit")))
+        XCTAssertTrue(try XCTUnwrap(monitored?.contains("legacy")))
     }
 
-    func testApplyRNAddressTypeSettingsNestedSegwitOnlyAddsNativeSegwit() {
+    func testApplyRNAddressTypeSettingsNestedSegwitOnlyAddsNativeSegwit() throws {
         migrations.applyRNAddressTypeSettings(selectedAddressType: nil, addressTypesToMonitor: ["nestedSegwit"])
         let monitored = UserDefaults.standard.string(forKey: "addressTypesToMonitor")
         XCTAssertNotNil(monitored)
-        XCTAssertTrue(monitored!.contains("nativeSegwit"))
-        XCTAssertTrue(monitored!.contains("nestedSegwit"))
+        XCTAssertTrue(try XCTUnwrap(monitored?.contains("nativeSegwit")))
+        XCTAssertTrue(try XCTUnwrap(monitored?.contains("nestedSegwit")))
     }
 
     func testApplyRNAddressTypeSettingsWithNativeWitnessDoesNotDuplicate() {

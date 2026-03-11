@@ -7,10 +7,10 @@ struct WidgetDetailView: View {
     @EnvironmentObject private var widgets: WidgetsViewModel
     let id: WidgetType
 
-    // State for managing widget actions
+    /// State for managing widget actions
     @State private var showDeleteAlert = false
 
-    // Widget data computed from the ID
+    /// Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
         let name = t("widgets__\(id.rawValue)__name")
 
@@ -22,12 +22,12 @@ struct WidgetDetailView: View {
         return (name: name, description: description, icon: icon)
     }
 
-    // Check if widget is already saved (for showing delete button)
+    /// Check if widget is already saved (for showing delete button)
     private var isWidgetSaved: Bool {
         widgets.isWidgetSaved(id)
     }
 
-    // Check if widget has customization options
+    /// Check if widget has customization options
     private var hasOptions: Bool {
         switch id {
         case .blocks, .facts, .news, .price, .weather:
@@ -37,7 +37,7 @@ struct WidgetDetailView: View {
         }
     }
 
-    // Check if widget has custom options
+    /// Check if widget has custom options
     private var hasCustomOptions: Bool {
         widgets.hasCustomOptions(for: id)
     }

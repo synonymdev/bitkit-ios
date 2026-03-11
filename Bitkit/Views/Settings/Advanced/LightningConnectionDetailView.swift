@@ -335,7 +335,7 @@ struct LightningConnectionDetailView: View {
         )
     }
 
-    // Helper Views
+    /// Helper Views
     private func DetailRow(label: String, value: String, valueTestId: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             GeometryReader { geometry in

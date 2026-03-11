@@ -9,10 +9,10 @@ final class RNMigrationCleanupTests: XCTestCase {
     private let migrations = MigrationsService.shared
     private let fileManager = FileManager.default
 
-    // RN wallet name used by the migration service
+    /// RN wallet name used by the migration service
     private let rnWalletName = "wallet0"
 
-    // Sandbox Documents directory (where RN stored its data)
+    /// Sandbox Documents directory (where RN stored its data)
     private var sandboxDocuments: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
@@ -123,16 +123,16 @@ final class RNMigrationCleanupTests: XCTestCase {
 
     // MARK: - RN Keychain Cleanup Tests
 
-    func testCleanupRNKeychainDeletesEntries() {
+    func testCleanupRNKeychainDeletesEntries() throws {
         // Setup: Create RN keychain entries
         createRNKeychainEntry(walletName: rnWalletName, mnemonic: "test mnemonic")
 
         // Also create passphrase entry
-        let passphraseQuery: [String: Any] = [
+        let passphraseQuery: [String: Any] = try [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "\(rnWalletName)passphrase",
             kSecAttrAccount as String: "\(rnWalletName)passphrase",
-            kSecValueData as String: "test passphrase".data(using: .utf8)!,
+            kSecValueData as String: XCTUnwrap("test passphrase".data(using: .utf8)),
         ]
         SecItemAdd(passphraseQuery as CFDictionary, nil)
 

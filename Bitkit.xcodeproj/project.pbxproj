@@ -944,7 +944,7 @@
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
 			requirement = {
 				kind = revision;
-				revision = 6f6bc44526695d4c5c6b2bb578aaba48b66f6c2c;
+				revision = c5698d00066e0e50f33696afc562d71023da2373;
 			};
 		};
 		96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */ = {
