@@ -3,7 +3,7 @@ import SwiftUI
 struct ProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @Environment(PubkyProfileManager.self) var pubkyProfile
 
     @State private var showSignOutConfirmation = false
     @State private var isSigningOut = false
@@ -141,10 +141,7 @@ struct ProfileView: View {
                 HeadlineText(profile.name)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text(profile.truncatedPublicKey)
-                    .font(Fonts.semiBold(size: 15))
-                    .foregroundColor(.white)
-                    .kerning(0.4)
+                BodySSBText(profile.truncatedPublicKey, textColor: .white)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -207,10 +204,7 @@ struct ProfileView: View {
                 }
             }
 
-            Text(t("profile__qr_scan_label", variables: ["name": profile.name]))
-                .font(Fonts.regular(size: 15))
-                .foregroundColor(.white)
-                .kerning(0.4)
+            BodySText(t("profile__qr_scan_label", variables: ["name": profile.name]), textColor: .white)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -291,15 +285,9 @@ struct ProfileLinkRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(label.uppercased())
-                    .font(Fonts.medium(size: 13))
-                    .foregroundColor(.white64)
-                    .kerning(1)
+                CaptionMText(label, textColor: .white64)
 
-                Text(value)
-                    .font(Fonts.semiBold(size: 15))
-                    .foregroundColor(.white)
-                    .kerning(0.4)
+                BodySSBText(value, textColor: .white)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 16)
@@ -316,7 +304,7 @@ struct ProfileLinkRow: View {
         ProfileView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
-            .environmentObject(manager)
+            .environment(manager)
     }
     .preferredColorScheme(.dark)
 }

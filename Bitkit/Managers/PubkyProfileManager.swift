@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftUI
 
 enum PubkyAuthState: Equatable {
@@ -9,14 +10,15 @@ enum PubkyAuthState: Equatable {
 }
 
 @MainActor
-class PubkyProfileManager: ObservableObject {
-    @Published var authState: PubkyAuthState = .idle
-    @Published var profile: PubkyProfile?
-    @Published var publicKey: String?
-    @Published var isLoadingProfile = false
-    @Published var isInitialized = false
-    @Published private(set) var cachedName: String?
-    @Published private(set) var cachedImageUri: String?
+@Observable
+class PubkyProfileManager {
+    var authState: PubkyAuthState = .idle
+    var profile: PubkyProfile?
+    var publicKey: String?
+    var isLoadingProfile = false
+    var isInitialized = false
+    private(set) var cachedName: String?
+    private(set) var cachedImageUri: String?
 
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
@@ -150,9 +152,9 @@ class PubkyProfileManager: ObservableObject {
 
         do {
             let loadedProfile = try await Task.detached {
-                let ffiProfile = try await PubkyService.getProfile(publicKey: pk)
-                Logger.debug("Profile loaded — name: \(ffiProfile.name), image: \(ffiProfile.image ?? "nil")", context: "PubkyProfileManager")
-                return PubkyProfile(publicKey: pk, ffiProfile: ffiProfile)
+                let profileDto = try await PubkyService.getProfile(publicKey: pk)
+                Logger.debug("Profile loaded — name: \(profileDto.name), image: \(profileDto.image ?? "nil")", context: "PubkyProfileManager")
+                return PubkyProfile(publicKey: pk, ffiProfile: profileDto)
             }.value
             profile = loadedProfile
             cacheProfileMetadata(loadedProfile)
@@ -189,13 +191,11 @@ class PubkyProfileManager: ObservableObject {
     private static let cachedImageUriKey = "pubky_profile_image_uri"
 
     var displayName: String? {
-        guard isAuthenticated else { return nil }
-        return profile?.name ?? cachedName
+        profile?.name ?? cachedName
     }
 
     var displayImageUri: String? {
-        guard isAuthenticated else { return nil }
-        return profile?.imageUrl ?? cachedImageUri
+        profile?.imageUrl ?? cachedImageUri
     }
 
     private func cacheProfileMetadata(_ profile: PubkyProfile) {
