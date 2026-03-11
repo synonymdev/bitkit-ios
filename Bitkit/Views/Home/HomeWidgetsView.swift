@@ -20,17 +20,17 @@ struct HomeWidgetsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 DraggableList(
-                    widgets.orderedRows,
+                    widgets.savedWidgets,
                     id: \.id,
                     enableDrag: isEditingWidgets,
                     itemHeight: 80,
                     onReorder: { sourceIndex, destinationIndex in
                         widgets.reorderWidgetsTab(from: sourceIndex, to: destinationIndex)
                     }
-                ) { row in
-                    rowContent(row)
+                ) { widget in
+                    rowContent(widget)
                 }
-                .id(widgets.orderedRows.map(\.id))
+                .id(widgets.savedWidgets.map(\.id))
 
                 CustomButton(title: t("widgets__add"), variant: .tertiary) {
                     if app.hasSeenWidgetsIntro {
@@ -49,14 +49,11 @@ struct HomeWidgetsView: View {
         }
     }
 
-    @ViewBuilder
-    private func rowContent(_ row: WidgetsTabRow) -> some View {
-        if case let .widget(widget) = row {
-            widget.view(
-                widgetsViewModel: widgets,
-                isEditing: isEditingWidgets,
-                onEditingEnd: { withAnimation { isEditingWidgets = false } }
-            )
-        }
+    private func rowContent(_ widget: Widget) -> some View {
+        widget.view(
+            widgetsViewModel: widgets,
+            isEditing: isEditingWidgets,
+            onEditingEnd: { withAnimation { isEditingWidgets = false } }
+        )
     }
 }

@@ -154,28 +154,13 @@ enum WidgetType: String, CaseIterable, Codable {
     case weather
 }
 
-// MARK: - Widgets tab row
-
-/// A single row in the widgets tab (each row is a widget, including suggestions).
-enum WidgetsTabRow: Identifiable {
-    case widget(Widget)
-
-    var id: String {
-        switch self {
-        case let .widget(widget):
-            return widget.type.rawValue
-        }
-    }
-}
-
 // MARK: - WidgetsViewModel
 
 @MainActor
 class WidgetsViewModel: ObservableObject {
     @Published var savedWidgets: [Widget] = []
 
-    /// Single AppStorage key for widgets with their options (array order = display order)
-    @AppStorage("savedWidgets") private var savedWidgetsData: Data = .init()
+    private static let savedWidgetsKey = "savedWidgets"
 
     /// In-memory storage for saved widgets with options
     private var savedWidgetsWithOptions: [SavedWidget] = []
@@ -189,11 +174,6 @@ class WidgetsViewModel: ObservableObject {
 
     init() {
         loadSavedWidgets()
-    }
-
-    /// Rows to display in the widgets tab in the user's order (same as savedWidgets order).
-    var orderedRows: [WidgetsTabRow] {
-        savedWidgets.map { .widget($0) }
     }
 
     // MARK: - Public Methods
@@ -310,12 +290,11 @@ class WidgetsViewModel: ObservableObject {
     // MARK: - Private Methods
 
     func loadSavedWidgets() {
-        let widgetsData = UserDefaults.standard.data(forKey: "savedWidgets") ?? .init()
+        let widgetsData = UserDefaults.standard.data(forKey: Self.savedWidgetsKey) ?? .init()
 
         do {
             savedWidgetsWithOptions = try JSONDecoder().decode([SavedWidget].self, from: widgetsData)
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
-            savedWidgetsData = widgetsData
         } catch {
             // If no saved data or decode fails, start with default widgets
             savedWidgetsWithOptions = WidgetsViewModel.defaultSavedWidgets
@@ -327,8 +306,7 @@ class WidgetsViewModel: ObservableObject {
     private func persistSavedWidgets() {
         do {
             let encodedData = try JSONEncoder().encode(savedWidgetsWithOptions)
-            savedWidgetsData = encodedData
-            UserDefaults.standard.set(encodedData, forKey: "savedWidgets")
+            UserDefaults.standard.set(encodedData, forKey: Self.savedWidgetsKey)
         } catch {
             print("Failed to persist widgets: \(error)")
         }
