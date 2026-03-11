@@ -5,7 +5,7 @@ struct MainNavView: View {
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
-    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @Environment(PubkyProfileManager.self) private var pubkyProfile
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel

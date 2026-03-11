@@ -163,7 +163,7 @@ struct HomeView: View {
         .environmentObject(ActivityListViewModel())
         .environmentObject(AppViewModel())
         .environmentObject(NavigationViewModel())
-        .environmentObject(PubkyProfileManager())
+        .environment(PubkyProfileManager())
         .environmentObject(SettingsViewModel.shared)
         .environmentObject(WalletViewModel())
         .preferredColorScheme(.dark)

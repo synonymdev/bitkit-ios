@@ -138,7 +138,7 @@ struct Suggestions: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
-    @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @Environment(PubkyProfileManager.self) var pubkyProfile
 
     @State private var showShareSheet = false
     /// Prevent duplicate item taps when the card is dismissed
@@ -282,6 +282,6 @@ struct Suggestions: View {
     .environmentObject(SheetViewModel())
     .environmentObject(SettingsViewModel.shared)
     .environmentObject(SuggestionsManager())
-    .environmentObject(PubkyProfileManager())
+    .environment(PubkyProfileManager())
     .preferredColorScheme(.dark)
 }
