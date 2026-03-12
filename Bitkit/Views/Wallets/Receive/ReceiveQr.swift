@@ -66,6 +66,7 @@ struct ReceiveQr: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__receive_bitcoin"))
                 .padding(.horizontal, 16)
+                .padding(.bottom, UIScreen.main.isSmall ? -16 : 0)
 
             SegmentedControl(selectedTab: $selectedTab, tabItems: availableTabItems)
                 .padding(.bottom, 16)

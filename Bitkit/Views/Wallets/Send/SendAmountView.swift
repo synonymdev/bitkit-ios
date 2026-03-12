@@ -3,8 +3,8 @@ import SwiftUI
 struct SendAmountView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
-    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     @Binding var navigationPath: [SendRoute]
 
@@ -76,7 +76,7 @@ struct SendAmountView: View {
 
                         if app.selectedWalletToPayFrom == .lightning {
                             app.toast(
-                                type: .warning,
+                                type: .info,
                                 title: t("wallet__send_max_spending__title"),
                                 description: t("wallet__send_max_spending__description")
                             )

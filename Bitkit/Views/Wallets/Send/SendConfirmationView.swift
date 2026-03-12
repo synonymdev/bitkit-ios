@@ -11,6 +11,7 @@ struct SendConfirmationView: View {
     @EnvironmentObject var tagManager: TagManager
 
     @Binding var navigationPath: [SendRoute]
+    @State private var showDetails = false
     @State private var showPinCheck = false
     @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
@@ -18,6 +19,19 @@ struct SendConfirmationView: View {
     @State private var transactionFee: Int = 0
     @State private var routingFee: Int = 0
     @State private var shouldUseSendAll: Bool = false
+
+    var accentColor: Color {
+        app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent
+    }
+
+    var canSwitchWallet: Bool {
+        if app.scannedOnchainInvoice != nil && app.scannedLightningInvoice != nil {
+            let amount = app.scannedOnchainInvoice?.amountSatoshis ?? 0
+            return amount <= wallet.spendableOnchainBalanceSats && amount <= wallet.totalLightningSats
+        }
+
+        return false
+    }
 
     /// Warning system
     private enum WarningType: String, CaseIterable {
@@ -55,6 +69,7 @@ struct SendConfirmationView: View {
     @State private var currentWarning: WarningType?
     @State private var pendingWarnings: [WarningType] = []
     @State private var warningContinuation: CheckedContinuation<Bool, Error>?
+    @State private var swipeProgress: CGFloat = 0
 
     private var canEditAmount: Bool {
         guard app.selectedWalletToPayFrom == .lightning else {
@@ -80,8 +95,6 @@ struct SendConfirmationView: View {
                         testIdPrefix: "ReviewAmount",
                         onTap: navigateToAmount
                     )
-                    .padding(.bottom, 44)
-                    lightningView(invoice)
                 } else if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
                     MoneyStack(
                         sats: Int(wallet.sendAmountSats ?? invoice.amountSatoshis),
@@ -89,35 +102,45 @@ struct SendConfirmationView: View {
                         testIdPrefix: "ReviewAmount",
                         onTap: navigateToAmount
                     )
-                    .padding(.bottom, 44)
-                    onchainView(invoice)
                 }
             }
             .multilineTextAlignment(.leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 44)
 
-            CaptionMText(t("wallet__tags"))
-                .padding(.top, 16)
-                .padding(.bottom, 8)
+            if showDetails {
+                if app.selectedWalletToPayFrom == .onchain, let invoice = app.scannedOnchainInvoice {
+                    onchainView(invoice)
+                } else if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
+                    lightningView(invoice)
+                }
+            } else {
+                Image("coin-stack-4")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: UIScreen.main.bounds.width * 0.8)
+                    .frame(maxWidth: .infinity)
+                    .padding(.bottom, 16)
+                    .rotationEffect(.degrees(swipeProgress * 14))
+            }
 
-            TagsListView(
-                tags: tagManager.selectedTagsArray,
-                icon: .close,
-                onAddTag: {
-                    navigationPath.append(.tag)
-                },
-                onTagDelete: { tag in
-                    tagManager.removeTagFromSelection(tag)
-                },
-                addButtonTestId: "TagsAddSend"
-            )
-
-            Spacer()
-
-            SwipeButton(
-                title: t("wallet__send_swipe"),
-                accentColor: app.selectedWalletToPayFrom == .onchain ? .brandAccent : .purpleAccent
+            CustomButton(
+                title: showDetails ? t("common__hide_details") : t("common__show_details"),
+                size: .small,
+                icon: Image(showDetails ? "eye-slash" : app.selectedWalletToPayFrom == .lightning ? "bolt-hollow" : "speed-normal")
+                    .resizable()
+                    .frame(width: 16, height: 16)
+                    .foregroundColor(accentColor)
             ) {
+                showDetails.toggle()
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 16)
+            .accessibilityIdentifier("SendConfirmToggleDetails")
+
+            Spacer(minLength: 16)
+
+            SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
                 // Validate payment and show warnings if needed
                 let warnings = await validatePayment()
                 if !warnings.isEmpty {
@@ -161,9 +184,20 @@ struct SendConfirmationView: View {
             await calculateTransactionFee()
             await calculateRoutingFee()
         }
-        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
                 await calculateTransactionFee()
+            }
+        }
+        .onChange(of: app.selectedWalletToPayFrom) {
+            Task {
+                if app.selectedWalletToPayFrom == .lightning {
+                    await MainActor.run { transactionFee = 0 }
+                    await calculateRoutingFee()
+                } else {
+                    await MainActor.run { routingFee = 0 }
+                    await ensureOnChainStateAndRecalculateFee()
+                }
             }
         }
         .alert(
@@ -208,6 +242,211 @@ struct SendConfirmationView: View {
                     pinCheckContinuation = nil
                 }
             )
+        }
+    }
+
+    func onchainView(_ invoice: OnChainInvoice) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_from")) {
+                    NumberPadActionButton(
+                        text: app.selectedWalletToPayFrom == .lightning
+                            ? t("wallet__spending__title")
+                            : t("wallet__savings__title"),
+                        imageName: canSwitchWallet ? "arrow-up-down" : nil,
+                        color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
+                        variant: canSwitchWallet ? .primary : .secondary,
+                        disabled: !canSwitchWallet
+                    ) {
+                        if canSwitchWallet {
+                            app.selectedWalletToPayFrom.toggle()
+                        }
+                    }
+                    .accessibilityIdentifier("SendConfirmAssetButton")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    navigateToManual(with: invoice.address)
+                } label: {
+                    SendSectionView(t("wallet__send_to")) {
+                        BodySSBText(invoice.address.ellipsis(maxLength: 18))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(height: 28)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ReviewUri")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .top, spacing: 16) {
+                Button(action: {
+                    navigationPath.append(.feeRate)
+                }) {
+                    SendSectionView(t("wallet__send_fee_and_speed")) {
+                        HStack(spacing: 0) {
+                            Image(wallet.selectedSpeed.iconName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .foregroundColor(wallet.selectedSpeed.iconColor)
+                                .frame(width: 16, height: 16)
+                                .padding(.trailing, 4)
+
+                            if transactionFee > 0 {
+                                let feeText = "\(wallet.selectedSpeed.title) ("
+                                HStack(spacing: 0) {
+                                    BodySSBText(feeText)
+                                    MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                                    BodySSBText(")")
+                                }
+
+                                Image("pencil")
+                                    .foregroundColor(.textPrimary)
+                                    .frame(width: 12, height: 12)
+                                    .padding(.leading, 6)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                SendSectionView(t("wallet__send_confirming_in")) {
+                    HStack(spacing: 0) {
+                        Image("clock")
+                            .foregroundColor(.brandAccent)
+                            .frame(width: 16, height: 16)
+                            .padding(.trailing, 4)
+
+                        BodySSBText(
+                            TransactionSpeed.getFeeTierLocalized(
+                                feeRate: UInt64(wallet.selectedFeeRateSatsPerVByte ?? 0),
+                                feeEstimates: feeEstimatesManager.estimates,
+                                variant: .range
+                            )
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            SendSectionView(t("wallet__tags")) {
+                TagsListView(
+                    tags: tagManager.selectedTagsArray,
+                    icon: .close,
+                    onAddTag: {
+                        navigationPath.append(.tag)
+                    },
+                    onTagDelete: { tag in
+                        tagManager.removeTagFromSelection(tag)
+                    },
+                    addButtonTestId: "TagsAddSend"
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    func lightningView(_ invoice: LightningInvoice) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                SendSectionView(t("wallet__send_from")) {
+                    NumberPadActionButton(
+                        text: app.selectedWalletToPayFrom == .lightning
+                            ? t("wallet__spending__title")
+                            : t("wallet__savings__title"),
+                        imageName: canSwitchWallet ? "arrow-up-down" : nil,
+                        color: app.selectedWalletToPayFrom == .lightning ? .purpleAccent : .brandAccent,
+                        variant: canSwitchWallet ? .primary : .secondary,
+                        disabled: !canSwitchWallet
+                    ) {
+                        if canSwitchWallet {
+                            app.selectedWalletToPayFrom.toggle()
+                        }
+                    }
+                    .accessibilityIdentifier("SendConfirmAssetButton")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 16)
+
+                Button {
+                    navigateToManual(with: invoice.bolt11)
+                } label: {
+                    SendSectionView(t("wallet__send_to")) {
+                        BodySSBText(invoice.bolt11.ellipsis(maxLength: 18))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(height: 28)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("ReviewUri")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(alignment: .top, spacing: 16) {
+                SendSectionView(t("wallet__send_fee_and_speed")) {
+                    HStack(spacing: 4) {
+                        Image("bolt-hollow")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+
+                        if routingFee > 0 {
+                            let feeText = "\(t("fee__instant__title")) (±"
+                            HStack(spacing: 0) {
+                                BodySSBText(feeText)
+                                MoneyText(sats: routingFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
+                                BodySSBText(")")
+                            }
+                        } else {
+                            BodySSBText(t("fee__instant__title"))
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                SendSectionView(t("wallet__send_invoice_expiration")) {
+                    HStack(spacing: 4) {
+                        Image("timer-alt")
+                            .foregroundColor(.purpleAccent)
+                            .frame(width: 16, height: 16)
+
+                        BodySSBText(DateFormatterHelpers.formatInvoiceExpiryRelative(
+                            timestampSeconds: invoice.timestampSeconds,
+                            expirySeconds: invoice.expirySeconds
+                        ))
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let description = app.scannedLightningInvoice?.description, !description.isEmpty {
+                SendSectionView(t("wallet__note")) {
+                    BodySSBText(description)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            SendSectionView(t("wallet__tags")) {
+                TagsListView(
+                    tags: tagManager.selectedTagsArray,
+                    icon: .close,
+                    onAddTag: {
+                        navigationPath.append(.tag)
+                    },
+                    onTagDelete: { tag in
+                        tagManager.removeTagFromSelection(tag)
+                    },
+                    addButtonTestId: "TagsAddSend"
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -395,168 +634,6 @@ struct SendConfirmationView: View {
         try? await CoreService.shared.activity.addPreActivityMetadata(preActivityMetadata)
     }
 
-    func onchainView(_ invoice: OnChainInvoice) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            editableInvoiceSection(
-                title: t("wallet__send_to"),
-                value: invoice.address
-            )
-            .padding(.bottom)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
-
-            HStack {
-                Button(action: {
-                    navigationPath.append(.feeRate)
-                }) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText(t("wallet__send_fee_and_speed"))
-                        HStack(spacing: 0) {
-                            Image(wallet.selectedSpeed.iconName)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .foregroundColor(wallet.selectedSpeed.iconColor)
-                                .frame(width: 16, height: 16)
-                                .padding(.trailing, 4)
-
-                            if transactionFee > 0 {
-                                let feeText = "\(wallet.selectedSpeed.title) ("
-                                HStack(spacing: 0) {
-                                    BodySSBText(feeText)
-                                    MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
-                                    BodySSBText(")")
-                                }
-
-                                Image("pencil")
-                                    .foregroundColor(.textPrimary)
-                                    .frame(width: 12, height: 12)
-                                    .padding(.leading, 6)
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Spacer()
-
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("wallet__send_confirming_in"))
-                    HStack(spacing: 0) {
-                        Image("clock")
-                            .foregroundColor(.brandAccent)
-                            .frame(width: 16, height: 16)
-                            .padding(.trailing, 4)
-
-                        BodySSBText(
-                            TransactionSpeed.getFeeTierLocalized(
-                                feeRate: UInt64(wallet.selectedFeeRateSatsPerVByte ?? 0),
-                                feeEstimates: feeEstimatesManager.estimates,
-                                variant: .range
-                            )
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.vertical)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
-        }
-    }
-
-    func lightningView(_ invoice: LightningInvoice) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            editableInvoiceSection(
-                title: t("wallet__send_invoice"),
-                value: invoice.bolt11
-            )
-            .padding(.bottom)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Divider()
-
-            HStack {
-                VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("wallet__send_fee_and_speed"))
-                        .padding(.bottom, 8)
-
-                    HStack(spacing: 0) {
-                        Image("bolt-hollow")
-                            .foregroundColor(.purpleAccent)
-                            .frame(width: 16, height: 16)
-                            .padding(.trailing, 4)
-
-                        if routingFee > 0 {
-                            let feeText = "\(t("fee__instant__title")) (±"
-                            HStack(spacing: 0) {
-                                BodySSBText(feeText)
-                                MoneyText(sats: routingFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
-                                BodySSBText(")")
-                            }
-                        } else {
-                            BodySSBText(t("fee__instant__title"))
-                        }
-                    }
-
-                    Divider()
-                        .padding(.top, 16)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 16)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("wallet__send_invoice_expiration"))
-                        .padding(.bottom, 8)
-
-                    HStack(spacing: 0) {
-                        Image("timer-alt")
-                            .foregroundColor(.purpleAccent)
-                            .frame(width: 16, height: 16)
-                            .padding(.trailing, 4)
-
-                        // TODO: get actual expiration time from invoice
-                        BodySSBText("10 minutes")
-                    }
-
-                    Divider()
-                        .padding(.top, 16)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.top)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let description = app.scannedLightningInvoice?.description, !description.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("wallet__note"))
-                    BodySSBText(description)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 16)
-
-                Divider()
-            }
-        }
-    }
-
-    private func editableInvoiceSection(title: String, value: String) -> some View {
-        Button {
-            navigateToManual(with: value)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                CaptionMText(title)
-                BodySSBText(value.ellipsis(maxLength: 20))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("ReviewUri")
-    }
-
     private func navigateToManual(with value: String) {
         guard !value.isEmpty else { return }
         app.manualEntryInput = value
@@ -584,6 +661,66 @@ struct SendConfirmationView: View {
             }
             navigationPath.append(.amount)
         }
+    }
+
+    /// Ensures fee rate and UTXO selection are set when user switches to on-chain, then recalculates fee.
+    private func ensureOnChainStateAndRecalculateFee() async {
+        guard app.selectedWalletToPayFrom == .onchain else { return }
+        guard let invoice = app.scannedOnchainInvoice else { return }
+
+        if wallet.sendAmountSats == nil {
+            await MainActor.run {
+                wallet.sendAmountSats = invoice.amountSatoshis
+            }
+        }
+
+        if wallet.selectedFeeRateSatsPerVByte == nil {
+            do {
+                try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+            } catch {
+                Logger.error("Failed to set fee rate when switching to on-chain: \(error)")
+                await MainActor.run {
+                    app.selectedWalletToPayFrom = .lightning
+                    app.toast(type: .error, title: t("other__try_again"))
+                }
+                return
+            }
+        }
+
+        if settings.coinSelectionMethod == .manual {
+            if wallet.selectedUtxos == nil || wallet.selectedUtxos?.isEmpty == true {
+                do {
+                    try await wallet.loadAvailableUtxos()
+                    await MainActor.run {
+                        navigationPath.append(.utxoSelection)
+                    }
+                } catch {
+                    Logger.error("Failed to load UTXOs when switching to on-chain: \(error)")
+                    await MainActor.run {
+                        app.selectedWalletToPayFrom = .lightning
+                        app.toast(type: .error, title: t("other__try_again"))
+                    }
+                }
+                return
+            }
+        } else {
+            do {
+                try await wallet.setUtxoSelection(coinSelectionAlgorythm: settings.coinSelectionAlgorithm)
+            } catch {
+                Logger.error("Failed to set UTXO selection when switching to on-chain: \(error)")
+                await MainActor.run {
+                    app.selectedWalletToPayFrom = .lightning
+                    app.toast(
+                        type: .error,
+                        title: t("other__try_again"),
+                        description: error.localizedDescription
+                    )
+                }
+                return
+            }
+        }
+
+        await calculateTransactionFee()
     }
 
     private func calculateTransactionFee() async {
