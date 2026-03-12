@@ -63,6 +63,7 @@ struct Header: View {
             }
             .contentShape(Rectangle())
         }
+        .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))
     }
 
     @ViewBuilder
