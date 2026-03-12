@@ -2,23 +2,31 @@ import SwiftUI
 
 struct ActivityIndicator: View {
     let size: CGFloat
+    let theme: Theme
+
+    enum Theme {
+        case light
+        case dark
+    }
 
     @State private var isRotating = false
     @State private var opacity: Double = 0
 
-    init(size: CGFloat = 32) {
+    init(size: CGFloat = 32, theme: Theme = .light) {
         self.size = size
+        self.theme = theme
     }
 
     var body: some View {
         let strokeWidth = size / 12
+        let color = theme == .light ? Color.white : Color.black
 
         ZStack {
             Circle()
                 .trim(from: 0.1, to: 0.94)
                 .stroke(
                     AngularGradient(
-                        gradient: Gradient(colors: [.black, .white]),
+                        gradient: Gradient(colors: [.clear, color]),
                         center: .center,
                         startAngle: .degrees(0),
                         endAngle: .degrees(360)

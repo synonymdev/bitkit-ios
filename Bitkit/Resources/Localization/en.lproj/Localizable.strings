@@ -83,6 +83,7 @@
 "common__qr_code" = "QR Code";
 "common__show_all" = "Show All";
 "common__show_details" = "Show Details";
+"common__hide_details" = "Hide Details";
 "common__success" = "Success";
 "fee__instant__title" = "Instant";
 "fee__instant__description" = "±2 seconds";
@@ -399,9 +400,9 @@
 "other__update_critical_title" = "Update\n<accent>Bitkit now</accent>";
 "other__update_critical_text" = "There is a critical update for Bitkit. You must update to continue using Bitkit.";
 "other__update_critical_button" = "Update Bitkit";
-"other__camera_ask_title" = "Permission to use camera";
-"other__camera_ask_msg" = "Bitkit needs permission to use your camera";
-"other__camera_no_text" = "<bold>It appears Bitkit does not have permission to access your camera.</bold>\n\nTo utilize this feature in the future you will need to enable camera permissions for this app from your phone\'s settings.";
+"other__camera_no_title" = "Scan\n<accent>QR code</accent>";
+"other__camera_no_text" = "Allow camera access to scan bitcoin invoices and pay more quickly.";
+"other__camera_no_button" = "Enable Camera";
 "other__clipboard_redirect_title" = "Clipboard Data Detected";
 "other__clipboard_redirect_msg" = "Do you want to be redirected to the relevant screen?";
 "other__pay_insufficient_savings" = "Insufficient Savings";
@@ -976,6 +977,7 @@
 "wallet__create_wallet_mnemonic_error" = "Invalid recovery phrase.";
 "wallet__create_wallet_mnemonic_restore_error" = "Please double-check if your recovery phrase is accurate.";
 "wallet__send_bitcoin" = "Send Bitcoin";
+"wallet__send_from" = "From";
 "wallet__send_to" = "To";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Paste Invoice";
@@ -985,7 +987,7 @@
 "wallet__send_address_placeholder" = "Enter an invoice, address, or profile key";
 "wallet__send_clipboard_empty_title" = "Clipboard Empty";
 "wallet__send_clipboard_empty_text" = "Please copy an address or an invoice.";
-"wallet__send_amount" = "Bitcoin Amount";
+"wallet__send_amount" = "Amount";
 "wallet__send_max" = "MAX";
 "wallet__send_done" = "DONE";
 "wallet__send_available" = "Available";
@@ -993,7 +995,7 @@
 "wallet__send_available_savings" = "Available (savings)";
 "wallet__send_max_spending__title" = "Reserve Balance";
 "wallet__send_max_spending__description" = "The maximum spendable amount is a bit lower due to a required reserve balance.";
-"wallet__send_review" = "Review & Send";
+"wallet__send_review" = "Confirm";
 "wallet__send_confirming_in" = "Confirming in";
 "wallet__send_invoice_expiration" = "Invoice expiration";
 "wallet__send_swipe" = "Swipe To Pay";

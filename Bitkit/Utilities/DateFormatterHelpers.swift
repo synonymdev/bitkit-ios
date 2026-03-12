@@ -101,6 +101,26 @@ enum DateFormatterHelpers {
         return dateFormatter.string(from: date)
     }
 
+    /// Formats invoice expiry as relative time from now (e.g. "10 minutes", "1 hour").
+    /// Uses BOLT11 semantics: expiry moment = creation timestamp + expiry seconds; displays time remaining until that moment.
+    /// - Parameters:
+    ///   - timestampSeconds: Invoice creation time (Unix seconds).
+    ///   - expirySeconds: Seconds from creation until the invoice expires (BOLT11 `x` field).
+    static func formatInvoiceExpiryRelative(timestampSeconds: UInt64, expirySeconds: UInt64) -> String {
+        let expiryTimestamp = Double(timestampSeconds) + Double(expirySeconds)
+        let now = Date().timeIntervalSince1970
+        let secondsRemaining = expiryTimestamp - now
+        if secondsRemaining <= 0 {
+            return t("other__scan__error__expired")
+        }
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .full
+        formatter.maximumUnitCount = 1
+        formatter.allowedUnits = [.day, .hour, .minute, .second]
+        formatter.zeroFormattingBehavior = .dropAll
+        return formatter.string(from: secondsRemaining) ?? "—"
+    }
+
     /// Formats a date for activity item display with relative formatting
     /// Matches the behavior of the React Native app's getActivityItemDate function
     /// - Parameter timestamp: Unix timestamp
