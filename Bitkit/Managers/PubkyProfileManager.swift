@@ -49,6 +49,7 @@ class PubkyProfileManager: ObservableObject {
                     return InitResult.restored(publicKey: pk)
                 } catch {
                     Logger.warn("Failed to restore paykit session: \(error)", context: "PubkyProfileManager")
+                    try? Keychain.delete(key: .paykitSession)
                     return InitResult.restorationFailed
                 }
             }.value
@@ -68,7 +69,7 @@ class PubkyProfileManager: ObservableObject {
             Logger.info("Paykit session restored for \(pk)", context: "PubkyProfileManager")
             Task { await loadProfile() }
         case .restorationFailed:
-            break
+            clearCachedProfileMetadata()
         }
     }
 
@@ -81,6 +82,7 @@ class PubkyProfileManager: ObservableObject {
             }.value
             authState = .idle
         } catch {
+            authState = .idle
             Logger.warn("Cancel auth failed: \(error)", context: "PubkyProfileManager")
         }
     }
@@ -172,6 +174,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     func signOut() async {
+        let nameKey = Self.cachedNameKey
+        let imageKey = Self.cachedImageUriKey
         await Task.detached {
             do {
                 try await PubkyService.signOut()
@@ -181,9 +185,12 @@ class PubkyProfileManager: ObservableObject {
             }
             try? Keychain.delete(key: .paykitSession)
             PubkyImageCache.shared.clear()
+            UserDefaults.standard.removeObject(forKey: nameKey)
+            UserDefaults.standard.removeObject(forKey: imageKey)
         }.value
 
-        clearCachedProfileMetadata()
+        cachedName = nil
+        cachedImageUri = nil
         publicKey = nil
         profile = nil
         authState = .idle
