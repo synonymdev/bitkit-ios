@@ -60,7 +60,7 @@ git fetch origin
 git checkout {baseRef}
 # If baseRef is master, pull latest:
 # git pull origin master
-git checkout -b release/{newBuildNumber}
+git checkout -b release-{newVersionName}
 ```
 
 If the base is a tag (not master), print:
@@ -82,7 +82,7 @@ Verify the edit updated exactly 4 occurrences of each (Bitkit Debug/Release + Bi
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
 git commit -m "chore: version {newVersionName}"
-git push -u origin release/{newBuildNumber}
+git push -u origin release-{newVersionName}
 ```
 
 ### 4. Create Version Bump PR
@@ -124,7 +124,7 @@ gh release create v{newVersionName} \
   --draft \
   --generate-notes \
   --notes-start-tag v{oldVersionName} \
-  --target release/{newBuildNumber}
+  --target release-{newVersionName}
 ```
 
 ### 6. Generate Store Release Notes
@@ -268,7 +268,7 @@ If the user chose manual build, **stay on the release branch** — they need to 
 Release v{newVersionName} (build {newBuildNumber})
 
 Version bump PR: {PR URL}
-Release branch: release/{newBuildNumber}
+Release branch: release-{newVersionName}
 Tag: v{newVersionName}
 Draft release: {release URL}
 

@@ -17,7 +17,7 @@ For **minor** and **major** releases, branch off `master`:
 ```bash
 git checkout master
 git pull origin master
-git checkout -b release/181
+git checkout -b release-2.0.7
 ```
 
 For **patch** releases, you may branch from `master` or from the previous release tag if only specific fixes are needed:
@@ -26,15 +26,13 @@ For **patch** releases, you may branch from `master` or from the previous releas
 # From a previous tag (e.g. hotfix on top of v2.0.6)
 git fetch origin
 git checkout v2.0.6
-git checkout -b release/181
+git checkout -b release-2.0.7
 
 # Cherry-pick the specific fixes needed
 git cherry-pick <commit-hash-1> <commit-hash-2> ...
 ```
 
 When branching from a tag, only the cherry-picked commits will be included. The PR to `master` will still be created so version bumps and patches are merged back after release.
-
-> **Branch naming convention:** Branches are named `release/{buildNumber}` (matching Android). The build number is `CURRENT_PROJECT_VERSION`.
 
 ### Bump Version
 
@@ -57,12 +55,12 @@ Commit and push:
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
 git commit -m "chore: version 2.0.7"
-git push -u origin release/181
+git push -u origin release-2.0.7
 ```
 
 ### Create PR
 
-Create a PR from `release/181` targeting `master` with title `chore: bump version 2.0.7`. This PR stays open during QA and is merged post-release.
+Create a PR from `release-2.0.7` targeting `master` with title `chore: bump version 2.0.7`. This PR stays open during QA and is merged post-release.
 
 ### Create Draft GitHub Release
 
@@ -74,7 +72,7 @@ gh release create v2.0.7 \
   --draft \
   --generate-notes \
   --notes-start-tag v2.0.6 \
-  --target release/181
+  --target release-2.0.7
 ```
 
 Send the draft link to whoever writes the user-facing release notes.
