@@ -58,8 +58,11 @@ If "master" or if the release is minor/major: `{baseRef} = master`.
 ```bash
 git fetch origin
 git checkout {baseRef}
-# If baseRef is master, pull latest:
-git pull origin {baseRef}
+```
+
+If `{baseRef}` is `master`, pull latest: `git pull origin master`. Skip pull if baseRef is a tag.
+
+```bash
 git checkout -b release-{newVersionName}
 ```
 
