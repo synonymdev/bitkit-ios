@@ -256,7 +256,6 @@ struct RestoreWalletView: View {
         do {
             wallet.nodeLifecycleState = .initializing
             wallet.isRestoringWallet = true
-            app.showAllEmptyStates(false)
 
             // Prevent settings changes from triggering backups before the actual restore runs
             BackupService.shared.setRestoring(true)

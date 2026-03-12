@@ -92,6 +92,29 @@ struct DrawerView: View {
             .transition(.opacity)
     }
 
+    /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
+    private func route(for item: DrawerMenuItem) -> Route? {
+        switch item {
+        case .wallet: return nil
+        case .activity: return .activityList
+        case .contacts: return .contacts
+        case .profile: return .profile
+        case .settings: return .settings
+        case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
+        case .widgets: return app.hasSeenWidgetsIntro ? .widgetsList : .widgetsIntro
+        case .appStatus: return .appStatus
+        }
+    }
+
+    private func selectDrawerItem(_ item: DrawerMenuItem) {
+        if let route = route(for: item) {
+            navigation.path = [route]
+        } else {
+            navigation.path = []
+        }
+        closeMenu()
+    }
+
     var body: some View {
         ZStack {
             if showBackdrop {
@@ -103,9 +126,7 @@ struct DrawerView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(DrawerMenuItem.allCases.filter(\.isMainMenuItem)) { item in
                             Button(action: {
-                                navigation.reset()
-                                navigation.activeDrawerMenuItem = item
-                                closeMenu()
+                                selectDrawerItem(item)
                             }) {
                                 menuItemContent(item: item)
                             }
@@ -120,8 +141,7 @@ struct DrawerView: View {
                             showColor: false,
                             testID: "DrawerAppStatus",
                             onPress: {
-                                navigation.activeDrawerMenuItem = .appStatus
-                                closeMenu()
+                                selectDrawerItem(.appStatus)
                             }
                         )
                         .frame(maxWidth: .infinity)

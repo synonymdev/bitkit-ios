@@ -86,7 +86,7 @@ struct ProgressSteps: View {
 
                                 if index < currentStep {
                                     // Checkmark for completed steps
-                                    Image("checkmark")
+                                    Image("check-mark")
                                         .foregroundColor(.black)
                                 } else {
                                     // Number for current and upcoming steps

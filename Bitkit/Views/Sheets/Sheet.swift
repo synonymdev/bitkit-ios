@@ -5,23 +5,19 @@ enum SheetSize {
 
     var height: CGFloat {
         let screenHeight = UIScreen.screenHeight
-        let safeAreaInsets =
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first?.windows.first?.safeAreaInsets ?? .zero
+        let safeAreaInsets = windowSafeAreaInsets
         let headerHeight: CGFloat = 48
         let balanceHeight: CGFloat = 70
         let spacing: CGFloat = 16
 
-        let safeArea = safeAreaInsets.top + safeAreaInsets.bottom
-        let headerSpacing = safeArea + headerHeight - spacing
+        let headerSpacing = safeAreaInsets.top + headerHeight + spacing
         let balanceSpacing = headerSpacing + balanceHeight + spacing * 2
 
         switch self {
         case .small:
             return 400
         case .medium:
-            let minHeight: CGFloat = 600
+            let minHeight: CGFloat = 616
             // Header + Balance visible
             let preferredHeight = screenHeight - balanceSpacing
             if preferredHeight < minHeight {
@@ -31,7 +27,7 @@ enum SheetSize {
             }
             return preferredHeight
         case .calendar:
-            let minHeight: CGFloat = 600
+            let minHeight: CGFloat = 616
             // same as medium + 40px, to be just under search input
             let preferredHeight = screenHeight - balanceSpacing + 40
             if preferredHeight < minHeight {
@@ -41,7 +37,7 @@ enum SheetSize {
             }
             return preferredHeight
         case .large:
-            let minHeight: CGFloat = 600
+            let minHeight: CGFloat = 616
             // Only Header visible
             let preferredHeight = screenHeight - headerSpacing
             return max(minHeight, preferredHeight)

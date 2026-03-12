@@ -6,6 +6,7 @@ struct WidgetsSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__widgets__nav_title"))
+                .padding(.horizontal, 16)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -19,11 +20,11 @@ struct WidgetsSettingsView: View {
                         toggle: $settings.showWidgetTitles
                     )
                 }
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
     }
 }
 

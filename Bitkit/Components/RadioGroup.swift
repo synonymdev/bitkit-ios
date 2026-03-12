@@ -45,7 +45,7 @@ private struct RadioButton: View {
                 Spacer()
 
                 if isSelected {
-                    Image("checkmark")
+                    Image("check-mark")
                         .resizable()
                         .foregroundColor(.brandAccent)
                         .frame(width: 32, height: 32)
