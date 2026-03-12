@@ -39,7 +39,7 @@ struct GeneralSettingsView: View {
                     NavigationLink(value: Route.transactionSpeedSettings) {
                         SettingsListLabel(
                             title: t("settings__general__speed"),
-                            rightText: settings.defaultTransactionSpeed.displayTitle
+                            rightText: settings.defaultTransactionSpeed.title
                         )
                     }
                     .accessibilityElement(children: .contain)
