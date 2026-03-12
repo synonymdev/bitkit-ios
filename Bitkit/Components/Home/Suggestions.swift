@@ -173,28 +173,31 @@ struct Suggestions: View {
 
     @State private var showShareSheet = false
 
-    private var walletSuggestionState: WalletSuggestionState {
-        if wallet.totalBalanceSats == 0 {
-            return .empty
-        }
-        if wallet.totalLightningSats > 0 {
-            return .spending
-        }
-        return .onchain
-    }
-
-    /// Filter out cards that have already been completed or dismissed
-    /// Up to 4 cards for the current wallet state, in priority order; completed and dismissed cards are skipped and the next in the set is shown.
-    /// In preview, exactly 2 fixed cards.
-    private var filteredCards: [SuggestionCardData] {
+    /// Which suggestion cards to show.
+    /// Up to 4 for current wallet state, in priority order; completed and dismissed are skipped.
+    /// In widget preview: 2 fixed cards.
+    static func visibleCards(
+        wallet: WalletViewModel,
+        app: AppViewModel,
+        settings: SettingsViewModel,
+        suggestionsManager: SuggestionsManager,
+        isPreview: Bool = false
+    ) -> [SuggestionCardData] {
         if isPreview {
             return Array(cards.prefix(2))
         }
-        let orderedIds = suggestionOrderByState[walletSuggestionState] ?? []
+        let state: WalletSuggestionState = if wallet.totalBalanceSats == 0 {
+            .empty
+        } else if wallet.totalLightningSats > 0 {
+            .spending
+        } else {
+            .onchain
+        }
+        let orderedIds = suggestionOrderByState[state] ?? []
         var result: [SuggestionCardData] = []
         for id in orderedIds {
             guard let card = cardsById[id] else { continue }
-            if isCardCompleted(card) { continue }
+            if isCardCompleted(card, app: app, settings: settings) { continue }
             if suggestionsManager.isDismissed(card.id) { continue }
             result.append(card)
             if result.count >= 4 { break }
@@ -202,23 +205,24 @@ struct Suggestions: View {
         return result
     }
 
-    private func isCardCompleted(_ card: SuggestionCardData) -> Bool {
+    /// Whether the user has completed this suggestion (e.g. backup verified, pin enabled, notifications on).
+    private static func isCardCompleted(_ card: SuggestionCardData, app: AppViewModel, settings: SettingsViewModel) -> Bool {
         switch card.action {
-        case .backup:
-            return app.backupVerified
-        case .notifications:
-            return settings.enableNotifications
-        case .quickpay:
-            return settings.enableQuickpay
-        case .secure:
-            return settings.pinEnabled
-        default:
-            return false
+        case .backup: return app.backupVerified
+        case .notifications: return settings.enableNotifications
+        case .quickpay: return settings.enableQuickpay
+        case .secure: return settings.pinEnabled
+        default: return false
         }
     }
 
+    /// Cards to display in this view; delegates to the static visibleCards (same logic as the widget list filter).
+    private var visibleCards: [SuggestionCardData] {
+        Self.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager, isPreview: isPreview)
+    }
+
     var body: some View {
-        if filteredCards.isEmpty {
+        if visibleCards.isEmpty {
             EmptyView()
         } else {
             LazyVGrid(
@@ -228,7 +232,7 @@ struct Suggestions: View {
                 ],
                 spacing: 16
             ) {
-                ForEach(filteredCards) { card in
+                ForEach(visibleCards) { card in
                     SuggestionCard(data: card, onDismiss: { dismissCard(card) })
                         .onTapGesture { if !isPreview { onItemTap(card) } }
                         .accessibilityElement(children: .contain)

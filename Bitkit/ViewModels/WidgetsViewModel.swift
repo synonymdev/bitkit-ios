@@ -201,8 +201,8 @@ class WidgetsViewModel: ObservableObject {
         persistSavedWidgets()
     }
 
-    /// Reorder the widgets tab list by moving one widget to a new index.
-    func reorderWidgetsTab(from sourceIndex: Int, to destinationIndex: Int) {
+    /// Reorder the widgets list by moving one widget to a new index.
+    func reorderWidgets(from sourceIndex: Int, to destinationIndex: Int) {
         guard sourceIndex != destinationIndex,
               sourceIndex >= 0, sourceIndex < savedWidgetsWithOptions.count,
               destinationIndex >= 0, destinationIndex < savedWidgetsWithOptions.count

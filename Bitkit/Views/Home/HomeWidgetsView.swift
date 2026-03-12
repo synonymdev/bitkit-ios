@@ -3,8 +3,20 @@ import SwiftUI
 struct HomeWidgetsView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var suggestionsManager: SuggestionsManager
+    @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
     @Binding var isEditingWidgets: Bool
+
+    /// Widgets to display; suggestions widget is hidden when it would show no cards (unless editing).
+    private var widgetsToShow: [Widget] {
+        widgets.savedWidgets.filter { widget in
+            if widget.type != .suggestions { return true }
+            if isEditingWidgets { return true }
+            return !Suggestions.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager).isEmpty
+        }
+    }
 
     /// Safe area + header + spacing
     private var topPadding: CGFloat {
@@ -20,17 +32,17 @@ struct HomeWidgetsView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 DraggableList(
-                    widgets.savedWidgets,
+                    widgetsToShow,
                     id: \.id,
                     enableDrag: isEditingWidgets,
                     itemHeight: 80,
                     onReorder: { sourceIndex, destinationIndex in
-                        widgets.reorderWidgetsTab(from: sourceIndex, to: destinationIndex)
+                        widgets.reorderWidgets(from: sourceIndex, to: destinationIndex)
                     }
                 ) { widget in
                     rowContent(widget)
                 }
-                .id(widgets.savedWidgets.map(\.id))
+                .id(widgetsToShow.map(\.id))
 
                 CustomButton(title: t("widgets__add"), variant: .tertiary) {
                     if app.hasSeenWidgetsIntro {
