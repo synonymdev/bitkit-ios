@@ -59,7 +59,7 @@ If "master" or if the release is minor/major: `{baseRef} = master`.
 git fetch origin
 git checkout {baseRef}
 # If baseRef is master, pull latest:
-# git pull origin master
+git pull origin {baseRef}
 git checkout -b release-{newVersionName}
 ```
 
@@ -161,17 +161,13 @@ Create `.ai/` directory if it doesn't exist. Save to `.ai/release-notes-{newVers
 Then prepend the English summary to the draft release body on GitHub:
 
 ```bash
-# Read existing body
+# Read existing body and prepend store summary via temp file (avoids shell expansion issues)
 EXISTING=$(gh release view v{newVersionName} --json body --jq .body)
-
-# Prepend store summary
-gh release edit v{newVersionName} --notes "## Store Release Notes
-
-{english summary}
-
----
-
-$EXISTING"
+printf '%s\n\n%s\n\n---\n\n%s\n' \
+  '## Store Release Notes' \
+  '{english summary}' \
+  "$EXISTING" > /tmp/release-notes.md
+gh release edit v{newVersionName} --notes-file /tmp/release-notes.md
 ```
 
 Print the path to the release notes file so the user can share it for review.
