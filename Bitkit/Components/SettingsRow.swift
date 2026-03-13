@@ -1,15 +1,31 @@
 import SwiftUI
 
-enum SettingsListRightIcon {
+/// Section header for settings screens
+struct SettingsSectionHeader: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        CaptionMText(title)
+            .frame(height: 50)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+enum SettingsRowRightIcon {
     case chevron
     case checkmark
 }
 
-struct SettingsListLabel: View {
+struct SettingsRow: View {
     let title: String
     let iconName: String?
     let rightText: String?
-    let rightIcon: SettingsListRightIcon?
+    let rightIcon: SettingsRowRightIcon?
     let toggle: Binding<Bool>?
     let disabled: Bool?
     let testIdentifier: String?
@@ -18,7 +34,7 @@ struct SettingsListLabel: View {
         title: String,
         iconName: String? = nil,
         rightText: String? = nil,
-        rightIcon: SettingsListRightIcon? = .chevron,
+        rightIcon: SettingsRowRightIcon? = .chevron,
         toggle: Binding<Bool>? = nil,
         disabled: Bool? = nil,
         testIdentifier: String? = nil
@@ -36,15 +52,11 @@ struct SettingsListLabel: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 0) {
                 if let iconName {
-                    Label {
-                        BodyMText(title, textColor: .textPrimary)
-                    } icon: {
-                        CircularIcon(icon: iconName, iconColor: .textPrimary)
-                            .padding(.trailing, 8)
-                    }
-                } else {
-                    BodyMText(title, textColor: .textPrimary)
+                    CircularIcon(icon: iconName, iconColor: .brandAccent, backgroundColor: .black)
+                        .padding(.trailing, 8)
                 }
+
+                BodyMText(title, textColor: .textPrimary)
 
                 Spacer()
 
@@ -57,7 +69,7 @@ struct SettingsListLabel: View {
 
                 } else {
                     if let rightText {
-                        BodyMText(rightText, textColor: .textPrimary)
+                        BodyMText(rightText, textColor: .textSecondary)
                             .padding(.trailing, 5)
                             .accessibilityIdentifier("Value")
                     }
@@ -80,10 +92,7 @@ struct SettingsListLabel: View {
             }
             .frame(height: 50)
 
-            // Bottom border
-            Rectangle()
-                .fill(Color.white10)
-                .frame(height: 1)
+            CustomDivider()
         }
     }
 }

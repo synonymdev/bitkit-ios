@@ -2,6 +2,8 @@ import SwiftUI
 
 struct LocalCurrencySettingsView: View {
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+
     @State private var searchText = ""
 
     private let mostUsedCurrencies = ["USD", "GBP", "CAD", "CNY", "EUR"]
@@ -25,7 +27,7 @@ struct LocalCurrencySettingsView: View {
     }
 
     private func currencyRow(_ rate: FxRate) -> some View {
-        SettingsListLabel(
+        SettingsRow(
             title: "\(rate.quote) (\(rate.currencySymbol))",
             rightIcon: currency.selectedCurrency == rate.quote ? .checkmark : nil,
             testIdentifier: "Currency-\(rate.quote)"
@@ -35,6 +37,7 @@ struct LocalCurrencySettingsView: View {
             currency.selectedCurrency = rate.quote
             Task {
                 await currency.refresh()
+                navigation.navigateBack()
             }
         }
         .accessibilityAddTraits(.isButton)

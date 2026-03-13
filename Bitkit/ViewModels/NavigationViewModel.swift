@@ -33,6 +33,7 @@ enum Route: Hashable {
     case savingsAdvanced
     case savingsProgress
     case scanner
+    case support
 
     // Shop
     case shopIntro
@@ -46,37 +47,33 @@ enum Route: Hashable {
     case widgetDetail(WidgetType)
     case widgetEdit(WidgetType)
 
-    // Main Settings
-    case settings
-    case generalSettings
-    case securitySettings
-    case backupSettings
-    case advancedSettings
-    case support
-    case about
-    case devSettings
+    // Support
+    case reportIssue
+    case appStatus
 
-    // General settings
+    // Settings
+    // General/Interface
+    case settings
     case languageSettings
     case currencySettings
     case unitSettings
-    case transactionSpeedSettings
-    case customSpeedSettings
     case tagSettings
     case widgetsSettings
+
+    // General/Payments
+    case transactionSpeedSettings
+    case customSpeedSettings
     case quickpay
     case quickpayIntro
     case notifications
     case notificationsIntro
 
-    // Security settings
-    case disablePin
+    // Security
+    case dataBackups
+    case reset
     case changePin
 
-    /// Backup settings
-    case resetAndRestore
-
-    // Advanced settings
+    // Advanced/Payments
     case coinSelection
     case addressTypePreference
     case connections
@@ -86,10 +83,7 @@ enum Route: Hashable {
     case electrumSettings
     case rgsSettings
     case addressViewer
-
-    // Support settings
-    case reportIssue
-    case appStatus
+    case devSettings
 
     // Dev settings
     case blocktankRegtest
