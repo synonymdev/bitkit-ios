@@ -77,6 +77,7 @@ struct SendSuccess: View {
                 .padding(.horizontal, 16)
             }
             .navigationBarHidden(true)
+            .allowSwipeBack(false)
             .sheetBackground()
         }
         .task {

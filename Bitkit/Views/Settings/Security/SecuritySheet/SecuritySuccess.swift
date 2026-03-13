@@ -60,6 +60,7 @@ struct SecuritySuccess: View {
             .padding(.horizontal, 16)
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
     }

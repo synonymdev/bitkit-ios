@@ -194,9 +194,9 @@ struct SettingUpView: View {
             }
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .interactiveDismissDisabled()
         .onAppear {
             Logger.debug("View appeared - TransferViewModel is handling order updates")
 
