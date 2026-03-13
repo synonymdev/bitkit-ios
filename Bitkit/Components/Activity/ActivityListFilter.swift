@@ -25,8 +25,6 @@ struct ActivityListFilter: View {
                             })
                         }
                     }
-                    // TODO: uncomment after bump to iOS 18
-                    // .containerRelativeFrame(.horizontal, alignment: .trailing)
                 }
                 .frame(maxWidth: .infinity)
 

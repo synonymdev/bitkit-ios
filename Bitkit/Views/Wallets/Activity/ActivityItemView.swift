@@ -217,7 +217,7 @@ struct ActivityItemView: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .onChange(of: sheets.addTagSheetItem) { item in
+        .onChange(of: sheets.addTagSheetItem) { _, item in
             if item == nil {
                 // Add tag sheet was closed, reload tags in case they were modified
                 Task {
@@ -225,7 +225,7 @@ struct ActivityItemView: View {
                 }
             }
         }
-        .onChange(of: sheets.boostSheetItem) { item in
+        .onChange(of: sheets.boostSheetItem) { _, item in
             if item == nil {
                 // Boost sheet was closed, reload activity in case it was boosted
                 Task {

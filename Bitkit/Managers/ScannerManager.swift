@@ -219,9 +219,7 @@ class ScannerManager: ObservableObject {
             }
 
             #if targetEnvironment(simulator) && compiler(>=5.7)
-                if #available(iOS 16, *) {
-                    request.revision = VNDetectBarcodesRequestRevision1
-                }
+                request.revision = VNDetectBarcodesRequestRevision3
             #endif
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])

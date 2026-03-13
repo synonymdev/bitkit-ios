@@ -66,12 +66,8 @@ struct QrArea: View {
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: shareItems)
         }
-        .onAppear {
-            // Pre-generate the QR image for sharing
-            shareQRImage = generateShareQrImage()
-        }
-        .onChange(of: uri) { _ in
-            // Regenerate when URI changes
+        .onChange(of: uri, initial: true) {
+            // Generate the QR image for sharing
             shareQRImage = generateShareQrImage()
         }
     }

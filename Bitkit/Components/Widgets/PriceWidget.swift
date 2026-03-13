@@ -70,10 +70,10 @@ struct PriceWidget: View {
         .onAppear {
             fetchPriceData()
         }
-        .onChange(of: options.selectedPairs) { _ in
+        .onChange(of: options.selectedPairs) {
             fetchPriceData()
         }
-        .onChange(of: options.selectedPeriod) { _ in
+        .onChange(of: options.selectedPeriod) {
             fetchPriceData()
         }
     }

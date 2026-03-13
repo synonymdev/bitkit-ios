@@ -80,7 +80,7 @@ struct SpendingAmount: View {
         .task(id: blocktank.info?.options.maxChannelSizeSat) {
             await calculateMaxTransferAmount()
         }
-        .onChange(of: wallet.spendableOnchainBalanceSats) { _ in
+        .onChange(of: wallet.spendableOnchainBalanceSats) {
             Task {
                 await calculateMaxTransferAmount()
             }

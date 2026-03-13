@@ -157,7 +157,7 @@ struct SendFeeRate: View {
         .task {
             await loadFeeEstimates()
         }
-        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
                 await calculateTransactionFees()
             }

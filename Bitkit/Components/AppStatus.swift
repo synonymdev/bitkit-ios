@@ -46,7 +46,7 @@ struct AppStatus: View {
         .onAppear {
             startAnimations()
         }
-        .onChange(of: appStatus) { _ in
+        .onChange(of: appStatus) {
             startAnimations()
         }
     }

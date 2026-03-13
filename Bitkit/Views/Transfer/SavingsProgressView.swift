@@ -173,7 +173,7 @@ struct SavingsProgressView: View {
                 // Ensure we re-enable screen timeout when view disappears
                 UIApplication.shared.isIdleTimerDisabled = false
             }
-            .onChange(of: transfer.transferUnavailable) { unavailable in
+            .onChange(of: transfer.transferUnavailable) { _, unavailable in
                 if unavailable {
                     transfer.transferUnavailable = false
                     app.toast(

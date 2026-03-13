@@ -40,7 +40,7 @@ class BlocktankViewModel: ObservableObject {
     }
 
     deinit {
-        RunLoop.main.perform { [weak self] in
+        Task { @MainActor [weak self] in
             Logger.debug("Stopping poll for orders")
             self?.stopPolling()
         }
@@ -50,11 +50,13 @@ class BlocktankViewModel: ObservableObject {
         stopPolling()
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Env.blocktankOrderRefreshInterval, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            refreshTask?.cancel()
-            refreshTask = Task { @MainActor [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
-                try? await refreshOrders()
+                refreshTask?.cancel()
+                refreshTask = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    try? await refreshOrders()
+                }
             }
         }
 
