@@ -199,7 +199,7 @@ struct AddressViewer: View {
                                 .frame(height: 80)
                         }
                     }
-                    .onChange(of: selectedAddressKind) { _ in
+                    .onChange(of: selectedAddressKind) {
                         selectedAddress = ""
                         withAnimation(.easeInOut(duration: 0.5)) {
                             proxy.scrollTo("top", anchor: .top)
@@ -209,7 +209,7 @@ struct AddressViewer: View {
                             await loadAddresses()
                         }
                     }
-                    .onChange(of: selectedScriptType) { _ in
+                    .onChange(of: selectedScriptType) {
                         selectedAddress = ""
                         withAnimation(.easeInOut(duration: 0.5)) {
                             proxy.scrollTo("top", anchor: .top)
@@ -219,7 +219,7 @@ struct AddressViewer: View {
                             await loadAddresses()
                         }
                     }
-                    .onChange(of: searchText) { _ in
+                    .onChange(of: searchText) {
                         // Reset scroll position when searching
                         withAnimation(.easeInOut(duration: 0.5)) {
                             proxy.scrollTo("top", anchor: .top)

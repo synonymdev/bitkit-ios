@@ -80,7 +80,7 @@ struct LnurlPayConfirm: View {
                             .focused($isCommentFocused)
                             .dismissKeyboardOnReturn(text: $comment, isFocused: $isCommentFocused)
                             .lineLimit(3 ... 3)
-                            .onChange(of: comment) { newValue in
+                            .onChange(of: comment) { _, newValue in
                                 let maxLength = Int(commentAllowed)
                                 if newValue.count > maxLength {
                                     comment = String(newValue.prefix(maxLength))

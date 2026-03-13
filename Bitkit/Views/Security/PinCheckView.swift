@@ -40,11 +40,7 @@ struct PinCheckView: View {
 
         if settings.hasExceededPinAttempts() {
             // Exceeded maximum attempts - this should be handled by the app level
-            let remainingAttempts = settings.getRemainingPinAttempts()
-            errorMessage = t(
-                "security__pin_exceeded_attempts",
-                comment: "Too many incorrect attempts. Please try again later."
-            )
+            errorMessage = t("security__pin_exceeded_attempts")
             errorIdentifier = "WrongPIN"
             return
         }
@@ -53,18 +49,11 @@ struct PinCheckView: View {
 
         if remainingAttempts == 1 {
             // Last attempt warning
-            errorMessage = t(
-                "security__pin_last_attempt",
-                comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
-            )
+            errorMessage = t("security__pin_last_attempt")
             errorIdentifier = "LastAttempt"
         } else {
             // Show remaining attempts
-            errorMessage = t(
-                "security__pin_attempts",
-                comment: "%d attempts remaining. Forgot your PIN?",
-                variables: ["attemptsRemaining": "\(remainingAttempts)"]
-            )
+            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
             errorIdentifier = "AttemptsRemaining"
         }
     }

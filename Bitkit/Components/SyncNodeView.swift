@@ -80,7 +80,7 @@ struct SyncNodeView: View {
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: wallet.isSyncingWallet) { newValue in
+        .onChange(of: wallet.isSyncingWallet) { _, newValue in
             if !newValue {
                 onSyncComplete?()
             }

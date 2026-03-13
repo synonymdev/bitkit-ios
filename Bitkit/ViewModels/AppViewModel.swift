@@ -730,7 +730,7 @@ extension AppViewModel {
 extension AppViewModel {
     func handleLdkNodeEvent(_ event: Event) {
         switch event {
-        case let .paymentReceived(paymentId, paymentHash, amountMsat, customRecords):
+        case let .paymentReceived(paymentId, _, amountMsat, _):
             Task {
                 if let paymentId {
                     if await CoreService.shared.activity.isActivitySeen(id: paymentId) {
@@ -862,7 +862,7 @@ extension AppViewModel {
                     }
                 }
             }
-        case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+        case let .onchainTransactionConfirmed(txid, _, blockHeight, _, _):
             Logger.info("Transaction confirmed: \(txid) at block \(blockHeight)")
         case let .onchainTransactionReplaced(txid, conflicts):
             Logger.info("Transaction replaced: \(txid) by \(conflicts.count) conflict(s)")
@@ -922,7 +922,7 @@ extension AppViewModel {
 
         // MARK: Sync Events
 
-        case let .syncProgress(syncType, progressPercent, currentBlockHeight, targetBlockHeight):
+        case let .syncProgress(syncType, progressPercent, _, _):
             Logger.debug("Sync progress: \(syncType) \(progressPercent)%")
         case let .syncCompleted(syncType, syncedBlockHeight):
             Logger.info("Sync completed: \(syncType) at height \(syncedBlockHeight)")
@@ -963,7 +963,7 @@ extension AppViewModel {
 
         // MARK: Balance Events
 
-        case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+        case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
             Logger.debug("Balance changed: onchain \(oldSpendableOnchain)->\(newSpendableOnchain) lightning \(oldLightning)->\(newLightning)")
         }
     }

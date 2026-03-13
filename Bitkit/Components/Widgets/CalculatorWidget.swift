@@ -24,7 +24,7 @@ struct CurrencyInputRow: View {
                 .foregroundColor(.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.leading, 8)
-                .onChange(of: text, perform: onTextChange)
+                .onChange(of: text) { _, newValue in onTextChange(newValue) }
 
             CaptionBText(label, textColor: .textSecondary)
                 .textCase(.uppercase)
@@ -127,7 +127,7 @@ struct CalculatorWidget: View {
                     // Format with trailing zeros when user finishes editing
                     fiatAmount = formatFiatInput(fiatAmount)
                 }
-                .onChange(of: focusedField) { newFocus in
+                .onChange(of: focusedField) { _, newFocus in
                     // Format fiat amount when focus leaves the field
                     if newFocus != .fiat && !fiatAmount.isEmpty {
                         fiatAmount = formatFiatInput(fiatAmount)
@@ -141,13 +141,10 @@ struct CalculatorWidget: View {
                 updateFiatAmount(from: bitcoinAmount)
             }
         }
-        .onChange(
-            of: currency.selectedCurrency,
-            perform: { _ in
-                // Update fiat amount when currency changes
-                updateFiatAmount(from: bitcoinAmount)
-            }
-        )
+        .onChange(of: currency.selectedCurrency) {
+            // Update fiat amount when currency changes
+            updateFiatAmount(from: bitcoinAmount)
+        }
     }
 
     /// Updates fiat amount based on bitcoin input

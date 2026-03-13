@@ -6,7 +6,7 @@ private struct DismissKeyboardOnReturnModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .onChange(of: text) { newValue in
+            .onChange(of: text) { _, newValue in
                 guard isFocused.wrappedValue else { return }
                 if newValue.last == "\n" {
                     text = newValue.trimmingCharacters(in: .whitespacesAndNewlines)

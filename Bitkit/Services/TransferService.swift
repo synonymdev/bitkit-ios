@@ -234,7 +234,7 @@ class TransferService {
             var orders: [IBtOrder]? = nil
 
             do {
-                orders = try? await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
+                orders = try await blocktankService.orders(orderIds: [orderId], filter: nil, refresh: false)
             } catch {
                 Logger.error("Failed to fetch Blocktank orders for orderId \(orderId): \(error)", context: "TransferService")
                 return nil

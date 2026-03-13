@@ -129,7 +129,7 @@ struct LogContentView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .onChange(of: shouldScrollToBottom) { _ in
+            .onChange(of: shouldScrollToBottom) {
                 scrollToBottom(proxy: proxy)
             }
         }

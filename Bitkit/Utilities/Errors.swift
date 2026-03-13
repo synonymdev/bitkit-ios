@@ -239,9 +239,6 @@ struct AppError: LocalizedError {
             //            message = "Failed to send payment. \(ldkMessage)"
             message = ldkMessage
             debugMessage = ldkMessage
-        case let .InvalidCustomTlvs(message: ldkMessage):
-            message = "Invalid custom TLVs"
-            debugMessage = ldkMessage
         case let .ProbeSendingFailed(message: ldkMessage):
             message = "Failed to send probe"
             debugMessage = ldkMessage
