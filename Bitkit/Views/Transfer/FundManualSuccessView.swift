@@ -47,7 +47,7 @@ struct FundManualSuccessView: View {
             .accessibilityIdentifier("ExternalSuccess")
         }
         .navigationBarHidden(true)
-        .interactiveDismissDisabled()
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
     }
 }

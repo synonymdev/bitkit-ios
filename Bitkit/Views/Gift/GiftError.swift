@@ -30,6 +30,7 @@ struct GiftFailed: View {
             }
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
         .accessibilityIdentifier("GiftError")
