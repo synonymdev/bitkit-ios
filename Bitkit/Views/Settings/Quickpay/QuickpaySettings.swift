@@ -13,7 +13,7 @@ struct QuickpaySettings: View {
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        SettingsListLabel(
+                        SettingsRow(
                             title: t("settings__quickpay__settings__toggle"),
                             toggle: $settings.enableQuickpay,
                             testIdentifier: "QuickpayToggle"
