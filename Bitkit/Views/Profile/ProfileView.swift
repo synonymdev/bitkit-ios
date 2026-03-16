@@ -250,6 +250,7 @@ struct ProfileView: View {
             }
             .font(Fonts.regular(size: 17))
             .foregroundColor(.white64)
+            .accessibilityLabel(t("profile__sign_out"))
             .accessibilityIdentifier("ProfileEmptySignOut")
             Spacer()
         }
