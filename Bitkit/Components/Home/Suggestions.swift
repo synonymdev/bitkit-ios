@@ -223,7 +223,14 @@ struct Suggestions: View {
 
     /// Cards to display in this view; delegates to the static visibleCards (same logic as the widget list filter).
     private var visibleCards: [SuggestionCardData] {
-        Self.visibleCards(wallet: wallet, app: app, settings: settings, suggestionsManager: suggestionsManager, pubkyProfile: pubkyProfile, isPreview: isPreview)
+        Self.visibleCards(
+            wallet: wallet,
+            app: app,
+            settings: settings,
+            suggestionsManager: suggestionsManager,
+            pubkyProfile: pubkyProfile,
+            isPreview: isPreview
+        )
     }
 
     var body: some View {

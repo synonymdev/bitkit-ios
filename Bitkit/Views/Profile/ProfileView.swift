@@ -298,6 +298,7 @@ struct ProfileLinkRow: View {
             CustomDivider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel(Text("\(label): \(value)"))
     }
 }
 

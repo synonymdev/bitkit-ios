@@ -135,7 +135,7 @@ struct AppScene: View {
             .environmentObject(channelDetails)
             .environmentObject(pubkyProfile)
             .environmentObject(contactsManager)
-            .onChange(of: pubkyProfile.authState) { authState in
+            .onChange(of: pubkyProfile.authState) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     Task { try? await contactsManager.loadContacts(for: pk) }
                 } else if authState == .idle {
