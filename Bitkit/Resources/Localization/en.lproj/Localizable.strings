@@ -969,7 +969,7 @@
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "profile__nav_title" = "Profile";
-"profile__intro_title" = "Portable\n<accent>pubky profile</accent>";
+"profile__intro_title" = "Portable\n<accent>pubky\nprofile</accent>";
 "profile__intro_description" = "Set up your portable pubky profile, so your contacts can reach you or pay you anytime, anywhere in the ecosystem.";
 "profile__ring_auth_title" = "Join the\n<accent>pubky web</accent>";
 "profile__ring_auth_description" = "Please authorize Bitkit with Pubky Ring, your mobile keychain for the next web.";

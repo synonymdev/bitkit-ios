@@ -105,7 +105,7 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.invalidAuthUrl
         }
 
-        let canOpen = await UIApplication.shared.canOpenURL(url)
+        let canOpen = UIApplication.shared.canOpenURL(url)
         guard canOpen else {
             authState = .idle
             throw PubkyServiceError.ringNotInstalled
