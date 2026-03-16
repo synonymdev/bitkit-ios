@@ -61,149 +61,152 @@ struct LightningConnectionsView: View {
                         }
                         .padding(.bottom, 16)
 
-                        Divider()
+                        CustomDivider()
 
-                        // Pending Connections section
-                        if !pendingConnections.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                CaptionMText(t("lightning__conn_pending"))
-                                    .padding(.top, 16)
+                        if shouldShowEmptyState {
+                            EmptyStateView()
+                                .padding(.top, 16)
+                        } else {
+                            // Pending Connections section
+                            if !pendingConnections.isEmpty {
+                                SettingsSectionHeader(t("lightning__conn_pending"))
 
-                                ForEach(Array(pendingConnections.enumerated()), id: \.element.channelId) { index, channel in
-                                    let labelIndex = pendingConnections.count - index
-                                    Button {
-                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
-                                    } label: {
-                                        VStack(spacing: 0) {
-                                            HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
-                                                Spacer()
-                                                Image("chevron")
-                                                    .resizable()
-                                                    .foregroundColor(.textSecondary)
-                                                    .frame(width: 24, height: 24)
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(Array(pendingConnections.enumerated()), id: \.element.channelId) { index, channel in
+                                        let labelIndex = pendingConnections.count - index
+                                        Button {
+                                            navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                        } label: {
+                                            VStack(spacing: 0) {
+                                                HStack {
+                                                    SubtitleText("\(t("lightning__connection")) \(labelIndex)")
+                                                    Spacer()
+                                                    Image("chevron")
+                                                        .resizable()
+                                                        .foregroundColor(.textSecondary)
+                                                        .frame(width: 24, height: 24)
+                                                }
+                                                .padding(.bottom, 6)
+
+                                                LightningChannel(
+                                                    capacity: channel.channelValueSats,
+                                                    localBalance: channel.balanceOnCloseSats,
+                                                    remoteBalance: channel.inboundCapacityMsat / 1000,
+                                                    status: .pending
+                                                )
+                                                .padding(.bottom, 16)
+
+                                                CustomDivider()
                                             }
-                                            .padding(.bottom, 6)
-
-                                            LightningChannel(
-                                                capacity: channel.channelValueSats,
-                                                localBalance: channel.balanceOnCloseSats,
-                                                remoteBalance: channel.inboundCapacityMsat / 1000,
-                                                status: .pending
-                                            )
-                                            .padding(.bottom, 16)
-
-                                            Divider()
                                         }
+                                        .buttonStyle(PlainButtonStyle())
+                                        .accessibilityIdentifier("Channel")
                                     }
-                                    .buttonStyle(PlainButtonStyle())
-                                    .accessibilityIdentifier("Channel")
+                                }
+                                .padding(.bottom, 16)
+                            }
+
+                            // Open Connections section
+                            if !openChannels.isEmpty {
+                                SettingsSectionHeader(t("lightning__conn_open"))
+
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                        let labelIndex = openChannels.count - index
+                                        Button {
+                                            navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                        } label: {
+                                            VStack(spacing: 0) {
+                                                HStack {
+                                                    SubtitleText("\(t("lightning__connection")) \(labelIndex)")
+                                                    Spacer()
+                                                    Image("chevron")
+                                                        .resizable()
+                                                        .foregroundColor(.textSecondary)
+                                                        .frame(width: 24, height: 24)
+                                                }
+                                                .padding(.bottom, 6)
+
+                                                LightningChannel(
+                                                    capacity: channel.channelValueSats,
+                                                    localBalance: channel.balanceOnCloseSats,
+                                                    remoteBalance: channel.inboundCapacityMsat / 1000,
+                                                    status: .open
+                                                )
+                                                .padding(.bottom, 16)
+
+                                                CustomDivider()
+                                            }
+                                            .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
+                                        }
+                                        .accessibilityIdentifier("Channel")
+                                    }
                                 }
                             }
-                            .padding(.bottom, 16)
-                        }
 
-                        // Open Connections section
-                        if !openChannels.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                CaptionMText(t("lightning__conn_open"))
-                                    .padding(.top, 16)
+                            // Closed Connections section
+                            if showClosedConnections && !closedChannels.isEmpty {
+                                SettingsSectionHeader(t("lightning__conn_closed"))
 
-                                ForEach(Array(openChannels.enumerated()), id: \.element.channelId) { index, channel in
-                                    let labelIndex = openChannels.count - index
-                                    Button {
-                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
-                                    } label: {
-                                        VStack(spacing: 0) {
-                                            HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
-                                                Spacer()
-                                                Image("chevron")
-                                                    .resizable()
-                                                    .foregroundColor(.textSecondary)
-                                                    .frame(width: 24, height: 24)
+                                VStack(alignment: .leading, spacing: 16) {
+                                    ForEach(Array(closedChannels.enumerated()), id: \.element.channelId) { index, channel in
+                                        let labelIndex = closedChannels.count - index
+                                        Button {
+                                            navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
+                                        } label: {
+                                            VStack(spacing: 0) {
+                                                HStack {
+                                                    SubtitleText("\(t("lightning__connection")) \(labelIndex)")
+                                                    Spacer()
+                                                    Image("chevron")
+                                                        .resizable()
+                                                        .foregroundColor(.textSecondary)
+                                                        .frame(width: 24, height: 24)
+                                                }
+                                                .padding(.bottom, 12)
+
+                                                LightningChannel(
+                                                    capacity: channel.channelValueSats,
+                                                    localBalance: channel.balanceOnCloseSats,
+                                                    remoteBalance: channel.inboundCapacityMsat / 1000,
+                                                    status: .closed
+                                                )
+                                                .padding(.bottom, 16)
+
+                                                CustomDivider()
                                             }
-                                            .padding(.bottom, 6)
-
-                                            LightningChannel(
-                                                capacity: channel.channelValueSats,
-                                                localBalance: channel.balanceOnCloseSats,
-                                                remoteBalance: channel.inboundCapacityMsat / 1000,
-                                                status: .open
-                                            )
-                                            .padding(.bottom, 16)
-
-                                            Divider()
+                                            .opacity(0.64)
                                         }
-                                        .opacity((!channel.isChannelReady || !channel.isUsable) ? 0.64 : 1.0)
+                                        .accessibilityIdentifier("Channel")
                                     }
-                                    .accessibilityIdentifier("Channel")
                                 }
+                                .padding(.bottom, 16)
                             }
-                        }
 
-                        // Closed Connections section
-                        if showClosedConnections && !closedChannels.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                CaptionMText(t("lightning__conn_closed"))
-                                    .padding(.top, 16)
-
-                                ForEach(Array(closedChannels.enumerated()), id: \.element.channelId) { index, channel in
-                                    let labelIndex = closedChannels.count - index
-                                    Button {
-                                        navigation.navigate(.connectionDetail(channelId: channel.channelIdString))
-                                    } label: {
-                                        VStack(spacing: 0) {
-                                            HStack {
-                                                SubtitleText("\(t("lightning__connection")) \(labelIndex)")
-                                                Spacer()
-                                                Image("chevron")
-                                                    .resizable()
-                                                    .foregroundColor(.textSecondary)
-                                                    .frame(width: 24, height: 24)
-                                            }
-                                            .padding(.bottom, 12)
-
-                                            LightningChannel(
-                                                capacity: channel.channelValueSats,
-                                                localBalance: channel.balanceOnCloseSats,
-                                                remoteBalance: channel.inboundCapacityMsat / 1000,
-                                                status: .closed
-                                            )
-                                            .padding(.bottom, 16)
-
-                                            Divider()
-                                        }
-                                        .opacity(0.64)
-                                    }
-                                    .accessibilityIdentifier("Channel")
+                            if !closedChannels.isEmpty {
+                                // Show Closed & Failed button
+                                CustomButton(
+                                    title: showClosedConnections
+                                        ? t("lightning__conn_closed_hide")
+                                        : t("lightning__conn_closed_show"),
+                                    variant: .tertiary
+                                ) {
+                                    showClosedConnections.toggle()
                                 }
+                                .padding(.top, 16)
                             }
-                            .padding(.bottom, 16)
                         }
 
-                        if !closedChannels.isEmpty {
-                            // Show Closed & Failed button
-                            CustomButton(
-                                title: showClosedConnections
-                                    ? t("lightning__conn_closed_hide")
-                                    : t("lightning__conn_closed_show"),
-                                variant: .tertiary
-                            ) {
-                                showClosedConnections.toggle()
-                            }
-                            .padding(.top, 16)
-                        }
-
-                        Spacer()
-                        // .frame(height: 32)
+                        Spacer(minLength: 32)
 
                         HStack(spacing: 16) {
-                            CustomButton(title: t("lightning__conn_button_export_logs"), variant: .secondary) {
-                                onExportLogs()
+                            if !shouldShowEmptyState {
+                                CustomButton(title: t("lightning__conn_button_export_logs"), variant: .secondary) {
+                                    onExportLogs()
+                                }
                             }
 
-                            CustomButton(title: t("lightning__conn_button_add")) {
+                            CustomButton(title: buttonText) {
                                 navigation.navigate(.fundingOptions)
                             }
                         }
@@ -237,6 +240,14 @@ struct LightningConnectionsView: View {
     private var openChannels: [ChannelDetails] {
         guard let channels = wallet.channels else { return [] }
         return channels.filter(\.isChannelReady)
+    }
+
+    private var shouldShowEmptyState: Bool {
+        openChannels.isEmpty && pendingConnections.isEmpty && closedChannels.isEmpty
+    }
+
+    private var buttonText: String {
+        shouldShowEmptyState ? t("lightning__conn_onboarding_button") : t("lightning__conn_button_add")
     }
 
     // MARK: - Helper Methods
@@ -335,6 +346,32 @@ struct LightningConnectionsView: View {
                 {
                     window.rootViewController?.present(activityViewController, animated: true)
                 }
+            }
+        }
+    }
+}
+
+private struct EmptyStateView: View {
+    var body: some View {
+        VStack {
+            VStack {
+                Image("lightning")
+                    .resizable()
+                    .scaledToFit()
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(width: 256, height: 256)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(maxHeight: .infinity)
+            .layoutPriority(1)
+
+            VStack(alignment: .leading, spacing: 14) {
+                DisplayText(t("lightning__conn_onboarding_title"), textColor: .textPrimary, accentColor: .purpleAccent)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                BodyMText(t("lightning__conn_onboarding_text"))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }

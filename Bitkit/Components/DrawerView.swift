@@ -7,6 +7,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case profile
     case widgets
     case shop
+    case support
     case settings
     case appStatus
 
@@ -22,6 +23,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         case .profile: return "user-square"
         case .widgets: return "stack"
         case .shop: return "storefront"
+        case .support: return "chat"
         case .settings: return "gear-six"
         case .appStatus: return "status-circle"
         }
@@ -35,6 +37,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         case .profile: return t("wallet__drawer__profile")
         case .widgets: return t("wallet__drawer__widgets")
         case .shop: return t("wallet__drawer__shop")
+        case .support: return t("wallet__drawer__support")
         case .settings: return t("wallet__drawer__settings")
         case .appStatus: return t("settings__status__title")
         }
@@ -57,6 +60,7 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
         case .profile: return "DrawerProfile"
         case .widgets: return "DrawerWidgets"
         case .shop: return "DrawerShop"
+        case .support: return "DrawerSupport"
         case .settings: return "DrawerSettings"
         case .appStatus: return "DrawerAppStatus"
         }
@@ -99,9 +103,10 @@ struct DrawerView: View {
         case .activity: return .activityList
         case .contacts: return .contacts
         case .profile: return .profile
-        case .settings: return .settings
-        case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .widgets: return app.hasSeenWidgetsIntro ? .widgetsList : .widgetsIntro
+        case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
+        case .support: return .support
+        case .settings: return .settings
         case .appStatus: return .appStatus
         }
     }
