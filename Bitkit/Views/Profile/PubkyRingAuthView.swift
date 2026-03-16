@@ -4,10 +4,11 @@ struct PubkyRingAuthView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @Environment(\.scenePhase) var scenePhase
 
     @State private var isAuthenticating = false
     @State private var isWaitingForRing = false
-    @State private var showRingNotInstalledAlert = false
+    @State private var isRingInstalled = false
 
     private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
 
@@ -65,14 +66,7 @@ struct PubkyRingAuthView: View {
                     Spacer()
                         .frame(height: 24)
 
-                    HStack(spacing: 16) {
-                        CustomButton(title: t("profile__ring_download"), variant: .secondary) {
-                            if let url = URL(string: pubkyRingAppStoreUrl) {
-                                await UIApplication.shared.open(url)
-                            }
-                        }
-                        .accessibilityIdentifier("PubkyRingDownload")
-
+                    if isRingInstalled {
                         CustomButton(
                             title: t("profile__ring_authorize"),
                             isLoading: isAuthenticating
@@ -80,6 +74,13 @@ struct PubkyRingAuthView: View {
                             await authenticate()
                         }
                         .accessibilityIdentifier("PubkyRingAuthorize")
+                    } else {
+                        CustomButton(title: t("profile__ring_download")) {
+                            if let url = URL(string: pubkyRingAppStoreUrl) {
+                                await UIApplication.shared.open(url)
+                            }
+                        }
+                        .accessibilityIdentifier("PubkyRingDownload")
                     }
                 }
                 .padding(.horizontal, 32)
@@ -90,22 +91,23 @@ struct PubkyRingAuthView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .task {
+            checkRingInstalled()
+        }
         .task(id: isWaitingForRing) {
             guard isWaitingForRing else { return }
             await waitForApproval()
         }
-        .alert(
-            t("profile__ring_not_installed_title"),
-            isPresented: $showRingNotInstalledAlert
-        ) {
-            Button(t("profile__ring_download")) {
-                if let url = URL(string: pubkyRingAppStoreUrl) {
-                    UIApplication.shared.open(url)
-                }
+        .onChange(of: scenePhase) { newPhase in
+            if newPhase == .active {
+                checkRingInstalled()
             }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-        } message: {
-            Text(t("profile__ring_not_installed_description"))
+        }
+    }
+
+    private func checkRingInstalled() {
+        if let url = URL(string: "pubkyauth://check") {
+            isRingInstalled = UIApplication.shared.canOpenURL(url)
         }
     }
 
@@ -123,7 +125,7 @@ struct PubkyRingAuthView: View {
             isWaitingForRing = true
         } catch PubkyServiceError.ringNotInstalled {
             isAuthenticating = false
-            showRingNotInstalledAlert = true
+            isRingInstalled = false
         } catch {
             isAuthenticating = false
             app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)
