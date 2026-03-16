@@ -245,6 +245,12 @@ struct ProfileView: View {
                 await pubkyProfile.loadProfile()
             }
             .accessibilityIdentifier("ProfileRetry")
+            Button(t("profile__sign_out")) {
+                showSignOutConfirmation = true
+            }
+            .font(Fonts.regular(size: 17))
+            .foregroundColor(.white64)
+            .accessibilityIdentifier("ProfileEmptySignOut")
             Spacer()
         }
         .padding(.horizontal, 32)
