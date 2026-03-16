@@ -9,6 +9,7 @@ struct PubkyRingAuthView: View {
     @State private var isAuthenticating = false
     @State private var isWaitingForRing = false
     @State private var isRingInstalled = false
+    @State private var showRingNotInstalledDialog = false
 
     private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
 
@@ -103,6 +104,16 @@ struct PubkyRingAuthView: View {
                 checkRingInstalled()
             }
         }
+        .alert(t("profile__ring_not_installed_title"), isPresented: $showRingNotInstalledDialog) {
+            Button(t("profile__ring_download")) {
+                if let url = URL(string: pubkyRingAppStoreUrl) {
+                    Task { await UIApplication.shared.open(url) }
+                }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("profile__ring_not_installed_description"))
+        }
     }
 
     private func checkRingInstalled() {
@@ -126,6 +137,7 @@ struct PubkyRingAuthView: View {
         } catch PubkyServiceError.ringNotInstalled {
             isAuthenticating = false
             isRingInstalled = false
+            showRingNotInstalledDialog = true
         } catch {
             isAuthenticating = false
             app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)

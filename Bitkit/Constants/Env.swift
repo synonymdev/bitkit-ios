@@ -258,6 +258,16 @@ enum Env {
         }
     }
 
+    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
+    static var pubkyCapabilities: String {
+        switch network {
+        case .bitcoin:
+            return "/pub/paykit.app/v0/:rw,/pub/pubky.app/profile.json:rw,/pub/pubky.app/follows/:rw"
+        default:
+            return "/pub/staging.paykit.app/v0/:rw,/pub/staging.pubky.app/profile.json:rw,/pub/staging.pubky.app/follows/:rw"
+        }
+    }
+
     static var blockExplorerUrl: String {
         switch network {
         case .bitcoin: "https://mempool.space"

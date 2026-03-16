@@ -27,8 +27,6 @@ enum PubkyServiceError: LocalizedError {
 
 /// Service layer wrapping BitkitCore (auth) and PaykitFFI (profile/contacts/payments).
 enum PubkyService {
-    static let requiredCapabilities = "/pub/paykit.app/v0/:rw,/pub/pubky.app/profile.json:rw,/pub/pubky.app/follows/:rw"
-
     static func initialize() async throws {
         try await ServiceQueue.background(.core) {
             try await paykitInitialize()
@@ -67,7 +65,7 @@ enum PubkyService {
     /// Step 1: Generate the pubkyauth:// URL to open in Pubky Ring.
     static func startAuth() async throws -> String {
         try await ServiceQueue.background(.core) {
-            try await startPubkyAuth(caps: requiredCapabilities)
+            try await startPubkyAuth(caps: Env.pubkyCapabilities)
         }
     }
 
