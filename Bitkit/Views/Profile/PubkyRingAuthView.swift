@@ -98,7 +98,7 @@ struct PubkyRingAuthView: View {
             guard isWaitingForRing else { return }
             await waitForApproval()
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 checkRingInstalled()
             }
@@ -136,11 +136,7 @@ struct PubkyRingAuthView: View {
         do {
             try await pubkyProfile.completeAuthentication()
             isWaitingForRing = false
-            if navigation.activeDrawerMenuItem == .profile {
-                navigation.path = []
-            } else {
-                navigation.path = [.profile]
-            }
+            navigation.path = [.profile]
         } catch is CancellationError {
             isWaitingForRing = false
         } catch {
