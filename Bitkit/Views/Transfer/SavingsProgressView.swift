@@ -42,7 +42,7 @@ struct SavingsProgressContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: navTitle)
+            NavigationBar(title: navTitle, showBackButton: false)
                 .padding(.bottom, 16)
 
             DisplayText(title, accentColor: .brandAccent)
@@ -113,9 +113,9 @@ struct SavingsProgressContentView: View {
             .accessibilityIdentifierIfPresent(progressState == .success ? "TransferSuccess-button" : nil)
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .interactiveDismissDisabled()
     }
 }
 

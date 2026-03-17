@@ -31,6 +31,7 @@ struct SendFailure: View {
                 .padding(.horizontal, 16)
             }
             .navigationBarHidden(true)
+            .allowSwipeBack(false)
             .sheetBackground()
         }
     }

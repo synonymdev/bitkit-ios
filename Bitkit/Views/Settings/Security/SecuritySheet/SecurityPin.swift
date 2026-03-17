@@ -52,6 +52,7 @@ struct SecurityPin: View {
             }
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .sheetBackground()
     }
 

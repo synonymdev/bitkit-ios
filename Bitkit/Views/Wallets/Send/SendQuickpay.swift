@@ -72,6 +72,7 @@ struct SendQuickpay: View {
             DisplayText(t("wallet__send_quickpay__title"), accentColor: .purpleAccent)
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

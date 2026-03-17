@@ -7,7 +7,7 @@ struct BackupPassphrase: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            SheetHeader(title: t("security__pass_your"))
+            SheetHeader(title: t("security__pass_your"), showBackButton: true)
 
             VStack(spacing: 0) {
                 BodyMText(t("security__pass_text"))
