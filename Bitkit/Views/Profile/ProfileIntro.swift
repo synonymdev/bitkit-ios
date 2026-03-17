@@ -6,15 +6,16 @@ struct ProfileIntroView: View {
 
     var body: some View {
         OnboardingView(
-            navTitle: t("slashtags__profile"),
-            title: t("slashtags__onboarding_profile1_header"),
-            description: t("slashtags__onboarding_profile1_text"),
+            navTitle: t("profile__nav_title"),
+            title: t("profile__intro_title"),
+            description: t("profile__intro_description"),
             imageName: "crown",
             buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenProfileIntro = true
-                navigation.navigate(.profile)
+                navigation.navigate(.pubkyRingAuth)
             },
+            accentColor: .pubkyGreen,
             imagePosition: .center,
             testID: "ProfileIntro"
         )
@@ -27,6 +28,6 @@ struct ProfileIntroView: View {
         ProfileIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
-            .preferredColorScheme(.dark)
     }
+    .preferredColorScheme(.dark)
 }
