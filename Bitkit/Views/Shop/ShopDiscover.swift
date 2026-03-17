@@ -99,9 +99,7 @@ struct ShopDiscover: View {
             NavigationBar(title: t("other__shop__discover__nav_title"))
                 .padding(.horizontal, 16)
 
-            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases)
-                .padding(.top, 16)
-                .padding(.bottom, 16)
+            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases, activeColor: .yellowAccent)
                 .padding(.horizontal, 16)
 
             Group {
@@ -111,6 +109,7 @@ struct ShopDiscover: View {
                 case .map:
                     ShopWebView(url: Env.btcMapUrl)
                         .padding(.top, 16)
+                        .padding(.horizontal, 16)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

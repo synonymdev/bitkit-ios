@@ -32,7 +32,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
         HStack(spacing: 8) {
             ForEach(tabItems, id: \.tab) { tabItem in
                 Button(action: {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         selectedTab = tabItem.tab
                     }
                 }) {
@@ -43,6 +43,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                             Rectangle()
                                 .frame(height: 2)
                                 .foregroundColor(Color.white64)
+
                             if selectedTab == tabItem.tab {
                                 Rectangle()
                                     .frame(height: 2)
@@ -51,7 +52,7 @@ struct SegmentedControl<T: Hashable & CustomStringConvertible>: View {
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(PlainButtonStyle())
