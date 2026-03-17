@@ -926,6 +926,7 @@
 "slashtags__onboarding_text" = "Get automatic updates from your Bitkit contacts, pay them, and follow their public profiles.";
 "slashtags__onboarding_button" = "Add First Contact";
 "contacts__detail_title" = "Contact";
+"contacts__detail_empty_state" = "Unable to load contact.";
 "contacts__empty_state" = "You don't have any contacts yet.";
 "contacts__intro_description" = "Get automatic updates from contacts, pay them, and follow their public profiles.";
 "contacts__intro_title" = "Dynamic\n<accent>contacts</accent>";
