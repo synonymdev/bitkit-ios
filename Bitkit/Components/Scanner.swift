@@ -42,7 +42,7 @@ private struct ScannerCornerButtons: View {
                         .background(Color.white16)
                         .clipShape(Circle())
                 }
-                .onChange(of: selectedItem) { item in
+                .onChange(of: selectedItem) { _, item in
                     Task { await onImageSelection(item) }
                 }
 

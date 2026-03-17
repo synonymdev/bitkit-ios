@@ -161,7 +161,7 @@ struct SendConfirmationView: View {
             await calculateTransactionFee()
             await calculateRoutingFee()
         }
-        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             Task {
                 await calculateTransactionFee()
             }

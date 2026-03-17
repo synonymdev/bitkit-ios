@@ -70,7 +70,7 @@ struct CustomSlider: View {
                             .onAppear {
                                 sliderWidth = geometry.size.width
                             }
-                            .onChange(of: geometry.size.width) { width in
+                            .onChange(of: geometry.size.width) { _, width in
                                 sliderWidth = width
                             }
                     }
@@ -105,7 +105,7 @@ struct CustomSlider: View {
                         sliderIndex = Double(index)
                     }
                 }
-                .onChange(of: value) { newValue in
+                .onChange(of: value) { _, newValue in
                     // Update slider position when value changes externally with animation
                     if let index = steps.firstIndex(of: newValue) {
                         withAnimation(.easeOut(duration: 0.2)) {

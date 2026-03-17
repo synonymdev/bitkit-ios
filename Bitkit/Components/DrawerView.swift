@@ -178,7 +178,7 @@ struct DrawerView: View {
                 .transition(.move(edge: .trailing))
             }
         }
-        .onChange(of: app.showDrawer) { show in
+        .onChange(of: app.showDrawer) { _, show in
             if show {
                 currentDragOffset = 0
                 withAnimation(.easeOut(duration: 0.25)) {

@@ -134,7 +134,7 @@ struct ReceiveQr: View {
             }
             await app.checkGeoStatus()
         }
-        .onChange(of: wallet.nodeLifecycleState) { newState in
+        .onChange(of: wallet.nodeLifecycleState) { _, newState in
             // They may open this view before node has started
             if newState == .running {
                 Task {

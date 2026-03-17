@@ -58,7 +58,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     private let widgetsSubject = PassthroughSubject<Data?, Never>()
     private let appStateSubject = PassthroughSubject<Void, Never>()
 
-    nonisolated var settingsPublisher: AnyPublisher<[String: Any], Never> {
+    var settingsPublisher: AnyPublisher<[String: Any], Never> {
         settingsSubject
             .removeDuplicates { old, new in
                 NSDictionary(dictionary: old).isEqual(to: new)
@@ -66,7 +66,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             .eraseToAnyPublisher()
     }
 
-    nonisolated var widgetsPublisher: AnyPublisher<Data?, Never> {
+    var widgetsPublisher: AnyPublisher<Data?, Never> {
         widgetsSubject
             .removeDuplicates { old, new in
                 if let old, let new {
@@ -77,7 +77,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             .eraseToAnyPublisher()
     }
 
-    nonisolated var appStatePublisher: AnyPublisher<Void, Never> {
+    var appStatePublisher: AnyPublisher<Void, Never> {
         appStateSubject.eraseToAnyPublisher()
     }
 
@@ -108,7 +108,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
     // PIN Management
-    @Published internal(set) var pinEnabled: Bool = false
+    @Published var pinEnabled: Bool = false
     @AppStorage("pinFailedAttempts") var pinFailedAttempts: Int = 0
     @AppStorage("requirePinForPayments") var requirePinForPayments: Bool = false
     @AppStorage("useBiometrics") var useBiometrics: Bool = false
@@ -175,17 +175,21 @@ class SettingsViewModel: NSObject, ObservableObject {
     }
 
     override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
-        if SettingsBackupConfig.settingsKeys.contains(keyPath ?? "") {
-            settingsSubject.send(getSettingsDictionary())
-        } else if keyPath == "savedWidgets" {
-            widgetsSubject.send(defaults.data(forKey: "savedWidgets"))
-        } else if SettingsBackupConfig.appStateKeys.contains(keyPath ?? "") {
-            appStateSubject.send()
+        Task { @MainActor in
+            if SettingsBackupConfig.settingsKeys.contains(keyPath ?? "") {
+                settingsSubject.send(getSettingsDictionary())
+            } else if keyPath == "savedWidgets" {
+                widgetsSubject.send(defaults.data(forKey: "savedWidgets"))
+            } else if SettingsBackupConfig.appStateKeys.contains(keyPath ?? "") {
+                appStateSubject.send()
+            }
         }
     }
 
     nonisolated func notifyAppStateChanged() {
-        appStateSubject.send()
+        Task { @MainActor in
+            appStateSubject.send()
+        }
     }
 
     /// Call after removePersistentDomain; singleton retains stale @AppStorage values.
@@ -756,7 +760,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     /// Re-read UserDefaults into @AppStorage properties after a direct defaults write.
     private func syncAppStorageFromDefaults() {
         _swipeBalanceToHide = defaults.object(forKey: "swipeBalanceToHide") as? Bool ?? true
-        defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "") ?? .normal
+        defaultTransactionSpeed = TransactionSpeed(rawValue: defaults.string(forKey: "defaultTransactionSpeed") ?? "")
         hideBalance = defaults.bool(forKey: "hideBalance")
         hideBalanceOnOpen = defaults.bool(forKey: "hideBalanceOnOpen")
         readClipboard = defaults.bool(forKey: "readClipboard")

@@ -244,8 +244,9 @@ New feature (`TransferTrackingManager`) tracks pending transfers to handle edge 
 
 ### iOS Version Compatibility
 
-- Xcode previews only work with iOS 17 and below (due to Rust dependencies)
-- Use availability checks for iOS 18/26 features:
+- Minimum deployment target is **iOS 17.0**.
+- Xcode previews work with the minimum target (iOS 17); they may not work on iOS 18+ due to Rust dependencies.
+- Use availability checks only for iOS 18+ features:
   ```swift
   if #available(iOS 18.0, *) {
       // Use iOS 18+ features

@@ -52,8 +52,9 @@ class ActivityService {
                     txIds.formUnion(onchain.boostTxIds)
                 }
             }
+            let txIdsToCache = txIds
             await MainActor.run {
-                self.cachedTxIdsInBoostTxIds = txIds
+                self.cachedTxIdsInBoostTxIds = txIdsToCache
             }
         } catch {
             Logger.error("Failed to refresh boostTxIds cache: \(error)", context: "ActivityService")
@@ -108,7 +109,7 @@ class ActivityService {
 
     func isActivitySeen(id: String) async -> Bool {
         do {
-            if let activity = try await getActivityById(activityId: id) {
+            if let activity = try getActivityById(activityId: id) {
                 switch activity {
                 case let .onchain(onchain):
                     return onchain.seenAt != nil
@@ -657,7 +658,7 @@ class ActivityService {
     }
 
     private func processLightningPayment(_ payment: PaymentDetails) async throws {
-        guard case let .bolt11(hash, preimage, secret, description, bolt11) = payment.kind else { return }
+        guard case let .bolt11(_, preimage, _, description, bolt11) = payment.kind else { return }
 
         // Skip pending inbound payments - just means they created an invoice
         guard !(payment.status == .pending && payment.direction == .inbound) else { return }
@@ -712,46 +713,32 @@ class ActivityService {
             var latestCaughtError: Error?
 
             for payment in payments {
-                do {
-                    let state: BitkitCore.PaymentState = switch payment.status {
-                    case .failed:
-                        .failed
-                    case .pending:
-                        .pending
-                    case .succeeded:
-                        .succeeded
-                    }
-
-                    if case let .onchain(txid, _) = payment.kind {
-                        do {
-                            let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
-                            try await self.processOnchainPayment(payment, transactionDetails: nil)
-                            if hadExistingActivity {
-                                updatedCount += 1
-                            } else {
-                                addedCount += 1
-                            }
-                        } catch {
-                            Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
-                            latestCaughtError = error
+                if case let .onchain(txid, _) = payment.kind {
+                    do {
+                        let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                        try await self.processOnchainPayment(payment, transactionDetails: nil)
+                        if hadExistingActivity {
+                            updatedCount += 1
+                        } else {
+                            addedCount += 1
                         }
-                    } else if case .bolt11 = payment.kind {
-                        do {
-                            let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
-                            try await self.processLightningPayment(payment)
-                            if hadExistingActivity {
-                                updatedCount += 1
-                            } else {
-                                addedCount += 1
-                            }
-                        } catch {
-                            Logger.error("Error processing lightning payment \(payment.id): \(error)", context: "CoreService.syncLdkNodePayments")
-                            latestCaughtError = error
-                        }
+                    } catch {
+                        Logger.error("Error processing onchain payment \(txid): \(error)", context: "CoreService.syncLdkNodePayments")
+                        latestCaughtError = error
                     }
-                } catch {
-                    Logger.error("Error syncing LDK payment: \(error)", context: "CoreService")
-                    latestCaughtError = error
+                } else if case .bolt11 = payment.kind {
+                    do {
+                        let hadExistingActivity = try getActivityById(activityId: payment.id) != nil
+                        try await self.processLightningPayment(payment)
+                        if hadExistingActivity {
+                            updatedCount += 1
+                        } else {
+                            addedCount += 1
+                        }
+                    } catch {
+                        Logger.error("Error processing lightning payment \(payment.id): \(error)", context: "CoreService.syncLdkNodePayments")
+                        latestCaughtError = error
+                    }
                 }
             }
 
@@ -803,7 +790,7 @@ class ActivityService {
                 }
             }
 
-            let closedChannels = try await getAllClosedChannels(sortDirection: .desc)
+            let closedChannels = try getAllClosedChannels(sortDirection: .desc)
             guard !closedChannels.isEmpty else { return nil }
 
             let details = if let provided = transactionDetails { provided } else { await fetchTransactionDetails(txid: txid) }
@@ -1648,6 +1635,7 @@ class BlocktankService {
         stateChangedSubject.send()
     }
 
+    @discardableResult
     func open(orderId: String) async throws -> IBtOrder {
         guard let nodeId = LightningService.shared.nodeId else {
             throw AppError(serviceError: .nodeNotStarted)

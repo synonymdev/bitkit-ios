@@ -106,7 +106,7 @@ struct SendSheet: View {
                 }
             }
         }
-        .onChange(of: wallet.nodeLifecycleState) { state in
+        .onChange(of: wallet.nodeLifecycleState) { _, state in
             // When the node becomes running and we have a scanned invoice, run deferred validation.
             // This covers:
             // - Pure onchain invoices (node was not running at scan time)
@@ -121,7 +121,7 @@ struct SendSheet: View {
                 validatePaymentAfterSync()
             }
         }
-        .onChange(of: wallet.hasUsableChannels) { hasUsable in
+        .onChange(of: wallet.hasUsableChannels) { _, hasUsable in
             // Only validate if channels just became usable and we have a scanned invoice
             // (Validation already happened in AppViewModel if channels were already usable)
             let hasScannedInvoice = app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil || app.lnurlPayData != nil
