@@ -182,7 +182,7 @@ struct ContactDetailView: View {
     private var emptyContent: some View {
         VStack(spacing: 16) {
             Spacer()
-            BodyMText(t("profile__empty_state"))
+            BodyMText(t("contacts__detail_empty_state"))
             CustomButton(title: t("profile__retry_load"), variant: .secondary) {
                 await loadContact()
             }
