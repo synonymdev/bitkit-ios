@@ -311,6 +311,9 @@ enum RNKeychainKey {
 struct PendingChannelMigration: Codable {
     let channelManager: Data
     let channelMonitors: [Data]
+    /// Parallel array of channel monitor IDs in "{txid}_{output_index}" format.
+    /// Used to filter out monitors that already exist locally before applying migration.
+    let channelMonitorIds: [String]
 }
 
 /// Peer entry from backup peers.json: [{"pubKey":"...","address":"...","port":9735}, ...]
@@ -679,6 +682,7 @@ extension MigrationsService {
 
         let managerData = try Data(contentsOf: managerPath)
         var monitors: [Data] = []
+        var monitorIds: [String] = []
 
         let channelsPath = accountPath.appendingPathComponent("channels")
         let monitorsPath = accountPath.appendingPathComponent("monitors")
@@ -689,12 +693,14 @@ extension MigrationsService {
             for file in monitorFiles where file.hasSuffix(".bin") {
                 let monitorData = try Data(contentsOf: monitorDir.appendingPathComponent(file))
                 monitors.append(monitorData)
+                monitorIds.append(file.replacingOccurrences(of: ".bin", with: ""))
             }
         }
 
         pendingChannelMigration = PendingChannelMigration(
             channelManager: managerData,
-            channelMonitors: monitors
+            channelMonitors: monitors,
+            channelMonitorIds: monitorIds
         )
         Logger.info("Prepared \(monitors.count) channel monitors for migration", context: "Migration")
     }
@@ -2132,7 +2138,12 @@ extension MigrationsService {
                 )
             }
 
-            let monitors = monitorResults.compactMap(\.1)
+            let successfulResults = monitorResults.compactMap { id, data -> (String, Data)? in
+                guard let data else { return nil }
+                return (id, data)
+            }
+            let monitorIds = successfulResults.map(\.0)
+            let monitors = successfulResults.map(\.1)
 
             if monitors.count < expectedCount {
                 Logger.warn(
@@ -2144,7 +2155,8 @@ extension MigrationsService {
             if !monitors.isEmpty {
                 pendingChannelMigration = PendingChannelMigration(
                     channelManager: managerData,
-                    channelMonitors: monitors
+                    channelMonitors: monitors,
+                    channelMonitorIds: monitorIds
                 )
                 Logger.info("Prepared \(monitors.count)/\(expectedCount) channel monitors for migration", context: "Migration")
             }

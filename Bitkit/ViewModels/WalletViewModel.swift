@@ -282,7 +282,8 @@ class WalletViewModel: ObservableObject {
                     "Found \(migration.channelMonitors.count) monitors on RN backup for pre-startup recovery",
                     context: "WalletViewModel"
                 )
-                return (migration, allRetrieved)
+                let filtered = filterMigrationMonitors(migration, walletIndex: walletIndex)
+                return (filtered, allRetrieved)
             } else {
                 Logger.info("No channel monitors found on RN backup", context: "WalletViewModel")
                 return (nil, allRetrieved)
@@ -291,6 +292,56 @@ class WalletViewModel: ObservableObject {
             Logger.error("Pre-startup channel monitor fetch failed: \(error)", context: "WalletViewModel")
             return (nil, false)
         }
+    }
+
+    /// Filters out migration monitors for channels that already have local monitors.
+    /// Prevents old RN monitors from overwriting newer local ones during orphaned channel recovery.
+    private func filterMigrationMonitors(_ migration: PendingChannelMigration, walletIndex: Int) -> PendingChannelMigration? {
+        let monitorsDir = Env.ldkStorage(walletIndex: walletIndex)
+            .appendingPathComponent("channel_monitors")
+            .appendingPathComponent("0")
+
+        guard FileManager.default.fileExists(atPath: monitorsDir.path) else {
+            Logger.debug("No local monitors directory, keeping all migration monitors", context: "WalletViewModel")
+            return migration
+        }
+
+        let localFiles = (try? FileManager.default.contentsOfDirectory(atPath: monitorsDir.path)) ?? []
+        guard !localFiles.isEmpty else {
+            Logger.debug("No local monitor files, keeping all migration monitors", context: "WalletViewModel")
+            return migration
+        }
+
+        let localMonitorIds = Set(localFiles)
+        var filteredMonitors: [Data] = []
+        var filteredIds: [String] = []
+
+        for (index, monitorId) in migration.channelMonitorIds.enumerated() {
+            if localMonitorIds.contains(monitorId) {
+                Logger.info("Skipping migration monitor \(monitorId) — already exists locally", context: "WalletViewModel")
+            } else {
+                filteredMonitors.append(migration.channelMonitors[index])
+                filteredIds.append(monitorId)
+            }
+        }
+
+        if filteredMonitors.isEmpty {
+            Logger.info(
+                "All \(migration.channelMonitors.count) migration monitors already exist locally, skipping migration",
+                context: "WalletViewModel"
+            )
+            return nil
+        }
+
+        Logger.info(
+            "Filtered migration monitors: \(filteredMonitors.count) kept, \(migration.channelMonitors.count - filteredMonitors.count) skipped (already local)",
+            context: "WalletViewModel"
+        )
+        return PendingChannelMigration(
+            channelManager: migration.channelManager,
+            channelMonitors: filteredMonitors,
+            channelMonitorIds: filteredIds
+        )
     }
 
     private func fetchTrustedPeersFromBlocktank() async -> [LnPeer]? {
