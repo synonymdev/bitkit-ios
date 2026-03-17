@@ -165,6 +165,7 @@ struct MainNavView: View {
         .accentColor(.white)
         .overlay {
             TabBar()
+                .ignoresSafeArea(.keyboard)
             DrawerView()
         }
         .onChange(of: scenePhase) { _, newPhase in
@@ -276,8 +277,8 @@ struct MainNavView: View {
                 case let .activityDetail(activity): ActivityItemView(item: activity)
                 case let .activityExplorer(activity): ActivityExplorerView(item: activity)
                 case .buyBitcoin: BuyBitcoinView()
-                case .savingsWallet: SavingsWalletView()
-                case .spendingWallet: SpendingWalletView()
+                case .savingsWallet: SavingsWalletScreen()
+                case .spendingWallet: SpendingWalletScreen()
                 case .scanner: ScannerScreen()
 
                 // Transfer

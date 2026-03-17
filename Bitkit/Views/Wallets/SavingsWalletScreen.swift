@@ -1,20 +1,14 @@
 import SwiftUI
 
-struct SavingsWalletView: View {
+struct SavingsWalletScreen: View {
     @EnvironmentObject var activity: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    /// Whether there are any onchain activities to display
-    private var hasOnchainActivities: Bool {
-        guard let activities = activity.onchainActivities else { return false }
-        return !activities.isEmpty
-    }
-
-    /// tab bar + spacing
-    private var bottomPadding: CGFloat {
-        64 + 32
+    private var shouldShowOnboarding: Bool {
+        let hasOnchainActivities = activity.onchainActivities?.isEmpty == false
+        return wallet.totalOnchainSats == 0 && !hasOnchainActivities
     }
 
     /// Calculate remaining duration for force close transfers
@@ -31,68 +25,76 @@ struct SavingsWalletView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
+            NavigationBar(title: t("wallet__savings__title"), icon: "btc")
+                .padding(.horizontal, 16)
+
             VStack(spacing: 0) {
-                NavigationBar(title: t("wallet__savings__title"), icon: "btc")
-                    .padding(.bottom, 16)
-
-                MoneyStack(
-                    sats: wallet.totalOnchainSats,
-                    showSymbol: true,
-                    showEyeIcon: false,
-                    enableSwipeGesture: true,
-                    enableHide: true,
-                    testIdPrefix: "TotalBalance"
-                )
-
-                if wallet.balanceInTransferToSavings > 0 {
-                    IncomingTransfer(
-                        amount: UInt64(wallet.balanceInTransferToSavings),
-                        remainingDuration: forceCloseRemainingDuration
+                ScrollView(showsIndicators: false) {
+                    MoneyStack(
+                        sats: wallet.totalOnchainSats,
+                        showSymbol: true,
+                        showEyeIcon: false,
+                        enableSwipeGesture: true,
+                        enableHide: true,
+                        testIdPrefix: "TotalBalance"
                     )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 16)
-                }
 
-                if wallet.totalOnchainSats > 0 || hasOnchainActivities {
-                    if wallet.totalOnchainSats > 0, !GeoService.shared.isGeoBlocked {
-                        transferButton
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                            .padding(.top, 32)
+                    if wallet.balanceInTransferToSavings > 0 {
+                        IncomingTransfer(
+                            amount: UInt64(wallet.balanceInTransferToSavings),
+                            remainingDuration: forceCloseRemainingDuration
+                        )
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 16)
                     }
 
-                    ScrollView(showsIndicators: false) {
+                    if !shouldShowOnboarding {
+                        if !GeoService.shared.isGeoBlocked {
+                            transferButton
+                                .transition(.move(edge: .leading).combined(with: .opacity))
+                                .padding(.top, 28)
+                        }
+
                         ActivityList(viewType: .onchain)
 
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)
                         }
-                        .padding(.bottom, bottomPadding)
                     }
-                    .accessibilityIdentifier("HomeScrollView")
-                    .refreshable {
-                        do {
-                            try await wallet.sync()
-                            try await activity.syncLdkNodePayments()
-                        } catch {
-                            app.toast(error)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 400)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-                } else {
-                    Spacer()
-                    WalletOnboardingView(type: .savings)
-                        .padding(.bottom, bottomPadding)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
+                .contentMargins(.top, ScreenLayout.topPaddingWithoutSafeArea)
+                .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
+                .accessibilityIdentifier("HomeScrollView")
+                .refreshable {
+                    do {
+                        try await wallet.sync()
+                        try await activity.syncLdkNodePayments()
+                    } catch {
+                        app.toast(error)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 400)
+                .transition(.move(edge: .leading).combined(with: .opacity))
             }
             .padding(.horizontal)
             .background(alignment: .topTrailing) {
                 Image("piggybank")
                     .resizable()
                     .frame(width: 256, height: 256)
-                    .offset(x: 110)
+                    .offset(x: 118)
             }
+
+            VStack {
+                Spacer()
+
+                if shouldShowOnboarding {
+                    WalletOnboardingView(type: .savings)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
+                        .padding(.horizontal, 16)
+                }
+            }
+            .ignoresSafeArea(edges: .bottom)
 
             // Bottom gradient: black 0% to black 100%
             VStack {
@@ -102,9 +104,9 @@ struct SavingsWalletView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 140)
+                .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
             }
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
         }
         .navigationBarHidden(true)
@@ -133,7 +135,7 @@ struct SavingsWalletView: View {
 
 #Preview {
     NavigationStack {
-        SavingsWalletView()
+        SavingsWalletScreen()
     }
     .environmentObject(WalletViewModel())
     .environmentObject(AppViewModel())

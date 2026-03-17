@@ -24,7 +24,7 @@ struct ActivityList: View {
                     switch groupItem {
                     case let .header(title):
                         CaptionMText(title)
-                            .padding(.top, 16)
+                            .frame(height: 34, alignment: .bottom)
 
                     case let .activity(item):
                         NavigationLink(value: Route.activityDetail(item)) {
@@ -43,12 +43,9 @@ struct ActivityList: View {
 
     private func getActivities() -> [Activity] {
         switch viewType {
-        case .all:
-            return activity.filteredActivities ?? []
-        case .lightning:
-            return activity.lightningActivities ?? []
-        case .onchain:
-            return activity.onchainActivities ?? []
+        case .all: return activity.filteredActivities ?? []
+        case .lightning: return activity.lightningActivities ?? []
+        case .onchain: return activity.onchainActivities ?? []
         }
     }
 }

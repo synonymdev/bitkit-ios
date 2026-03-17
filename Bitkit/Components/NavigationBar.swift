@@ -89,5 +89,11 @@ struct NavigationBar: View {
             }
         }
         .frame(height: 48)
+        .background(LinearGradient(
+            colors: [.black, .black.opacity(0)],
+            startPoint: .top,
+            endPoint: .bottom
+        ))
+        .zIndex(.infinity)
     }
 }
