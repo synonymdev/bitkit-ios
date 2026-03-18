@@ -275,7 +275,7 @@ class WalletViewModel: ObservableObject {
             RNBackupClient.shared.reset()
             try await RNBackupClient.shared.setup(mnemonic: mnemonic, passphrase: passphrase)
 
-            let allRetrieved = await migrations.fetchRNRemoteLdkData()
+            let allRetrieved = await migrations.fetchRNRemoteLdkData(walletIndex: walletIndex)
 
             if let migration = migrations.pendingChannelMigration {
                 Logger.info(

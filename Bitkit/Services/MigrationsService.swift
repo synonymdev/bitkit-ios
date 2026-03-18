@@ -2098,9 +2098,10 @@ extension MigrationsService {
     }
 
     /// Fetches channel manager and monitors from RN remote backup.
+    /// When `walletIndex` is provided, filters out monitors that already exist in local LDK storage.
     /// Returns `true` if all monitors were successfully retrieved (or none exist), `false` if some failed.
     @discardableResult
-    func fetchRNRemoteLdkData() async -> Bool {
+    func fetchRNRemoteLdkData(walletIndex: Int? = nil) async -> Bool {
         do {
             let files = try await RNBackupClient.shared.listFiles(fileGroup: "ldk")
 
@@ -2109,10 +2110,38 @@ extension MigrationsService {
                 return true
             }
 
-            let expectedCount = files.channel_monitors.count
+            // Filter out monitors that already exist locally (previously migrated)
+            var localChannelIds: Set<String> = []
+            if let walletIndex {
+                let ldkPath = Env.ldkStorage(walletIndex: walletIndex)
+                let channelsPath = ldkPath.appendingPathComponent("channels")
+                let monitorsPath = ldkPath.appendingPathComponent("monitors")
+                let monitorDir = FileManager.default.fileExists(atPath: channelsPath.path) ? channelsPath : monitorsPath
+
+                if FileManager.default.fileExists(atPath: monitorDir.path),
+                   let localFiles = try? FileManager.default.contentsOfDirectory(atPath: monitorDir.path)
+                {
+                    localChannelIds = Set(localFiles.filter { $0.hasSuffix(".bin") }.map { $0.replacingOccurrences(of: ".bin", with: "") })
+                }
+            }
+
+            let remoteMonitorFiles = files.channel_monitors.filter { file in
+                let channelId = file.replacingOccurrences(of: ".bin", with: "")
+                return !localChannelIds.contains(channelId)
+            }
+
+            if !localChannelIds.isEmpty {
+                let skipped = files.channel_monitors.count - remoteMonitorFiles.count
+                Logger.info(
+                    "Filtered \(skipped) already-migrated monitors, \(remoteMonitorFiles.count) orphaned remaining",
+                    context: "Migration"
+                )
+            }
+
+            let expectedCount = remoteMonitorFiles.count
             let monitorResults = await withTaskGroup(of: (String, Data?).self) { group in
                 var results: [(String, Data?)] = []
-                for monitorFile in files.channel_monitors {
+                for monitorFile in remoteMonitorFiles {
                     let channelId = monitorFile.replacingOccurrences(of: ".bin", with: "")
                     group.addTask {
                         await (channelId, self.retrieveChannelMonitorWithRetry(channelId: channelId))
