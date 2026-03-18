@@ -30,6 +30,7 @@ struct GiftUsed: View {
             }
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .sheetBackground()
         .accessibilityIdentifier("GiftUsed")
