@@ -9,17 +9,6 @@ class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
 
-    // MARK: - Stale monitor recovery (one-time recovery for channel monitor desync)
-
-    private static let staleMonitorRecoveryAttemptedKey = "staleMonitorRecoveryAttempted"
-
-    /// Whether we've already attempted stale monitor recovery (prevents infinite retry).
-    /// Persisted so the retry only happens once, even across app restarts.
-    private static var staleMonitorRecoveryAttempted: Bool {
-        get { UserDefaults.standard.bool(forKey: staleMonitorRecoveryAttemptedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: staleMonitorRecoveryAttemptedKey) }
-    }
-
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
     private var channelCache: [String: ChannelDetails] = [:]
@@ -151,17 +140,13 @@ class LightningService {
                     )
                 }
             } catch let error as BuildError {
-                guard case .DangerousValue = error, !Self.staleMonitorRecoveryAttempted else {
-                    throw error
-                }
+                guard case .DangerousValue = error else { throw error }
 
-                // Build failed with DangerousValue — stale ChannelMonitor vs ChannelManager.
-                // Retry once with accept_stale_channel_monitors to recover.
+                // Stale ChannelMonitor vs ChannelManager — retry with accept_stale to recover.
                 Logger.warn(
-                    "Build failed with DangerousValue (stale channel monitors). Retrying with accept_stale_channel_monitors for one-time recovery.",
+                    "Build failed with DangerousValue. Retrying with accept_stale_channel_monitors for recovery.",
                     context: "Recovery"
                 )
-                Self.staleMonitorRecoveryAttempted = true
                 builder.setAcceptStaleChannelMonitors(accept: true)
 
                 if !lnurlAuthServerUrl.isEmpty {
@@ -180,12 +165,6 @@ class LightningService {
                 }
                 Logger.info("Stale monitor recovery: build succeeded with accept_stale", context: "Recovery")
             }
-        }
-
-        // Mark recovery as attempted after any successful build (whether recovery was needed or not).
-        // This ensures unaffected users never trigger the retry path on future startups.
-        if !Self.staleMonitorRecoveryAttempted {
-            Self.staleMonitorRecoveryAttempted = true
         }
 
         Logger.info("LDK node setup")
