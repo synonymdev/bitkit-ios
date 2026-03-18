@@ -9,6 +9,17 @@ class LightningService {
     private var node: Node?
     var currentWalletIndex: Int = 0
 
+    // MARK: - Stale monitor recovery (one-time recovery for channel monitor desync)
+
+    private static let staleMonitorRecoveryAttemptedKey = "staleMonitorRecoveryAttempted"
+
+    /// Whether we've already attempted stale monitor recovery (prevents infinite retry).
+    /// Persisted so the retry only happens once, even across app restarts.
+    private static var staleMonitorRecoveryAttempted: Bool {
+        get { UserDefaults.standard.bool(forKey: staleMonitorRecoveryAttemptedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: staleMonitorRecoveryAttemptedKey) }
+    }
+
     private let syncStatusChangedSubject = PassthroughSubject<UInt64, Never>()
 
     private var channelCache: [String: ChannelDetails] = [:]
@@ -124,20 +135,57 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {
-            if !lnurlAuthServerUrl.isEmpty {
-                self.node = try builder.buildWithVssStore(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    lnurlAuthServerUrl: lnurlAuthServerUrl,
-                    fixedHeaders: [:]
+            do {
+                if !lnurlAuthServerUrl.isEmpty {
+                    self.node = try builder.buildWithVssStore(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        lnurlAuthServerUrl: lnurlAuthServerUrl,
+                        fixedHeaders: [:]
+                    )
+                } else {
+                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        fixedHeaders: [:]
+                    )
+                }
+            } catch let error as BuildError {
+                guard case .ReadFailed = error, !Self.staleMonitorRecoveryAttempted else {
+                    throw error
+                }
+
+                // Build failed with ReadFailed — likely a stale ChannelMonitor (DangerousValue).
+                // Retry once with accept_stale_channel_monitors to recover.
+                Logger.warn(
+                    "Build failed with ReadFailed. Retrying with accept_stale_channel_monitors for one-time recovery.",
+                    context: "Recovery"
                 )
-            } else {
-                self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    fixedHeaders: [:]
-                )
+                Self.staleMonitorRecoveryAttempted = true
+                builder.setAcceptStaleChannelMonitors(accept: true)
+
+                if !lnurlAuthServerUrl.isEmpty {
+                    self.node = try builder.buildWithVssStore(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        lnurlAuthServerUrl: lnurlAuthServerUrl,
+                        fixedHeaders: [:]
+                    )
+                } else {
+                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        fixedHeaders: [:]
+                    )
+                }
+                Logger.info("Stale monitor recovery: build succeeded with accept_stale", context: "Recovery")
             }
+        }
+
+        // Mark recovery as attempted after any successful build (whether recovery was needed or not).
+        // This ensures unaffected users never trigger the retry path on future startups.
+        if !Self.staleMonitorRecoveryAttempted {
+            Self.staleMonitorRecoveryAttempted = true
         }
 
         Logger.info("LDK node setup")
