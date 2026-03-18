@@ -26,7 +26,7 @@ class WidgetEditLogic: ObservableObject {
         switch widgetType {
         case .facts, .blocks, .news, .price, .weather:
             return true
-        case .calculator:
+        case .calculator, .suggestions:
             return false
         }
     }
@@ -46,7 +46,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             // Price widget has options, check if at least one trading pair is selected
             return !priceOptions.selectedPairs.isEmpty
-        case .calculator:
+        case .calculator, .suggestions:
             return false
         }
     }
@@ -68,7 +68,7 @@ class WidgetEditLogic: ObservableObject {
         case .price:
             let defaultOptions = PriceWidgetOptions()
             return priceOptions != defaultOptions
-        case .calculator:
+        case .calculator, .suggestions:
             return false
         }
     }
@@ -159,7 +159,7 @@ class WidgetEditLogic: ObservableObject {
             default:
                 break
             }
-        case .calculator:
+        case .calculator, .suggestions:
             break
         }
         onStateChange?()
@@ -185,7 +185,7 @@ class WidgetEditLogic: ObservableObject {
             weatherOptions = widgetsViewModel.getOptions(for: widgetType, as: WeatherWidgetOptions.self)
         case .price:
             priceOptions = widgetsViewModel.getOptions(for: widgetType, as: PriceWidgetOptions.self)
-        case .calculator:
+        case .calculator, .suggestions:
             break
         }
     }
@@ -202,7 +202,7 @@ class WidgetEditLogic: ObservableObject {
             weatherOptions = WeatherWidgetOptions()
         case .price:
             priceOptions = PriceWidgetOptions()
-        case .calculator:
+        case .calculator, .suggestions:
             break
         }
         onStateChange?()
@@ -220,7 +220,7 @@ class WidgetEditLogic: ObservableObject {
             widgetsViewModel.saveOptions(weatherOptions, for: widgetType)
         case .price:
             widgetsViewModel.saveOptions(priceOptions, for: widgetType)
-        case .calculator:
+        case .calculator, .suggestions:
             break
         }
     }

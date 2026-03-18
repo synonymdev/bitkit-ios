@@ -1,26 +1,12 @@
 import SwiftUI
 
-// UIKit Scroll View for better snapping behavior
+/// UIKit Scroll View for better snapping behavior
 struct SnapCarousel<Item: Identifiable, Content: View>: UIViewRepresentable {
     var items: [Item]
     var itemSize: CGFloat
     var itemSpacing: CGFloat
     var onItemTap: (Item) -> Void
-    var content: (Item) -> Content
-
-    init(
-        items: [Item],
-        itemSize: CGFloat,
-        itemSpacing: CGFloat,
-        onItemTap: @escaping (Item) -> Void,
-        @ViewBuilder content: @escaping (Item) -> Content
-    ) {
-        self.items = items
-        self.itemSize = itemSize
-        self.itemSpacing = itemSpacing
-        self.onItemTap = onItemTap
-        self.content = content
-    }
+    @ViewBuilder var content: (Item) -> Content
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -102,7 +88,7 @@ struct SnapCarousel<Item: Identifiable, Content: View>: UIViewRepresentable {
             }
         }
 
-        // Snap to the nearest item when scrolling ends
+        /// Snap to the nearest item when scrolling ends
         func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>)
         {
             let itemWidthWithSpacing = parent.itemSize + parent.itemSpacing

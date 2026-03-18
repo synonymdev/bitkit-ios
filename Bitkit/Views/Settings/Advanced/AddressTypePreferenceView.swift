@@ -17,7 +17,7 @@ struct AddressTypeOption: View {
                     }
                     Spacer()
                     if isSelected {
-                        Image("checkmark")
+                        Image("check-mark")
                             .resizable()
                             .frame(width: 32, height: 32)
                             .foregroundColor(.brandAccent)

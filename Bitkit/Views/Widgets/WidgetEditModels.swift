@@ -22,7 +22,7 @@ struct WidgetEditItem {
         self.isChecked = isChecked
     }
 
-    // Convenience initializer for string titles and values
+    /// Convenience initializer for string titles and values
     init(key: String, type: WidgetItemType, title: String, value: String? = nil, isChecked: Bool) {
         self.key = key
         self.type = type
@@ -31,7 +31,7 @@ struct WidgetEditItem {
         self.isChecked = isChecked
     }
 
-    // Convenience initializer for string titles and view values
+    /// Convenience initializer for string titles and view values
     init(key: String, type: WidgetItemType, title: String, valueView: AnyView? = nil, isChecked: Bool) {
         self.key = key
         self.type = type
@@ -537,7 +537,7 @@ enum WidgetEditItemFactory {
             return getPriceItems(priceOptions: priceOptions, priceDataByPeriod: priceDataByPeriod)
         case .weather:
             return getWeatherItems(weatherViewModel: weatherViewModel, weatherOptions: weatherOptions)
-        case .calculator:
+        case .calculator, .suggestions:
             return []
         }
     }

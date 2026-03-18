@@ -23,7 +23,6 @@ struct Tag: View {
         self.onDelete = onDelete
     }
 
-    @ViewBuilder
     private var tagContent: some View {
         HStack(spacing: 0) {
             BodySSBText(value).lineLimit(1)

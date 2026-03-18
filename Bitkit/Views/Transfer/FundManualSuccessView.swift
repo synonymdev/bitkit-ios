@@ -4,7 +4,7 @@ struct FundManualSuccessView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
 
-    // Keep in state so we don't get a new random text on each render
+    /// Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random")
 
     var body: some View {
@@ -47,7 +47,7 @@ struct FundManualSuccessView: View {
             .accessibilityIdentifier("ExternalSuccess")
         }
         .navigationBarHidden(true)
-        .interactiveDismissDisabled()
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
     }
 }

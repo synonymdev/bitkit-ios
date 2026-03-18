@@ -86,7 +86,7 @@ struct ProgressSteps: View {
 
                                 if index < currentStep {
                                     // Checkmark for completed steps
-                                    Image("checkmark")
+                                    Image("check-mark")
                                         .foregroundColor(.black)
                                 } else {
                                     // Number for current and upcoming steps
@@ -123,7 +123,7 @@ struct SettingUpView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var transfer: TransferViewModel
 
-    // Keep in state so we don't get a new random text on each render
+    /// Keep in state so we don't get a new random text on each render
     @State private var randomOkText: String = localizedRandom("common__ok_random")
 
     var isTransferring: Bool {
@@ -194,9 +194,9 @@ struct SettingUpView: View {
             }
         }
         .navigationBarHidden(true)
+        .allowSwipeBack(false)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .interactiveDismissDisabled()
         .onAppear {
             Logger.debug("View appeared - TransferViewModel is handling order updates")
 

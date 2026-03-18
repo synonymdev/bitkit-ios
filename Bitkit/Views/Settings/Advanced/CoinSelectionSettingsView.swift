@@ -49,7 +49,7 @@ extension CoinSelectionAlgorithm {
         }
     }
 
-    // Only return supported algorithms from the test
+    /// Only return supported algorithms from the test
     static var supportedAlgorithms: [CoinSelectionAlgorithm] {
         return [.branchAndBound, .largestFirst, .oldestFirst, .singleRandomDraw]
     }
@@ -66,7 +66,7 @@ struct CoinSelectionMethodOption: View {
                 BodyMText(method.localizedTitle, textColor: .textPrimary)
                 Spacer()
                 if isSelected {
-                    Image("checkmark")
+                    Image("check-mark")
                         .resizable()
                         .frame(width: 32, height: 32)
                         .foregroundColor(.brandAccent)
@@ -91,7 +91,7 @@ struct CoinSelectionAlgorithmOption: View {
                     BodyMText(algorithm.localizedTitle, textColor: .textPrimary)
                     Spacer()
                     if isSelected {
-                        Image("checkmark")
+                        Image("check-mark")
                             .resizable()
                             .frame(width: 32, height: 32)
                             .foregroundColor(.brandAccent)

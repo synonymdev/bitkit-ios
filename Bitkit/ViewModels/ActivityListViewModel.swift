@@ -30,10 +30,10 @@ class ActivityListViewModel: ObservableObject {
     @Published var selectedTags: Set<String> = []
     @Published var selectedTab: ActivityTab = .all
 
-    // Latest activities for home screen
+    /// Latest activities for home screen
     @Published var latestActivities: [Activity]? = nil
 
-    // Grouped activities for display
+    /// Grouped activities for display
     @Published var groupedActivities: [ActivityGroupItem] = []
 
     private let coreService: CoreService
@@ -46,7 +46,6 @@ class ActivityListViewModel: ObservableObject {
     private var activitiesChangedCancellable: AnyCancellable?
 
     @Published private(set) var availableTags: [String] = []
-    @Published private(set) var feeEstimates: FeeRates? = nil
 
     private func updateAvailableTags() async {
         do {
@@ -54,15 +53,6 @@ class ActivityListViewModel: ObservableObject {
         } catch {
             Logger.error(error, context: "Failed to get available tags")
             availableTags = []
-        }
-    }
-
-    private func updateFeeEstimates() async {
-        do {
-            feeEstimates = try await coreService.blocktank.fees(refresh: false)
-        } catch {
-            Logger.error("Failed to load fee estimates: \(error)", context: "ActivityListViewModel")
-            feeEstimates = nil
         }
     }
 
@@ -143,7 +133,7 @@ class ActivityListViewModel: ObservableObject {
     func syncState() async {
         do {
             // Get latest activities first as that's displayed on the home view
-            let limitLatest: UInt32 = 3
+            let limitLatest: UInt32 = UIScreen.main.isSmall ? 2 : 3
             // Fetch extra to account for potential filtering of replaced transactions
             let latest = try await coreService.activity.get(filter: .all, limit: limitLatest * 3)
             let filtered = await filterOutReplacedSentTransactions(latest)
@@ -157,9 +147,8 @@ class ActivityListViewModel: ObservableObject {
             let onchain = try await coreService.activity.get(filter: .onchain)
             onchainActivities = await filterOutReplacedSentTransactions(onchain)
 
-            // Update available tags and fee estimates
+            // Update available tags
             await updateAvailableTags()
-            await updateFeeEstimates()
         } catch {
             Logger.error(error, context: "Failed to sync activities")
         }

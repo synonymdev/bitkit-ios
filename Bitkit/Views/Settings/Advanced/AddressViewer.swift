@@ -46,12 +46,12 @@ struct AddressViewer: View {
         selectedScriptType.derivationPath
     }
 
-    // Get the first address for QR display
+    /// Get the first address for QR display
     private var firstAddress: String {
         addresses.first?.address ?? ""
     }
 
-    // Get the currently selected address for QR display, fallback to first address
+    /// Get the currently selected address for QR display, fallback to first address
     private var displayAddress: String {
         if !selectedAddress.isEmpty {
             return selectedAddress
@@ -59,7 +59,7 @@ struct AddressViewer: View {
         return firstAddress
     }
 
-    // Get the index of the currently selected address
+    /// Get the index of the currently selected address
     private var selectedAddressIndex: Int {
         if !selectedAddress.isEmpty,
            let index = addresses.firstIndex(where: { $0.address == selectedAddress })

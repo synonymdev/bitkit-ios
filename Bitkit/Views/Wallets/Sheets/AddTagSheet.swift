@@ -9,10 +9,6 @@ struct AddTagSheetItem: SheetItem, Equatable {
     let size: SheetSize = .small
     let activityId: String
 
-    init(activityId: String) {
-        self.activityId = activityId
-    }
-
     static func == (lhs: AddTagSheetItem, rhs: AddTagSheetItem) -> Bool {
         return lhs.activityId == rhs.activityId
     }

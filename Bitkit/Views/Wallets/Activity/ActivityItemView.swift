@@ -7,6 +7,7 @@ struct ActivityItemView: View {
     @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -52,11 +53,6 @@ struct ActivityItemView: View {
         isSent ? "-" : "+"
     }
 
-    private var feeDescription: String {
-        guard case let .onchain(activity) = item else { return "" }
-        return TransactionSpeed.getFeeDescription(feeRate: activity.feeRate, feeEstimates: activityList.feeEstimates)
-    }
-
     private var activity: (timestamp: UInt64, fee: UInt64?, value: UInt64, txType: PaymentType) {
         switch viewModel.activity {
         case let .lightning(activity):
@@ -87,6 +83,15 @@ struct ActivityItemView: View {
             return .purpleAccent
         }
         return isLightning ? .purpleAccent : .brandAccent
+    }
+
+    private var duration: String {
+        guard case let .onchain(activity) = item else { return "" }
+        return TransactionSpeed.getFeeTierLocalized(
+            feeRate: activity.feeRate,
+            feeEstimates: feeEstimatesManager.estimates,
+            variant: .shortDescription
+        )
     }
 
     private var transferChannelId: String? {
@@ -136,8 +141,7 @@ struct ActivityItemView: View {
                 if activity.txType == .sent {
                     return true
                 } else {
-                    let hasCPFP = activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
-                    return hasCPFP
+                    return activity.boostTxIds.contains { boostTxDoesExist[$0] == true }
                 }
             }
 
@@ -248,7 +252,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             CaptionMText(t("wallet__activity_status"))
@@ -289,20 +292,20 @@ struct ActivityItemView: View {
                             .frame(width: 16, height: 16)
                         BodySSBText(t("wallet__activity_confirmed"), textColor: .greenAccent)
                     } else if activity.isBoosted {
-                        Image("hourglass-simple")
+                        Image("timer-alt")
                             .foregroundColor(.yellowAccent)
                             .frame(width: 16, height: 16)
-                        BodySSBText(
-                            t("wallet__activity_confirms_in_boosted", variables: ["feeRateDescription": feeDescription]),
-                            textColor: .yellowAccent
-                        )
+                        BodySSBText(t("wallet__activity_boosting"), textColor: .yellowAccent)
                     } else {
                         // Use accent color for transfers (purple for from spending, orange for from savings)
                         let statusColor = isTransfer ? accentColor : .brandAccent
+                        let statusText = isTransfer ? t("wallet__activity_in_transfer", variables: ["duration": duration]) :
+                            t("wallet__activity_confirming")
+
                         Image("hourglass-simple")
                             .foregroundColor(statusColor)
                             .frame(width: 16, height: 16)
-                        BodySSBText(t("wallet__activity_confirming"), textColor: statusColor)
+                        BodySSBText(statusText, textColor: statusColor)
                     }
                 }
             }
@@ -313,7 +316,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var timestampSection: some View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 0) {
@@ -453,7 +455,6 @@ struct ActivityItemView: View {
         }
     }
 
-    @ViewBuilder
     private var buttons: some View {
         VStack(spacing: 16) {
             HStack(spacing: 16) {
@@ -614,6 +615,7 @@ struct ActivityItemView_Previews: PreviewProvider {
             .previewDisplayName("Onchain Payment")
         }
         .environmentObject(AppViewModel())
+        .environmentObject(FeeEstimatesManager())
         .preferredColorScheme(.dark)
     }
 }

@@ -30,11 +30,6 @@ struct RadioGroup<T: Hashable>: View {
 struct RadioOption<T: Hashable> {
     let title: String
     let value: T
-
-    init(title: String, value: T) {
-        self.title = title
-        self.value = value
-    }
 }
 
 private struct RadioButton: View {
@@ -50,7 +45,7 @@ private struct RadioButton: View {
                 Spacer()
 
                 if isSelected {
-                    Image("checkmark")
+                    Image("check-mark")
                         .resizable()
                         .foregroundColor(.brandAccent)
                         .frame(width: 32, height: 32)

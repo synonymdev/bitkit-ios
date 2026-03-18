@@ -144,7 +144,6 @@ struct ReceiveQr: View {
         }
     }
 
-    @ViewBuilder
     func tabContent(for tab: ReceiveTab) -> some View {
         VStack(spacing: 0) {
             if tab == .spending && wallet.channelCount == 0 && cjitInvoice == nil {
@@ -228,7 +227,6 @@ struct ReceiveQr: View {
         }
     }
 
-    @ViewBuilder
     func detailsContent(for tab: ReceiveTab) -> some View {
         VStack {
             let addressPairs: [CopyAddressPair] = {

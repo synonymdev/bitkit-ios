@@ -13,7 +13,7 @@ struct SendSuccess: View {
 
     @State private var foundActivity: Activity?
 
-    // Load the confetti animation
+    /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
         let isOnchain = app.selectedWalletToPayFrom == .onchain
         let animationName = isOnchain ? "confetti-orange" : "confetti-purple"
@@ -77,6 +77,7 @@ struct SendSuccess: View {
                 .padding(.horizontal, 16)
             }
             .navigationBarHidden(true)
+            .allowSwipeBack(false)
             .sheetBackground()
         }
         .task {

@@ -6,20 +6,9 @@ struct TabBar: View {
     @EnvironmentObject var wallet: WalletViewModel
 
     var shouldShow: Bool {
-        if navigation.activeDrawerMenuItem == .wallet || navigation.activeDrawerMenuItem == .activity {
-            if navigation.path.isEmpty {
-                return true
-            }
-
-            switch navigation.currentRoute {
-            case .activityList, .savingsWallet, .spendingWallet:
-                return true
-            default:
-                return false
-            }
-        }
-
-        return false
+        let routesWithTabBar = Set<Route>([.activityList, .savingsWallet, .spendingWallet])
+        if navigation.path.isEmpty { return true }
+        return navigation.currentRoute.map { routesWithTabBar.contains($0) } ?? false
     }
 
     var body: some View {

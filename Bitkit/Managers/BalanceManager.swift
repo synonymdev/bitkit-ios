@@ -239,12 +239,10 @@ class BalanceManager {
 
     /// Calculates maximum sendable Lightning amount (outbound capacity)
     private func calculateMaxSendLightning(channels: [ChannelDetails]) -> UInt64 {
-        let totalNextOutboundHtlcLimitSats = channels
+        return channels
             .filter(\.isUsable)
             .map(\.nextOutboundHtlcLimitMsat)
             .reduce(0, +) / 1000 // Convert from msat to sat
-
-        return totalNextOutboundHtlcLimitSats
     }
 }
 

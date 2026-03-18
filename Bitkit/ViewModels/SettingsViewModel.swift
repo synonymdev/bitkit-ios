@@ -4,7 +4,7 @@ import LDKNode
 import SwiftUI
 import UserNotifications
 
-// Avoids conflict with AddressViewer.AddressType
+/// Avoids conflict with AddressViewer.AddressType
 typealias AddressScriptType = LDKNode.AddressType
 
 enum CoinSelectionMethod: String, CaseIterable {
@@ -81,7 +81,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         appStateSubject.eraseToAnyPublisher()
     }
 
-    // Security & Privacy Settings
+    /// Security & Privacy Settings
     @AppStorage("swipeBalanceToHide") private var _swipeBalanceToHide: Bool = true
 
     var swipeBalanceToHide: Bool {
@@ -103,7 +103,7 @@ class SettingsViewModel: NSObject, ObservableObject {
     @AppStorage("enableQuickpay") var enableQuickpay: Bool = false
     @AppStorage("quickpayAmount") var quickpayAmount: Double = 5
     @AppStorage("enableNotifications") var enableNotifications: Bool = false
-    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false // TODO: remove this
+    @AppStorage("enableNotificationsAmount") var enableNotificationsAmount: Bool = false
     @AppStorage("ignoresSwitchUnitToast") var ignoresSwitchUnitToast: Bool = false
     @AppStorage("ignoresHideBalanceToast") var ignoresHideBalanceToast: Bool = false
 
@@ -277,7 +277,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
     }
 
-    // Address Type Settings
+    /// Address Type Settings
     /// Address types that support native SegWit scripts (required for Lightning).
     private static let nativeWitnessTypes: [AddressScriptType] = [.nativeSegwit, .taproot]
 
@@ -786,7 +786,7 @@ class SettingsViewModel: NSObject, ObservableObject {
             hasSeenTransferToSpendingIntro: defaults.bool(forKey: "hasSeenTransferToSpendingIntro"),
             hasSeenTransferToSavingsIntro: defaults.bool(forKey: "hasSeenTransferToSavingsIntro"),
             hasSeenWidgetsIntro: defaults.bool(forKey: "hasSeenWidgetsIntro"),
-            showHomeViewEmptyState: defaults.bool(forKey: "showHomeViewEmptyState"),
+            hasDismissedWidgetsOnboardingHint: defaults.bool(forKey: "hasDismissedWidgetsOnboardingHint"),
             appUpdateIgnoreTimestamp: defaults.double(forKey: "appUpdateIgnoreTimestamp"),
             backupIgnoreTimestamp: defaults.double(forKey: "backupIgnoreTimestamp"),
             highBalanceIgnoreCount: defaults.integer(forKey: "highBalanceIgnoreCount"),
@@ -807,7 +807,7 @@ class SettingsViewModel: NSObject, ObservableObject {
         defaults.set(cache.hasSeenTransferToSpendingIntro, forKey: "hasSeenTransferToSpendingIntro")
         defaults.set(cache.hasSeenTransferToSavingsIntro, forKey: "hasSeenTransferToSavingsIntro")
         defaults.set(cache.hasSeenWidgetsIntro, forKey: "hasSeenWidgetsIntro")
-        defaults.set(cache.showHomeViewEmptyState, forKey: "showHomeViewEmptyState")
+        defaults.set(cache.hasDismissedWidgetsOnboardingHint, forKey: "hasDismissedWidgetsOnboardingHint")
         defaults.set(cache.appUpdateIgnoreTimestamp, forKey: "appUpdateIgnoreTimestamp")
         defaults.set(cache.backupIgnoreTimestamp, forKey: "backupIgnoreTimestamp")
         defaults.set(cache.highBalanceIgnoreCount, forKey: "highBalanceIgnoreCount")

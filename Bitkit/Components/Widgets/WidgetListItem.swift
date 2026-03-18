@@ -2,11 +2,17 @@ import SwiftUI
 
 struct WidgetListItem: View {
     let id: WidgetType
+    let isDisabled: Bool
 
-    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var currency: CurrencyViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
 
-    // Widget data computed from the ID
+    init(id: WidgetType, isDisabled: Bool = false) {
+        self.id = id
+        self.isDisabled = isDisabled
+    }
+
+    /// Widget data computed from the ID
     private var widget: (name: String, description: String, icon: String) {
         let name = t("widgets__\(id.rawValue)__name")
 
@@ -19,6 +25,10 @@ struct WidgetListItem: View {
     }
 
     private func onPress() {
+        if isDisabled {
+            return
+        }
+
         navigation.navigate(.widgetDetail(id))
     }
 
@@ -56,6 +66,7 @@ struct WidgetListItem: View {
             }
         }
         .buttonStyle(PlainButtonStyle())
+        .opacity(isDisabled ? 0.3 : 1)
         .accessibilityIdentifier("WidgetListItem-\(id.rawValue)")
     }
 }

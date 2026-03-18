@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MoneyStack - Stacked display with toggle functionality, optional eye icon and swipe gestures
+/// MoneyStack - Stacked display with toggle functionality, optional eye icon and swipe gestures
 struct MoneyStack: View {
     let sats: Int
     var prefix: String?
@@ -18,6 +18,36 @@ struct MoneyStack: View {
     // MARK: - Constants
 
     private let springAnimation = Animation.spring(response: 0.3, dampingFraction: 0.8)
+
+    var hideGesture: some Gesture {
+        DragGesture(minimumDistance: 50, coordinateSpace: .local)
+            .onEnded { value in
+                let horizontalAmount = value.translation.width
+                let verticalAmount = value.translation.height
+
+                // Only trigger if horizontal swipe is more significant than vertical
+                if abs(horizontalAmount) > abs(verticalAmount) {
+                    let wasHidden = settings.hideBalance
+                    withAnimation(springAnimation) {
+                        settings.hideBalance.toggle()
+                    }
+                    Haptics.play(.medium)
+
+                    // Show toast on first hide (when balance becomes hidden)
+                    if !wasHidden && settings.hideBalance && !settings.ignoresHideBalanceToast {
+                        app.toast(
+                            type: .info,
+                            title: t("wallet__balance_hidden_title"),
+                            description: t("wallet__balance_hidden_message"),
+                            visibilityTime: 5.0,
+                            accessibilityIdentifier: "BalanceHiddenToast"
+                        )
+
+                        settings.ignoresHideBalanceToast = true
+                    }
+                }
+            }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -147,35 +177,7 @@ struct MoneyStack: View {
             }
         }
         .animation(springAnimation, value: currency.primaryDisplay)
-        .conditionalGesture(enableSwipeGesture) {
-            DragGesture(minimumDistance: 50, coordinateSpace: .local)
-                .onEnded { value in
-                    let horizontalAmount = value.translation.width
-                    let verticalAmount = value.translation.height
-
-                    // Only trigger if horizontal swipe is more significant than vertical
-                    if abs(horizontalAmount) > abs(verticalAmount) {
-                        let wasHidden = settings.hideBalance
-                        withAnimation(springAnimation) {
-                            settings.hideBalance.toggle()
-                        }
-                        Haptics.play(.medium)
-
-                        // Show toast on first hide (when balance becomes hidden)
-                        if !wasHidden && settings.hideBalance && !settings.ignoresHideBalanceToast {
-                            app.toast(
-                                type: .info,
-                                title: t("wallet__balance_hidden_title"),
-                                description: t("wallet__balance_hidden_message"),
-                                visibilityTime: 5.0,
-                                accessibilityIdentifier: "BalanceHiddenToast"
-                            )
-
-                            settings.ignoresHideBalanceToast = true
-                        }
-                    }
-                }
-        }
+        .highPriorityGesture(enableSwipeGesture ? hideGesture : nil)
         .animation(enableSwipeGesture ? springAnimation : nil, value: settings.hideBalance)
     }
 }
@@ -211,19 +213,6 @@ private extension MoneyStack {
             return t("settings__general__unit_bitcoin")
         case .fiat:
             return currency.selectedCurrency
-        }
-    }
-}
-
-// MARK: - Helper View Modifier
-
-extension View {
-    @ViewBuilder
-    func conditionalGesture(_ condition: Bool, gesture: () -> some Gesture) -> some View {
-        if condition {
-            self.gesture(gesture())
-        } else {
-            self
         }
     }
 }

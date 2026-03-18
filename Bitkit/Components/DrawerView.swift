@@ -10,7 +10,9 @@ enum DrawerMenuItem: Int, CaseIterable, Identifiable, Hashable {
     case settings
     case appStatus
 
-    var id: Int { rawValue }
+    var id: Int {
+        rawValue
+    }
 
     var icon: String {
         switch self {
@@ -81,7 +83,6 @@ struct DrawerView: View {
         }
     }
 
-    @ViewBuilder
     private var backdrop: some View {
         Color.black.opacity(0.6)
             .ignoresSafeArea()
@@ -89,6 +90,29 @@ struct DrawerView: View {
                 closeMenu()
             }
             .transition(.opacity)
+    }
+
+    /// Route to push when selecting this drawer item (nil for Wallet = pop to root).
+    private func route(for item: DrawerMenuItem) -> Route? {
+        switch item {
+        case .wallet: return nil
+        case .activity: return .activityList
+        case .contacts: return .contacts
+        case .profile: return .profile
+        case .settings: return .settings
+        case .shop: return app.hasSeenShopIntro ? .shopDiscover : .shopIntro
+        case .widgets: return app.hasSeenWidgetsIntro ? .widgetsList : .widgetsIntro
+        case .appStatus: return .appStatus
+        }
+    }
+
+    private func selectDrawerItem(_ item: DrawerMenuItem) {
+        if let route = route(for: item) {
+            navigation.path = [route]
+        } else {
+            navigation.path = []
+        }
+        closeMenu()
     }
 
     var body: some View {
@@ -102,9 +126,7 @@ struct DrawerView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(DrawerMenuItem.allCases.filter(\.isMainMenuItem)) { item in
                             Button(action: {
-                                navigation.reset()
-                                navigation.activeDrawerMenuItem = item
-                                closeMenu()
+                                selectDrawerItem(item)
                             }) {
                                 menuItemContent(item: item)
                             }
@@ -119,8 +141,7 @@ struct DrawerView: View {
                             showColor: false,
                             testID: "DrawerAppStatus",
                             onPress: {
-                                navigation.activeDrawerMenuItem = .appStatus
-                                closeMenu()
+                                selectDrawerItem(.appStatus)
                             }
                         )
                         .frame(maxWidth: .infinity)
@@ -170,7 +191,6 @@ struct DrawerView: View {
         }
     }
 
-    @ViewBuilder
     private func menuItemContent(item: DrawerMenuItem) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 12) {

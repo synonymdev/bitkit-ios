@@ -2,8 +2,8 @@ import SwiftUI
 
 struct ActivityLatest: View {
     @EnvironmentObject private var activity: ActivityListViewModel
+    @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
-    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
     private var shouldShowBanner: Bool {
@@ -32,10 +32,6 @@ struct ActivityLatest: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            CaptionMText(t("wallet__activity"))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 16)
-
             if shouldShowBanner {
                 ActivityBanner(type: bannerType, remainingDuration: remainingDuration)
                     .padding(.bottom, 16)
@@ -46,31 +42,21 @@ struct ActivityLatest: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(zip(items.indices, items)), id: \.1) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item, feeEstimates: activity.feeEstimates)
+                            ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
                         }
                         .accessibilityIdentifier("ActivityShort-\(index)")
                     }
                 }
 
-                if items.isEmpty {
-                    Button(
-                        action: {
-                            sheets.showSheet(.receive)
-                        },
-                        label: {
-                            EmptyActivityRow()
-                        }
-                    )
-                } else {
-                    CustomButton(title: t("common__show_all"), variant: .tertiary) {
-                        navigation.navigate(.activityList)
-                    }
-                    .accessibilityIdentifier("ActivityShowAll")
+                CustomButton(title: t("common__show_all"), variant: .tertiary) {
+                    navigation.navigate(.activityList)
                 }
-            } else {
-                EmptyView()
+                .accessibilityIdentifier("ActivityShowAll")
             }
         }
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: shouldShowBanner)
+        .task {
+            await feeEstimatesManager.getEstimates(refresh: false)
+        }
     }
 }

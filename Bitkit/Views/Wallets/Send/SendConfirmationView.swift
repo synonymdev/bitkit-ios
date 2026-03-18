@@ -2,9 +2,9 @@ import BitkitCore
 import SwiftUI
 
 struct SendConfirmationView: View {
-    @EnvironmentObject var activityListViewModel: ActivityListViewModel
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -19,7 +19,7 @@ struct SendConfirmationView: View {
     @State private var routingFee: Int = 0
     @State private var shouldUseSendAll: Bool = false
 
-    // Warning system
+    /// Warning system
     private enum WarningType: String, CaseIterable {
         case amount
         case balance
@@ -395,7 +395,6 @@ struct SendConfirmationView: View {
         try? await CoreService.shared.activity.addPreActivityMetadata(preActivityMetadata)
     }
 
-    @ViewBuilder
     func onchainView(_ invoice: OnChainInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             editableInvoiceSection(
@@ -422,7 +421,7 @@ struct SendConfirmationView: View {
                                 .padding(.trailing, 4)
 
                             if transactionFee > 0 {
-                                let feeText = "\(wallet.selectedSpeed.displayTitle) ("
+                                let feeText = "\(wallet.selectedSpeed.title) ("
                                 HStack(spacing: 0) {
                                     BodySSBText(feeText)
                                     MoneyText(sats: transactionFee, size: .bodySSB, symbol: true, symbolColor: .textPrimary)
@@ -449,7 +448,13 @@ struct SendConfirmationView: View {
                             .frame(width: 16, height: 16)
                             .padding(.trailing, 4)
 
-                        BodySSBText(wallet.selectedSpeed.displayDescription)
+                        BodySSBText(
+                            TransactionSpeed.getFeeTierLocalized(
+                                feeRate: UInt64(wallet.selectedFeeRateSatsPerVByte ?? 0),
+                                feeEstimates: feeEstimatesManager.estimates,
+                                variant: .range
+                            )
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -461,7 +466,6 @@ struct SendConfirmationView: View {
         }
     }
 
-    @ViewBuilder
     func lightningView(_ invoice: LightningInvoice) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             editableInvoiceSection(
@@ -538,7 +542,6 @@ struct SendConfirmationView: View {
         }
     }
 
-    @ViewBuilder
     private func editableInvoiceSection(title: String, value: String) -> some View {
         Button {
             navigateToManual(with: value)

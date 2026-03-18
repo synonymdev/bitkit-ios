@@ -73,7 +73,7 @@ enum Route: Hashable {
     case disablePin
     case changePin
 
-    // Backup settings
+    /// Backup settings
     case resetAndRestore
 
     // Advanced settings
@@ -103,7 +103,6 @@ enum Route: Hashable {
 @MainActor
 class NavigationViewModel: ObservableObject {
     @Published var path: [Route] = []
-    @Published var activeDrawerMenuItem: DrawerMenuItem = .wallet
 
     var currentRoute: Route? {
         path.last
@@ -123,6 +122,5 @@ class NavigationViewModel: ObservableObject {
 
     func reset() {
         path.removeLast(path.count)
-        activeDrawerMenuItem = .wallet
     }
 }

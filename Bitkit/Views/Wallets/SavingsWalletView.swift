@@ -12,6 +12,11 @@ struct SavingsWalletView: View {
         return !activities.isEmpty
     }
 
+    /// tab bar + spacing
+    private var bottomPadding: CGFloat {
+        64 + 32
+    }
+
     /// Calculate remaining duration for force close transfers
     private var forceCloseRemainingDuration: String? {
         guard let claimableAtHeight = wallet.forceCloseClaimableAtHeight,
@@ -28,6 +33,7 @@ struct SavingsWalletView: View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
                 NavigationBar(title: t("wallet__savings__title"), icon: "btc")
+                    .padding(.bottom, 16)
 
                 MoneyStack(
                     sats: wallet.totalOnchainSats,
@@ -37,7 +43,6 @@ struct SavingsWalletView: View {
                     enableHide: true,
                     testIdPrefix: "TotalBalance"
                 )
-                .padding(.top)
 
                 if wallet.balanceInTransferToSavings > 0 {
                     IncomingTransfer(
@@ -61,8 +66,7 @@ struct SavingsWalletView: View {
                         CustomButton(title: t("common__show_all"), variant: .tertiary) {
                             navigation.navigate(.activityList)
                         }
-                        /// Leave some space for TabBar
-                        .padding(.bottom, 130)
+                        .padding(.bottom, bottomPadding)
                     }
                     .accessibilityIdentifier("HomeScrollView")
                     .refreshable {
@@ -75,10 +79,14 @@ struct SavingsWalletView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 400)
                     .transition(.move(edge: .leading).combined(with: .opacity))
+                } else {
+                    Spacer()
+                    WalletOnboardingView(type: .savings)
+                        .padding(.bottom, bottomPadding)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .padding(.horizontal)
-            .frame(maxHeight: .infinity, alignment: .top)
             .background(alignment: .topTrailing) {
                 Image("piggybank")
                     .resizable()
@@ -101,13 +109,6 @@ struct SavingsWalletView: View {
         }
         .navigationBarHidden(true)
         .animation(.spring(response: 0.3), value: wallet.totalOnchainSats)
-        .overlay {
-            if wallet.totalOnchainSats == 0 && !hasOnchainActivities {
-                EmptyStateView(type: .savings)
-                    .padding(.horizontal)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
     }
 
     var transferButton: some View {

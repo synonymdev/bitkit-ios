@@ -17,11 +17,6 @@ struct GiftSheetItem: SheetItem {
     let size: SheetSize = .large
     let code: String
     let amount: Int
-
-    init(code: String, amount: Int) {
-        self.code = code
-        self.amount = amount
-    }
 }
 
 struct GiftSheet: View {

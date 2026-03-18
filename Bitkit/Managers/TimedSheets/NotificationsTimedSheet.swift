@@ -30,9 +30,7 @@ struct NotificationsTimedSheet: TimedSheetItem {
         // Check if user has spending balance
         let hasSpendingBalance = walletViewModel.totalLightningSats > 0
 
-        let shouldShow = !notificationsEnabled && !hasSeenNotificationsIntro && hasSpendingBalance
-
-        return shouldShow
+        return !notificationsEnabled && !hasSeenNotificationsIntro && hasSpendingBalance
     }
 
     func onShown() {

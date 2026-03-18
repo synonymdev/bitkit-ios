@@ -61,7 +61,7 @@ enum Env {
         return isNotificationExtension ? .pushNotificationExtension : .foregroundApp
     }
 
-    // {Team ID}.{Keychain Group}
+    /// {Team ID}.{Keychain Group}
     /// Returns the keychain access group based on the current network
     static var keychainGroup: String {
         let base = "KYH47R284B.to.bitkit"

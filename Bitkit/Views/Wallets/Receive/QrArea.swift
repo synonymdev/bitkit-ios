@@ -111,8 +111,7 @@ struct QrArea: View {
                 // Draw the QR code in the padded area
                 UIImage(cgImage: cgImage).draw(in: qrRect)
 
-                let generatedImage = UIGraphicsGetImageFromCurrentImageContext()
-                return generatedImage
+                return UIGraphicsGetImageFromCurrentImageContext()
             }
         }
 

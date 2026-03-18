@@ -1,6 +1,7 @@
 import Combine
 import LDKNode
 import SwiftUI
+import UserNotifications
 
 struct AppScene: View {
     @Environment(\.scenePhase) var scenePhase
@@ -10,10 +11,11 @@ struct AppScene: View {
     @StateObject private var navigation = NavigationViewModel()
     @StateObject private var network = NetworkMonitor()
     @StateObject private var sheets = SheetViewModel()
-    @StateObject private var wallet = WalletViewModel()
+    @StateObject private var wallet: WalletViewModel
     @StateObject private var currency = CurrencyViewModel()
     @StateObject private var blocktank = BlocktankViewModel()
-    @StateObject private var activity = ActivityListViewModel()
+    @StateObject private var activity: ActivityListViewModel
+    @StateObject private var feeEstimatesManager: FeeEstimatesManager
     @StateObject private var transfer: TransferViewModel
     @StateObject private var widgets = WidgetsViewModel()
     @StateObject private var pushManager = PushNotificationManager.shared
@@ -32,7 +34,7 @@ struct AppScene: View {
     @State private var isPinVerified: Bool = false
     @State private var showRecoveryScreen = false
 
-    // Check if there's a critical update available
+    /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
         AppUpdateService.shared.availableUpdate?.critical == true
     }
@@ -45,13 +47,22 @@ struct AppScene: View {
             blocktankService: CoreService.shared.blocktank
         )
 
+        // Run app data migrations before any feature code loads migrated state
+        AppDataMigrations.run()
+
         _app = StateObject(wrappedValue: AppViewModel(sheetViewModel: sheetViewModel, navigationViewModel: navigationViewModel))
         _sheets = StateObject(wrappedValue: sheetViewModel)
         _navigation = StateObject(wrappedValue: navigationViewModel)
-        let walletVm = WalletViewModel(transferService: transferService, sheetViewModel: sheetViewModel)
+        let feeEstimatesManager = FeeEstimatesManager()
+        let walletVm = WalletViewModel(
+            transferService: transferService,
+            sheetViewModel: sheetViewModel,
+            feeEstimatesManager: feeEstimatesManager
+        )
         _wallet = StateObject(wrappedValue: walletVm)
         _currency = StateObject(wrappedValue: CurrencyViewModel())
         _blocktank = StateObject(wrappedValue: BlocktankViewModel())
+        _feeEstimatesManager = StateObject(wrappedValue: feeEstimatesManager)
         _activity = StateObject(wrappedValue: ActivityListViewModel(transferService: transferService))
         _transfer = StateObject(wrappedValue: TransferViewModel(
             transferService: transferService,
@@ -73,7 +84,6 @@ struct AppScene: View {
                 config in ForgotPinSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .handleLightningStateOnScenePhaseChange()
             .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
             .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
             .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
@@ -110,6 +120,7 @@ struct AppScene: View {
             .environmentObject(wallet)
             .environmentObject(currency)
             .environmentObject(blocktank)
+            .environmentObject(feeEstimatesManager)
             .environmentObject(activity)
             .environmentObject(transfer)
             .environmentObject(widgets)
@@ -139,7 +150,6 @@ struct AppScene: View {
             }
     }
 
-    @ViewBuilder
     private var mainContent: some View {
         ZStack {
             if migrations.isShowingMigrationLoading {
@@ -160,7 +170,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var migrationLoadingContent: some View {
         VStack(spacing: 0) {
             NavigationBar(title: t("migration__title"), showBackButton: false, showMenuButton: false)
@@ -250,7 +259,6 @@ struct AppScene: View {
         }
     }
 
-    @ViewBuilder
     private var onboardingContent: some View {
         NavigationStack {
             TermsView()
@@ -496,11 +504,35 @@ struct AppScene: View {
         }
     }
 
-    private func handleScenePhaseChange(_: ScenePhase) {
-        // If PIN is enabled, lock the app when the app goes to the background
-        if scenePhase == .background && settings.pinEnabled {
-            isPinVerified = false
+    private func handleScenePhaseChange(_ newPhase: ScenePhase) {
+        Logger.debug("Scene phase changed: \(newPhase)")
+
+        if newPhase == .background {
+            if settings.pinEnabled {
+                // If PIN is enabled, lock the app when the app goes to the background
+                isPinVerified = false
+            }
+            if wallet.walletExists == true {
+                app.resetAppStatusInit()
+            }
         }
+
+        if newPhase == .active {
+            if wallet.walletExists == true {
+                Task {
+                    await clearDeliveredNotifications()
+                    await LightningService.shared.reconnectPeers()
+                }
+            }
+        }
+    }
+
+    /// Removes all delivered notifications from Notification Center so the app can handle them when opened.
+    private func clearDeliveredNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let deliveredNotifications = await center.deliveredNotifications()
+        guard !deliveredNotifications.isEmpty else { return }
+        center.removeDeliveredNotifications(withIdentifiers: deliveredNotifications.map(\.request.identifier))
     }
 
     private func handleNetworkRestored() {
