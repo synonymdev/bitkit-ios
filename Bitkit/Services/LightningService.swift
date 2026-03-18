@@ -151,14 +151,14 @@ class LightningService {
                     )
                 }
             } catch let error as BuildError {
-                guard case .ReadFailed = error, !Self.staleMonitorRecoveryAttempted else {
+                guard case .DangerousValue = error, !Self.staleMonitorRecoveryAttempted else {
                     throw error
                 }
 
-                // Build failed with ReadFailed — likely a stale ChannelMonitor (DangerousValue).
+                // Build failed with DangerousValue — stale ChannelMonitor vs ChannelManager.
                 // Retry once with accept_stale_channel_monitors to recover.
                 Logger.warn(
-                    "Build failed with ReadFailed. Retrying with accept_stale_channel_monitors for one-time recovery.",
+                    "Build failed with DangerousValue (stale channel monitors). Retrying with accept_stale_channel_monitors for one-time recovery.",
                     context: "Recovery"
                 )
                 Self.staleMonitorRecoveryAttempted = true
