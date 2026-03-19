@@ -141,20 +141,20 @@ class WalletViewModel: ObservableObject {
             }
 
             // If no local migration data, try fetching from RN remote backup (one-time)
-            if channelMigration == nil {
-                let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
-                if let remoteMigration {
-                    channelMigration = ChannelDataMigration(
-                        // don't overwrite channel manager, we only need the monitors for the sweep
-                        channelManager: nil,
-                        channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
-                    )
-                    MigrationsService.shared.pendingChannelMigration = nil
-                }
-                if allRetrieved {
-                    MigrationsService.shared.isChannelRecoveryChecked = true
-                }
-            }
+            // if channelMigration == nil {
+            //     let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
+            //     if let remoteMigration {
+            //         channelMigration = ChannelDataMigration(
+            //             // don't overwrite channel manager, we only need the monitors for the sweep
+            //             channelManager: nil,
+            //             channelMonitors: remoteMigration.channelMonitors.map { [UInt8]($0) }
+            //         )
+            //         MigrationsService.shared.pendingChannelMigration = nil
+            //     }
+            //     if allRetrieved {
+            //         MigrationsService.shared.isChannelRecoveryChecked = true
+            //     }
+            // }
 
             await runLegacyNetworkGraphCleanupIfNeeded()
 
