@@ -36,7 +36,7 @@ struct AppScene: View {
 
     /// Check if there's a critical update available
     private var hasCriticalUpdate: Bool {
-        AppUpdateService.shared.availableUpdate?.critical == true
+        AppUpdateService.shared.availableUpdate?.critical == true && !Env.isDebug
     }
 
     init() {
