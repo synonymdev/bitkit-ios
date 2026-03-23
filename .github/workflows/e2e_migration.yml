@@ -27,7 +27,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -48,7 +48,7 @@ jobs:
           brew install xcbeautify
 
       - name: Cache Swift Package Manager
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/Library/Caches/org.swift.swiftpm
@@ -103,7 +103,7 @@ jobs:
           cp -r DerivedData/Build/Products/Debug-iphonesimulator/Bitkit.app e2e-app/bitkit.app
 
       - name: Upload iOS app (regtest)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: e2e-app/
@@ -163,20 +163,20 @@ jobs:
         run: echo $E2E_BRANCH
 
       - name: Clone E2E tests
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: synonymdev/bitkit-e2e-tests
           path: bitkit-e2e-tests
           ref: ${{ needs.e2e-branch.outputs.branch }}
 
       - name: Download iOS app
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: bitkit-e2e-ios_${{ github.run_number }}
           path: bitkit-e2e-tests/aut
 
       - name: Download migration env
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: migration-env_${{ matrix.rn_version }}_${{ matrix.scenario.name }}
           path: bitkit-e2e-tests/artifacts
@@ -210,12 +210,12 @@ jobs:
         run: ls -la bitkit-e2e-tests/aut
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
       - name: Cache npm cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -315,7 +315,7 @@ jobs:
 
       - name: Upload E2E Artifacts (${{ matrix.scenario.name }})
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: e2e-artifacts_${{ matrix.scenario.name }}_${{ matrix.rn_version }}_${{ github.run_number }}
           path: bitkit-e2e-tests/artifacts/
