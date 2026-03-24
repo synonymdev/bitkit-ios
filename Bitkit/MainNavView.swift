@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
-    @EnvironmentObject private var cameraManager: CameraManager
+    @Environment(CameraManager.self) private var cameraManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager

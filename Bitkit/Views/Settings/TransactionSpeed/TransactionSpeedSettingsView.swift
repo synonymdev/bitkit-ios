@@ -8,7 +8,7 @@ struct TransactionSpeedSettingsRow: View {
     var rangeOverride: String?
 
     private var rangeText: String {
-        rangeOverride ?? speed.longRange
+        rangeOverride ?? speed.range
     }
 
     var body: some View {
@@ -56,7 +56,7 @@ struct TransactionSpeedSettingsView: View {
     /// When custom default fee rate is set, returns the tier-based range description (e.g. "± 10-20 minutes").
     private func customSpeedRange() -> String? {
         guard case let .custom(rate) = settings.defaultTransactionSpeed else { return nil }
-        return TransactionSpeed.getFeeTierLocalized(feeRate: UInt64(rate), feeEstimates: feeEstimatesManager.estimates, variant: .longRange)
+        return TransactionSpeed.getFeeTierLocalized(feeRate: UInt64(rate), feeEstimates: feeEstimatesManager.estimates, variant: .range)
     }
 
     var body: some View {

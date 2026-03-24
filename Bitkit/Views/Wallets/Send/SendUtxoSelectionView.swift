@@ -26,8 +26,10 @@ struct SendUtxoSelectionView: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__selection_title"), showBackButton: true)
 
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {
+                    Divider()
+
                     ForEach(Array(wallet.availableUtxos.enumerated()), id: \.element.outpoint.txid) { _, utxo in
                         UtxoRowView(
                             utxo: utxo,
@@ -40,9 +42,10 @@ struct SendUtxoSelectionView: View {
                                 selectedUtxos.remove(utxo.outpoint.txid)
                             }
                         }
+
+                        Divider()
                     }
                 }
-                .padding(.top, 16)
             }
 
             Spacer()
@@ -50,19 +53,20 @@ struct SendUtxoSelectionView: View {
             // Bottom summary
             VStack(spacing: 8) {
                 HStack {
-                    BodyMText(t("wallet__selection_total_required").uppercased(), textColor: .textSecondary)
+                    CaptionMText(t("wallet__selection_total_required"))
                     Spacer()
                     BodyMSBText("\(formatSats(totalRequiredSats))", textColor: .textPrimary)
                 }
-                .padding(.top, 16)
+                .frame(height: 40)
 
                 Divider()
 
                 HStack {
-                    BodyMText(t("wallet__selection_total_selected").uppercased(), textColor: .textSecondary)
+                    CaptionMText(t("wallet__selection_total_selected"))
                     Spacer()
                     BodyMSBText("\(formatSats(totalSelectedSats))", textColor: totalSelectedSats >= totalRequiredSats ? .greenAccent : .redAccent)
                 }
+                .frame(height: 40)
             }
             .padding(.bottom, 16)
 
@@ -70,7 +74,6 @@ struct SendUtxoSelectionView: View {
                 wallet.selectedUtxos = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
                 navigationPath.append(.confirm)
             }
-            .padding(.bottom, 16)
         }
         .padding(.horizontal, 16)
         .navigationBarHidden(true)
@@ -133,7 +136,7 @@ struct UtxoRowView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     BodyMSBText("₿ \(formatBtcAmount(utxo.valueSats))", textColor: .textPrimary)
                         .lineLimit(1)
-                    BodySText("\(currency.symbol) \(formatUsdAmount(utxo.valueSats))", textColor: .textSecondary)
+                    CaptionBText("\(currency.symbol) \(formatUsdAmount(utxo.valueSats))", textColor: .textSecondary)
                         .lineLimit(1)
                 }
                 .fixedSize(horizontal: true, vertical: false)
@@ -161,7 +164,6 @@ struct UtxoRowView: View {
                 .padding(.trailing, 2)
                 .fixedSize()
             }
-            Divider()
         }
         .padding(.vertical, 16)
     }

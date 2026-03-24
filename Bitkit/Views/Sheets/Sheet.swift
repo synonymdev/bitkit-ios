@@ -86,7 +86,7 @@ struct SheetHeader: View {
             }
         }
         .padding(.top, 32) // Make room for the drag indicator
-        .padding(.bottom, 32)
+        .padding(.bottom, 24)
     }
 }
 

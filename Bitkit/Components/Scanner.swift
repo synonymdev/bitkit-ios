@@ -63,10 +63,11 @@ private struct ScannerCornerButtons: View {
 // MARK: - Scanner Component
 
 struct Scanner: View {
+    @Environment(CameraManager.self) private var cameraManager
+
     let onScan: (String) async -> Void
     let onImageSelection: (PhotosPickerItem?) async -> Void
 
-    @EnvironmentObject private var cameraManager: CameraManager
     @State private var isTorchOn = false
 
     var body: some View {

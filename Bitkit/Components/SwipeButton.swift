@@ -3,10 +3,11 @@ import SwiftUI
 struct SwipeButton: View {
     let title: String
     let accentColor: Color
+    /// Optional binding for swipe progress (0...1), e.g. to drive animations in the parent.
+    var swipeProgress: Binding<CGFloat>?
     let onComplete: () async throws -> Void
 
     @State private var offset: CGFloat = 0
-    @State private var isDragging = false
     @State private var isLoading = false
 
     private let buttonHeight: CGFloat = 76
@@ -14,6 +15,12 @@ struct SwipeButton: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let maxOffset = max(1, geometry.size.width - buttonHeight)
+            let clampedOffset = max(0, min(offset, geometry.size.width - buttonHeight))
+            let trailWidth = max(0, min(clampedOffset + (buttonHeight - innerPadding), geometry.size.width - innerPadding))
+            let textProgress = offset / maxOffset
+            let halfWidth = geometry.size.width / 2
+
             ZStack(alignment: .leading) {
                 // Track
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
@@ -22,7 +29,7 @@ struct SwipeButton: View {
                 // Colored trail
                 RoundedRectangle(cornerRadius: buttonHeight / 2)
                     .fill(accentColor.opacity(0.2))
-                    .frame(width: max(0, min(offset + (buttonHeight - innerPadding), geometry.size.width - innerPadding)))
+                    .frame(width: trailWidth)
                     .frame(height: buttonHeight - innerPadding)
                     .padding(.horizontal, innerPadding / 2)
                     .mask {
@@ -34,52 +41,51 @@ struct SwipeButton: View {
                 // Track text
                 BodySSBText(title)
                     .frame(maxWidth: .infinity, alignment: .center)
-                    .opacity(Double(1.0 - (offset / (geometry.size.width - buttonHeight))))
+                    .opacity(Double(1.0 - textProgress))
 
-                // Sliding circle
+                // Knob
                 Circle()
                     .fill(accentColor)
                     .frame(width: buttonHeight - innerPadding, height: buttonHeight - innerPadding)
                     .overlay(
                         ZStack {
                             if isLoading {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .gray7))
+                                ActivityIndicator(theme: .dark)
                             } else {
                                 Image("arrow-right")
                                     .resizable()
                                     .frame(width: 24, height: 24)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(1.0 - (offset / (geometry.size.width / 2))))
+                                    .opacity(Double(1.0 - (offset / halfWidth)))
 
                                 Image("check-mark")
                                     .resizable()
                                     .frame(width: 32, height: 32)
                                     .foregroundColor(.gray7)
-                                    .opacity(Double(max(0, (offset - geometry.size.width / 2) / (geometry.size.width / 2))))
+                                    .opacity(Double(max(0, (offset - halfWidth) / halfWidth)))
                             }
                         }
                     )
                     .accessibilityIdentifier("GRAB")
-                    .offset(x: max(0, min(offset, geometry.size.width - buttonHeight)))
+                    .offset(x: clampedOffset)
                     .padding(.horizontal, innerPadding / 2)
                     .gesture(
                         DragGesture()
                             .onChanged { value in
                                 guard !isLoading else { return }
                                 withAnimation(.interactiveSpring()) {
-                                    isDragging = true
                                     offset = value.translation.width
+                                    swipeProgress?.wrappedValue = max(0, min(1, offset / maxOffset))
                                 }
                             }
                             .onEnded { _ in
                                 guard !isLoading else { return }
-                                isDragging = false
                                 withAnimation(.spring()) {
                                     let threshold = geometry.size.width * 0.7
                                     if offset > threshold {
                                         Haptics.play(.medium)
                                         offset = geometry.size.width - buttonHeight
+                                        swipeProgress?.wrappedValue = 1
                                         isLoading = true
                                         Task { @MainActor in
                                             do {
@@ -88,6 +94,7 @@ struct SwipeButton: View {
                                                 // Reset the slider back to the start on error
                                                 withAnimation(.spring(duration: 0.3)) {
                                                     offset = 0
+                                                    swipeProgress?.wrappedValue = 0
                                                 }
 
                                                 // Adjust the delay to match animation duration
@@ -98,6 +105,7 @@ struct SwipeButton: View {
                                         }
                                     } else {
                                         offset = 0
+                                        swipeProgress?.wrappedValue = 0
                                     }
                                 }
                             }

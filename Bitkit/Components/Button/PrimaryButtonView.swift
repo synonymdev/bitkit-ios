@@ -34,6 +34,7 @@ struct PrimaryButtonView: View {
         .background(backgroundGradient)
         .cornerRadius(64)
         .shadow(color: shadowColor, radius: 0, x: 0, y: -1)
+        .shadow(color: Color.black.opacity(0.32), radius: 4, x: 0, y: 2)
         .opacity(isDisabled ? 0.32 : 1.0)
         .contentShape(Rectangle())
     }

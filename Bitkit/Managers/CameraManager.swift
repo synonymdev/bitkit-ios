@@ -1,26 +1,26 @@
 import AVFoundation
 import SwiftUI
 
-final class CameraManager: ObservableObject {
+@MainActor
+@Observable
+final class CameraManager {
     static let shared = CameraManager()
-    @Published var hasPermission: Bool = false
+
+    var hasPermission: Bool = false
 
     init() {
         refreshPermission()
     }
 
     func refreshPermission() {
-        let granted = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
-        DispatchQueue.main.async {
-            self.hasPermission = granted
-        }
+        hasPermission = AVCaptureDevice.authorizationStatus(for: .video) == .authorized
     }
 
-    /// Call when the scanner appears; shows the system permission dialog only when status is .notDetermined (fresh install).
+    /// Call when the scanner appears; shows the system permission dialog only when status is `.notDetermined` (fresh install).
     func requestPermissionIfNeeded() {
         guard AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined else { return }
         AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.hasPermission = granted
             }
         }
@@ -34,14 +34,10 @@ final class CameraManager: ObservableObject {
             requestPermissionIfNeeded()
         case .denied, .restricted:
             if let url = URL(string: UIApplication.openSettingsURLString) {
-                DispatchQueue.main.async {
-                    UIApplication.shared.open(url)
-                }
+                UIApplication.shared.open(url)
             }
         case .authorized:
-            DispatchQueue.main.async {
-                self.hasPermission = true
-            }
+            hasPermission = true
         @unknown default:
             break
         }

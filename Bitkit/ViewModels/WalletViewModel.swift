@@ -26,6 +26,8 @@ class WalletViewModel: ObservableObject {
     @Published var selectedUtxos: [SpendableUtxo]?
     @Published var availableUtxos: [SpendableUtxo] = []
     @Published var isMaxAmountSend: Bool = false
+    /// Cached Lightning routing fee estimate for the active send (confirmation, fee picker instant row).
+    @Published var routingFeeEstimateSats: UInt64 = 0
 
     /// LNURL withdraw flow
     @Published var lnurlWithdrawAmount: UInt64?
@@ -581,6 +583,18 @@ class WalletViewModel: ObservableObject {
         return try await lightningService.estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
     }
 
+    /// Refreshes `routingFeeEstimateSats` for the send UI.
+    func refreshRoutingFeeEstimate(bolt11: String, amountSats: UInt64?) async {
+        do {
+            let fee = try await estimateRoutingFees(bolt11: bolt11, amountSats: amountSats)
+            routingFeeEstimateSats = fee
+            Logger.info("Estimated routing fees: \(fee) sat")
+        } catch {
+            Logger.error("Failed to calculate routing fees: \(error)", context: "WalletViewModel")
+            routingFeeEstimateSats = 0
+        }
+    }
+
     /// Sends a lightning payment with an optional timeout.
     /// If the payment does not complete within `timeoutSeconds`, throws `PaymentTimeoutError.timedOut`.
     /// The payment continues in the background; caller should navigate to pending screen on timeout.
@@ -923,6 +937,7 @@ class WalletViewModel: ObservableObject {
         availableUtxos = []
         selectedSpeed = speed
         isMaxAmountSend = false
+        routingFeeEstimateSats = 0
     }
 
     private func handleChannelClosed(channelId: LDKNode.ChannelId, reason: LDKNode.ClosureReason?) async {
