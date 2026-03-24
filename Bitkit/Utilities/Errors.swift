@@ -185,6 +185,9 @@ struct AppError: LocalizedError {
         case let .ReadFailed(message: ldkMessage):
             message = "Read failed"
             debugMessage = ldkMessage
+        case let .DangerousValue(message: ldkMessage):
+            message = "Dangerous value"
+            debugMessage = ldkMessage
         case let .WriteFailed(message: ldkMessage):
             message = "Write failed"
             debugMessage = ldkMessage
