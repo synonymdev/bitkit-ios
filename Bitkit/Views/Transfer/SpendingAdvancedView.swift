@@ -109,7 +109,7 @@ struct SpendingAdvancedView: View {
 
             updateFeeEstimate()
         }
-        .onChange(of: lspBalance) { _ in
+        .onChange(of: lspBalance) {
             if isValid {
                 updateFeeEstimate()
             } else {

@@ -617,7 +617,7 @@ class LightningService {
     }
 
     func closeChannel(_ channel: ChannelDetails, force: Bool = false, forceCloseReason: String? = nil) async throws {
-        guard let node else {
+        guard node != nil else {
             throw AppError(serviceError: .nodeNotStarted)
         }
 
@@ -1106,7 +1106,7 @@ extension LightningService {
                 onEvent?(event)
 
                 switch event {
-                case let .paymentSuccessful(paymentId, paymentHash, paymentPreimage, feePaidMsat):
+                case let .paymentSuccessful(paymentId, paymentHash, _, feePaidMsat):
                     Logger.info("✅ Payment successful: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) feePaidMsat: \(feePaidMsat ?? 0)")
                     Task {
                         let hash = paymentId ?? paymentHash
@@ -1131,7 +1131,7 @@ extension LightningService {
                             Logger.warn("No paymentId or paymentHash available for failed payment", context: "LightningService")
                         }
                     }
-                case let .paymentReceived(paymentId, paymentHash, amountMsat, feePaidMsat):
+                case let .paymentReceived(paymentId, paymentHash, amountMsat, _):
                     Logger.info("🤑 Payment received: paymentId: \(paymentId ?? "?") paymentHash: \(paymentHash) amountMsat: \(amountMsat)")
                     Task {
                         let hash = paymentId ?? paymentHash
@@ -1141,7 +1141,7 @@ extension LightningService {
                             Logger.error("Failed to handle payment received for \(hash): \(error)", context: "LightningService")
                         }
                     }
-                case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, claimDeadline, customRecords):
+                case let .paymentClaimable(paymentId, paymentHash, claimableAmountMsat, _, _):
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
@@ -1170,7 +1170,7 @@ extension LightningService {
 
                     if let channel {
                         await registerClosedChannel(channel: channel, reason: reasonString)
-                        await MainActor.run {
+                        _ = await MainActor.run {
                             channelCache.removeValue(forKey: channelIdString)
                         }
                     } else {
@@ -1193,7 +1193,7 @@ extension LightningService {
                             Logger.error("Failed to handle transaction received for \(txid): \(error)", context: "LightningService")
                         }
                     }
-                case let .onchainTransactionConfirmed(txid, blockHash, blockHeight, confirmationTime, details):
+                case let .onchainTransactionConfirmed(txid, _, blockHeight, _, details):
                     Logger.info("✅ Onchain transaction confirmed: txid=\(txid) blockHeight=\(blockHeight) amountSats=\(details.amountSats)")
                     Task {
                         do {
@@ -1247,7 +1247,7 @@ extension LightningService {
 
                 // MARK: Balance Events
 
-                case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, oldTotalOnchain, newTotalOnchain, oldLightning, newLightning):
+                case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
                     Logger
                         .info("💰 Balance changed: onchain=\(oldSpendableOnchain)->\(newSpendableOnchain) lightning=\(oldLightning)->\(newLightning)")
 

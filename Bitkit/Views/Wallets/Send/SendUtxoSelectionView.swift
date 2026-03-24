@@ -67,14 +67,8 @@ struct SendUtxoSelectionView: View {
             .padding(.bottom, 16)
 
             CustomButton(title: t("common__continue"), isDisabled: selectedUtxos.isEmpty || totalSelectedSats < totalRequiredSats) {
-                do {
-                    wallet.selectedUtxos = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
-
-                    navigationPath.append(.confirm)
-                } catch {
-                    Logger.error(error, context: "Failed to set fee rate")
-                    app.toast(type: .error, title: "Send Error", description: error.localizedDescription)
-                }
+                wallet.selectedUtxos = wallet.availableUtxos.filter { selectedUtxos.contains($0.outpoint.txid) }
+                navigationPath.append(.confirm)
             }
             .padding(.bottom, 16)
         }

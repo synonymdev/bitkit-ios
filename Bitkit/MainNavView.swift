@@ -167,7 +167,7 @@ struct MainNavView: View {
             TabBar()
             DrawerView()
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 // Update notification permission in case user changed it in OS settings
                 notificationManager.updateNotificationPermission()
@@ -177,7 +177,7 @@ struct MainNavView: View {
                 handleClipboard()
             }
         }
-        .onChange(of: notificationManager.authorizationStatus) { newStatus in
+        .onChange(of: notificationManager.authorizationStatus) { _, newStatus in
             // Handle notification permission changes
             if newStatus == .authorized {
                 settings.enableNotifications = true
@@ -187,7 +187,7 @@ struct MainNavView: View {
                 notificationManager.unregister()
             }
         }
-        .onChange(of: notificationManager.deviceToken) { token in
+        .onChange(of: notificationManager.deviceToken) { _, token in
             // Register with backend if device token changed and notifications are enabled
             if let token, settings.enableNotifications {
                 Task {
@@ -204,7 +204,7 @@ struct MainNavView: View {
                 }
             }
         }
-        .onChange(of: settings.enableNotifications) { newValue in
+        .onChange(of: settings.enableNotifications) { _, newValue in
             // Handle notification enable/disable
             if newValue {
                 // Request permission in case user was not prompted yet

@@ -433,15 +433,17 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks/LDKNodeFFI.framework",
 			);
 			name = "Remove Static Framework Stubs";
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/.ldk-stubs-removed",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Remove static framework stubs from app bundle\\n# LDKNodeFFI is a static library - its code is linked into the main executable.\\n# The empty framework structure causes iOS install errors.\\nFRAMEWORK_PATH=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks/LDKNodeFFI.framework\"\\n\\nif [ -d \"$FRAMEWORK_PATH\" ]; then\\n    echo \"Removing LDKNodeFFI static framework stub...\"\\n    rm -rf \"$FRAMEWORK_PATH\"\\n    echo \"Done.\"\\nfi\\n";
+			shellScript = "# Remove static framework stubs from app bundle\\n# LDKNodeFFI is a static library - its code is linked into the main executable.\\n# The empty framework structure causes iOS install errors.\\nFRAMEWORK_PATH=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks/LDKNodeFFI.framework\"\\nOUTPUT_SENTINEL=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/.ldk-stubs-removed\"\\n\\nif [ -d \"$FRAMEWORK_PATH\" ]; then\\n    echo \"Removing LDKNodeFFI static framework stub...\"\\n    rm -rf \"$FRAMEWORK_PATH\"\\n    echo \"Done.\"\\nfi\\ntouch \"$OUTPUT_SENTINEL\"\\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

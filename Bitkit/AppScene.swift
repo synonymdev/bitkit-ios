@@ -84,11 +84,11 @@ struct AppScene: View {
                 config in ForgotPinSheet(config: config)
             }
             .task(priority: .userInitiated, setupTask)
-            .onChange(of: currency.hasStaleData, perform: handleCurrencyStaleData)
-            .onChange(of: wallet.walletExists, perform: handleWalletExistsChange)
-            .onChange(of: wallet.nodeLifecycleState, perform: handleNodeLifecycleChange)
-            .onChange(of: scenePhase, perform: handleScenePhaseChange)
-            .onChange(of: migrations.isShowingMigrationLoading) { isLoading in
+            .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
+            .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
+            .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
+            .onChange(of: scenePhase) { _, newValue in handleScenePhaseChange(newValue) }
+            .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
                     SettingsViewModel.shared.updatePinEnabledState()
                     widgets.loadSavedWidgets()
@@ -107,7 +107,7 @@ struct AppScene: View {
                     }
                 }
             }
-            .onChange(of: network.isConnected) { isConnected in
+            .onChange(of: network.isConnected) { _, isConnected in
                 // Retry starting wallet when network comes back online
                 if isConnected {
                     handleNetworkRestored()

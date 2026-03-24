@@ -77,7 +77,7 @@ struct SendPendingScreen: View {
         .task {
             await searchForActivity()
         }
-        .onChange(of: app.sendSheetPendingResolution) { resolution in
+        .onChange(of: app.sendSheetPendingResolution) { _, resolution in
             guard let resolution, resolution.paymentHash == paymentHash else { return }
             app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
             if resolution.success {

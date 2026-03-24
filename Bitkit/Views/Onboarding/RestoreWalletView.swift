@@ -145,14 +145,14 @@ struct RestoreWalletView: View {
         HStack(alignment: .top, spacing: 4) {
             // First column (1-6 or 1-12)
             VStack(spacing: 4) {
-                ForEach(0 ..< wordsPerColumn) { index in
+                ForEach(Array(0 ..< wordsPerColumn), id: \.self) { index in
                     SeedTextField(
                         index: index,
                         text: index == 0 ? $firstFieldText : $words[index],
                         isLastField: index == (wordsPerColumn * 2 - 1),
                         focusedField: $focusedField
                     )
-                    .onChange(of: firstFieldText) { newValue in
+                    .onChange(of: firstFieldText) { _, newValue in
                         if index == 0 && newValue.rangeOfCharacter(from: .whitespacesAndNewlines) != nil {
                             handlePastedWords(newValue)
                         } else if index == 0 {
@@ -164,7 +164,7 @@ struct RestoreWalletView: View {
 
             // Second column (7-12 or 13-24)
             VStack(spacing: 4) {
-                ForEach(wordsPerColumn ..< (wordsPerColumn * 2)) { index in
+                ForEach(Array(wordsPerColumn ..< (wordsPerColumn * 2)), id: \.self) { index in
                     SeedTextField(
                         index: index,
                         text: $words[index],

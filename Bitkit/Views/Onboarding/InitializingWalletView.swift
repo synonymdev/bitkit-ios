@@ -115,13 +115,13 @@ struct InitializingWalletView: View {
                         }
                     }
                 }
-                .onChange(of: shouldFinish) { finish in
+                .onChange(of: shouldFinish) { _, finish in
                     if finish && percentage >= 99.9 {
                         percentage = 100
                         handleCompletion()
                     }
                 }
-                .onChange(of: percentage) { newPercentage in
+                .onChange(of: percentage) { _, newPercentage in
                     if newPercentage >= 99.9 && shouldFinish {
                         percentage = 100
                         handleCompletion()

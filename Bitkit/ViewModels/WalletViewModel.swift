@@ -198,7 +198,7 @@ class WalletViewModel: ObservableObject {
 
                     // MARK: Sync Events
 
-                    case let .syncProgress(syncType, progressPercent, syncCurrentBlockHeight, targetBlockHeight):
+                    case let .syncProgress(syncType, progressPercent, syncCurrentBlockHeight, _):
                         self.isSyncingWallet = true
                         if syncCurrentBlockHeight > self.currentBlockHeight {
                             self.currentBlockHeight = syncCurrentBlockHeight
@@ -351,6 +351,7 @@ class WalletViewModel: ObservableObject {
         return invoice.lowercased()
     }
 
+    @discardableResult
     func waitForNodeToRun(timeoutSeconds: Double = 10.0) async -> Bool {
         guard nodeLifecycleState != .running else { return true }
 
@@ -1002,7 +1003,7 @@ class WalletViewModel: ObservableObject {
 
     func wipe() async throws {
         Logger.warn("Starting wallet wipe", context: "WalletViewModel")
-        _ = await waitForNodeToRun(timeoutSeconds: 5.0)
+        await waitForNodeToRun(timeoutSeconds: 5.0)
 
         if nodeLifecycleState == .starting || nodeLifecycleState == .running {
             try await stopLightningNode(clearEventCallback: true)

@@ -62,7 +62,7 @@ struct GiftLoading: View {
         // Wait a bit for peers to connect if node is starting
         guard wallet.nodeLifecycleState == .running else {
             // Wait for node to be running
-            _ = await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
+            await wallet.waitForNodeToRun(timeoutSeconds: 30.0)
             return
         }
 

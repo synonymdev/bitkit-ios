@@ -160,7 +160,7 @@ struct SendAmountView: View {
                 }
             }
         }
-        .onChange(of: app.selectedWalletToPayFrom) { newValue in
+        .onChange(of: app.selectedWalletToPayFrom) { _, newValue in
             // Recalculate max sendable amount when switching wallet types
             if newValue == .onchain {
                 Task {
@@ -174,7 +174,7 @@ struct SendAmountView: View {
                 maxSendableAmount = nil
             }
         }
-        .onChange(of: wallet.selectedFeeRateSatsPerVByte) { _ in
+        .onChange(of: wallet.selectedFeeRateSatsPerVByte) {
             // Recalculate max sendable amount when fee rate becomes available or changes
             if app.selectedWalletToPayFrom == .onchain {
                 Task {

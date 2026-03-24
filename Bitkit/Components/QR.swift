@@ -48,7 +48,7 @@ struct QR: View {
                 cachedImage = generateQRCode(from: content)
             }
         }
-        .onChange(of: content) { newContent in
+        .onChange(of: content) { _, newContent in
             // Regenerate when content changes
             cachedContent = newContent
             cachedImage = generateQRCode(from: newContent)

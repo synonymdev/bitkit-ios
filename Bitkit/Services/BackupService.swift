@@ -143,7 +143,7 @@ class BackupService {
                 }
 
                 Logger.info("Backup succeeded for: '\(category.rawValue)'", context: "BackupService")
-            } catch let error as CancellationError {
+            } catch is CancellationError {
                 updateBackupStatus(category: category) { status in
                     BackupItemStatus(
                         synced: status.synced,
@@ -162,7 +162,7 @@ class BackupService {
                 Logger.error("Backup failed for: '\(category.rawValue)': \(error)", context: "BackupService")
             }
 
-            try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
+            _ = try? await ServiceQueue.background(.backup) { self.runningBackupTasks.removeValue(forKey: category) }
         }
 
         try? await ServiceQueue.background(.backup) { self.runningBackupTasks[category] = backupTask }
@@ -286,23 +286,25 @@ class BackupService {
     }
 
     private func startDataStoreListeners() {
-        // SETTINGS
-        SettingsViewModel.shared.settingsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .settings)
-            }
-            .store(in: &cancellables)
+        Task { @MainActor in
+            // SETTINGS
+            SettingsViewModel.shared.settingsPublisher
+                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self, !self.shouldSkipBackup() else { return }
+                    markBackupRequired(category: .settings)
+                }
+                .store(in: &self.cancellables)
 
-        // WIDGETS
-        SettingsViewModel.shared.widgetsPublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .widgets)
-            }
-            .store(in: &cancellables)
+            // WIDGETS
+            SettingsViewModel.shared.widgetsPublisher
+                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self, !self.shouldSkipBackup() else { return }
+                    markBackupRequired(category: .widgets)
+                }
+                .store(in: &self.cancellables)
+        }
 
         // TRANSFERS
         TransferStorage.shared.transfersChangedPublisher
@@ -332,13 +334,15 @@ class BackupService {
             .store(in: &cancellables)
 
         // APP STATE (UserDefaults changes, etc.)
-        SettingsViewModel.shared.appStatePublisher
-            .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self, !self.shouldSkipBackup() else { return }
-                markBackupRequired(category: .metadata)
-            }
-            .store(in: &cancellables)
+        Task { @MainActor in
+            SettingsViewModel.shared.appStatePublisher
+                .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    guard let self, !self.shouldSkipBackup() else { return }
+                    markBackupRequired(category: .metadata)
+                }
+                .store(in: &self.cancellables)
+        }
 
         // BLOCKTANK
         CoreService.shared.blocktank.stateChangedPublisher
@@ -510,28 +514,23 @@ class BackupService {
     }
 
     func getLatestBackupTime() async -> UInt64? {
-        do {
-            let timestamps = await withTaskGroup(of: UInt64?.self) { group in
-                for category in BackupCategory.allCases where category != .lightningConnections {
-                    group.addTask {
-                        await self.getRemoteBackupTimestamp(category: category)
-                    }
+        let timestamps = await withTaskGroup(of: UInt64?.self) { group in
+            for category in BackupCategory.allCases where category != .lightningConnections {
+                group.addTask {
+                    await self.getRemoteBackupTimestamp(category: category)
                 }
-
-                var results: [UInt64] = []
-                for await timestamp in group {
-                    if let ts = timestamp, ts > 0 {
-                        results.append(ts)
-                    }
-                }
-                return results
             }
 
-            return timestamps.max()
-        } catch {
-            Logger.warn("Failed to get VSS backup timestamp: \(error)", context: "BackupService")
-            return nil
+            var results: [UInt64] = []
+            for await timestamp in group {
+                if let ts = timestamp, ts > 0 {
+                    results.append(ts)
+                }
+            }
+            return results
         }
+
+        return timestamps.max()
     }
 
     private func getRemoteBackupTimestamp(category: BackupCategory) async -> UInt64? {

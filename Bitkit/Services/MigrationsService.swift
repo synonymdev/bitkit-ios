@@ -800,7 +800,7 @@ extension MigrationsService {
             if order.state2 != .paid {
                 try? TransferStorage.shared.markSettled(id: transfer.id, settledAt: now)
                 Logger.info(
-                    "Cleanup: settled invalid migration transfer \(transfer.id) for order \(orderId) (state: \(order.state2))",
+                    "Cleanup: settled invalid migration transfer \(transfer.id) for order \(orderId) (state: \(String(describing: order.state2)))",
                     context: "Migration"
                 )
             }
@@ -2429,7 +2429,7 @@ extension MigrationsService {
 
             // Only create transfers for orders actually paid and awaiting channel
             guard order.state2 == .paid else {
-                Logger.debug("Skipping order \(orderId) with state \(order.state2) for transfer creation", context: "Migration")
+                Logger.debug("Skipping order \(orderId) with state \(String(describing: order.state2)) for transfer creation", context: "Migration")
                 continue
             }
 

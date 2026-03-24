@@ -186,7 +186,7 @@ struct BoostSheet: View {
                             }) {
                                 HStack(spacing: 8) {
                                     VStack(alignment: .trailing, spacing: 2) {
-                                        if let feeRate {
+                                        if feeRate != nil {
                                             HStack(spacing: 2) {
                                                 BodySSBText("₿ \(estimatedFeeSats)")
 
@@ -194,7 +194,7 @@ struct BoostSheet: View {
                                                     Image("pencil")
                                                         .resizable()
                                                         .frame(width: 16, height: 16)
-                                                        .foregroundColor(feeRate != nil ? .textPrimary : .gray)
+                                                        .foregroundColor(.textPrimary)
                                                 }
                                             }
                                         } else if fetchingFees {

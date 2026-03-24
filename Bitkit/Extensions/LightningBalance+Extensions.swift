@@ -6,18 +6,18 @@ extension LightningBalance {
     /// Get the amount in satoshis for any LightningBalance case
     var amountSats: UInt64 {
         switch self {
-        case let .claimableOnChannelClose(details):
-            return details.amountSatoshis
-        case let .claimableAwaitingConfirmations(details):
-            return details.amountSatoshis
-        case let .contentiousClaimable(details):
-            return details.amountSatoshis
-        case let .maybeTimeoutClaimableHtlc(details):
-            return details.amountSatoshis
-        case let .maybePreimageClaimableHtlc(details):
-            return details.amountSatoshis
-        case let .counterpartyRevokedOutputClaimable(details):
-            return details.amountSatoshis
+        case let .claimableOnChannelClose(_, _, amount, _, _, _, _, _):
+            return amount
+        case let .claimableAwaitingConfirmations(_, _, amount, _, _):
+            return amount
+        case let .contentiousClaimable(_, _, amount, _, _, _):
+            return amount
+        case let .maybeTimeoutClaimableHtlc(_, _, amount, _, _, _):
+            return amount
+        case let .maybePreimageClaimableHtlc(_, _, amount, _, _):
+            return amount
+        case let .counterpartyRevokedOutputClaimable(_, _, amount):
+            return amount
         }
     }
 
@@ -26,8 +26,8 @@ extension LightningBalance {
         switch self {
         case .claimableOnChannelClose:
             return "Claimable on Channel Close"
-        case let .claimableAwaitingConfirmations(details):
-            return "Claimable Awaiting Confirmations (Height: \(details.confirmationHeight))"
+        case let .claimableAwaitingConfirmations(_, _, _, confirmationHeight, _):
+            return "Claimable Awaiting Confirmations (Height: \(confirmationHeight))"
         case .contentiousClaimable:
             return "Contentious Claimable"
         case .maybeTimeoutClaimableHtlc:
@@ -42,12 +42,12 @@ extension LightningBalance {
     /// Get the block height at which funds become claimable (for timelocked balances)
     var claimableAtHeight: UInt32? {
         switch self {
-        case let .claimableAwaitingConfirmations(details):
-            return details.confirmationHeight
-        case let .contentiousClaimable(details):
-            return details.timeoutHeight
-        case let .maybeTimeoutClaimableHtlc(details):
-            return details.claimableHeight
+        case let .claimableAwaitingConfirmations(_, _, _, confirmationHeight, _):
+            return confirmationHeight
+        case let .contentiousClaimable(_, _, _, timeoutHeight, _, _):
+            return timeoutHeight
+        case let .maybeTimeoutClaimableHtlc(_, _, _, claimableHeight, _, _):
+            return claimableHeight
         default:
             return nil
         }

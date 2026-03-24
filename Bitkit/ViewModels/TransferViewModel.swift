@@ -75,7 +75,7 @@ class TransferViewModel: ObservableObject {
     }
 
     deinit {
-        RunLoop.main.perform { [weak self] in
+        Task { @MainActor [weak self] in
             Logger.debug("Stopping poll for order")
             self?.stopPolling()
         }
@@ -210,41 +210,43 @@ class TransferViewModel: ObservableObject {
         Logger.debug("Starting to watch order \(orderId)")
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: frequencySecs, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            refreshTask?.cancel()
-            refreshTask = Task { @MainActor [weak self] in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
+                refreshTask?.cancel()
+                refreshTask = Task { @MainActor [weak self] in
+                    guard let self else { return }
 
-                do {
-                    Logger.debug("Refreshing order \(orderId)")
-                    let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
-                    guard let order = orders.first else {
-                        Logger.error("Order not found \(orderId)", context: "TransferViewModel")
-                        return
-                    }
+                    do {
+                        Logger.debug("Refreshing order \(orderId)")
+                        let orders = try await coreService.blocktank.orders(orderIds: [orderId], refresh: true)
+                        guard let order = orders.first else {
+                            Logger.error("Order not found \(orderId)", context: "TransferViewModel")
+                            return
+                        }
 
-                    let step = try await updateOrder(order: order)
-                    lightningSetupStep = step
-                    Logger.debug("LN setup step: \(step)")
+                        let step = try await updateOrder(order: order)
+                        lightningSetupStep = step
+                        Logger.debug("LN setup step: \(step)")
 
-                    if order.state2 == .expired {
-                        Logger.error("Order expired \(orderId)", context: "TransferViewModel")
+                        if order.state2 == .expired {
+                            Logger.error("Order expired \(orderId)", context: "TransferViewModel")
+                            stopPolling()
+                            return
+                        }
+
+                        if step > 2 {
+                            Logger.debug("Order settled, stopping polling")
+
+                            // Sync transfer states when order completes
+                            try? await transferService.syncTransferStates()
+
+                            stopPolling()
+                            return
+                        }
+                    } catch {
+                        Logger.error(error, context: "Failed to watch order")
                         stopPolling()
-                        return
                     }
-
-                    if step > 2 {
-                        Logger.debug("Order settled, stopping polling")
-
-                        // Sync transfer states when order completes
-                        try? await transferService.syncTransferStates()
-
-                        stopPolling()
-                        return
-                    }
-                } catch {
-                    Logger.error(error, context: "Failed to watch order")
-                    stopPolling()
                 }
             }
         }
