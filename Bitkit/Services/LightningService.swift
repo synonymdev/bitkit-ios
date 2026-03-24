@@ -95,7 +95,8 @@ class LightningService {
                 onchainWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 lightningWalletSyncIntervalSecs: Env.walletSyncIntervalSecs,
                 feeRateCacheUpdateIntervalSecs: Env.walletSyncIntervalSecs
-            )
+            ),
+            connectionTimeoutSecs: 10
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
@@ -124,19 +125,46 @@ class LightningService {
         builder.setEntropyBip39Mnemonic(mnemonic: mnemonic, passphrase: passphrase)
 
         try await ServiceQueue.background(.ldk) {
-            if !lnurlAuthServerUrl.isEmpty {
-                self.node = try builder.buildWithVssStore(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    lnurlAuthServerUrl: lnurlAuthServerUrl,
-                    fixedHeaders: [:]
+            do {
+                if !lnurlAuthServerUrl.isEmpty {
+                    self.node = try builder.buildWithVssStore(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        lnurlAuthServerUrl: lnurlAuthServerUrl,
+                        fixedHeaders: [:]
+                    )
+                } else {
+                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        fixedHeaders: [:]
+                    )
+                }
+            } catch let error as BuildError {
+                guard case .DangerousValue = error else { throw error }
+
+                // Stale ChannelMonitor vs ChannelManager — retry with accept_stale to recover.
+                Logger.warn(
+                    "Build failed with DangerousValue. Retrying with accept_stale_channel_monitors for recovery.",
+                    context: "Recovery"
                 )
-            } else {
-                self.node = try builder.buildWithVssStoreAndFixedHeaders(
-                    vssUrl: vssUrl,
-                    storeId: storeId,
-                    fixedHeaders: [:]
-                )
+                builder.setAcceptStaleChannelMonitors(accept: true)
+
+                if !lnurlAuthServerUrl.isEmpty {
+                    self.node = try builder.buildWithVssStore(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        lnurlAuthServerUrl: lnurlAuthServerUrl,
+                        fixedHeaders: [:]
+                    )
+                } else {
+                    self.node = try builder.buildWithVssStoreAndFixedHeaders(
+                        vssUrl: vssUrl,
+                        storeId: storeId,
+                        fixedHeaders: [:]
+                    )
+                }
+                Logger.info("Stale monitor recovery: build succeeded with accept_stale", context: "Recovery")
             }
         }
 

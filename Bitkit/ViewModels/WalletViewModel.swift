@@ -140,7 +140,7 @@ class WalletViewModel: ObservableObject {
                 MigrationsService.shared.pendingChannelMigration = nil
             }
 
-            // If no local migration data, try fetching from RN remote backup (one-time)
+            // // If no local migration data, try fetching from RN remote backup (one-time)
             // if channelMigration == nil {
             //     let (remoteMigration, allRetrieved) = await fetchOrphanedChannelMonitorsIfNeeded(walletIndex: walletIndex)
             //     if let remoteMigration {
