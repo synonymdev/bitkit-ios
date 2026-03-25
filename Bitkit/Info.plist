@@ -23,6 +23,10 @@
 	<string>$(E2E_BACKEND)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bitkit uses Bluetooth to connect to your Trezor hardware wallet for signing transactions.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Bitkit uses Bluetooth to connect to your Trezor hardware wallet for signing transactions.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Bitkit uses Face ID to securely authenticate access to your wallet and protect your Bitcoin.</string>
 	<key>UIAppFonts</key>

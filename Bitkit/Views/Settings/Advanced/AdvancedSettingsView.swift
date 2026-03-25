@@ -4,6 +4,7 @@ struct AdvancedSettingsView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var settings: SettingsViewModel
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
     @State private var showingResetAlert = false
 
     var body: some View {
@@ -65,6 +66,20 @@ struct AdvancedSettingsView: View {
                             SettingsListLabel(title: t("settings__adv__rgs_server"))
                         }
                         .accessibilityIdentifier("RGSServer")
+                    }
+
+                    // HARDWARE WALLET Section
+                    if showDevSettings {
+                        VStack(alignment: .leading, spacing: 0) {
+                            CaptionMText("Hardware Wallet")
+                                .padding(.top, 24)
+                                .padding(.bottom, 8)
+
+                            NavigationLink(value: Route.trezor) {
+                                SettingsListLabel(title: "Trezor")
+                            }
+                            .accessibilityIdentifier("Trezor")
+                        }
                     }
 
                     // OTHER Section

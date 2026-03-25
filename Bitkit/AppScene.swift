@@ -26,6 +26,7 @@ struct AppScene: View {
     @StateObject private var transferTracking: TransferTrackingManager
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
+    @State private var trezorViewModel = TrezorViewModel()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -131,6 +132,7 @@ struct AppScene: View {
             .environmentObject(tagManager)
             .environmentObject(transferTracking)
             .environmentObject(channelDetails)
+            .environment(trezorViewModel)
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
