@@ -1110,6 +1110,10 @@ extension LightningService {
             channelCache[channelIdString]
         }
     }
+
+    @MainActor var channelCacheCount: Int {
+        channelCache.count
+    }
 }
 
 // MARK: Events
