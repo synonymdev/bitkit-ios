@@ -154,7 +154,7 @@ class TrezorBLEManager: NSObject {
     /// Log to both Logger and in-app TrezorDebugLog
     private func debugLog(_ message: String) {
         Logger.debug(message, context: "TrezorBLEManager")
-        DispatchQueue.main.async {
+        Task { @MainActor in
             TrezorDebugLog.shared.log("[BLE] \(message)")
         }
     }
@@ -181,7 +181,7 @@ class TrezorBLEManager: NSObject {
         discoveredPeripherals.removeAll()
         peripheralsLock.unlock()
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.discoveredDevices.removeAll()
             self.isScanning = true
         }
@@ -199,7 +199,7 @@ class TrezorBLEManager: NSObject {
         debugLog("Scan stopped")
         centralManager?.stopScan()
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.isScanning = false
         }
     }
@@ -542,12 +542,12 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         debugLog("BT state: \(central.state.rawValue)")
 
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.bluetoothState = central.state
         }
 
         if central.state != .poweredOn && isScanning {
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self.isScanning = false
             }
         }
@@ -571,7 +571,7 @@ extension TrezorBLEManager: CBCentralManagerDelegate {
         )
 
         // Update on main thread
-        DispatchQueue.main.async {
+        Task { @MainActor in
             if let index = self.discoveredDevices.firstIndex(where: { $0.path == path }) {
                 self.discoveredDevices[index] = device
             } else {

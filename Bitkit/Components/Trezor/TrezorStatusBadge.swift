@@ -97,7 +97,10 @@ private struct PulsingDots: View {
     }
 }
 
-/// Reusable error banner for Trezor views
+/// Reusable error banner for Trezor views.
+/// NOTE: Intentionally used instead of app.toast() in the Trezor dev dashboard.
+/// Inline error display provides better visibility for debugging BLE/THP protocol
+/// issues during development. See CLAUDE.md for production error handling patterns.
 struct TrezorErrorBanner: View {
     let message: String
 

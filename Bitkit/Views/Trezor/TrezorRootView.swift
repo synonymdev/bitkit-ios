@@ -202,6 +202,7 @@ struct TrezorPairingCodeSheet: View {
     @Environment(TrezorViewModel.self) private var trezor
     @Environment(\.dismiss) private var dismiss
     @State private var code: String = ""
+    @State private var hasSubmitted = false
 
     private let digitCount = 6
 
@@ -243,6 +244,8 @@ struct TrezorPairingCodeSheet: View {
                 }
 
                 Button(action: {
+                    guard !hasSubmitted else { return }
+                    hasSubmitted = true
                     trezor.submitPairingCode(code)
                     dismiss()
                 }) {
@@ -254,8 +257,8 @@ struct TrezorPairingCodeSheet: View {
                         .background(Color.white)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .disabled(code.count < digitCount)
-                .opacity(code.count < digitCount ? 0.5 : 1.0)
+                .disabled(code.count < digitCount || hasSubmitted)
+                .opacity(code.count < digitCount || hasSubmitted ? 0.5 : 1.0)
             }
             .padding(.horizontal, 16)
         }
@@ -265,6 +268,8 @@ struct TrezorPairingCodeSheet: View {
         .interactiveDismissDisabled()
         .onChange(of: code) { newValue in
             if newValue.count == digitCount {
+                guard !hasSubmitted else { return }
+                hasSubmitted = true
                 trezor.submitPairingCode(newValue)
                 dismiss()
             }
@@ -414,6 +419,10 @@ private struct SecureInputField: View {
 struct TrezorDebugLogPanel: View {
     @Binding var isExpanded: Bool
     private var debugLog = TrezorDebugLog.shared
+
+    init(isExpanded: Binding<Bool>) {
+        _isExpanded = isExpanded
+    }
 
     var body: some View {
         VStack(spacing: 0) {
