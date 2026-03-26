@@ -8,7 +8,7 @@ final class CameraManager {
 
     var hasPermission: Bool = false
 
-    init() {
+    private init() {
         refreshPermission()
     }
 

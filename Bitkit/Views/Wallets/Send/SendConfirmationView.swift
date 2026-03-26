@@ -28,13 +28,9 @@ struct SendConfirmationView: View {
     }
 
     var canSwitchWallet: Bool {
-        if app.scannedOnchainInvoice != nil && app.scannedLightningInvoice != nil {
-            let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
-            guard amount >= UInt64(Env.dustLimit) else { return false }
-            return amount <= wallet.spendableOnchainBalanceSats && amount <= wallet.maxSendLightningSats
-        }
-
-        return false
+        guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
+        return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
     }
 
     /// `.instant` is only valid when paying from Lightning; align `selectedSpeed` with the current sat/vB on savings.

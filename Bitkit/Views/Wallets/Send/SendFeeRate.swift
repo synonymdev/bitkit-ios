@@ -14,12 +14,9 @@ struct SendFeeRate: View {
 
     /// Both on-chain and Lightning options exist and the user can pay from either (BIP21 / unified invoice).
     private var canSwitchWallet: Bool {
-        if app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil {
-            let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
-            guard amount >= UInt64(Env.dustLimit) else { return false }
-            return amount <= wallet.spendableOnchainBalanceSats && amount <= wallet.maxSendLightningSats
-        }
-        return false
+        guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
+        return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
     }
 
     private var currentCustomFeeRate: UInt32 {
