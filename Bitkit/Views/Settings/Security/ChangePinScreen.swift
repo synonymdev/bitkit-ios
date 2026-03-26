@@ -5,11 +5,15 @@ struct ChangePinScreen: View {
     @EnvironmentObject private var sheets: SheetViewModel
 
     var navTitle: String {
-        settings.pinEnabled ? t("security__pin_disable_title") : t("settings__security__pin")
+        settings.pinEnabled ? t("security__pin_change_title") : t("settings__security__pin")
     }
 
     var description: String {
-        settings.pinEnabled ? t("security__pin_disable_text") : t("security__pin_security_text")
+        settings.pinEnabled ? t("security__pin_change_text") : t("security__pin_security_text")
+    }
+
+    var image: String {
+        settings.pinEnabled ? "shield-check-figure" : "shield-figure"
     }
 
     var body: some View {
@@ -21,53 +25,32 @@ struct ChangePinScreen: View {
 
             Spacer()
 
-            Image("shield-figure")
+            Image(image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: 256, height: 256)
                 .frame(maxWidth: .infinity)
-                .padding(.top, 32)
 
             Spacer()
 
             HStack(alignment: .center, spacing: 16) {
                 if settings.pinEnabled {
                     CustomButton(title: t("security__cp_title"), variant: .secondary) {
-                        sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
+                        sheets.showSheet(.security, data: SecurityConfig(initialRoute: .changePin))
                     }
-                    .accessibilityIdentifier("PINCode")
+                    .accessibilityIdentifier("ChangePin")
 
                     CustomButton(title: t("security__pin_disable_button")) {
-                        sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
+                        sheets.showSheet(.security, data: SecurityConfig(initialRoute: .disablePin))
                     }
                     .accessibilityIdentifier("DisablePin")
                 } else {
                     CustomButton(title: t("security__pin_enable_button")) {
-                        sheets.showSheet(.security, data: SecurityConfig(showLaterButton: false))
+                        sheets.showSheet(.security, data: SecurityConfig(initialRoute: .setupPin))
                     }
                     .accessibilityIdentifier("EnablePin")
                 }
             }
-
-            // CustomButton(
-            //     title: t("security__pin_disable_button"),
-            //     destination: PinCheckView(
-            //         title: t("security__pin_enter"),
-            //         explanation: "",
-            //         onCancel: {},
-            //         onPinVerified: { pin in
-            //             do {
-            //                 try settings.removePin(pin: pin)
-            //                 dismiss()
-            //             } catch {
-            //                 Logger.error("Failed to remove PIN: \(error)", context: "DisablePinView")
-            //                 // Still dismiss even if there's an error, as the PIN was verified
-            //                 dismiss()
-            //             }
-            //         }
-            //     )
-            // )
-            // .accessibilityIdentifier("DisablePin")
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

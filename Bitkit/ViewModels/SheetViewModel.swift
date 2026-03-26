@@ -300,8 +300,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .security else { return nil }
             let securityConfig = config.data as? SecurityConfig
-            let showLaterButton = securityConfig?.showLaterButton ?? false
-            return SecuritySheetItem(showLaterButton: showLaterButton)
+            let initialRoute = securityConfig?.initialRoute ?? .intro
+            return SecuritySheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {

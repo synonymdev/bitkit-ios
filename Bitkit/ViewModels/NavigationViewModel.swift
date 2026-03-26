@@ -110,10 +110,11 @@ class NavigationViewModel: ObservableObject {
     }
 
     func navigateBack() {
+        guard !path.isEmpty else { return }
         path.removeLast()
     }
 
     func reset() {
-        path.removeLast(path.count)
+        path.removeAll()
     }
 }

@@ -10,6 +10,7 @@ enum SendRoute: Hashable {
     case feeCustom
     case tag
     case quickpay
+    case pin
     case pending(paymentHash: String)
     case success(paymentId: String)
     case failure
@@ -49,6 +50,7 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var hasValidatedAfterSync = false
+    @State private var pinCheckContinuation: CheckedContinuation<Bool, Never>?
 
     /// Show sync overlay when node is not ready for payments
     /// For lightning: need node running AND at least one usable channel (peer connected).
@@ -257,6 +259,26 @@ struct SendSheet: View {
         hasValidatedAfterSync = true
     }
 
+    private func requestPinCheck() async -> Bool {
+        // Prevent stacking multiple PIN screens if already presented.
+        if navigationPath.last != .pin {
+            navigationPath.append(.pin)
+        }
+
+        return await withCheckedContinuation { continuation in
+            pinCheckContinuation = continuation
+        }
+    }
+
+    private func resolvePinCheck(_ approved: Bool) {
+        pinCheckContinuation?.resume(returning: approved)
+        pinCheckContinuation = nil
+
+        if navigationPath.last == .pin {
+            navigationPath.removeLast()
+        }
+    }
+
     @ViewBuilder
     private func viewForRoute(_ route: SendRoute) -> some View {
         switch route {
@@ -269,7 +291,7 @@ struct SendSheet: View {
         case .utxoSelection:
             SendUtxoSelectionView(navigationPath: $navigationPath)
         case .confirm:
-            SendConfirmationView(navigationPath: $navigationPath)
+            SendConfirmationView(navigationPath: $navigationPath, requestPinCheck: requestPinCheck)
         case .feeRate:
             SendFeeRate(navigationPath: $navigationPath)
         case .feeCustom:
@@ -278,6 +300,8 @@ struct SendSheet: View {
             SendTagScreen(navigationPath: $navigationPath)
         case .quickpay:
             SendQuickpay(navigationPath: $navigationPath)
+        case .pin:
+            SendPinScreen(onCancel: { resolvePinCheck(false) }, onPinVerified: { resolvePinCheck(true) })
         case let .pending(paymentHash):
             SendPendingScreen(paymentHash: paymentHash, navigationPath: $navigationPath)
         case let .success(paymentId):
@@ -287,7 +311,7 @@ struct SendSheet: View {
         case .lnurlPayAmount:
             LnurlPayAmount(navigationPath: $navigationPath)
         case .lnurlPayConfirm:
-            LnurlPayConfirm(navigationPath: $navigationPath)
+            LnurlPayConfirm(navigationPath: $navigationPath, requestPinCheck: requestPinCheck)
         case .lnurlWithdrawAmount:
             LnurlWithdrawAmount {
                 navigationPath.append(.lnurlWithdrawConfirm)

@@ -152,10 +152,10 @@ struct AuthCheck: View {
                 if !errorMessage.isEmpty {
                     BodySText(errorMessage, textColor: .brandAccent)
                         .frame(maxWidth: .infinity, alignment: .center)
+                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                         .onTapGesture {
                             sheets.showSheet(.forgotPin)
                         }
-                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                 }
             }
             .frame(maxWidth: .infinity)

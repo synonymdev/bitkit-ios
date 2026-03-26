@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct PinCheckView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var session: SessionManager
+
     let title: String
     let explanation: String
     let onCancel: () -> Void
@@ -9,8 +16,6 @@ struct PinCheckView: View {
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
     @State private var errorIdentifier: String?
-    @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
 
     private func handlePinChange(_ pin: String) {
         if pin.count == 4 {
@@ -39,9 +44,7 @@ struct PinCheckView: View {
         Haptics.notify(.error)
 
         if settings.hasExceededPinAttempts() {
-            // Exceeded maximum attempts - this should be handled by the app level
-            // TODO: wipe app
-            errorIdentifier = "WrongPIN"
+            wipeWallet()
             return
         }
 
@@ -58,6 +61,23 @@ struct PinCheckView: View {
         }
     }
 
+    private func wipeWallet() {
+        Task {
+            do {
+                try await AppReset.wipe(
+                    app: app,
+                    wallet: wallet,
+                    session: session,
+                    toastType: .warning
+                )
+                sheets.hideSheet()
+            } catch {
+                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinCheckView")
+                app.toast(error)
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationBar(title: title, showMenuButton: false)
@@ -71,6 +91,9 @@ struct PinCheckView: View {
                 CaptionText(errorMessage, textColor: .brandAccent)
                     .padding(.bottom, 16)
                     .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
+                    .onTapGesture {
+                        sheets.showSheet(.forgotPin)
+                    }
             }
 
             // PIN input component
@@ -110,7 +133,11 @@ struct PinCheckView: View {
                 print("PIN verified!")
             }
         )
+        .environmentObject(AppViewModel())
         .environmentObject(SettingsViewModel.shared)
+        .environmentObject(SheetViewModel())
+        .environmentObject(WalletViewModel())
+        .environmentObject(SessionManager())
     }
     .preferredColorScheme(.dark)
 }

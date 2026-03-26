@@ -11,9 +11,9 @@ struct SendConfirmationView: View {
     @EnvironmentObject var tagManager: TagManager
 
     @Binding var navigationPath: [SendRoute]
+    let requestPinCheck: () async -> Bool
+
     @State private var showDetails = false
-    @State private var showPinCheck = false
-    @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var transactionFee: Int = 0
@@ -170,9 +170,8 @@ struct SendConfirmationView: View {
                             throw CancellationError()
                         }
                     } else {
-                        showPinCheck = true
-                        let shouldProceed = try await waitForPinCheck()
-                        if !shouldProceed {
+                        let shouldProceed = await requestPinCheck()
+                        guard shouldProceed else {
                             throw CancellationError()
                         }
                     }
@@ -232,20 +231,6 @@ struct SendConfirmationView: View {
             if let warning = currentWarning {
                 Text(warning.message)
             }
-        }
-        .navigationDestination(isPresented: $showPinCheck) {
-            PinCheckView(
-                title: t("security__pin_send_title"),
-                explanation: t("security__pin_send"),
-                onCancel: {
-                    pinCheckContinuation?.resume(returning: false)
-                    pinCheckContinuation = nil
-                },
-                onPinVerified: { _ in
-                    pinCheckContinuation?.resume(returning: true)
-                    pinCheckContinuation = nil
-                }
-            )
         }
     }
 
@@ -456,12 +441,6 @@ struct SendConfirmationView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func waitForPinCheck() async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
-            pinCheckContinuation = continuation
         }
     }
 
