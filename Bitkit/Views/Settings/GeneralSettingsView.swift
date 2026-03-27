@@ -42,7 +42,7 @@ struct GeneralSettingsView: View {
                 NavigationLink(value: Route.widgetsSettings) {
                     SettingsRow(
                         title: t("settings__widgets__nav_title"),
-                        iconName: "cube",
+                        iconName: "stack",
                         rightText: settings.showWidgets ? t("common__on") : t("common__off")
                     )
                 }
