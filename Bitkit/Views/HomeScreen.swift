@@ -17,16 +17,6 @@ struct HomeScreen: View {
         scrollPosition ?? 0
     }
 
-    /// Safe area + header + spacing
-    private var topPadding: CGFloat {
-        windowSafeAreaInsets.top + 48 + 16
-    }
-
-    /// Safe area + tab bar + spacing
-    private var bottomPadding: CGFloat {
-        windowSafeAreaInsets.bottom + 64 + 32
-    }
-
     var body: some View {
         ZStack(alignment: .top) {
             Header(showWidgetEditButton: currentPage == 1, isEditingWidgets: $isEditingWidgets)
@@ -74,7 +64,7 @@ struct HomeScreen: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: topPadding)
+                .frame(height: ScreenLayout.topPaddingWithSafeArea)
 
                 Spacer()
 
@@ -83,7 +73,7 @@ struct HomeScreen: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: bottomPadding)
+                .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
             }
             .ignoresSafeArea()
             .allowsHitTesting(false)

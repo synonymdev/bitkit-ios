@@ -10,16 +10,6 @@ struct HomeWalletView: View {
         return activity.latestActivities?.isEmpty == false
     }
 
-    /// Safe area + header + spacing
-    private var topPadding: CGFloat {
-        windowSafeAreaInsets.top + 48 + 16
-    }
-
-    /// Safe area + tab bar + spacing
-    private var bottomPadding: CGFloat {
-        windowSafeAreaInsets.bottom + 64 + 32
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             MoneyStack(
@@ -66,8 +56,8 @@ struct HomeWalletView: View {
                 WalletOnboardingView(type: .home)
             }
         }
-        .padding(.top, topPadding)
-        .padding(.bottom, bottomPadding)
+        .padding(.top, ScreenLayout.topPaddingWithSafeArea)
+        .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
         .padding(.horizontal)
         .animation(.spring(response: 0.3), value: hasActivity)
     }

@@ -18,16 +18,6 @@ struct HomeWidgetsView: View {
         }
     }
 
-    /// Safe area + header + spacing
-    private var topPadding: CGFloat {
-        windowSafeAreaInsets.top + 48 + 16
-    }
-
-    /// Safe area + tab bar + spacing
-    private var bottomPadding: CGFloat {
-        windowSafeAreaInsets.bottom + 64 + 32
-    }
-
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -55,8 +45,8 @@ struct HomeWidgetsView: View {
                 .accessibilityIdentifier("WidgetsAdd")
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(.top, topPadding)
-            .padding(.bottom, bottomPadding)
+            .padding(.top, ScreenLayout.topPaddingWithSafeArea)
+            .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
             .padding(.horizontal)
         }
     }

@@ -145,13 +145,13 @@ struct PlaceholderWidget: View {
 // MARK: - Widget Types
 
 enum WidgetType: String, CaseIterable, Codable {
-    case suggestions
     case price
     case news
     case blocks
     case facts
-    case calculator
     case weather
+    case calculator
+    case suggestions
 }
 
 // MARK: - WidgetsViewModel

@@ -22,37 +22,32 @@ struct SecondaryButtonView: View {
         .frame(maxWidth: size == .large ? .infinity : nil)
         .frame(height: buttonHeight)
         .padding(.horizontal, 16)
-        // TODO: Add background blur
-        .background(
-            RoundedRectangle(cornerRadius: 64)
-                .fill(isPressed ? Color.white10 : Color.white01)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 64)
-                        .strokeBorder(borderColor, lineWidth: strokeWidth)
-                )
-        )
+        .background(isPressed ? Color.white10 : Color.clear)
+        .background(BlurView())
+        .overlay(RoundedRectangle(cornerRadius: 64).strokeBorder(borderColor, lineWidth: strokeWidth))
+        .cornerRadius(64)
         .contentShape(Rectangle())
     }
 
     private var textColor: Color {
-        return isDisabled ? .white32 : .white80
+        isDisabled ? .white32 : .white80
     }
 
     private var borderColor: Color {
-        return isDisabled ? .clear : Color(hex: 0x3A3A3A)
+        isDisabled ? .clear : .gray4
     }
 
     private var buttonHeight: CGFloat {
         switch size {
-        case .small: return 37
-        case .large: return 56
+        case .small: 37
+        case .large: 56
         }
     }
 
     private var strokeWidth: CGFloat {
         switch size {
-        case .small: return 1
-        case .large: return 2
+        case .small: 1
+        case .large: 2
         }
     }
 }
