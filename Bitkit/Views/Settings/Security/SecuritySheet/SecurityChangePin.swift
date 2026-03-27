@@ -111,8 +111,7 @@ struct SecurityChangePin: View {
 
         // PINs match - update PIN
         do {
-            try settings.removePin(pin: currentPin, resetSettings: false)
-            try settings.setPin(newPin)
+            try settings.changePin(currentPin: currentPin, newPin: newPin)
             pinInput = ""
             errorMessage = ""
             errorIdentifier = nil

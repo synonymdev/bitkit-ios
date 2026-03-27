@@ -85,4 +85,13 @@ extension SettingsViewModel {
 
         updatePinEnabledState()
     }
+
+    func changePin(currentPin: String, newPin: String) throws {
+        guard pinCheck(pin: currentPin) else {
+            throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
+        }
+
+        try Keychain.updateString(key: .securityPin, str: newPin)
+        updatePinEnabledState()
+    }
 }
