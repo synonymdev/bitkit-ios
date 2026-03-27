@@ -19,16 +19,10 @@ struct ShopMain: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(
-                title: t("other__shop__main__nav_title"),
-                showMenuButton: false
-            )
+            NavigationBar(title: t("other__shop__main__nav_title"))
 
-            ShopWebView(
-                url: uri,
-                onMessage: handleMessage
-            )
-            .padding(.top, 16)
+            ShopWebView(url: uri, onMessage: handleMessage)
+                .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)

@@ -5,6 +5,7 @@ struct SendEnterManuallyView: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+
     @Binding var navigationPath: [SendRoute]
     @FocusState private var isTextEditorFocused: Bool
 
@@ -77,6 +78,14 @@ struct SendEnterManuallyView: View {
         guard !uri.isEmpty, app.isManualEntryInputValid else { return }
 
         do {
+            wallet.resetSendState(speed: settings.defaultTransactionSpeed)
+
+            do {
+                try await wallet.setFeeRate(speed: settings.defaultTransactionSpeed)
+            } catch {
+                Logger.error("Failed to set default fee rate: \(error)")
+            }
+
             try await app.handleScannedData(uri)
 
             if let route = PaymentNavigationHelper.appropriateSendRoute(

@@ -38,7 +38,6 @@ enum Route: Hashable {
     case shopIntro
     case shopDiscover
     case shopMain(page: String)
-    case shopMap
 
     // Widgets
     case widgetsIntro

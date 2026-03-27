@@ -1,24 +1,18 @@
-import Foundation
-
 enum WalletType {
     case onchain
     case lightning
 
     var title: String {
         switch self {
-        case .onchain:
-            return t("lightning__savings").uppercased()
-        case .lightning:
-            return t("lightning__spending").uppercased()
+        case .onchain: t("lightning__savings")
+        case .lightning: t("lightning__spending")
         }
     }
 
     var imageAsset: String {
         switch self {
-        case .onchain:
-            return "btc"
-        case .lightning:
-            return "ln"
+        case .onchain: "btc"
+        case .lightning: "ln"
         }
     }
 

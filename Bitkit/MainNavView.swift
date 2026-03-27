@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
+    @Environment(CameraManager.self) private var cameraManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
@@ -165,12 +166,14 @@ struct MainNavView: View {
         .accentColor(.white)
         .overlay {
             TabBar()
+                .ignoresSafeArea(.keyboard)
             DrawerView()
         }
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                // Update notification permission in case user changed it in OS settings
+                // Update permissions in case user changed them in OS settings
                 notificationManager.updateNotificationPermission()
+                cameraManager.refreshPermission()
 
                 guard settings.readClipboard else { return }
 
@@ -276,8 +279,8 @@ struct MainNavView: View {
                 case let .activityDetail(activity): ActivityItemView(item: activity)
                 case let .activityExplorer(activity): ActivityExplorerView(item: activity)
                 case .buyBitcoin: BuyBitcoinView()
-                case .savingsWallet: SavingsWalletView()
-                case .spendingWallet: SpendingWalletView()
+                case .savingsWallet: SavingsWalletScreen()
+                case .spendingWallet: SpendingWalletScreen()
                 case .scanner: ScannerScreen()
 
                 // Transfer
@@ -311,7 +314,6 @@ struct MainNavView: View {
                 case .shopIntro: ShopIntro()
                 case .shopDiscover: ShopDiscover()
                 case let .shopMain(page): ShopMain(page: page)
-                case .shopMap: ShopMap()
 
                 // Widgets
                 case .widgetsIntro: WidgetsIntroView()

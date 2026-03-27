@@ -1,6 +1,30 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Layout constants (header, tab bar, spacing) used for content margins across wallet/home screens
+
+enum ScreenLayout {
+    static let headerHeight: CGFloat = 48
+    static let headerSpacing: CGFloat = 16
+    static let tabBarHeight: CGFloat = 64
+    static let bottomSpacing: CGFloat = 32
+
+    /// Safe area top + header + spacing (e.g. HomeScreen, HomeWalletView, HomeWidgetsView)
+    static var topPaddingWithSafeArea: CGFloat {
+        windowSafeAreaInsets.top + headerHeight + headerSpacing
+    }
+
+    /// Header + spacing only, when view is already inside safe area (e.g. SavingsWalletScreen, SpendingWalletScreen)
+    static var topPaddingWithoutSafeArea: CGFloat {
+        headerHeight + headerSpacing
+    }
+
+    /// Safe area bottom + tab bar + spacing
+    static var bottomPaddingWithSafeArea: CGFloat {
+        windowSafeAreaInsets.bottom + tabBarHeight + bottomSpacing
+    }
+}
+
 private var hasBottomSafeArea: Bool {
     windowSafeAreaInsets.bottom > 0
 }

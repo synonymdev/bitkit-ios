@@ -43,6 +43,7 @@ struct ActivityBanner: View {
             Text(bannerText)
                 .font(Fonts.black(size: 20))
                 .foregroundColor(.textPrimary)
+                .textCase(.uppercase)
                 .kerning(0)
                 .lineLimit(1)
         }

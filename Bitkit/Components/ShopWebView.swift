@@ -31,7 +31,7 @@ struct ShopWebView: UIViewRepresentable {
         wkWebView.isOpaque = false
         wkWebView.backgroundColor = UIColor(red: 0x14 / 255.0, green: 0x17 / 255.0, blue: 0x16 / 255.0, alpha: 1.0) // #141716
         wkWebView.scrollView.backgroundColor = wkWebView.backgroundColor
-        wkWebView.layer.cornerRadius = 8
+        wkWebView.layer.cornerRadius = 18
         wkWebView.clipsToBounds = true
 
         webView?.wrappedValue = wkWebView

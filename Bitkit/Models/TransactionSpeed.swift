@@ -5,6 +5,7 @@ import SwiftUI
 // MARK: - Core Transaction Speed Enum
 
 public enum TransactionSpeed: Equatable, Hashable, RawRepresentable {
+    case instant
     case fast
     case normal
     case slow
@@ -13,7 +14,9 @@ public enum TransactionSpeed: Equatable, Hashable, RawRepresentable {
     // MARK: - RawRepresentable Implementation
 
     public init(rawValue: String) {
-        if rawValue == "fast" {
+        if rawValue == "instant" {
+            self = .instant
+        } else if rawValue == "fast" {
             self = .fast
         } else if rawValue == "normal" {
             self = .normal
@@ -31,6 +34,7 @@ public enum TransactionSpeed: Equatable, Hashable, RawRepresentable {
 
     public var rawValue: String {
         switch self {
+        case .instant: return "instant"
         case .fast: return "fast"
         case .normal: return "normal"
         case .slow: return "slow"
@@ -45,6 +49,7 @@ public extension TransactionSpeed {
     /// Component used to build fee localization keys (e.g. "fee__fast__title", "fee__fast__longTitle").
     var feeKeyComponent: String {
         switch self {
+        case .instant: return "instant"
         case .fast: return "fast"
         case .normal: return "normal"
         case .slow: return "slow"
@@ -72,10 +77,6 @@ public extension TransactionSpeed {
         t("fee__\(feeKeyComponent)__range")
     }
 
-    var longRange: String {
-        t("fee__\(feeKeyComponent)__longRange")
-    }
-
     var isCustom: Bool {
         if case .custom = self { return true }
         return false
@@ -88,6 +89,7 @@ public extension TransactionSpeed {
 
     var iconName: String {
         switch self {
+        case .instant: return "speed-fast"
         case .fast: return "speed-fast"
         case .normal: return "speed-normal"
         case .slow: return "speed-slow"
@@ -97,6 +99,7 @@ public extension TransactionSpeed {
 
     var iconColor: Color {
         switch self {
+        case .instant: return .purpleAccent
         case .fast: return .brandAccent
         case .normal: return .brandAccent
         case .slow: return .brandAccent
@@ -115,7 +118,6 @@ public extension TransactionSpeed {
         case description
         case shortDescription
         case range
-        case longRange
     }
 
     /// Returns the fee rate in satoshis per virtual byte for this speed
@@ -123,6 +125,7 @@ public extension TransactionSpeed {
     /// - Returns: Fee rate in sat/vB
     func getFeeRate(from feeRates: FeeRates) -> UInt32 {
         switch self {
+        case .instant: return feeRates.fast
         case .fast: return feeRates.fast
         case .normal: return feeRates.mid
         case .slow: return feeRates.slow

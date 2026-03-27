@@ -5,9 +5,6 @@ struct AllActivityView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
-    @State private var isHorizontalSwipe = false
-    @State private var dragOffset: CGFloat = 0
-
     var body: some View {
         ZStack(alignment: .top) {
             VStack(spacing: 0) {
@@ -18,25 +15,13 @@ struct AllActivityView: View {
                     .padding(.bottom, 16)
 
                 SegmentedControl(selectedTab: $activity.selectedTab, tabs: ActivityTab.allCases)
-                    .padding(.bottom, 8)
 
                 ScrollView(showsIndicators: false) {
                     ActivityList(viewType: .all)
-                        // Leave some space for TabBar
-                        .padding(.bottom, 130)
                         .scrollDismissesKeyboard(.interactively)
                         .highPriorityGesture(
-                            // TODO: rewrite this probably
+                            // TODO: rewrite or remove, causing UI freezes
                             DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                                .onChanged { value in
-                                    let horizontalAmount = value.translation.width
-                                    let verticalAmount = value.translation.height
-
-                                    if abs(horizontalAmount) > abs(verticalAmount) {
-                                        isHorizontalSwipe = true
-                                        dragOffset = horizontalAmount
-                                    }
-                                }
                                 .onEnded { value in
                                     let horizontalAmount = value.translation.width
                                     let verticalAmount = value.translation.height
@@ -62,12 +47,10 @@ struct AllActivityView: View {
                                             }
                                         }
                                     }
-
-                                    isHorizontalSwipe = false
-                                    dragOffset = 0
                                 }
                         )
                 }
+                .contentMargins(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
                 .scrollDismissesKeyboard(.interactively)
                 .refreshable {
                     do {
@@ -89,13 +72,12 @@ struct AllActivityView: View {
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 140)
+                .frame(height: ScreenLayout.bottomPaddingWithSafeArea)
             }
-            .ignoresSafeArea()
+            .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
         }
         .navigationBarHidden(true)
-        .bottomSafeAreaPadding()
         .onAppear {
             activity.resetFilters()
         }

@@ -577,7 +577,6 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
-        resetManualEntryInput()
     }
 }
 
@@ -776,26 +775,18 @@ extension AppViewModel {
                         await MainActor.run {
                             sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amount))
                         }
-                    } else {
-                        let channelCount = await MainActor.run {
-                            lightningService.channels?.count ?? 0
-                        }
-                        if channelCount == 1 {
-                            toast(
-                                type: .lightning,
-                                title: t("lightning__channel_opened_title"),
-                                description: t("lightning__channel_opened_msg"),
-                                visibilityTime: 5.0,
-                                accessibilityIdentifier: "SpendingBalanceReadyToast"
-                            )
-                        }
+                    } else if await shouldShowFirstChannelReadyToast() {
+                        toast(
+                            type: .lightning,
+                            title: t("lightning__channel_opened_title"),
+                            description: t("lightning__channel_opened_msg"),
+                            visibilityTime: 5.0,
+                            accessibilityIdentifier: "SpendingBalanceReadyToast"
+                        )
                     }
                 } else {
                     Logger.warn("Channel not found in cache: \(channelId)")
-                    let channelCount = await MainActor.run {
-                        lightningService.channels?.count ?? 0
-                    }
-                    if channelCount == 1 {
+                    if await shouldShowFirstChannelReadyToast() {
                         toast(
                             type: .lightning,
                             title: t("lightning__channel_opened_title"),
@@ -965,6 +956,12 @@ extension AppViewModel {
 
         case let .balanceChanged(oldSpendableOnchain, newSpendableOnchain, _, _, oldLightning, newLightning):
             Logger.debug("Balance changed: onchain \(oldSpendableOnchain)->\(newSpendableOnchain) lightning \(oldLightning)->\(newLightning)")
+        }
+    }
+
+    private func shouldShowFirstChannelReadyToast() async -> Bool {
+        await MainActor.run {
+            max(lightningService.channelCacheCount, lightningService.channels?.count ?? 0) == 1
         }
     }
 }

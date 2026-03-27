@@ -3,6 +3,7 @@ import SwiftUI
 struct SendFeeCustom: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -66,7 +67,7 @@ struct SendFeeCustom: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .task {
             await loadFeeLimits()
-            await initializeFromCurrentFee()
+            await initializeFee()
         }
     }
 
@@ -76,8 +77,16 @@ struct SendFeeCustom: View {
         maxFee = limits.maxFee
     }
 
-    private func initializeFromCurrentFee() async {
-        feeRate = wallet.selectedFeeRateSatsPerVByte ?? 0
+    private func initializeFee() async {
+        if case let .custom(rate) = wallet.selectedSpeed {
+            feeRate = rate
+        } else if case let .custom(rate) = settings.defaultTransactionSpeed {
+            feeRate = rate
+        } else if let estimates = feeEstimatesManager.estimates {
+            feeRate = estimates.slow
+        } else {
+            feeRate = 1
+        }
 
         // Calculate the initial fee
         await calculateTransactionFee()
@@ -177,7 +186,7 @@ struct SendFeeCustom: View {
         Task {
             do {
                 try await wallet.setFeeRate(speed: .custom(satsPerVByte: feeRate))
-                // Go back to fee selection
+                app.selectedWalletToPayFrom = .onchain
                 navigationPath.removeLast()
             } catch {
                 Logger.error("Failed to set custom fee rate: \(error)")
