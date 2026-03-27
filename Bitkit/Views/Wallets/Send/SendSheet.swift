@@ -50,7 +50,7 @@ struct SendSheet: View {
 
     @State private var navigationPath: [SendRoute] = []
     @State private var hasValidatedAfterSync = false
-    @State private var pinCheckContinuation: CheckedContinuation<Bool, Never>?
+    @State private var pinCheckContinuations: [CheckedContinuation<Bool, Never>] = []
 
     /// Show sync overlay when node is not ready for payments
     /// For lightning: need node running AND at least one usable channel (peer connected).
@@ -266,13 +266,14 @@ struct SendSheet: View {
         }
 
         return await withCheckedContinuation { continuation in
-            pinCheckContinuation = continuation
+            pinCheckContinuations.append(continuation)
         }
     }
 
     private func resolvePinCheck(_ approved: Bool) {
-        pinCheckContinuation?.resume(returning: approved)
-        pinCheckContinuation = nil
+        let continuations = pinCheckContinuations
+        pinCheckContinuations.removeAll()
+        continuations.forEach { $0.resume(returning: approved) }
 
         if navigationPath.last == .pin {
             navigationPath.removeLast()
