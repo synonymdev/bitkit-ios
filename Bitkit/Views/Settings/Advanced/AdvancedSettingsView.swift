@@ -1,113 +1,100 @@
 import SwiftUI
 
 struct AdvancedSettingsView: View {
-    @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var suggestionsManager: SuggestionsManager
-    @EnvironmentObject var settings: SettingsViewModel
-    @State private var showingResetAlert = false
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__advanced_title"))
-                .padding(.bottom, 16)
-
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    // PAYMENTS Section
-                    VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(t("settings__adv__section_payments"))
-                            .padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Debug Section
+                    if showDevSettings {
+                        SettingsSectionHeader(t("settings__adv__section_debug"))
 
-                        NavigationLink(value: Route.addressTypePreference) {
-                            SettingsListLabel(
-                                title: t("settings__adv__address_type"),
-                                rightText: settings.selectedAddressType.localizedTitle
+                        NavigationLink(value: Route.devSettings) {
+                            SettingsRow(
+                                title: t("settings__dev_title"),
+                                iconName: "game-controller"
                             )
                         }
-                        .accessibilityIdentifier("AddressTypePreference")
-
-                        NavigationLink(value: Route.coinSelection) {
-                            SettingsListLabel(title: t("settings__adv__coin_selection"))
-                        }
-                        .accessibilityIdentifier("CoinSelectPreference")
-
-                        // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(title: t("settings__adv__payment_preference"))
-                        // }
-
-                        // NavigationLink(destination: Text("Coming soon")) {
-                        //     SettingsListLabel(title: t("settings__adv__gap_limit"))
-                        // }
+                        .padding(.bottom, 16)
+                        .accessibilityIdentifier("DevSettings")
                     }
 
-                    // NETWORKS Section
-                    VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(t("settings__adv__section_networks"))
-                            .padding(.top, 24)
-                            .padding(.bottom, 8)
+                    // Payments section
+                    SettingsSectionHeader(t("settings__adv__section_payments"))
 
-                        NavigationLink(value: Route.connections) {
-                            SettingsListLabel(title: t("settings__adv__lightning_connections"))
-                        }
-                        .accessibilityIdentifier("Channels")
-
-                        NavigationLink(value: Route.node) {
-                            SettingsListLabel(title: t("settings__adv__lightning_node"))
-                        }
-                        .accessibilityIdentifier("LightningNodeInfo")
-
-                        NavigationLink(value: Route.electrumSettings) {
-                            SettingsListLabel(title: t("settings__adv__electrum_server"))
-                        }
-                        .accessibilityIdentifier("ElectrumConfig")
-
-                        NavigationLink(value: Route.rgsSettings) {
-                            SettingsListLabel(title: t("settings__adv__rgs_server"))
-                        }
-                        .accessibilityIdentifier("RGSServer")
-                    }
-
-                    // OTHER Section
-                    VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(
-                            t("settings__adv__section_other")
+                    NavigationLink(value: Route.addressTypePreference) {
+                        SettingsRow(
+                            title: t("settings__adv__address_type_title"),
+                            iconName: "list-dashes",
+                            rightText: settings.selectedAddressType.localizedTitle
                         )
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-
-                        NavigationLink(value: Route.addressViewer) {
-                            SettingsListLabel(title: t("settings__adv__address_viewer"))
-                        }
-                        .accessibilityIdentifier("AddressViewer")
-
-                        // SettingsListLabel(title: t("settings__adv__rescan"), rightIcon: nil)
-
-                        Button(action: {
-                            showingResetAlert = true
-                        }) {
-                            SettingsListLabel(title: t("settings__adv__suggestions_reset"))
-                        }
-                        .accessibilityIdentifier("ResetSuggestions")
-
-                        Spacer()
                     }
-                }
-            }
-        }
-        .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
-        .alert(t("settings__adv__reset_title"), isPresented: $showingResetAlert) {
-            Button(t("settings__adv__reset_confirm"), role: .destructive) {
-                suggestionsManager.resetDismissed()
-                navigation.reset()
-            }
-            .accessibilityIdentifier("DialogConfirm")
+                    .accessibilityIdentifier("AddressTypePreference")
 
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-                .accessibilityIdentifier("DialogCancel")
-        } message: {
-            Text(t("settings__adv__reset_desc"))
+                    NavigationLink(value: Route.coinSelection) {
+                        SettingsRow(
+                            title: t("settings__adv__coin_selection"),
+                            iconName: "coins",
+                            rightText: settings.coinSelectionMethod.localizedTitle
+                        )
+                    }
+                    .accessibilityIdentifier("CoinSelectPreference")
+
+                    NavigationLink(value: Route.addressViewer) {
+                        SettingsRow(
+                            title: t("settings__adv__address_viewer"),
+                            iconName: "eye"
+                        )
+                    }
+                    .accessibilityIdentifier("AddressViewer")
+
+                    // Networks section
+                    SettingsSectionHeader(t("settings__adv__section_networks"))
+                        .padding(.top, 16)
+
+                    NavigationLink(value: Route.connections) {
+                        SettingsRow(
+                            title: t("settings__adv__lightning_connections"),
+                            iconName: "bolt-hollow",
+                            rightText: String(wallet.channels?.count ?? 0)
+                        )
+                    }
+                    .accessibilityIdentifier("Channels")
+
+                    NavigationLink(value: Route.node) {
+                        SettingsRow(
+                            title: t("settings__adv__lightning_node"),
+                            iconName: "git-branch",
+                            rightText: wallet.nodeId?.ellipsis(maxLength: 5, style: .end)
+                        )
+                    }
+                    .accessibilityIdentifier("LightningNodeInfo")
+
+                    NavigationLink(value: Route.electrumSettings) {
+                        SettingsRow(
+                            title: t("settings__adv__electrum_server"),
+                            iconName: "hard-drives"
+                        )
+                    }
+                    .accessibilityIdentifier("ElectrumConfig")
+
+                    NavigationLink(value: Route.rgsSettings) {
+                        SettingsRow(
+                            title: t("settings__adv__rgs_server"),
+                            iconName: "broadcast"
+                        )
+                    }
+                    .accessibilityIdentifier("RGSServer")
+                }
+                .padding(.top, 16)
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
+            }
         }
     }
 }

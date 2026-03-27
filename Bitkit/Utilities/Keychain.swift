@@ -9,14 +9,10 @@ enum KeychainEntryType {
 
     var storageKey: String {
         switch self {
-        case let .bip39Mnemonic(index):
-            return "bip39_mnemonic_\(index)"
-        case let .bip39Passphrase(index):
-            return "bip39_passphrase_\(index)"
-        case .pushNotificationPrivateKey:
-            return "push_notification_private_key"
-        case .securityPin:
-            return "security_pin"
+        case let .bip39Mnemonic(index): "bip39_mnemonic_\(index)"
+        case let .bip39Passphrase(index): "bip39_passphrase_\(index)"
+        case .pushNotificationPrivateKey: "push_notification_private_key"
+        case .securityPin: "security_pin"
         }
     }
 }
@@ -25,15 +21,14 @@ class Keychain {
     class func save(key: KeychainEntryType, data: Data) throws {
         Logger.debug("Saving \(key.storageKey)", context: "Keychain")
 
-        let query =
-            [
-                kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
-                kSecAttrSynchronizable as String: false,
-                kSecAttrAccount as String: key.storageKey,
-                kSecValueData as String: data,
-                kSecAttrAccessGroup as String: Env.keychainGroup,
-            ] as [String: Any]
+        let query = [
+            kSecClass as String: kSecClassGenericPassword as String,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
+            kSecAttrSynchronizable as String: false,
+            kSecAttrAccount as String: key.storageKey,
+            kSecValueData as String: data,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ] as [String: Any]
 
         // Don't allow accidentally overwriting keys
         guard try load(key: key) == nil else {
@@ -73,13 +68,57 @@ class Keychain {
         try save(key: key, data: data)
     }
 
+    class func update(key: KeychainEntryType, data: Data) throws {
+        Logger.debug("Updating \(key.storageKey)", context: "Keychain")
+
+        let query = [
+            kSecClass as String: kSecClassGenericPassword as String,
+            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ] as [String: Any]
+
+        let attributes = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly as String,
+            kSecAttrSynchronizable as String: false,
+        ] as [String: Any]
+
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+
+        if status != noErr {
+            Logger.error("Failed to update \(key.storageKey) in keychain. \(status.description)", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+
+        // Sanity check on update
+        guard var storedValue = try load(key: key) else {
+            Logger.error("Failed to load \(key.storageKey) after updating", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+
+        guard storedValue == data else {
+            Logger.error("Updated \(key.storageKey) does not match loaded value", context: "Keychain")
+            throw KeychainError.failedToSave
+        }
+        storedValue = Data() // Clear memory
+
+        Logger.info("Updated \(key.storageKey)", context: "Keychain")
+    }
+
+    class func updateString(key: KeychainEntryType, str: String) throws {
+        guard let data = str.data(using: .utf8) else {
+            throw KeychainError.failedToSave
+        }
+
+        try update(key: key, data: data)
+    }
+
     class func delete(key: KeychainEntryType) throws {
-        let query =
-            [
-                kSecClass as String: kSecClassGenericPassword as String,
-                kSecAttrAccount as String: key.storageKey,
-                kSecAttrAccessGroup as String: Env.keychainGroup,
-            ] as [String: Any]
+        let query = [
+            kSecClass as String: kSecClassGenericPassword as String,
+            kSecAttrAccount as String: key.storageKey,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ] as [String: Any]
 
         let status = SecItemDelete(query as CFDictionary)
 
@@ -98,16 +137,15 @@ class Keychain {
         return exists
     }
 
-    // TODO: throws if fails but return nil if not found
+    /// NOTE: throws if fails but return nil if not found
     class func load(key: KeychainEntryType) throws -> Data? {
-        let query =
-            [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrAccount as String: key.storageKey,
-                kSecReturnData as String: kCFBooleanTrue!,
-                kSecMatchLimit as String: kSecMatchLimitOne,
-                kSecAttrAccessGroup as String: Env.keychainGroup,
-            ] as [String: Any]
+        let query = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key.storageKey,
+            kSecReturnData as String: kCFBooleanTrue!,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecAttrAccessGroup as String: Env.keychainGroup,
+        ] as [String: Any]
 
         var dataTypeRef: AnyObject?
 
@@ -165,12 +203,12 @@ class Keychain {
     class func wipeEntireKeychain() throws {
         let keys = getAllKeyChainStorageKeys()
         for key in keys {
-            let query =
-                [
-                    kSecClass as String: kSecClassGenericPassword as String,
-                    kSecAttrAccount as String: key,
-                    kSecAttrAccessGroup as String: Env.keychainGroup,
-                ] as [String: Any]
+            let query = [
+                kSecClass as String: kSecClassGenericPassword as String,
+                kSecAttrAccount as String: key,
+                kSecAttrAccessGroup as String: Env.keychainGroup,
+            ] as [String: Any]
+
             SecItemDelete(query as CFDictionary)
 
             Logger.info("Deleted \(key) from keychain")

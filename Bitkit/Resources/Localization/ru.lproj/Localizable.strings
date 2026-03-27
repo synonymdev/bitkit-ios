@@ -903,6 +903,7 @@
 "wallet__drawer__widgets" = "Виджеты";
 "wallet__drawer__shop" = "Магазин";
 "wallet__drawer__settings" = "Настройки";
+"wallet__drawer__support" = "Поддержка";
 "wallet__drawer__status" = "Статус Приложения";
 "wallet__send" = "Отправить";
 "wallet__receive" = "Получить";

@@ -79,15 +79,11 @@ struct AuthCheck: View {
 
         if remainingAttempts == 1 {
             // Last attempt warning
-            errorMessage = t(
-                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
-            )
+            errorMessage = t("security__pin_last_attempt")
             errorIdentifier = "LastAttempt"
         } else {
             // Show remaining attempts
-            errorMessage = t(
-                "security__pin_attempts", comment: "%d attempts remaining. Forgot your PIN?", variables: ["attemptsRemaining": "\(remainingAttempts)"]
-            )
+            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
             errorIdentifier = "AttemptsRemaining"
         }
     }
@@ -152,10 +148,10 @@ struct AuthCheck: View {
                 if !errorMessage.isEmpty {
                     BodySText(errorMessage, textColor: .brandAccent)
                         .frame(maxWidth: .infinity, alignment: .center)
+                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                         .onTapGesture {
                             sheets.showSheet(.forgotPin)
                         }
-                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                 }
             }
             .frame(maxWidth: .infinity)
