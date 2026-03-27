@@ -20,12 +20,14 @@ struct WidgetsSettingsScreen: View {
 
                     SettingsRow(
                         title: t("settings__widgets__showWidgets"),
-                        toggle: $settings.showWidgets
+                        toggle: $settings.showWidgets,
+                        testIdentifier: "ShowWidgets"
                     )
 
                     SettingsRow(
                         title: t("settings__widgets__showWidgetTitles"),
-                        toggle: $settings.showWidgetTitles
+                        toggle: $settings.showWidgetTitles,
+                        testIdentifier: "ShowWidgetTitles"
                     )
 
                     SettingsSectionHeader(t("settings__widgets__section_reset"))
@@ -39,6 +41,7 @@ struct WidgetsSettingsScreen: View {
                             iconName: "arrow-counter-clockwise"
                         )
                     }
+                    .accessibilityIdentifier("ResetWidgets")
 
                     Button(action: {
                         showSuggestionsResetAlert = true
@@ -48,6 +51,7 @@ struct WidgetsSettingsScreen: View {
                             iconName: "arrow-counter-clockwise"
                         )
                     }
+                    .accessibilityIdentifier("ResetSuggestions")
                 }
                 .padding(.horizontal, 16)
                 .bottomSafeAreaPadding()

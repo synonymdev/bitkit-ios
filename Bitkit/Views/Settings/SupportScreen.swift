@@ -114,6 +114,7 @@ struct SupportScreen: View {
                                         rightIcon: nil
                                     )
                                 }
+                                .accessibilityIdentifier("DevOptions")
                             }
 
                             Spacer(minLength: 32)
@@ -171,7 +172,8 @@ struct SupportScreen: View {
             app.toast(
                 type: .info,
                 title: t(showDevSettings ? "settings__dev_enabled_title" : "settings__dev_disabled_title"),
-                description: t(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message")
+                description: t(showDevSettings ? "settings__dev_enabled_message" : "settings__dev_disabled_message"),
+                accessibilityIdentifier: showDevSettings ? "DevModeEnabledToast" : "DevModeDisabledToast"
             )
         }
     }

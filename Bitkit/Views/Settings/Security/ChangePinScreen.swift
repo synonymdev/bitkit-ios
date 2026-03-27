@@ -38,7 +38,7 @@ struct ChangePinScreen: View {
                     CustomButton(title: t("security__cp_title"), variant: .secondary) {
                         sheets.showSheet(.security, data: SecurityConfig(initialRoute: .changePin))
                     }
-                    .accessibilityIdentifier("ChangePin")
+                    .accessibilityIdentifier("ChangePIN")
 
                     CustomButton(title: t("security__pin_disable_button")) {
                         sheets.showSheet(.security, data: SecurityConfig(initialRoute: .disablePin))
