@@ -97,6 +97,7 @@ enum Route: Hashable {
     case probingTool
     case orders
     case logs
+    case trezor
 }
 
 @MainActor

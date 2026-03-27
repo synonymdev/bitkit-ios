@@ -366,15 +366,16 @@ struct MainNavView: View {
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
 
-                // Dev settings
-                case .blocktankRegtest: BlocktankRegtestView()
-                case .ldkDebug: LdkDebugScreen()
-                case .vssDebug: VssDebugScreen()
-                case .probingTool: ProbingToolScreen()
-                case .orders: ChannelOrders()
-                case .logs: LogView()
-                }
+            // Dev settings
+            case .blocktankRegtest: BlocktankRegtestView()
+            case .ldkDebug: LdkDebugScreen()
+            case .vssDebug: VssDebugScreen()
+            case .probingTool: ProbingToolScreen()
+            case .orders: ChannelOrders()
+            case .logs: LogView()
+            case .trezor: TrezorRootView()
             }
+        }
     }
 
     private func handleClipboard() {
