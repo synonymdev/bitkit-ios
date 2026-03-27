@@ -54,6 +54,9 @@ struct SecurityChangePin: View {
                     BodySText(errorMessage, textColor: .brandAccent)
                         .padding(.bottom, 16)
                         .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
+                        .onTapGesture {
+                            sheets.showSheet(.forgotPin)
+                        }
                 }
             }
             .padding(.horizontal, 32)
@@ -134,17 +137,10 @@ struct SecurityChangePin: View {
 
         let remainingAttempts = settings.getRemainingPinAttempts()
         if remainingAttempts == 1 {
-            errorMessage = t(
-                "security__pin_last_attempt",
-                comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
-            )
+            errorMessage = t("security__pin_last_attempt")
             errorIdentifier = "LastAttempt"
         } else {
-            errorMessage = t(
-                "security__pin_attempts",
-                comment: "%d attempts remaining. Forgot your PIN?",
-                variables: ["attemptsRemaining": "\(remainingAttempts)"]
-            )
+            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
             errorIdentifier = "AttemptsRemaining"
         }
 
