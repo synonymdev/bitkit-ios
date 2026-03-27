@@ -911,6 +911,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Boutique";
 "wallet__drawer__settings" = "Config";
+"wallet__drawer__support" = "Support";
 "wallet__drawer__status" = "Statut de l\'application";
 "wallet__send" = "Envoyer";
 "wallet__receive" = "Recevoir";

@@ -906,6 +906,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Winkel";
 "wallet__drawer__settings" = "Instellingen";
+"wallet__drawer__support" = "Ondersteuning";
 "wallet__drawer__status" = "App-status";
 "wallet__send" = "Verstuur";
 "wallet__receive" = "Ontvangen";

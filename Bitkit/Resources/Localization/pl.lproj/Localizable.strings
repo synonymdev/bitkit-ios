@@ -912,6 +912,7 @@
 "wallet__drawer__widgets" = "Widgety";
 "wallet__drawer__shop" = "Sklep";
 "wallet__drawer__settings" = "Ustawienia";
+"wallet__drawer__support" = "Wsparcie";
 "wallet__drawer__status" = "Status aplikacji";
 "wallet__send" = "Wyślij";
 "wallet__receive" = "Otrzymaj";
