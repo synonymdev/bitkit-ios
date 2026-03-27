@@ -12,9 +12,17 @@ struct SendFeeRate: View {
 
     @State private var transactionFees: [TransactionSpeed: UInt64] = [:]
 
+    /// Both on-chain and Lightning options exist and the user can pay from either (BIP21 / unified invoice).
+    private var canSwitchWallet: Bool {
+        guard app.scannedOnchainInvoice != nil, app.scannedLightningInvoice != nil else { return false }
+        let amount = wallet.sendAmountSats ?? app.scannedOnchainInvoice?.amountSatoshis ?? 0
+        return wallet.canSwitchWalletForUnifiedInvoice(amountSats: amount)
+    }
+
     private var currentCustomFeeRate: UInt32 {
-        if let rate = wallet.selectedFeeRateSatsPerVByte { return rate }
+        if case let .custom(rate) = wallet.selectedSpeed { return rate }
         if case let .custom(rate) = settings.defaultTransactionSpeed { return rate }
+        if let estimates = feeEstimatesManager.estimates { return estimates.slow }
         return 1
     }
 
@@ -23,20 +31,25 @@ struct SendFeeRate: View {
     }
 
     private func isDisabled(for speed: TransactionSpeed) -> Bool {
-        let fee = getFee(for: speed)
         guard let amount = wallet.sendAmountSats else { return true }
-        // Disable if not enough balance and not already selected
-        return wallet.totalBalanceSats < amount + fee && wallet.selectedSpeed != speed
+
+        let fee = getFee(for: speed)
+        return wallet.totalOnchainSats < amount + fee && wallet.selectedSpeed != speed
     }
 
     private func selectFee(_ speed: TransactionSpeed) {
         wallet.selectedSpeed = speed
 
-        Task {
+        Task { @MainActor in
             do {
-                try await wallet.setFeeRate(speed: speed)
-                // Go back to confirmation screen
-                navigationPath.removeLast()
+                if speed == .instant {
+                    app.selectedWalletToPayFrom = .lightning
+                    navigationPath.removeLast()
+                } else {
+                    try await wallet.setFeeRate(speed: speed)
+                    app.selectedWalletToPayFrom = .onchain
+                    navigationPath.removeLast()
+                }
             } catch {
                 Logger.error("Error setting fee rate: \(error)", context: "SendFeeRate")
             }
@@ -104,6 +117,17 @@ struct SendFeeRate: View {
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
+                        if canSwitchWallet {
+                            FeeItem(
+                                speed: .instant,
+                                amount: wallet.routingFeeEstimateSats,
+                                isSelected: wallet.selectedSpeed == .instant,
+                                isDisabled: false
+                            ) {
+                                selectFee(.instant)
+                            }
+                        }
+
                         FeeItem(
                             speed: .fast,
                             amount: getFee(for: .fast),
@@ -154,7 +178,10 @@ struct SendFeeRate: View {
         .navigationBarHidden(true)
         .sheetBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
+        .task { @MainActor in
+            if app.selectedWalletToPayFrom == .lightning, canSwitchWallet {
+                wallet.selectedSpeed = .instant
+            }
             await loadFeeEstimates()
         }
         .onChange(of: wallet.selectedFeeRateSatsPerVByte) {

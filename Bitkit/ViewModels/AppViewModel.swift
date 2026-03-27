@@ -577,7 +577,6 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
-        resetManualEntryInput()
     }
 }
 
