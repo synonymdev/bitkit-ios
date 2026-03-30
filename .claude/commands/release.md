@@ -53,16 +53,9 @@ If "Previous tag": ask `"Which tag?"` with a text input (default: `v{oldVersionN
 
 If "master" or if the release is minor/major: `{baseRef} = master`.
 
-### 2c. Finalize Changelog
+### 2c. Check Changelog
 
-Read `CHANGELOG.md` and check whether `## [Unreleased]` has any entries beneath it.
-
-**If entries exist:**
-1. Replace `## [Unreleased]` with `## [{newVersionName}] - {YYYY-MM-DD}` (today's date)
-2. Insert a fresh empty `## [Unreleased]` section above the new version heading
-3. Update the compare link references at the bottom of the file:
-   - Change `[Unreleased]` link to compare from `v{newVersionName}...HEAD`
-   - Add a new `[{newVersionName}]` link comparing `v{oldVersionName}...v{newVersionName}`
+Read `CHANGELOG.md` and check whether `## [Unreleased]` has any entries beneath it. Remember the result for Step 3.
 
 **If no entries:** Print `⚠ CHANGELOG.md has no unreleased entries — continuing without changelog update.` and proceed.
 
@@ -78,6 +71,13 @@ If `{baseRef}` is `master`, pull latest: `git pull origin master`. Skip pull if 
 ```bash
 git checkout -b release-{newVersionName}
 ```
+
+**Finalize Changelog (if Step 2c found entries):**
+1. Replace `## [Unreleased]` with `## [{newVersionName}] - {YYYY-MM-DD}` (today's date)
+2. Insert a fresh empty `## [Unreleased]` section above the new version heading
+3. Update the compare link references at the bottom of the file:
+   - Change `[Unreleased]` link to compare from `v{newVersionName}...HEAD`
+   - Add a new `[{newVersionName}]` link comparing `v{oldVersionName}...v{newVersionName}`
 
 If the base is a tag (not master), print:
 ```
@@ -97,12 +97,11 @@ Verify the edit updated exactly 4 occurrences of each (Bitkit Debug/Release + Bi
 
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
-# Only stage CHANGELOG.md if step 2c modified it (i.e. unreleased entries were found)
+# Only stage CHANGELOG.md if it was finalized above (i.e. unreleased entries were found in step 2c)
+git add CHANGELOG.md
 git commit -m "chore: version {newVersionName}"
 git push -u origin release-{newVersionName}
 ```
-
-If step 2c updated `CHANGELOG.md`, also `git add CHANGELOG.md` before the commit.
 
 ### 4. Create Version Bump PR
 
