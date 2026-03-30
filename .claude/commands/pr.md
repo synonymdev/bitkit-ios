@@ -145,6 +145,13 @@ gh pr create --base $base --title "..." --body "..." [--draft]
 - Add `--draft` flag if draft mode selected
 - If actual PR number differs from predicted, rename the saved file
 
+### 8b. Backfill Changelog PR Number
+
+If the PR was created (not dry run) and `CHANGELOG.md` was modified in the branch (`git diff $base...HEAD --name-only | grep CHANGELOG.md`):
+- Read `CHANGELOG.md` and scan `## [Unreleased]` entries for lines missing a `#NUMBER` suffix
+- Append the actual PR number to those entries, e.g. `- Add foo` becomes `- Add foo #123`
+- If any entries were updated, create a new commit with message `chore: backfill changelog pr number` and push
+
 ### 9. Output Summary
 
 **If PR created:**
