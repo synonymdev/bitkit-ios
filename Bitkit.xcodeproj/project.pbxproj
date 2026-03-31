@@ -970,7 +970,7 @@
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
 				kind = revision;
-				revision = aa28d339e049bf94aefb13ff2cabc519536cbdf3;
+				revision = 47cac669600fd6d606e882973aa8c4d378ab8b1d;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
