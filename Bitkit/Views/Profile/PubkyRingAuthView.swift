@@ -168,7 +168,6 @@ struct PubkyRingAuthView: View {
     private func waitForApproval() async {
         do {
             try await pubkyProfile.completeAuthentication()
-            isWaitingForRing = false
             await navigateAfterAuth()
         } catch is CancellationError {
             isWaitingForRing = false
