@@ -3,6 +3,22 @@ import Combine
 import Foundation
 import LDKNode
 
+// MARK: - Local Types (removed from BitkitCore in Trezor module rewrite)
+
+/// Address info with usage data
+struct AddressInfo {
+    let address: String
+    let path: String
+    let transfers: UInt32
+}
+
+/// Grouped account addresses by usage
+struct AccountAddresses {
+    let used: [AddressInfo]
+    let unused: [AddressInfo]
+    let change: [AddressInfo]
+}
+
 // MARK: - Activity Service
 
 class ActivityService {
@@ -1799,25 +1815,25 @@ class UtilityService {
             )
 
             // Convert GetAddressesResponse to AccountAddresses
-            let usedAddresses = response.addresses.compactMap { addr -> BitkitCore.AddressInfo? in
+            let usedAddresses = response.addresses.compactMap { addr -> AddressInfo? in
                 // You would determine if an address is used based on your logic
                 // For now, we'll create a basic conversion
-                return BitkitCore.AddressInfo(
+                return AddressInfo(
                     address: addr.address,
                     path: addr.path,
                     transfers: 0 // This would need to be determined from blockchain data
                 )
             }
 
-            let unusedAddresses = response.addresses.compactMap { addr -> BitkitCore.AddressInfo? in
-                return BitkitCore.AddressInfo(
+            let unusedAddresses = response.addresses.compactMap { addr -> AddressInfo? in
+                return AddressInfo(
                     address: addr.address,
                     path: addr.path,
                     transfers: 0
                 )
             }
 
-            let changeAddresses: [BitkitCore.AddressInfo] = []
+            let changeAddresses: [AddressInfo] = []
 
             return AccountAddresses(
                 used: usedAddresses,

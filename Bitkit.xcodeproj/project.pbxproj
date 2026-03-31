@@ -515,6 +515,10 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreBluetooth,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -543,6 +547,10 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreBluetooth,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit.notification;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -675,6 +683,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 184;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
@@ -702,8 +711,13 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreBluetooth,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -718,6 +732,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Bitkit/Bitkit.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 184;
 				DEVELOPMENT_ASSET_PATHS = "\"Bitkit/Preview Content\"";
@@ -745,8 +760,13 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 2.1.2;
+				OTHER_LDFLAGS = (
+					"-framework",
+					CoreBluetooth,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = to.bitkit;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -937,8 +957,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
-				branch = master;
-				kind = branch;
+				kind = exactVersion;
+				version = 0.1.48;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
