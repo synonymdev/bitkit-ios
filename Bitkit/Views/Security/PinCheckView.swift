@@ -43,39 +43,22 @@ struct PinCheckView: View {
         pinInput = ""
         Haptics.notify(.error)
 
-        if settings.hasExceededPinAttempts() {
-            wipeWallet()
-            return
-        }
-
-        let remainingAttempts = settings.getRemainingPinAttempts()
-
-        if remainingAttempts == 1 {
-            // Last attempt warning
-            errorMessage = t("security__pin_last_attempt")
-            errorIdentifier = "LastAttempt"
-        } else {
-            // Show remaining attempts
-            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
-            errorIdentifier = "AttemptsRemaining"
-        }
-    }
-
-    private func wipeWallet() {
-        Task {
-            do {
-                try await AppReset.wipe(
+        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
+        if case .exceededAttempts = pinAttemptOutcome {
+            Task {
+                await settings.wipeWalletAfterExceededPinAttempts(
                     app: app,
                     wallet: wallet,
                     session: session,
-                    toastType: .warning
+                    sheets: sheets,
+                    context: "PinCheckView"
                 )
-                sheets.hideSheet()
-            } catch {
-                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "PinCheckView")
-                app.toast(error)
             }
+            return
         }
+
+        errorMessage = pinAttemptOutcome.errorMessage ?? ""
+        errorIdentifier = pinAttemptOutcome.errorIdentifier
     }
 
     var body: some View {

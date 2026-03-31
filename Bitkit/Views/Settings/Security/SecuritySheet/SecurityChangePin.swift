@@ -130,38 +130,24 @@ struct SecurityChangePin: View {
     private func handleIncorrectCurrentPin() {
         pinInput = ""
 
-        if settings.hasExceededPinAttempts() {
-            handleWalletWipe()
-            return
-        }
-
-        let remainingAttempts = settings.getRemainingPinAttempts()
-        if remainingAttempts == 1 {
-            errorMessage = t("security__pin_last_attempt")
-            errorIdentifier = "LastAttempt"
-        } else {
-            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
-            errorIdentifier = "AttemptsRemaining"
-        }
-
-        Haptics.notify(.error)
-    }
-
-    private func handleWalletWipe() {
-        Task {
-            do {
-                try await AppReset.wipe(
+        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
+        if case .exceededAttempts = pinAttemptOutcome {
+            Task {
+                await settings.wipeWalletAfterExceededPinAttempts(
                     app: app,
                     wallet: wallet,
                     session: session,
-                    toastType: .warning
+                    sheets: sheets,
+                    context: "SecurityChangePin"
                 )
-                sheets.hideSheet()
-            } catch {
-                Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "SecurityChangePin")
-                app.toast(error)
             }
+            return
         }
+
+        errorMessage = pinAttemptOutcome.errorMessage ?? ""
+        errorIdentifier = pinAttemptOutcome.errorIdentifier
+
+        Haptics.notify(.error)
     }
 
     private func resetPinInput() {

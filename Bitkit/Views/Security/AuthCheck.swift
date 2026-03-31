@@ -57,35 +57,22 @@ struct AuthCheck: View {
         pinInput = ""
         Haptics.notify(.error)
 
-        if settings.hasExceededPinAttempts() {
+        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
+        if case .exceededAttempts = pinAttemptOutcome {
             Task {
-                do {
-                    try await AppReset.wipe(
-                        app: app,
-                        wallet: wallet,
-                        session: session,
-                        toastType: .warning
-                    )
-                } catch {
-                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "AuthCheck")
-                    app.toast(error)
-                }
+                await settings.wipeWalletAfterExceededPinAttempts(
+                    app: app,
+                    wallet: wallet,
+                    session: session,
+                    context: "AuthCheck"
+                )
             }
 
             return
         }
 
-        let remainingAttempts = settings.getRemainingPinAttempts()
-
-        if remainingAttempts == 1 {
-            // Last attempt warning
-            errorMessage = t("security__pin_last_attempt")
-            errorIdentifier = "LastAttempt"
-        } else {
-            // Show remaining attempts
-            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
-            errorIdentifier = "AttemptsRemaining"
-        }
+        errorMessage = pinAttemptOutcome.errorMessage ?? ""
+        errorIdentifier = pinAttemptOutcome.errorIdentifier
     }
 
     private func handleBiometricAuthentication() {
