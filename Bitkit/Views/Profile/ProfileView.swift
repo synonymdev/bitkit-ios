@@ -49,34 +49,54 @@ struct ProfileView: View {
     @ViewBuilder
     private func profileContent(_ profile: PubkyProfile) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                profileHeader(profile)
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
+            VStack(spacing: 0) {
+                CenteredProfileHeader(
+                    truncatedKey: profile.truncatedPublicKey,
+                    name: profile.name,
+                    bio: profile.bio,
+                    imageUrl: profile.imageUrl,
+                    showDivider: false
+                )
+                .padding(.top, 24)
+                .padding(.bottom, 24)
 
-                profileBio(profile)
+                profileQRCode(profile)
                     .padding(.bottom, 24)
 
                 profileActions
-                    .padding(.bottom, 24)
-
-                profileQRCode(profile)
                     .padding(.bottom, 32)
 
-                if !profile.links.isEmpty {
-                    profileLinks(profile)
+                VStack(alignment: .leading, spacing: 0) {
+                    if !profile.links.isEmpty {
+                        profileLinks(profile)
+                    }
+
+                    if !profile.tags.isEmpty {
+                        profileTags(profile)
+                            .padding(.top, 16)
+                    }
+
+                    signOutButton
+                        .padding(.top, 24)
+                        .padding(.bottom, 16)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 16)
         }
     }
 
-    // MARK: - Actions (copy, share, edit)
+    // MARK: - Actions (edit, copy, share)
 
     @ViewBuilder
     private var profileActions: some View {
         HStack(spacing: 16) {
-            profileActionButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "pencil", accessibilityLabel: t("profile__edit")) {
+                navigation.navigate(.editProfile)
+            }
+            .accessibilityIdentifier("ProfileEdit")
+
+            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
                     app.toast(type: .success, title: t("common__copied"))
@@ -84,107 +104,10 @@ struct ProfileView: View {
             }
             .accessibilityIdentifier("ProfileCopy")
 
-            profileActionButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
                 shareProfile()
             }
             .accessibilityIdentifier("ProfileShare")
-
-            profileActionButton(systemIcon: "rectangle.portrait.and.arrow.right", accessibilityLabel: t("profile__sign_out")) {
-                showSignOutConfirmation = true
-            }
-            .disabled(isSigningOut)
-            .opacity(isSigningOut ? 0.5 : 1)
-            .accessibilityIdentifier("ProfileSignOut")
-        }
-    }
-
-    @ViewBuilder
-    private func profileActionButton(icon: String? = nil, systemIcon: String? = nil, accessibilityLabel: String,
-                                     action: @escaping () -> Void) -> some View
-    {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.gray5, .gray6],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white10, lineWidth: 1)
-                            .padding(0.5)
-                    )
-
-                if let icon {
-                    Image(icon)
-                        .resizable()
-                        .scaledToFit()
-                        .foregroundColor(.textPrimary)
-                        .frame(width: 24, height: 24)
-                } else if let systemIcon {
-                    Image(systemName: systemIcon)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(.textPrimary)
-                }
-            }
-            .frame(width: 48, height: 48)
-        }
-        .accessibilityLabel(accessibilityLabel)
-    }
-
-    // MARK: - Header (name, key, avatar)
-
-    @ViewBuilder
-    private func profileHeader(_ profile: PubkyProfile) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                HeadlineText(profile.name)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                BodySSBText(profile.truncatedPublicKey, textColor: .white)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let imageUrl = profile.imageUrl {
-                PubkyImage(uri: imageUrl, size: 64)
-            } else {
-                profilePlaceholder
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var profilePlaceholder: some View {
-        Circle()
-            .fill(Color.pubkyGreen)
-            .frame(width: 64, height: 64)
-            .overlay {
-                Image("user-square")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundColor(.white32)
-                    .frame(width: 32, height: 32)
-            }
-    }
-
-    // MARK: - Bio
-
-    @ViewBuilder
-    private func profileBio(_ profile: PubkyProfile) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !profile.bio.isEmpty {
-                Text(profile.bio)
-                    .font(Fonts.regular(size: 22))
-                    .foregroundColor(.white64)
-                    .kerning(0.4)
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            CustomDivider()
         }
     }
 
@@ -206,9 +129,6 @@ struct ProfileView: View {
                     }
                 }
             }
-
-            BodySText(t("profile__qr_scan_label", variables: ["name": profile.name]), textColor: .white)
-                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
     }
@@ -222,6 +142,42 @@ struct ProfileView: View {
                 ProfileLinkRow(label: link.label, value: link.url)
             }
         }
+    }
+
+    // MARK: - Tags
+
+    @ViewBuilder
+    private func profileTags(_ profile: PubkyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+
+            WrappingHStack(spacing: 8) {
+                ForEach(profile.tags, id: \.self) { tag in
+                    Tag(tag)
+                }
+            }
+        }
+    }
+
+    // MARK: - Sign Out Button
+
+    @ViewBuilder
+    private var signOutButton: some View {
+        Button {
+            showSignOutConfirmation = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.portrait.and.arrow.right")
+                    .font(.system(size: 14, weight: .medium))
+                Text(t("profile__sign_out"))
+                    .font(Fonts.regular(size: 15))
+            }
+            .foregroundColor(.white64)
+        }
+        .disabled(isSigningOut)
+        .opacity(isSigningOut ? 0.5 : 1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("ProfileSignOut")
     }
 
     // MARK: - Loading / Empty States
@@ -254,7 +210,7 @@ struct ProfileView: View {
             .accessibilityIdentifier("ProfileEmptySignOut")
             Spacer()
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

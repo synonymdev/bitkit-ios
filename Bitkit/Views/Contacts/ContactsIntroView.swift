@@ -17,7 +17,7 @@ struct ContactsIntroView: View {
                 if pubkyProfile.isAuthenticated {
                     navigation.navigate(.contacts)
                 } else if app.hasSeenProfileIntro {
-                    navigation.navigate(.pubkyRingAuth)
+                    navigation.navigate(.pubkyChoice)
                 } else {
                     navigation.navigate(.profileIntro)
                 }

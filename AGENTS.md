@@ -116,6 +116,8 @@ This project follows **modern SwiftUI patterns** and explicitly **AVOIDS traditi
    - Async operations should delegate to `@Observable` business logic objects
 
 4. **Component Design**
+   - **Always reuse existing components** before creating new ones — check `Components/` for buttons, text styles, layouts, and other shared UI. If identical or near-identical UI exists elsewhere in the codebase, extract it into a shared component rather than duplicating it.
+   - Use the project's text components (`DisplayText`, `HeadlineText`, `TitleText`, `SubtitleText`, `BodyMText`, `BodyMSBText`, `BodySSBText`, `BodySText`, `CaptionMText`, `CaptionText`) instead of raw `Text().font().foregroundColor()` chains.
    - Decompose views into small, focused, single-purpose components
    - Use descriptive names (e.g., `UserProfileCard` not `Card`)
    - Prefer composition over deep view hierarchies

@@ -280,7 +280,7 @@ struct Suggestions: View {
             if pubkyProfile.isAuthenticated {
                 route = .profile
             } else if app.hasSeenProfileIntro {
-                route = .pubkyRingAuth
+                route = .pubkyChoice
             } else {
                 route = .profileIntro
             }

@@ -7,6 +7,7 @@ struct ContactsListView: View {
     @EnvironmentObject var contactsManager: ContactsManager
 
     @State private var searchText = ""
+    @State private var showAddContactSheet = false
 
     private var isSearching: Bool {
         !searchText.trimmingCharacters(in: .whitespaces).isEmpty
@@ -17,7 +18,7 @@ struct ContactsListView: View {
             NavigationBar(title: t("contacts__nav_title"))
                 .padding(.horizontal, 16)
 
-            contactsSearchBar
+            searchAndAddBar
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 8)
@@ -52,28 +53,69 @@ struct ContactsListView: View {
                 app.toast(type: .error, title: t("contacts__error_loading"))
             }
         }
+        .sheet(isPresented: $showAddContactSheet) {
+            AddContactSheet(
+                onAdd: { pubky in
+                    navigation.navigate(.addContact(publicKey: pubky))
+                },
+                onScanQR: {
+                    navigation.navigate(.scanner)
+                }
+            )
+        }
     }
 
-    // MARK: - Search Bar
+    // MARK: - Search Bar + Add Button
 
     @ViewBuilder
-    private var contactsSearchBar: some View {
+    private var searchAndAddBar: some View {
         HStack(spacing: 12) {
-            Image("magnifying-glass")
-                .resizable()
-                .scaledToFit()
-                .foregroundColor(.white50)
-                .frame(width: 24, height: 24)
-                .accessibilityHidden(true)
+            HStack(spacing: 12) {
+                Image("magnifying-glass")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundColor(.white50)
+                    .frame(width: 24, height: 24)
+                    .accessibilityHidden(true)
 
-            TextField(t("common__search"), text: $searchText, backgroundColor: .clear, font: Fonts.regular(size: 17))
-                .foregroundColor(.textPrimary)
-                .accessibilityLabel(t("common__search"))
+                TextField(t("common__search"), text: $searchText, backgroundColor: .clear, font: Fonts.regular(size: 17))
+                    .foregroundColor(.textPrimary)
+                    .accessibilityLabel(t("common__search"))
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 48)
+            .background(Color.gray6)
+            .clipShape(Capsule())
+
+            Button {
+                showAddContactSheet = true
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.gray5, .gray6],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white10, lineWidth: 1)
+                                .padding(0.5)
+                        )
+
+                    Image("plus")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.textPrimary)
+                        .frame(width: 20, height: 20)
+                }
+                .frame(width: 48, height: 48)
+            }
+            .accessibilityLabel(t("contacts__add_button"))
+            .accessibilityIdentifier("ContactsAddButton")
         }
-        .padding(.horizontal, 16)
-        .frame(height: 48)
-        .background(Color.gray6)
-        .clipShape(Capsule())
     }
 
     // MARK: - My Profile Section
@@ -125,10 +167,7 @@ struct ContactsListView: View {
 
     @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
-            .font(Fonts.medium(size: 13))
-            .foregroundColor(.white64)
-            .tracking(0.8)
+        CaptionMText(title, textColor: .white64)
             .padding(.vertical, 16)
     }
 
@@ -141,14 +180,10 @@ struct ContactsListView: View {
                 contactAvatar(name: name, imageUrl: imageUrl)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(name)
-                        .font(Fonts.semiBold(size: 17))
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(1)
+                    CaptionText(truncatedKey)
 
-                    Text(truncatedKey)
-                        .font(Fonts.regular(size: 13))
-                        .foregroundColor(.white64)
+                    BodyMSBText(name)
+                        .lineLimit(1)
                 }
 
                 Spacer()

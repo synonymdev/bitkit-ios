@@ -4,6 +4,7 @@ struct PubkyRingAuthView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var contactsManager: ContactsManager
     @Environment(\.scenePhase) var scenePhase
 
     @State private var isAuthenticating = false
@@ -68,13 +69,33 @@ struct PubkyRingAuthView: View {
                         .frame(height: 24)
 
                     if isRingInstalled {
-                        CustomButton(
-                            title: t("profile__ring_authorize"),
-                            isLoading: isAuthenticating
-                        ) {
-                            await authenticate()
+                        if isWaitingForRing {
+                            VStack(spacing: 12) {
+                                CustomButton(
+                                    title: t("profile__ring_waiting"),
+                                    isLoading: true
+                                ) {}
+                                    .disabled(true)
+
+                                Button {
+                                    isWaitingForRing = false
+                                    Task { await pubkyProfile.cancelAuthentication() }
+                                } label: {
+                                    Text(t("common__cancel"))
+                                        .font(Fonts.semiBold(size: 15))
+                                        .foregroundColor(.white64)
+                                }
+                                .accessibilityIdentifier("PubkyRingCancelAuth")
+                            }
+                        } else {
+                            CustomButton(
+                                title: t("profile__ring_authorize"),
+                                isLoading: isAuthenticating
+                            ) {
+                                await authenticate()
+                            }
+                            .accessibilityIdentifier("PubkyRingAuthorize")
                         }
-                        .accessibilityIdentifier("PubkyRingAuthorize")
                     } else {
                         CustomButton(title: t("profile__ring_download")) {
                             if let url = URL(string: pubkyRingAppStoreUrl) {
@@ -84,7 +105,7 @@ struct PubkyRingAuthView: View {
                         .accessibilityIdentifier("PubkyRingDownload")
                     }
                 }
-                .padding(.horizontal, 32)
+                .padding(.horizontal, 16)
             }
         }
         .clipped()
@@ -148,7 +169,7 @@ struct PubkyRingAuthView: View {
         do {
             try await pubkyProfile.completeAuthentication()
             isWaitingForRing = false
-            navigation.path = [.profile]
+            await navigateAfterAuth()
         } catch is CancellationError {
             isWaitingForRing = false
             await pubkyProfile.cancelAuthentication()
@@ -156,6 +177,16 @@ struct PubkyRingAuthView: View {
             isWaitingForRing = false
             app.toast(type: .error, title: t("profile__auth_error_title"), description: error.localizedDescription)
         }
+    }
+
+    private func navigateAfterAuth() async {
+        guard let pk = pubkyProfile.publicKey else {
+            navigation.path = [.profile]
+            return
+        }
+
+        let hasImportData = await contactsManager.prepareImport(profile: pubkyProfile.profile, publicKey: pk)
+        navigation.path = [hasImportData ? .contactImportOverview : .payContacts]
     }
 }
 
@@ -165,6 +196,7 @@ struct PubkyRingAuthView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(ContactsManager())
     }
     .preferredColorScheme(.dark)
 }

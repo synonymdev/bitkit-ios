@@ -137,11 +137,17 @@ struct AppScene: View {
             .environmentObject(channelDetails)
             .environmentObject(pubkyProfile)
             .environmentObject(contactsManager)
-            .onChange(of: pubkyProfile.authState) { _, authState in
+            .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     Task { try? await contactsManager.loadContacts(for: pk) }
                 } else if authState == .idle {
                     contactsManager.reset()
+                }
+            }
+            .onChange(of: pubkyProfile.sessionRestorationFailed) { _, failed in
+                if failed {
+                    pubkyProfile.sessionRestorationFailed = false
+                    app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
                 }
             }
             .onAppear {

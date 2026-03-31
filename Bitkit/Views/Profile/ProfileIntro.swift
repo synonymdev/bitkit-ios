@@ -13,7 +13,7 @@ struct ProfileIntroView: View {
             buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenProfileIntro = true
-                navigation.navigate(.pubkyRingAuth)
+                navigation.navigate(.pubkyChoice)
             },
             accentColor: .pubkyGreen,
             imagePosition: .center,

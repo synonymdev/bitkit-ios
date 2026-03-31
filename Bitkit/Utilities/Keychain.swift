@@ -7,6 +7,7 @@ enum KeychainEntryType {
     case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
     case securityPin
     case paykitSession
+    case pubkySecretKey
 
     var storageKey: String {
         switch self {
@@ -20,6 +21,8 @@ enum KeychainEntryType {
             return "security_pin"
         case .paykitSession:
             return "paykit_session"
+        case .pubkySecretKey:
+            return "pubky_secret_key"
         }
     }
 }

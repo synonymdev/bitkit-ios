@@ -92,6 +92,14 @@ struct MainNavView: View {
             config in LnurlAuthSheet(config: config)
         }
         .sheet(
+            item: $sheets.pubkyAuthApprovalSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in PubkyAuthApprovalSheet(config: config)
+        }
+        .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
             onDismiss: {
                 sheets.hideSheetIfActive(.lnurlWithdraw, reason: "LNURL withdraw sheet dismissed")
@@ -323,7 +331,7 @@ struct MainNavView: View {
                         } else if pubkyProfile.isAuthenticated {
                             ContactsListView()
                         } else if app.hasSeenProfileIntro {
-                            PubkyRingAuthView()
+                            PubkyChoiceView()
                         } else {
                             ProfileIntroView()
                         }
@@ -332,18 +340,30 @@ struct MainNavView: View {
                     }
                 case .contactsIntro: ContactsIntroView()
                 case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
+                case .contactImportOverview:
+                    ContactImportOverviewView(
+                        profile: contactsManager.pendingImportProfile ?? PubkyProfile.placeholder(publicKey: ""),
+                        contacts: contactsManager.pendingImportContacts
+                    )
+                case .contactImportSelect:
+                    ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                case let .addContact(publicKey): AddContactView(publicKey: publicKey)
+                case let .editContact(publicKey): EditContactView(publicKey: publicKey)
                 case .profile:
                     if !pubkyProfile.isInitialized {
                         pubkyLoadingView
                     } else if pubkyProfile.isAuthenticated {
                         ProfileView()
                     } else if app.hasSeenProfileIntro {
-                        PubkyRingAuthView()
+                        PubkyChoiceView()
                     } else {
                         ProfileIntroView()
                     }
                 case .profileIntro: ProfileIntroView()
-                case .pubkyRingAuth: PubkyRingAuthView()
+                case .pubkyChoice: PubkyChoiceView()
+                case .createProfile: CreateProfileView()
+                case .editProfile: EditProfileView()
+                case .payContacts: PayContactsView()
 
                 // Shop
                 case .shopIntro: ShopIntro()

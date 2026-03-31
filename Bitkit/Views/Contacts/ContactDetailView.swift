@@ -9,6 +9,9 @@ struct ContactDetailView: View {
 
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
+    @State private var showDeleteConfirmation = false
+    @State private var isDeleting = false
+    @State private var showAddTagSheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +33,23 @@ struct ContactDetailView: View {
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
             }
-            await loadContact()
+            isLoading = false
+        }
+        .onReceive(contactsManager.$contacts) { updatedContacts in
+            if let cached = updatedContacts.first(where: { $0.publicKey == publicKey }) {
+                profile = cached.profile
+            }
+        }
+        .alert(
+            t("contacts__delete_title", variables: ["name": profile?.name ?? ""]),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(t("contacts__delete_confirm"), role: .destructive) {
+                Task { await performDelete() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("contacts__delete_description"))
         }
     }
 
@@ -39,72 +58,35 @@ struct ContactDetailView: View {
     @ViewBuilder
     private func contactBody(_ profile: PubkyProfile) -> some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                contactHeader(profile)
-                    .padding(.top, 24)
-                    .padding(.bottom, 16)
-
-                contactBio(profile)
-                    .padding(.bottom, 24)
+            VStack(spacing: 0) {
+                CenteredProfileHeader(
+                    truncatedKey: profile.truncatedPublicKey,
+                    name: profile.name,
+                    bio: profile.bio,
+                    imageUrl: profile.imageUrl
+                )
+                .padding(.top, 24)
+                .padding(.bottom, 24)
 
                 contactActions
                     .padding(.bottom, 32)
 
-                if !profile.links.isEmpty {
-                    linksSection(profile)
+                VStack(alignment: .leading, spacing: 0) {
+                    if !profile.links.isEmpty {
+                        linksSection(profile)
+                    }
+
+                    tagsSection(profile)
+                        .padding(.top, 16)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 16)
         }
-    }
-
-    // MARK: - Header (name, key, avatar)
-
-    @ViewBuilder
-    private func contactHeader(_ profile: PubkyProfile) -> some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                HeadlineText(profile.name)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                BodySSBText(profile.truncatedPublicKey, textColor: .white)
+        .sheet(isPresented: $showAddTagSheet) {
+            AddProfileTagSheet { newTag in
+                addTag(newTag)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Group {
-                if let imageUrl = profile.imageUrl {
-                    PubkyImage(uri: imageUrl, size: 64)
-                } else {
-                    Circle()
-                        .fill(Color.pubkyGreen)
-                        .frame(width: 64, height: 64)
-                        .overlay {
-                            Image("user-square")
-                                .resizable()
-                                .scaledToFit()
-                                .foregroundColor(.white32)
-                                .frame(width: 32, height: 32)
-                        }
-                }
-            }
-            .accessibilityHidden(true)
-        }
-    }
-
-    // MARK: - Bio
-
-    @ViewBuilder
-    private func contactBio(_ profile: PubkyProfile) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !profile.bio.isEmpty {
-                Text(profile.bio)
-                    .font(Fonts.regular(size: 17))
-                    .foregroundColor(.white64)
-                    .lineSpacing(4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            CustomDivider()
         }
     }
 
@@ -113,46 +95,27 @@ struct ContactDetailView: View {
     @ViewBuilder
     private var contactActions: some View {
         HStack(spacing: 16) {
-            actionButton(icon: "copy", accessibilityLabel: t("common__copy")) {
+            GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
             }
             .accessibilityIdentifier("ContactCopy")
 
-            actionButton(icon: "share", accessibilityLabel: t("common__share")) {
+            GradientCircleButton(icon: "share", accessibilityLabel: t("common__share")) {
                 shareContact()
             }
             .accessibilityIdentifier("ContactShare")
-        }
-    }
 
-    @ViewBuilder
-    private func actionButton(icon: String, accessibilityLabel: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.gray5, .gray6],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.white10, lineWidth: 1)
-                            .padding(0.5)
-                    )
-
-                Image(icon)
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundColor(.textPrimary)
-                    .frame(width: 24, height: 24)
+            GradientCircleButton(icon: "pencil", accessibilityLabel: t("common__edit")) {
+                navigation.navigate(.editContact(publicKey: publicKey))
             }
-            .frame(width: 48, height: 48)
+            .accessibilityIdentifier("ContactEdit")
+
+            GradientCircleButton(icon: "trash", accessibilityLabel: t("common__delete")) {
+                showDeleteConfirmation = true
+            }
+            .accessibilityIdentifier("ContactDelete")
         }
-        .accessibilityLabel(accessibilityLabel)
     }
 
     // MARK: - Links / Metadata
@@ -162,6 +125,86 @@ struct ContactDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(profile.links) { link in
                 ProfileLinkRow(label: link.label, value: link.url)
+            }
+        }
+    }
+
+    // MARK: - Tags
+
+    @ViewBuilder
+    private func tagsSection(_ profile: PubkyProfile) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+
+            WrappingHStack(spacing: 8) {
+                ForEach(profile.tags, id: \.self) { tag in
+                    Tag(tag, icon: .close, onDelete: {
+                        removeTag(tag)
+                    })
+                }
+
+                addTagButton
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var addTagButton: some View {
+        IconActionButton(
+            icon: "tag",
+            title: t("profile__create_add_tag"),
+            accessibilityId: "ContactAddTag"
+        ) {
+            showAddTagSheet = true
+        }
+    }
+
+    // MARK: - Tag Persistence
+
+    private func addTag(_ newTag: String) {
+        guard var current = profile else { return }
+        current = PubkyProfile(
+            publicKey: current.publicKey,
+            name: current.name,
+            bio: current.bio,
+            imageUrl: current.imageUrl,
+            links: current.links,
+            tags: current.tags + [newTag],
+            status: current.status
+        )
+        profile = current
+        persistContact(current)
+    }
+
+    private func removeTag(_ tag: String) {
+        guard var current = profile else { return }
+        current = PubkyProfile(
+            publicKey: current.publicKey,
+            name: current.name,
+            bio: current.bio,
+            imageUrl: current.imageUrl,
+            links: current.links,
+            tags: current.tags.filter { $0 != tag },
+            status: current.status
+        )
+        profile = current
+        persistContact(current)
+    }
+
+    private func persistContact(_ profile: PubkyProfile) {
+        Task {
+            do {
+                try await contactsManager.updateContact(
+                    publicKey: publicKey,
+                    name: profile.name,
+                    bio: profile.bio,
+                    imageUrl: profile.imageUrl,
+                    links: profile.links,
+                    tags: profile.tags
+                )
+            } catch {
+                Logger.error("Failed to persist contact tags: \(error)", context: "ContactDetailView")
+                app.toast(type: .error, title: t("contacts__error_saving"))
             }
         }
     }
@@ -183,29 +226,28 @@ struct ContactDetailView: View {
         VStack(spacing: 16) {
             Spacer()
             BodyMText(t("contacts__detail_empty_state"))
-            CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                await loadContact()
-            }
-            .accessibilityIdentifier("ContactRetry")
+            CustomButton(title: t("profile__retry_load"), variant: .secondary) {}
+                .accessibilityIdentifier("ContactRetry")
             Spacer()
         }
-        .padding(.horizontal, 32)
+        .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Data Loading
+    // MARK: - Delete
 
-    private func loadContact() async {
-        isLoading = true
-        if let freshProfile = await contactsManager.fetchContactProfile(publicKey: publicKey) {
-            profile = freshProfile
-        } else {
-            if profile == nil {
-                profile = PubkyProfile.placeholder(publicKey: publicKey)
-            }
-            app.toast(type: .error, title: t("contacts__error_loading"))
+    private func performDelete() async {
+        isDeleting = true
+        defer { isDeleting = false }
+
+        do {
+            try await contactsManager.removeContact(publicKey: publicKey)
+            app.toast(type: .success, title: t("contacts__delete_success"))
+            navigation.navigateBack()
+        } catch {
+            Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
+            app.toast(type: .error, title: t("contacts__delete_error"))
         }
-        isLoading = false
     }
 
     // MARK: - Share

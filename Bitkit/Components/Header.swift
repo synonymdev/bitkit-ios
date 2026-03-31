@@ -71,7 +71,7 @@ struct Header: View {
             if pubkyProfile.isAuthenticated {
                 navigation.navigate(.profile)
             } else if app.hasSeenProfileIntro {
-                navigation.navigate(.pubkyRingAuth)
+                navigation.navigate(.pubkyChoice)
             } else {
                 navigation.navigate(.profileIntro)
             }
