@@ -9,6 +9,7 @@ struct PubkyChoiceView: View {
 
     @State private var isAuthenticating = false
     @State private var isWaitingForRing = false
+    @State private var isLoadingAfterAuth = false
     @State private var showRingNotInstalledDialog = false
 
     private let pubkyRingAppStoreUrl = "https://apps.apple.com/app/pubky-ring/id6739356756"
@@ -71,7 +72,9 @@ struct PubkyChoiceView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
 
-            BodyMText(isWaitingForRing ? t("profile__ring_waiting") : t("profile__choice_description"))
+            BodyMText(isLoadingAfterAuth
+                ? t("profile__ring_loading")
+                : isWaitingForRing ? t("profile__ring_waiting") : t("profile__choice_description"))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -89,9 +92,9 @@ struct PubkyChoiceView: View {
             ) {
                 navigation.navigate(.createProfile)
             }
-            .disabled(isAuthenticating || isWaitingForRing)
+            .disabled(isAuthenticating || isWaitingForRing || isLoadingAfterAuth)
 
-            if isWaitingForRing {
+            if isWaitingForRing || isLoadingAfterAuth {
                 ringWaitingCard
             } else {
                 choiceCard(
@@ -173,6 +176,8 @@ struct PubkyChoiceView: View {
     private func waitForApproval() async {
         do {
             try await pubkyProfile.completeAuthentication()
+            isWaitingForRing = false
+            isLoadingAfterAuth = true
             await navigateAfterAuth()
         } catch is CancellationError {
             isWaitingForRing = false
@@ -207,19 +212,21 @@ struct PubkyChoiceView: View {
                     ActivityIndicator(size: 20)
                 }
 
-                BodyMSBText(t("profile__ring_waiting"), textColor: .white)
+                BodyMSBText(t(isLoadingAfterAuth ? "profile__ring_loading" : "profile__ring_waiting"), textColor: .white)
 
                 Spacer()
             }
 
-            Button {
-                isWaitingForRing = false
-                Task { await pubkyProfile.cancelAuthentication() }
-            } label: {
-                BodySSBText(t("common__cancel"), textColor: .white64)
+            if !isLoadingAfterAuth {
+                Button {
+                    isWaitingForRing = false
+                    Task { await pubkyProfile.cancelAuthentication() }
+                } label: {
+                    BodySSBText(t("common__cancel"), textColor: .white64)
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilityIdentifier("PubkyChoiceCancelRing")
             }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .accessibilityIdentifier("PubkyChoiceCancelRing")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 16)

@@ -9,6 +9,7 @@ struct PubkyRingAuthView: View {
 
     @State private var isAuthenticating = false
     @State private var isWaitingForRing = false
+    @State private var isLoadingAfterAuth = false
     @State private var isRingInstalled = false
     @State private var showRingNotInstalledDialog = false
 
@@ -60,7 +61,9 @@ struct PubkyRingAuthView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
 
-                        BodyMText(isWaitingForRing ? t("profile__ring_waiting") : t("profile__ring_auth_description"))
+                        BodyMText(isLoadingAfterAuth
+                            ? t("profile__ring_loading")
+                            : isWaitingForRing ? t("profile__ring_waiting") : t("profile__ring_auth_description"))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -69,23 +72,25 @@ struct PubkyRingAuthView: View {
                         .frame(height: 24)
 
                     if isRingInstalled {
-                        if isWaitingForRing {
+                        if isWaitingForRing || isLoadingAfterAuth {
                             VStack(spacing: 12) {
                                 CustomButton(
-                                    title: t("profile__ring_waiting"),
+                                    title: t(isLoadingAfterAuth ? "profile__ring_loading" : "profile__ring_waiting"),
                                     isLoading: true
                                 ) {}
                                     .disabled(true)
 
-                                Button {
-                                    isWaitingForRing = false
-                                    Task { await pubkyProfile.cancelAuthentication() }
-                                } label: {
-                                    Text(t("common__cancel"))
-                                        .font(Fonts.semiBold(size: 15))
-                                        .foregroundColor(.white64)
+                                if !isLoadingAfterAuth {
+                                    Button {
+                                        isWaitingForRing = false
+                                        Task { await pubkyProfile.cancelAuthentication() }
+                                    } label: {
+                                        Text(t("common__cancel"))
+                                            .font(Fonts.semiBold(size: 15))
+                                            .foregroundColor(.white64)
+                                    }
+                                    .accessibilityIdentifier("PubkyRingCancelAuth")
                                 }
-                                .accessibilityIdentifier("PubkyRingCancelAuth")
                             }
                         } else {
                             CustomButton(
@@ -168,6 +173,8 @@ struct PubkyRingAuthView: View {
     private func waitForApproval() async {
         do {
             try await pubkyProfile.completeAuthentication()
+            isWaitingForRing = false
+            isLoadingAfterAuth = true
             await navigateAfterAuth()
         } catch is CancellationError {
             isWaitingForRing = false

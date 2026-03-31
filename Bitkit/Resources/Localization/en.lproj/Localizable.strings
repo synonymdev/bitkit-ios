@@ -1031,6 +1031,7 @@
 "profile__sign_out_title" = "Disconnect Profile";
 "profile__sign_out_description" = "This will disconnect your Pubky profile from Bitkit. You can reconnect at any time.";
 "profile__ring_waiting" = "Waiting for authorization from Pubky Ring…";
+"profile__ring_loading" = "Loading your profile…";
 "profile__choice_title" = "Join the\n<accent>pubky web</accent>";
 "profile__choice_description" = "Create a new pubky and profile in Bitkit, or import an existing profile with Pubky Ring.";
 "profile__choice_create" = "Create profile with Bitkit";
