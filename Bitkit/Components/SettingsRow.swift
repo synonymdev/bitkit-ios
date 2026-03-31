@@ -73,6 +73,9 @@ struct SettingsRow: View {
                 } else {
                     if let rightText {
                         BodyMText(rightText, textColor: .textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: 120, alignment: .trailing)
                             .padding(.trailing, 5)
                             .accessibilityIdentifier("Value")
                     }

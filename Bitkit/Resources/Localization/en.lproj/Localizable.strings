@@ -844,6 +844,7 @@
 "settings__adv__lightning_connections" = "Lightning Connections";
 "settings__adv__lightning_node" = "Lightning Node";
 "settings__adv__electrum_server" = "Electrum Server";
+"settings__adv__electrum_auto" = "Auto";
 "settings__adv__rgs_server" = "Rapid-Gossip-Sync";
 "settings__adv__web_relay" = "Slashtags Web Relay";
 "settings__adv__bitcoin_network" = "Bitcoin Network";

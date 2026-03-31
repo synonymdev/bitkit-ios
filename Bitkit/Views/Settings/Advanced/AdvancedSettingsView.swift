@@ -6,6 +6,16 @@ struct AdvancedSettingsView: View {
 
     @AppStorage("showDevSettings") private var showDevSettings = Env.isDebug
 
+    private var electrumRowRightText: String {
+        let currentServerUrl = settings.electrumCurrentServer.fullUrl
+
+        guard currentServerUrl != Env.electrumServerUrl else {
+            return t("settings__adv__electrum_auto")
+        }
+
+        return settings.electrumCurrentServer.host.replacingOccurrences(of: "://", with: "")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView(showsIndicators: false) {
@@ -78,7 +88,8 @@ struct AdvancedSettingsView: View {
                     NavigationLink(value: Route.electrumSettings) {
                         SettingsRow(
                             title: t("settings__adv__electrum_server"),
-                            iconName: "hard-drives"
+                            iconName: "hard-drives",
+                            rightText: electrumRowRightText
                         )
                     }
                     .accessibilityIdentifier("ElectrumConfig")
