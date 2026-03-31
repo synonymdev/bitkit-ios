@@ -274,6 +274,15 @@ Ensure accessibility modifiers and labels are added to custom components.
 - Use descriptive names: `isLoadingUsers` not `loading`
 - Follow Apple's SwiftUI best practices
 
+### Changelog
+
+- ALWAYS add an entry under `## [Unreleased]` in `CHANGELOG.md` for `feat:` and `fix:` PRs; skip for `chore:`, `ci:`, `refactor:`, `test:`, `docs:` unless the change is user-facing
+- USE standard Keep a Changelog categories: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`
+- ALWAYS append `#PR_NUMBER` at the end of each changelog entry when the PR number is known
+- ALWAYS place new entries at the top of their category section (newest first)
+- NEVER modify released version sections — only edit `## [Unreleased]`
+- ALWAYS create category headings on demand (don't add empty stubs)
+
 ## Common Workflows
 
 ### Adding a New Feature
