@@ -19,7 +19,7 @@ struct PubkyAuthPermission {
 
 struct PubkyAuthRequest {
     let rawUrl: String
-    let kind: String
+    let kind: PubkyAuthKind
     let relay: String
     let permissions: [PubkyAuthPermission]
     let serviceNames: [String]
