@@ -110,12 +110,13 @@ struct SendQuickpay: View {
 
         let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
         let paymentHash = String(describing: parsedInvoice.paymentHash())
-        let amount = wallet.sendAmountSats
 
         do {
+            // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
+            // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
-                sats: amount,
+                sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
                     navigationPath.append(.pending(paymentHash: paymentHash))

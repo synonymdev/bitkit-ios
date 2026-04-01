@@ -220,9 +220,11 @@ struct LnurlPayConfirm: View {
 
         do {
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+            // LNURL server returns invoices with the amount baked in, so pass sats: nil
+            // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
-                sats: wallet.sendAmountSats,
+                sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
                     navigationPath.append(.pending(paymentHash: paymentHash))

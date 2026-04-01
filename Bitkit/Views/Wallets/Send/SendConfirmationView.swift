@@ -480,10 +480,13 @@ struct SendConfirmationView: View {
                 await createPreActivityMetadata(paymentId: paymentHash, paymentHash: paymentHash)
 
                 // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+                // For invoices with a built-in amount, pass sats: nil so LDK uses the invoice's
+                // native millisatoshi precision instead of our truncated satoshi value.
+                let paymentSats: UInt64? = invoice.amountSatoshis == 0 ? amount : nil
                 do {
                     try await wallet.sendWithTimeout(
                         bolt11: invoice.bolt11,
-                        sats: amount,
+                        sats: paymentSats,
                         onTimeout: {
                             app.addPendingPaymentHash(paymentHash)
                             navigationPath.append(.pending(paymentHash: paymentHash))
@@ -790,7 +793,9 @@ struct SendConfirmationView: View {
         }
 
         if canSwitchWallet || app.selectedWalletToPayFrom == .lightning {
-            await wallet.refreshRoutingFeeEstimate(bolt11: bolt11, amountSats: wallet.sendAmountSats)
+            // For invoices with a built-in amount, pass nil so LDK uses native msat precision
+            let amountSats: UInt64? = app.scannedLightningInvoice?.amountSatoshis == 0 ? wallet.sendAmountSats : nil
+            await wallet.refreshRoutingFeeEstimate(bolt11: bolt11, amountSats: amountSats)
         } else {
             wallet.routingFeeEstimateSats = 0
         }
