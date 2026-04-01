@@ -60,6 +60,8 @@ struct SettingsRow: View {
                 }
 
                 BodyMText(title, textColor: .textPrimary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Spacer()
 
@@ -75,7 +77,7 @@ struct SettingsRow: View {
                         BodyMText(rightText, textColor: .textSecondary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .frame(maxWidth: 120, alignment: .trailing)
+                            // .frame(maxWidth: 120, alignment: .trailing)
                             .padding(.trailing, 5)
                             .accessibilityIdentifier("Value")
                     }
