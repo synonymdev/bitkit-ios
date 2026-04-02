@@ -35,7 +35,6 @@ struct TabBar: View {
             }
         }
         .animation(.easeInOut, value: shouldShow)
-        .ignoresSafeArea(.keyboard)
         .bottomSafeAreaPadding()
     }
 

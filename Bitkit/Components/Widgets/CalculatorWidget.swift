@@ -102,7 +102,7 @@ struct CalculatorWidget: View {
 
                 CurrencyInputRow(
                     icon: CircularIcon(
-                        icon: BodyMSBText(currency.symbol, textColor: .brandAccent),
+                        icon: BodyMSBText(String(currency.symbol.prefix(1)), textColor: .brandAccent),
                         backgroundColor: .gray6,
                         size: 32
                     ),
@@ -131,6 +131,14 @@ struct CalculatorWidget: View {
                     // Format fiat amount when focus leaves the field
                     if newFocus != .fiat && !fiatAmount.isEmpty {
                         fiatAmount = formatFiatInput(fiatAmount)
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button(t("common__done")) {
+                        focusedField = nil
                     }
                 }
             }
