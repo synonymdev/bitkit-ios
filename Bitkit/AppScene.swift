@@ -98,6 +98,7 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
+
                     if migrations.needsPostMigrationSync {
                         app.toast(
                             type: .warning,

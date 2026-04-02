@@ -1,6 +1,13 @@
 import SwiftUI
 
 struct PinCheckView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
+    @EnvironmentObject private var session: SessionManager
+
     let title: String
     let explanation: String
     let onCancel: () -> Void
@@ -9,8 +16,6 @@ struct PinCheckView: View {
     @State private var pinInput: String = ""
     @State private var errorMessage: String = ""
     @State private var errorIdentifier: String?
-    @EnvironmentObject private var settings: SettingsViewModel
-    @Environment(\.dismiss) private var dismiss
 
     private func handlePinChange(_ pin: String) {
         if pin.count == 4 {
@@ -38,24 +43,22 @@ struct PinCheckView: View {
         pinInput = ""
         Haptics.notify(.error)
 
-        if settings.hasExceededPinAttempts() {
-            // Exceeded maximum attempts - this should be handled by the app level
-            // TODO: wipe app
-            errorIdentifier = "WrongPIN"
+        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
+        if case .exceededAttempts = pinAttemptOutcome {
+            Task {
+                await settings.wipeWalletAfterExceededPinAttempts(
+                    app: app,
+                    wallet: wallet,
+                    session: session,
+                    sheets: sheets,
+                    context: "PinCheckView"
+                )
+            }
             return
         }
 
-        let remainingAttempts = settings.getRemainingPinAttempts()
-
-        if remainingAttempts == 1 {
-            // Last attempt warning
-            errorMessage = t("security__pin_last_attempt")
-            errorIdentifier = "LastAttempt"
-        } else {
-            // Show remaining attempts
-            errorMessage = t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
-            errorIdentifier = "AttemptsRemaining"
-        }
+        errorMessage = pinAttemptOutcome.errorMessage ?? ""
+        errorIdentifier = pinAttemptOutcome.errorIdentifier
     }
 
     var body: some View {
@@ -71,6 +74,9 @@ struct PinCheckView: View {
                 CaptionText(errorMessage, textColor: .brandAccent)
                     .padding(.bottom, 16)
                     .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
+                    .onTapGesture {
+                        sheets.showSheet(.forgotPin)
+                    }
             }
 
             // PIN input component
@@ -110,7 +116,11 @@ struct PinCheckView: View {
                 print("PIN verified!")
             }
         )
+        .environmentObject(AppViewModel())
         .environmentObject(SettingsViewModel.shared)
+        .environmentObject(SheetViewModel())
+        .environmentObject(WalletViewModel())
+        .environmentObject(SessionManager())
     }
     .preferredColorScheme(.dark)
 }

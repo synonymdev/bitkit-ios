@@ -888,6 +888,7 @@
 "wallet__drawer__widgets" = "Widgety";
 "wallet__drawer__shop" = "Nakoupit";
 "wallet__drawer__settings" = "Nastavení";
+"wallet__drawer__support" = "Podpora";
 "wallet__drawer__status" = "Stav aplikace";
 "wallet__send" = "Odeslat";
 "wallet__receive" = "Přijmout";

@@ -768,6 +768,7 @@
 "wallet__drawer__widgets" = "Ginys";
 "wallet__drawer__shop" = "Botiga";
 "wallet__drawer__settings" = "Configuració";
+"wallet__drawer__support" = "Suport";
 "wallet__drawer__status" = "Estat de l\'aplicació";
 "wallet__send" = "Envia";
 "wallet__receive" = "Rebre";
