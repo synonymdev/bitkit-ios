@@ -8,82 +8,93 @@ struct GeneralSettingsView: View {
     @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__general_title"))
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Interface section
+                SettingsSectionHeader(t("settings__general__section_interface"))
 
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    NavigationLink(value: Route.languageSettings) {
-                        SettingsListLabel(
-                            title: t("settings__general__language"),
-                            rightText: languageManager.currentLanguageDisplayName
-                        )
-                    }
-
-                    NavigationLink(value: Route.currencySettings) {
-                        SettingsListLabel(
-                            title: t("settings__general__currency_local"),
-                            rightText: currency.selectedCurrency
-                        )
-                    }
-                    .accessibilityIdentifier("CurrenciesSettings")
-
-                    NavigationLink(value: Route.unitSettings) {
-                        SettingsListLabel(
-                            title: t("settings__general__unit"),
-                            rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
-                        )
-                    }
-                    .accessibilityIdentifier("UnitSettings")
-
-                    NavigationLink(value: Route.transactionSpeedSettings) {
-                        SettingsListLabel(
-                            title: t("settings__general__speed"),
-                            rightText: settings.defaultTransactionSpeed.title
-                        )
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("TransactionSpeedSettings")
-
-                    if !tagManager.lastUsedTags.isEmpty {
-                        NavigationLink(value: Route.tagSettings) {
-                            SettingsListLabel(
-                                title: t("settings__general__tags"),
-                                rightText: String(tagManager.lastUsedTags.count)
-                            )
-                        }
-                        .accessibilityIdentifier("TagsSettings")
-                    }
-
-                    NavigationLink(value: Route.widgetsSettings) {
-                        SettingsListLabel(
-                            title: t("settings__widgets__nav_title"),
-                            rightText: settings.showWidgets ? t("common__on") : t("common__off")
-                        )
-                    }
-                    .accessibilityIdentifier("WidgetsSettings")
-
-                    NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
-                        SettingsListLabel(
-                            title: t("settings__quickpay__nav_title"),
-                            rightText: settings.enableQuickpay ? t("common__on") : t("common__off")
-                        )
-                    }
-                    .accessibilityIdentifier("QuickpaySettings")
-
-                    NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
-                        SettingsListLabel(
-                            title: t("settings__notifications__nav_title"),
-                            rightText: settings.enableNotifications ? t("common__on") : t("common__off")
-                        )
-                    }
-                    .accessibilityIdentifier("NotificationsSettings")
+                NavigationLink(value: Route.languageSettings) {
+                    SettingsRow(
+                        title: t("settings__general__language"),
+                        iconName: "translate",
+                        rightText: languageManager.currentLanguageDisplayName
+                    )
                 }
+
+                NavigationLink(value: Route.currencySettings) {
+                    SettingsRow(
+                        title: t("settings__general__currency_local"),
+                        iconName: "coins",
+                        rightText: "\(currency.selectedCurrency) (\(currency.symbol))"
+                    )
+                }
+                .accessibilityIdentifier("CurrenciesSettings")
+
+                NavigationLink(value: Route.unitSettings) {
+                    SettingsRow(
+                        title: t("settings__general__unit"),
+                        iconName: currency.primaryDisplay == .bitcoin ? "b-unit" : "globe",
+                        rightText: currency.primaryDisplay == .bitcoin ? currency.primaryDisplay.rawValue : currency.selectedCurrency
+                    )
+                }
+                .accessibilityIdentifier("UnitSettings")
+
+                NavigationLink(value: Route.widgetsSettings) {
+                    SettingsRow(
+                        title: t("settings__widgets__nav_title"),
+                        iconName: "stack",
+                        rightText: settings.showWidgets ? t("common__on") : t("common__off")
+                    )
+                }
+                .accessibilityIdentifier("WidgetsSettings")
+
+                if !tagManager.lastUsedTags.isEmpty {
+                    NavigationLink(value: Route.tagSettings) {
+                        SettingsRow(
+                            title: t("settings__general__tags"),
+                            iconName: "tag",
+                            rightText: String(tagManager.lastUsedTags.count)
+                        )
+                    }
+                    .accessibilityIdentifier("TagsSettings")
+                }
+
+                // Payments section
+                SettingsSectionHeader(t("settings__general__section_payments"))
+                    .padding(.top, 16)
+
+                NavigationLink(value: Route.transactionSpeedSettings) {
+                    SettingsRow(
+                        title: t("settings__general__speed"),
+                        iconName: settings.defaultTransactionSpeed.iconName,
+                        rightText: settings.defaultTransactionSpeed.title
+                    )
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("TransactionSpeedSettings")
+
+                NavigationLink(value: app.hasSeenQuickpayIntro ? Route.quickpay : Route.quickpayIntro) {
+                    SettingsRow(
+                        title: t("settings__quickpay__nav_title"),
+                        iconName: "caret-double-right",
+                        rightText: settings.enableQuickpay ? t("common__on") : t("common__off")
+                    )
+                }
+                .accessibilityIdentifier("QuickpaySettings")
+
+                NavigationLink(value: app.hasSeenNotificationsIntro ? Route.notifications : Route.notificationsIntro) {
+                    SettingsRow(
+                        title: t("settings__notifications__nav_title"),
+                        iconName: "bell",
+                        rightText: settings.enableNotifications ? t("common__on") : t("common__off")
+                    )
+                }
+                .accessibilityIdentifier("NotificationsSettings")
             }
+            .padding(.top, 16)
+            .padding(.horizontal, 16)
+            .bottomSafeAreaPadding()
         }
-        .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
     }
 }
 

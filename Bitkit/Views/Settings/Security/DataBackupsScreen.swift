@@ -1,19 +1,5 @@
 import SwiftUI
 
-private struct SettingsLabel: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        CaptionMText(text)
-            .frame(height: 40)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
 private struct StatusItemView: View {
     let imageName: String
     let title: String
@@ -51,8 +37,7 @@ private struct StatusItemView: View {
     }
 }
 
-struct BackupSettings: View {
-    @EnvironmentObject var sheets: SheetViewModel
+struct DataBackupsScreen: View {
     @StateObject private var viewModel = BackupViewModel()
 
     private var allSynced: Bool {
@@ -64,26 +49,12 @@ struct BackupSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__backup_title"))
+            NavigationBar(title: t("settings__data_backups_nav_title"))
 
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Button(action: {
-                            sheets.showSheet(.backup, data: BackupConfig(view: .mnemonic))
-                        }) {
-                            SettingsListLabel(title: t("settings__backup__wallet"))
-                        }
-                        .accessibilityIdentifier("BackupWallet")
-
-                        NavigationLink(value: Route.resetAndRestore) {
-                            SettingsListLabel(title: t("settings__backup__reset"))
-                        }
-                        .accessibilityIdentifier("ResetAndRestore")
-
                         HStack(alignment: .center, spacing: 8) {
-                            SettingsLabel(t("settings__backup__latest"))
-
                             if Env.isE2E, allSynced {
                                 Image("check")
                                     .resizable()
@@ -112,6 +83,8 @@ struct BackupSettings: View {
                                     viewModel.triggerBackup(for: category)
                                 }
                             )
+
+                            Divider()
                         }
 
                         Spacer()

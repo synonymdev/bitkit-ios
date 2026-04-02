@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ResetAndRestore: View {
+struct ResetScreen: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -10,7 +10,7 @@ struct ResetAndRestore: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("settings__backup__title"))
+            NavigationBar(title: t("settings__reset_nav_title"))
 
             VStack(spacing: 0) {
                 BodyMText(t("security__reset_text"))

@@ -29,7 +29,7 @@ struct NotificationsSettings: View {
             VStack(alignment: .leading, spacing: 0) {
                 NavigationBar(title: t("settings__notifications__nav_title"))
 
-                SettingsListLabel(
+                SettingsRow(
                     title: t("settings__notifications__settings__toggle"),
                     toggle: $settings.enableNotifications,
                     disabled: isDenied
@@ -51,7 +51,7 @@ struct NotificationsSettings: View {
                     CaptionMText(t("settings__notifications__settings__privacy__label"))
                         .padding(.top, 32)
 
-                    SettingsListLabel(
+                    SettingsRow(
                         title: t("settings__notifications__settings__privacy__text"),
                         toggle: $settings.enableNotificationsAmount
                     )

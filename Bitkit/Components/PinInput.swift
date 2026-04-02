@@ -28,7 +28,6 @@ struct PinInput: View {
             NumberPad { key in
                 handleNumberPadInput(key)
             }
-            .background(Color.black)
         }
         .accessibilityIdentifier("PinPad")
     }

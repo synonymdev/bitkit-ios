@@ -913,6 +913,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Comprar";
 "wallet__drawer__settings" = "Ajustes";
+"wallet__drawer__support" = "Suporte";
 "wallet__drawer__status" = "Status do Aplicativo";
 "wallet__send" = "Enviar";
 "wallet__receive" = "Receber";
