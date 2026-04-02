@@ -102,7 +102,7 @@ struct CalculatorWidget: View {
 
                 CurrencyInputRow(
                     icon: CircularIcon(
-                        icon: BodyMSBText(String(currency.symbol.prefix(1)), textColor: .brandAccent),
+                        icon: BodyMSBText(currency.symbol.count > 2 ? String(currency.symbol.prefix(1)) : currency.symbol, textColor: .brandAccent),
                         backgroundColor: .gray6,
                         size: 32
                     ),
