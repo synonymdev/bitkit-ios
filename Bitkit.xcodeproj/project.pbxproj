@@ -937,8 +937,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
-				branch = master;
-				kind = branch;
+				kind = revision;
+				revision = 99bd86bb60c1f14e8ce8a6356cd2ab36f222fc69;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
