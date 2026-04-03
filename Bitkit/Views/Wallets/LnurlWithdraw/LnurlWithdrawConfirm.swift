@@ -14,7 +14,7 @@ struct LnurlWithdrawConfirm: View {
 
     var displayAmountSats: UInt64 {
         if isFixedAmount {
-            return LightningAmountConversion.satsFloor(fromMsats: app.lnurlWithdrawData!.maxWithdrawable)
+            return LightningAmountConversion.satsCeil(fromMsats: app.lnurlWithdrawData!.maxWithdrawable)
         }
         return wallet.lnurlWithdrawAmount!
     }

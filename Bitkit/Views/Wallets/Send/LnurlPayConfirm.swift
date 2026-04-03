@@ -29,7 +29,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? LightningAmountConversion.satsFloor(fromMsats: app.lnurlPayData!.minSendable)),
+                    sats: Int(wallet.sendAmountSats ?? LightningAmountConversion.satsCeil(fromMsats: app.lnurlPayData!.minSendable)),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )

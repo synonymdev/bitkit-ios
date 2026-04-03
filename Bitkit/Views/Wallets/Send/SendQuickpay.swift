@@ -89,7 +89,7 @@ struct SendQuickpay: View {
         // Handle LNURL Pay
         if let lnurlPayData = app.lnurlPayData {
             // Set the amount in sats for the success screen
-            wallet.sendAmountSats = LightningAmountConversion.satsFloor(fromMsats: lnurlPayData.minSendable)
+            wallet.sendAmountSats = LightningAmountConversion.satsCeil(fromMsats: lnurlPayData.minSendable)
 
             bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
                 callbackUrl: lnurlPayData.callback,
