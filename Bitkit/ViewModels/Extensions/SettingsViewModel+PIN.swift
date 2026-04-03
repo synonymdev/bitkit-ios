@@ -3,6 +3,34 @@ import SwiftUI
 
 // MARK: - PIN Management
 
+enum PinAttemptOutcome {
+    case exceededAttempts
+    case lastAttempt
+    case attemptsRemaining(Int)
+
+    var errorIdentifier: String? {
+        switch self {
+        case .exceededAttempts:
+            return nil
+        case .lastAttempt:
+            return "LastAttempt"
+        case .attemptsRemaining:
+            return "AttemptsRemaining"
+        }
+    }
+
+    var errorMessage: String? {
+        switch self {
+        case .exceededAttempts:
+            return nil
+        case .lastAttempt:
+            return t("security__pin_last_attempt")
+        case let .attemptsRemaining(remainingAttempts):
+            return t("security__pin_attempts", variables: ["attemptsRemaining": "\(remainingAttempts)"])
+        }
+    }
+}
+
 extension SettingsViewModel {
     func updatePinEnabledState() {
         let newState = checkPinExists()
@@ -61,6 +89,36 @@ extension SettingsViewModel {
         pinFailedAttempts = 0
     }
 
+    func pinAttemptOutcomeAfterFailure() -> PinAttemptOutcome {
+        if hasExceededPinAttempts() {
+            return .exceededAttempts
+        }
+
+        let remainingAttempts = getRemainingPinAttempts()
+        return remainingAttempts == 1 ? .lastAttempt : .attemptsRemaining(remainingAttempts)
+    }
+
+    func wipeWalletAfterExceededPinAttempts(
+        app: AppViewModel,
+        wallet: WalletViewModel,
+        session: SessionManager,
+        sheets: SheetViewModel? = nil,
+        context: String
+    ) async {
+        do {
+            try await AppReset.wipe(
+                app: app,
+                wallet: wallet,
+                session: session,
+                toastType: .warning
+            )
+            sheets?.hideSheet()
+        } catch {
+            Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: context)
+            app.toast(error)
+        }
+    }
+
     @MainActor
     func resetPinSettings() {
         pinEnabled = false
@@ -83,6 +141,15 @@ extension SettingsViewModel {
             useBiometrics = false
         }
 
+        updatePinEnabledState()
+    }
+
+    func changePin(currentPin: String, newPin: String) throws {
+        guard pinCheck(pin: currentPin) else {
+            throw NSError(domain: "SettingsViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "PIN does not match"])
+        }
+
+        try Keychain.updateString(key: .securityPin, str: newPin)
         updatePinEnabledState()
     }
 }

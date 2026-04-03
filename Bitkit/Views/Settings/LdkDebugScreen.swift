@@ -17,7 +17,7 @@ struct LdkDebugScreen: View {
                 VStack(alignment: .leading, spacing: 32) {
                     // Add Peer
                     VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText("Add Peer")
+                        SettingsSectionHeader("Add Peer")
 
                         TextField("039b8d4d...a8f3eae3@127.0.0.1:9735", text: $nodeUri)
 
@@ -37,7 +37,7 @@ struct LdkDebugScreen: View {
 
                     // Network Graph Storage
                     VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText("Network Graph Storage")
+                        SettingsSectionHeader("Network Graph Storage")
 
                         HStack(spacing: 8) {
                             CustomButton(title: "Log Graph Info", size: .small) {
@@ -56,7 +56,7 @@ struct LdkDebugScreen: View {
 
                     // Node
                     VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText("Node")
+                        SettingsSectionHeader("Node")
 
                         HStack(spacing: 8) {
                             CustomButton(title: "Restart", size: .small, isLoading: isRestartingNode) {
@@ -69,7 +69,7 @@ struct LdkDebugScreen: View {
 
                     // Peer Simulation
                     VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText("Peer Simulation")
+                        SettingsSectionHeader("Peer Simulation")
 
                         Picker("Peer Simulation", selection: Binding(
                             get: { WalletViewModel.peerSimulation },

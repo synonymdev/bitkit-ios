@@ -29,6 +29,7 @@ struct AppScene: View {
     @StateObject private var migrations = MigrationsService.shared
     @StateObject private var pubkyProfile = PubkyProfileManager()
     @StateObject private var contactsManager = ContactsManager()
+    @State private var keyboardManager = KeyboardManager()
 
     @State private var hideSplash = false
     @State private var removeSplash = false
@@ -100,6 +101,7 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
+
                     if migrations.needsPostMigrationSync {
                         app.toast(
                             type: .warning,
@@ -137,6 +139,7 @@ struct AppScene: View {
             .environmentObject(channelDetails)
             .environmentObject(pubkyProfile)
             .environmentObject(contactsManager)
+            .environment(keyboardManager)
             .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
                 if authState == .authenticated, let pk = pubkyProfile.publicKey {
                     Task { try? await contactsManager.loadContacts(for: pk) }

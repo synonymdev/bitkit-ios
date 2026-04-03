@@ -793,6 +793,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Tienda";
 "wallet__drawer__settings" = "Ajustes";
+"wallet__drawer__support" = "Soporte";
 "wallet__drawer__status" = "Estado de la App";
 "wallet__send" = "Enviar";
 "wallet__receive" = "Recibir";

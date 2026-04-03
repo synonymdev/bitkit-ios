@@ -377,14 +377,8 @@ struct MainNavView: View {
                 case let .widgetEdit(widgetType): WidgetEditView(id: widgetType)
 
                 // Settings
-                case .settings: MainSettings()
-                case .generalSettings: GeneralSettingsView()
-                case .securitySettings: SecurityPrivacySettingsView()
-                case .backupSettings: BackupSettings()
-                case .advancedSettings: AdvancedSettingsView()
-                case .support: SupportView()
-                case .about: AboutView()
-                case .devSettings: DevSettingsView()
+                case .settings: MainSettingsScreen()
+                case .support: SupportScreen()
 
                 // General settings
                 case .languageSettings: LanguageSettingsScreen()
@@ -395,16 +389,16 @@ struct MainNavView: View {
                 case .quickpayIntro: QuickpayIntroView()
                 case .customSpeedSettings: CustomSpeedView()
                 case .tagSettings: TagSettingsView()
-                case .widgetsSettings: WidgetsSettingsView()
+                case .widgetsSettings: WidgetsSettingsScreen()
                 case .notifications: NotificationsSettings()
                 case .notificationsIntro: NotificationsIntro()
 
                 // Security settings
-                case .disablePin: DisablePinView()
-                case .changePin: PinChangeView()
+                case .changePin: ChangePinScreen()
 
                 // Backup settings
-                case .resetAndRestore: ResetAndRestore()
+                case .dataBackups: DataBackupsScreen()
+                case .reset: ResetScreen()
 
                 // Support settings
                 case .reportIssue: ReportIssue()
@@ -420,9 +414,10 @@ struct MainNavView: View {
                 case .electrumSettings: ElectrumSettingsScreen()
                 case .rgsSettings: RgsSettingsScreen()
                 case .addressViewer: AddressViewer()
+                case .devSettings: DevSettingsView()
 
                 // Dev settings
-                case .blocktankRegtest: BlocktankRegtestView()
+                case .blocktankRegtest: BlocktankRegtestScreen()
                 case .ldkDebug: LdkDebugScreen()
                 case .vssDebug: VssDebugScreen()
                 case .probingTool: ProbingToolScreen()

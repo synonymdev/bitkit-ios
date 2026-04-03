@@ -8,11 +8,12 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+
     @Binding var navigationPath: [SendRoute]
+    let requestPinCheck: () async -> Bool
+
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
-    @State private var showPinCheck = false
-    @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
@@ -137,9 +138,8 @@ struct LnurlPayConfirm: View {
                             throw CancellationError()
                         }
                     } else {
-                        showPinCheck = true
-                        let shouldProceed = try await waitForPinCheck()
-                        if !shouldProceed {
+                        let shouldProceed = await requestPinCheck()
+                        guard shouldProceed else {
                             throw CancellationError()
                         }
                     }
@@ -173,31 +173,11 @@ struct LnurlPayConfirm: View {
         } message: {
             Text(biometricErrorMessage)
         }
-        .navigationDestination(isPresented: $showPinCheck) {
-            PinCheckView(
-                title: t("security__pin_send_title"),
-                explanation: t("security__pin_send"),
-                onCancel: {
-                    pinCheckContinuation?.resume(returning: false)
-                    pinCheckContinuation = nil
-                },
-                onPinVerified: { _ in
-                    pinCheckContinuation?.resume(returning: true)
-                    pinCheckContinuation = nil
-                }
-            )
-        }
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
         return try await withCheckedThrowingContinuation { continuation in
             alertContinuation = continuation
-        }
-    }
-
-    private func waitForPinCheck() async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
-            pinCheckContinuation = continuation
         }
     }
 

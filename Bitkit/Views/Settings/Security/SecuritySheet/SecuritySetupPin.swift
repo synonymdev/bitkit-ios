@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct SecurityPin: View {
+struct SecuritySetupPin: View {
     @EnvironmentObject private var settings: SettingsViewModel
     @Binding var navigationPath: [SecurityRoute]
     @State private var pinInput: String = ""
@@ -40,14 +40,12 @@ struct SecurityPin: View {
             }
             .padding(.horizontal, 32)
 
-            VStack(spacing: 0) {
-                PinInput(pinInput: $pinInput) { pin in
-                    if pin.count == 4 {
-                        handlePinComplete(pin)
-                    } else if pin.count == 1 {
-                        errorMessage = ""
-                        errorIdentifier = nil
-                    }
+            PinInput(pinInput: $pinInput) { pin in
+                if pin.count == 4 {
+                    handlePinComplete(pin)
+                } else if pin.count == 1 {
+                    errorMessage = ""
+                    errorIdentifier = nil
                 }
             }
         }
@@ -90,9 +88,4 @@ struct SecurityPin: View {
             errorIdentifier = nil
         }
     }
-}
-
-#Preview {
-    SecurityPin(navigationPath: .constant([.pin]))
-        .environmentObject(SettingsViewModel.shared)
 }

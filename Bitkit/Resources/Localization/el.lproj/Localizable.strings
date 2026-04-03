@@ -664,6 +664,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Κατάστημα";
 "wallet__drawer__settings" = "Ρυθμίσεις";
+"wallet__drawer__support" = "Υποστήριξη";
 "wallet__drawer__status" = "Κατάσταση Εφαρμογής";
 "wallet__send" = "Αποστολή";
 "wallet__receive" = "Λήψη";

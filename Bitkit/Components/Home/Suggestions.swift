@@ -271,7 +271,7 @@ struct Suggestions: View {
 
         switch card.action {
         case .backup:
-            sheets.showSheet(.backup, data: BackupConfig())
+            sheets.showSheet(.backup)
         case .buyBitcoin:
             route = .buyBitcoin
         case .invite:
@@ -289,7 +289,7 @@ struct Suggestions: View {
         case .notifications:
             route = app.hasSeenNotificationsIntro ? .notifications : .notificationsIntro
         case .secure:
-            sheets.showSheet(.security, data: SecurityConfig(showLaterButton: true))
+            sheets.showSheet(.security)
         case .shop:
             route = app.hasSeenShopIntro ? .shopDiscover : .shopIntro
         case .support:

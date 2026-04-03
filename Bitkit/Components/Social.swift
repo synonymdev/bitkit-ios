@@ -3,11 +3,7 @@ import SwiftUI
 struct Social: View {
     @Environment(\.openURL) private var openURL
 
-    let backgroundColor: Color
-
-    init(backgroundColor: Color = .white16) {
-        self.backgroundColor = backgroundColor
-    }
+    let backgroundColor: Color = .clear
 
     var body: some View {
         HStack {
