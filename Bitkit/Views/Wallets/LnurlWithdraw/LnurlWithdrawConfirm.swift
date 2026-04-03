@@ -9,12 +9,12 @@ struct LnurlWithdrawConfirm: View {
     @State private var isLoading = false
 
     var amount: UInt64 {
-        // Fixed amount
+        // Fixed amount: floor ensures the invoice doesn't exceed the server's max
         if app.lnurlWithdrawData!.maxWithdrawable == app.lnurlWithdrawData!.minWithdrawable {
-            return app.lnurlWithdrawData!.maxWithdrawable
+            return LightningAmountConversion.satsFloor(fromMsats: app.lnurlWithdrawData!.maxWithdrawable)
         }
 
-        // For variable amount, use the amount from the previous screen
+        // For variable amount, use the amount from the previous screen (already in sats)
         return wallet.lnurlWithdrawAmount!
     }
 

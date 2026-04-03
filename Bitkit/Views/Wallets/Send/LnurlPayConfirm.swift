@@ -29,7 +29,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable),
+                    sats: Int(wallet.sendAmountSats ?? LightningAmountConversion.satsFloor(fromMsats: app.lnurlPayData!.minSendable)),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
@@ -186,12 +186,16 @@ struct LnurlPayConfirm: View {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amount = wallet.sendAmountSats ?? lnurlPayData.minSendable
+        let amountMsats: UInt64 = if let userSats = wallet.sendAmountSats {
+            userSats * 1000
+        } else {
+            lnurlPayData.minSendable
+        }
 
         // Fetch the Lightning invoice from LNURL
         let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
             callbackUrl: lnurlPayData.callback,
-            amount: amount,
+            amountMsats: amountMsats,
             comment: comment.isEmpty ? nil : comment
         )
 

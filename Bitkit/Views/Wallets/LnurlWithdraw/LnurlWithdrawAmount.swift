@@ -9,11 +9,12 @@ struct LnurlWithdrawAmount: View {
     @StateObject private var amountViewModel = AmountInputViewModel()
 
     var minAmount: Int {
-        Int(app.lnurlWithdrawData!.minWithdrawable ?? 1)
+        let minMsats = app.lnurlWithdrawData!.minWithdrawable ?? Env.msatsPerSat
+        return Int(max(1, LightningAmountConversion.satsCeil(fromMsats: minMsats)))
     }
 
     var maxAmount: Int {
-        Int(app.lnurlWithdrawData!.maxWithdrawable)
+        Int(LightningAmountConversion.satsFloor(fromMsats: app.lnurlWithdrawData!.maxWithdrawable))
     }
 
     var amount: UInt64 {
