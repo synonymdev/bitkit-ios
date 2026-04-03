@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Preserve msat precision for LNURL pay and withdraw callbacks #512
 - Avoid msat truncation when paying invoices with built-in amounts #512
 
 [Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD
