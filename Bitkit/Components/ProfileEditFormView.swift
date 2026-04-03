@@ -8,8 +8,10 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     let publicKey: String
     let isSaving: Bool
+    let deleteLabel: String?
     let onSave: () async -> Void
     let onCancel: () -> Void
+    let onDelete: (() -> Void)?
     @ViewBuilder let avatar: () -> Avatar
 
     @State private var showAddLinkSheet = false
@@ -55,6 +57,14 @@ struct ProfileEditFormView<Avatar: View>: View {
 
                     tagsSection
                         .padding(.bottom, 24)
+
+                    if let deleteLabel, let onDelete {
+                        CustomDivider(color: .white16)
+                            .padding(.bottom, 16)
+
+                        deleteSection(label: deleteLabel, action: onDelete)
+                            .padding(.bottom, 24)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -174,6 +184,25 @@ struct ProfileEditFormView<Avatar: View>: View {
             .background(Color.gray6)
             .cornerRadius(8)
         }
+    }
+
+    // MARK: - Delete Section
+
+    @ViewBuilder
+    private func deleteSection(label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image("trash")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+
+                Text(label)
+                    .font(Fonts.semiBold(size: 15))
+            }
+            .foregroundColor(.red)
+        }
+        .accessibilityIdentifier("ProfileEditDelete")
     }
 
     // MARK: - Tags Section

@@ -991,6 +991,7 @@
 "contacts__delete_confirm" = "Yes, Delete";
 "contacts__delete_success" = "Contact deleted";
 "contacts__delete_error" = "Failed to delete contact";
+"contacts__delete_label" = "Delete Contact";
 "contacts__edit_title" = "Edit Contact";
 "contacts__edit_saved" = "Contact saved";
 "contacts__edit_error" = "Failed to save contact";
@@ -1072,6 +1073,10 @@
 "profile__session_expired_description" = "Your profile session has expired. Please reconnect to restore your profile.";
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
+"profile__delete_title" = "Delete Profile?";
+"profile__delete_description" = "This will permanently delete your Pubky profile.";
+"profile__delete_confirm" = "Yes, Delete";
+"profile__delete_label" = "Delete Profile";
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
 "profile__pay_contacts_title" = "Let your contacts\n<accent>pay you</accent>";

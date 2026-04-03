@@ -243,9 +243,27 @@ struct ContactsListView: View {
 
     @ViewBuilder
     private var emptyContent: some View {
-        VStack {
+        VStack(spacing: 0) {
             Spacer()
-            BodyMText(t("contacts__empty_state"))
+
+            Image("group")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 200)
+                .padding(.bottom, 32)
+
+            DisplayText(
+                t("contacts__intro_title"),
+                accentColor: .pubkyGreen
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 8)
+
+            BodyMText(t("contacts__intro_description"), textColor: .white64)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
             Spacer()
         }
         .padding(.horizontal, 32)

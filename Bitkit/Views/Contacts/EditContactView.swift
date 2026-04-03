@@ -13,6 +13,7 @@ struct EditContactView: View {
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
     @State private var isSaving = false
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,8 +27,10 @@ struct EditContactView: View {
                 tags: $tags,
                 publicKey: publicKey,
                 isSaving: isSaving,
+                deleteLabel: t("contacts__delete_label"),
                 onSave: { await saveContact() },
-                onCancel: { navigation.navigateBack() }
+                onCancel: { navigation.navigateBack() },
+                onDelete: { showDeleteConfirmation = true }
             ) {
                 avatarSection
             }
@@ -38,6 +41,14 @@ struct EditContactView: View {
         .navigationBarHidden(true)
         .task {
             loadContactData()
+        }
+        .alert(t("contacts__delete_title", variables: ["name": name]), isPresented: $showDeleteConfirmation) {
+            Button(t("contacts__delete_confirm"), role: .destructive) {
+                Task { await deleteContact() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("contacts__delete_description"))
         }
     }
 
@@ -74,6 +85,19 @@ struct EditContactView: View {
         imageUrl = profile.imageUrl
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
         tags = profile.tags
+    }
+
+    // MARK: - Delete
+
+    private func deleteContact() async {
+        do {
+            try await contactsManager.removeContact(publicKey: publicKey)
+            app.toast(type: .success, title: t("contacts__delete_success"))
+            navigation.navigateBack()
+        } catch {
+            Logger.error("Failed to delete contact: \(error)", context: "EditContactView")
+            app.toast(type: .error, title: t("contacts__delete_error"))
+        }
     }
 
     // MARK: - Save

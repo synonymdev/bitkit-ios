@@ -11,6 +11,7 @@ struct EditProfileView: View {
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
     @State private var isSaving = false
+    @State private var showDeleteConfirmation = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarImage: UIImage?
 
@@ -28,8 +29,10 @@ struct EditProfileView: View {
                 tags: $tags,
                 publicKey: pubkyProfile.publicKey ?? "...",
                 isSaving: isSaving,
+                deleteLabel: t("profile__delete_label"),
                 onSave: { await saveProfile() },
-                onCancel: { navigation.navigateBack() }
+                onCancel: { navigation.navigateBack() },
+                onDelete: { showDeleteConfirmation = true }
             ) {
                 avatarPicker
             }
@@ -40,6 +43,14 @@ struct EditProfileView: View {
         .navigationBarHidden(true)
         .task {
             loadProfileData()
+        }
+        .alert(t("profile__delete_title"), isPresented: $showDeleteConfirmation) {
+            Button(t("profile__delete_confirm"), role: .destructive) {
+                Task { await deleteProfile() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("profile__delete_description"))
         }
     }
 
@@ -106,6 +117,13 @@ struct EditProfileView: View {
         bio = profile.bio
         links = profile.links.map { ProfileLinkInput(label: $0.label, url: $0.url) }
         tags = profile.tags
+    }
+
+    // MARK: - Delete Profile
+
+    private func deleteProfile() async {
+        await pubkyProfile.signOut()
+        navigation.reset()
     }
 
     // MARK: - Save Profile
