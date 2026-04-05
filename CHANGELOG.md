@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Pubky profile creation with BIP39 seed derivation and restore detection for existing profiles. #476
+- Pubky Ring authentication with contact import overview, selection, and batch import. #476
+- Profile view with QR code, bio, links, tags, and edit/copy/share actions. #476
+- Contacts list with search, add, edit, delete, and alphabetical grouping. #476
+- Pay Contacts onboarding step after profile creation and Ring import. #476
+- Session restoration with automatic re-sign-in recovery. #476
+
 ### Fixed
 - Stabilize Home widgets calculator keyboard behavior by improving keyboard avoidance and adding a keyboard "Done" button. #513
 - In the calculator widget, show only the first character of multi-character currency symbols. #513

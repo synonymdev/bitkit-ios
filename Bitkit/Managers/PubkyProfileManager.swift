@@ -64,12 +64,15 @@ class PubkyProfileManager: ObservableObject {
                         Logger.info("Re-signed in and restored session for \(pk)", context: "PubkyProfileManager")
                         return InitResult.restored(publicKey: pk)
                     } catch {
-                        Logger.error("Re-sign-in failed: \(error)", context: "PubkyProfileManager")
+                        // Both import and re-sign-in failed — session is invalid
+                        Logger.error("Re-sign-in failed, clearing session: \(error)", context: "PubkyProfileManager")
+                        try? Keychain.delete(key: .paykitSession)
                         return InitResult.restorationFailed
                     }
                 }
 
-                // No secret key available (Ring-managed) — cannot re-sign-in
+                // No secret key available (Ring-managed) — keep session for next attempt
+                // Could be a transient network issue; user gets a toast to reconnect if needed
                 Logger.warn("No secret key to recover session", context: "PubkyProfileManager")
                 return InitResult.restorationFailed
             }.value
@@ -411,7 +414,7 @@ class PubkyProfileManager: ObservableObject {
             publicKey = pk
             authState = .authenticated
             Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
-            Task { await loadProfile() }
+            await loadProfile()
         } catch let serviceError as PubkyServiceError {
             authState = .idle
             throw serviceError
