@@ -996,7 +996,7 @@
 "contacts__edit_saved" = "Contact saved";
 "contacts__edit_error" = "Failed to save contact";
 "contacts__error_saving" = "Failed to save changes";
-"contacts__error_loading" = "Failed to load contact";
+"contacts__error_loading_detail" = "Failed to load contact";
 "slashtags__onboarding_profile1_header" = "Own your\n<accent>profile</accent>";
 "slashtags__onboarding_profile1_text" = "Set up your public profile and links, so your Bitkit contacts can reach you or pay you anytime, anywhere.";
 "slashtags__onboarding_profile2_header" = "Pay <accent>Bitkit\ncontacts</accent>";

@@ -91,6 +91,7 @@ class PubkyProfileManager: ObservableObject {
         case .restorationFailed:
             authState = .idle
             sessionRestorationFailed = true
+            clearCachedProfileMetadata()
         }
     }
 
