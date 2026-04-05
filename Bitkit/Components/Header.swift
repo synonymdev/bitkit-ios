@@ -68,8 +68,11 @@ struct Header: View {
     @ViewBuilder
     private var profileButton: some View {
         Button {
-            if pubkyProfile.isAuthenticated {
+            if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)
+            } else if !pubkyProfile.isInitialized {
+                // Still initializing — don't navigate to choice screen yet
+                return
             } else if app.hasSeenProfileIntro {
                 navigation.navigate(.pubkyChoice)
             } else {

@@ -277,8 +277,10 @@ struct Suggestions: View {
         case .invite:
             showShareSheet = true
         case .profile:
-            if pubkyProfile.isAuthenticated {
+            if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 route = .profile
+            } else if !pubkyProfile.isInitialized {
+                return
             } else if app.hasSeenProfileIntro {
                 route = .pubkyChoice
             } else {
