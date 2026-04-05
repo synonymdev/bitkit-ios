@@ -726,7 +726,8 @@ extension AppViewModel {
                 }
 
                 await MainActor.run {
-                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+                    let sats = LightningAmountConversion.satsCeil(fromMsats: amountMsat)
+                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: sats))
                 }
             }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
