@@ -176,7 +176,6 @@ struct PubkyChoiceView: View {
     private func waitForApproval() async {
         do {
             try await pubkyProfile.completeAuthentication()
-            isWaitingForRing = false
             isLoadingAfterAuth = true
             await navigateAfterAuth()
         } catch is CancellationError {
