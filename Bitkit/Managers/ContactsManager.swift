@@ -72,6 +72,8 @@ class ContactsManager: ObservableObject {
         contacts = []
         isLoading = false
         hasLoaded = false
+        pendingImportProfile = nil
+        pendingImportContacts = []
     }
 
     // MARK: - Load Contacts (from bitkit.to homeserver)
@@ -182,10 +184,11 @@ class ContactsManager: ObservableObject {
                     let contactData = PubkyProfileData.from(profile: profile)
                     do {
                         try await savePubkyProfileData(publicKey: key, data: contactData)
+                        return PubkyContact(publicKey: key, profile: profile)
                     } catch {
                         Logger.warn("Failed to save imported contact '\(key)': \(error)", context: "ContactsManager")
+                        return nil
                     }
-                    return PubkyContact(publicKey: key, profile: profile)
                 }
             }
             var results: [PubkyContact] = []

@@ -226,8 +226,14 @@ struct ContactDetailView: View {
         VStack(spacing: 16) {
             Spacer()
             BodyMText(t("contacts__detail_empty_state"))
-            CustomButton(title: t("profile__retry_load"), variant: .secondary) {}
-                .accessibilityIdentifier("ContactRetry")
+            CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+                if let contact = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
+                    profile = contact.profile
+                } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
+                    profile = fetched
+                }
+            }
+            .accessibilityIdentifier("ContactRetry")
             Spacer()
         }
         .padding(.horizontal, 16)

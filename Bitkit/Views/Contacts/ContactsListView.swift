@@ -130,7 +130,7 @@ struct ContactsListView: View {
                 truncatedKey: profile.truncatedPublicKey,
                 imageUrl: profile.imageUrl
             ) {
-                navigation.navigate(.contactDetail(publicKey: profile.publicKey))
+                navigation.navigate(.profile)
             }
             .accessibilityIdentifier("ContactsMyProfile")
 
