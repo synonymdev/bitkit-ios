@@ -3,11 +3,13 @@ import SwiftUI
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @Environment(CameraManager.self) private var cameraManager
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
-    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
@@ -88,6 +90,14 @@ struct MainNavView: View {
             }
         ) {
             config in LnurlAuthSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.pubkyAuthApprovalSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in PubkyAuthApprovalSheet(config: config)
         }
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
@@ -269,7 +279,16 @@ struct MainNavView: View {
         }
     }
 
-    // MARK: - Computed Properties for Better Organization
+    // MARK: - Loading View
+
+    private var pubkyLoadingView: some View {
+        VStack {
+            Spacer()
+            ActivityIndicator()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     private var navigationContent: some View {
         HomeScreen()
@@ -305,10 +324,46 @@ struct MainNavView: View {
                 case .savingsProgress: SavingsProgressView()
 
                 // Profile & Contacts
-                case .contacts: ComingSoonScreen()
-                case .contactsIntro: ComingSoonScreen()
-                case .profile: ComingSoonScreen()
-                case .profileIntro: ComingSoonScreen()
+                case .contacts:
+                    if app.hasSeenContactsIntro {
+                        if !pubkyProfile.isInitialized {
+                            pubkyLoadingView
+                        } else if pubkyProfile.isAuthenticated {
+                            ContactsListView()
+                        } else if app.hasSeenProfileIntro {
+                            PubkyChoiceView()
+                        } else {
+                            ProfileIntroView()
+                        }
+                    } else {
+                        ContactsIntroView()
+                    }
+                case .contactsIntro: ContactsIntroView()
+                case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
+                case .contactImportOverview:
+                    ContactImportOverviewView(
+                        profile: contactsManager.pendingImportProfile ?? PubkyProfile.placeholder(publicKey: ""),
+                        contacts: contactsManager.pendingImportContacts
+                    )
+                case .contactImportSelect:
+                    ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                case let .addContact(publicKey): AddContactView(publicKey: publicKey)
+                case let .editContact(publicKey): EditContactView(publicKey: publicKey)
+                case .profile:
+                    if !pubkyProfile.isInitialized {
+                        pubkyLoadingView
+                    } else if pubkyProfile.isAuthenticated {
+                        ProfileView()
+                    } else if app.hasSeenProfileIntro {
+                        PubkyChoiceView()
+                    } else {
+                        ProfileIntroView()
+                    }
+                case .profileIntro: ProfileIntroView()
+                case .pubkyChoice: PubkyChoiceView()
+                case .createProfile: CreateProfileView()
+                case .editProfile: EditProfileView()
+                case .payContacts: PayContactsView()
 
                 // Shop
                 case .shopIntro: ShopIntro()

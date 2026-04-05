@@ -11,8 +11,17 @@ enum Route: Hashable {
     case buyBitcoin
     case contacts
     case contactsIntro
+    case contactDetail(publicKey: String)
+    case contactImportOverview
+    case contactImportSelect
+    case addContact(publicKey: String)
+    case editContact(publicKey: String)
     case profile
     case profileIntro
+    case pubkyChoice
+    case createProfile
+    case editProfile
+    case payContacts
     case transferIntro
     case fundingOptions
     case spendingIntro

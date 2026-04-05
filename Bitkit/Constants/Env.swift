@@ -258,6 +258,22 @@ enum Env {
         }
     }
 
+    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
+    static var pubkyCapabilities: String {
+        switch network {
+        case .bitcoin:
+            return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
+        default:
+            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/staging.paykit/v0/:rw"
+        }
+    }
+
+    /// Homegate URL for auto-provisioned identity signup via IP verification.
+    /// TODO: Switch `.bitcoin` to production Homegate URL once available.
+    static var homegateUrl: String {
+        return "https://homegate.staging.pubky.app"
+    }
+
     static var blockExplorerUrl: String {
         switch network {
         case .bitcoin: "https://mempool.space"
