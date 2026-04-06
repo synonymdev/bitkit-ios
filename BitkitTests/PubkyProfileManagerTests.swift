@@ -44,6 +44,35 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertEqual(response.homeserverPubky, "z6Mk")
     }
 
+    // MARK: - Image Resolution
+
+    func testResolvedImageUrlPrefersNewImage() {
+        let resolved = PubkyProfileManager.resolvedImageUrl(
+            newImageUrl: "pubky://new-avatar",
+            existingImageUrl: "pubky://existing-avatar"
+        )
+
+        XCTAssertEqual(resolved, "pubky://new-avatar")
+    }
+
+    func testResolvedImageUrlFallsBackToExistingImage() {
+        let resolved = PubkyProfileManager.resolvedImageUrl(
+            newImageUrl: nil,
+            existingImageUrl: "pubky://existing-avatar"
+        )
+
+        XCTAssertEqual(resolved, "pubky://existing-avatar")
+    }
+
+    func testResolvedImageUrlAllowsMissingAvatar() {
+        let resolved = PubkyProfileManager.resolvedImageUrl(
+            newImageUrl: nil,
+            existingImageUrl: nil
+        )
+
+        XCTAssertNil(resolved)
+    }
+
     // MARK: - Profile Link Input Model
 
     func testProfileLinkInputHasUniqueIds() {

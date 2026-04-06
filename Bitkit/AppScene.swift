@@ -410,13 +410,13 @@ struct AppScene: View {
 
     @Sendable
     private func setupTask() async {
-        // Start Pubky/Paykit initialization early so PKDNS bootstrapping
-        // runs concurrently with wallet setup instead of sequentially after it.
-        Task { await pubkyProfile.initialize() }
-
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()
+
+            // Start Pubky/Paykit initialization after keychain cleanup so
+            // session restoration never races orphaned-keychain wiping.
+            Task { await pubkyProfile.initialize() }
 
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()

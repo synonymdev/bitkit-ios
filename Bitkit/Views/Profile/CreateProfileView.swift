@@ -211,6 +211,7 @@ struct CreateProfileView: View {
                 bio: existingProfile?.bio ?? "",
                 links: existingProfile?.links ?? [],
                 tags: existingProfile?.tags ?? [],
+                existingImageUrl: existingProfile?.imageUrl,
                 avatarImage: avatarImage
             )
             navigation.navigate(.payContacts)

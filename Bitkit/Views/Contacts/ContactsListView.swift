@@ -26,6 +26,8 @@ struct ContactsListView: View {
             Group {
                 if contactsManager.isLoading && contactsManager.contacts.isEmpty {
                     loadingContent
+                } else if contactsManager.contacts.isEmpty, let errorMessage = contactsManager.loadErrorMessage {
+                    errorContent(message: errorMessage)
                 } else if contactsManager.contacts.isEmpty && !contactsManager.isLoading && !isSearching {
                     emptyContent
                 } else {
@@ -46,12 +48,7 @@ struct ContactsListView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .task {
-            guard let pk = pubkyProfile.publicKey else { return }
-            do {
-                try await contactsManager.loadContacts(for: pk)
-            } catch {
-                app.toast(type: .error, title: t("contacts__error_loading"))
-            }
+            await loadContacts()
         }
         .sheet(isPresented: $showAddContactSheet) {
             AddContactSheet(
@@ -242,6 +239,31 @@ struct ContactsListView: View {
     }
 
     @ViewBuilder
+    private func errorContent(message: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            BodyMText(t("contacts__error_loading"))
+
+            if message != t("contacts__error_loading") {
+                BodySText(message, textColor: .white64)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+            }
+
+            CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+                await loadContacts()
+            }
+            .accessibilityIdentifier("ContactsRetry")
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
     private var emptyContent: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -268,6 +290,24 @@ struct ContactsListView: View {
         }
         .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func loadContacts() async {
+        guard let pk = pubkyProfile.publicKey else { return }
+
+        do {
+            try await contactsManager.loadContacts(for: pk)
+        } catch {
+            Logger.error("Failed to load contacts in view: \(error)", context: "ContactsListView")
+
+            if !contactsManager.contacts.isEmpty {
+                app.toast(
+                    type: .error,
+                    title: t("contacts__error_loading"),
+                    description: error.localizedDescription
+                )
+            }
+        }
     }
 }
 

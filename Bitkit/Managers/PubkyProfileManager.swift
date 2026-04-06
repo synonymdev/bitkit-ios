@@ -34,6 +34,8 @@ class PubkyProfileManager: ObservableObject {
 
     /// Initializes Paykit and restores any persisted session in a single off-main-actor pass.
     func initialize() async {
+        defer { isInitialized = true }
+
         let result: InitResult
         do {
             result = try await Task.detached {
@@ -80,8 +82,6 @@ class PubkyProfileManager: ObservableObject {
             Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
             return
         }
-
-        isInitialized = true
 
         switch result {
         case .noSession:
@@ -198,11 +198,16 @@ class PubkyProfileManager: ObservableObject {
 
     /// Create a new Pubky identity: fetch signup code from Homegate, signup on homeserver,
     /// persist keys + session, upload avatar, write profile. Falls back to signIn if already registered.
+    nonisolated static func resolvedImageUrl(newImageUrl: String?, existingImageUrl: String?) -> String? {
+        newImageUrl ?? existingImageUrl
+    }
+
     func createIdentity(
         name: String,
         bio: String,
         links: [PubkyProfileLink],
         tags: [String] = [],
+        existingImageUrl: String? = nil,
         avatarImage: UIImage? = nil
     ) async throws {
         let (publicKeyZ32, secretKeyHex) = try await deriveKeys()
@@ -243,13 +248,14 @@ class PubkyProfileManager: ObservableObject {
         if let avatarImage {
             avatarUri = try await uploadAvatar(image: avatarImage)
         }
+        let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
 
         // Write profile data to homeserver
         try await writeProfile(
             sessionSecret: sessionSecret,
             name: name,
             bio: bio,
-            imageUrl: avatarUri,
+            imageUrl: resolvedImageUrl,
             links: links,
             tags: tags
         )
@@ -259,7 +265,7 @@ class PubkyProfileManager: ObservableObject {
             publicKey: publicKeyZ32,
             name: name,
             bio: bio,
-            imageUrl: avatarUri,
+            imageUrl: resolvedImageUrl,
             links: links,
             tags: tags,
             status: nil
@@ -284,7 +290,7 @@ class PubkyProfileManager: ObservableObject {
             throw PubkyServiceError.sessionNotActive
         }
 
-        let resolvedImageUrl = newImageUrl ?? profile?.imageUrl
+        let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
         try await writeProfile(
             sessionSecret: sessionSecret,

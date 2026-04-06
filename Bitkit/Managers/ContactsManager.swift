@@ -55,6 +55,7 @@ class ContactsManager: ObservableObject {
     @Published var contacts: [PubkyContact] = []
     @Published var isLoading = false
     @Published var hasLoaded = false
+    @Published var loadErrorMessage: String?
 
     /// Temporarily holds contacts discovered during import (e.g., from pubky.app after Ring auth).
     /// Cleared after import is completed or discarded.
@@ -72,6 +73,7 @@ class ContactsManager: ObservableObject {
         contacts = []
         isLoading = false
         hasLoaded = false
+        loadErrorMessage = nil
         pendingImportProfile = nil
         pendingImportContacts = []
     }
@@ -85,10 +87,8 @@ class ContactsManager: ObservableObject {
         }
 
         isLoading = true
-        defer {
-            isLoading = false
-            hasLoaded = true
-        }
+        loadErrorMessage = nil
+        defer { isLoading = false }
 
         let basePath = contactsBasePath
         Logger.info("Loading contacts from \(basePath) for \(publicKey)", context: "ContactsManager")
@@ -96,24 +96,16 @@ class ContactsManager: ObservableObject {
         do {
             let sessionSecret = try getSessionSecret()
 
-            let contactPaths: [String]
-            do {
-                contactPaths = try await Task.detached {
-                    try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
-                }.value
-            } catch {
-                Logger.warn("sessionList failed for \(basePath): \(error)", context: "ContactsManager")
-                if !hasLoaded {
-                    contacts = []
-                }
-                return
-            }
+            let contactPaths = try await Task.detached {
+                try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
+            }.value
 
             Logger.debug("Listed \(contactPaths.count) contacts from homeserver", context: "ContactsManager")
 
             let strippedKey = stripPubkyPrefix(publicKey)
 
-            let loaded: [PubkyContact] = await withTaskGroup(of: PubkyContact?.self) { group in
+            let loadedResult: (contacts: [PubkyContact], failures: Int,
+                               firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for path in contactPaths {
                     let contactKey = extractPublicKey(from: path)
                     guard !contactKey.isEmpty else { continue }
@@ -126,24 +118,51 @@ class ContactsManager: ObservableObject {
                             let json = try await PubkyService.fetchFileString(uri: uri)
                             let profileData = try PubkyProfileData.decode(from: json)
                             let profile = profileData.toProfile(publicKey: prefixedKey)
-                            return PubkyContact(publicKey: prefixedKey, profile: profile)
+                            return .success(PubkyContact(publicKey: prefixedKey, profile: profile))
                         } catch {
                             Logger.warn("Failed to load contact data for '\(prefixedKey)': \(error)", context: "ContactsManager")
-                            return PubkyContact(publicKey: prefixedKey, profile: PubkyProfile.placeholder(publicKey: prefixedKey))
+                            return .failure(error)
                         }
                     }
                 }
+
                 var results: [PubkyContact] = []
-                for await contact in group {
-                    if let contact { results.append(contact) }
+                var failures = 0
+                var firstError: Error?
+
+                for await result in group {
+                    switch result {
+                    case let .success(contact):
+                        results.append(contact)
+                    case let .failure(error):
+                        failures += 1
+                        firstError = firstError ?? error
+                    }
                 }
-                return results
+
+                return (results, failures, firstError)
             }
 
-            contacts = loaded.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            if !contactPaths.isEmpty, loadedResult.contacts.isEmpty {
+                throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
+            }
+
+            contacts = loadedResult.contacts.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+            hasLoaded = true
+
+            if loadedResult.failures > 0 {
+                Logger.warn(
+                    "Skipped \(loadedResult.failures) unreadable contacts while loading list",
+                    context: "ContactsManager"
+                )
+            }
+
             Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
         } catch {
             Logger.error("Failed to load contacts: \(error)", context: "ContactsManager")
+            if contacts.isEmpty {
+                loadErrorMessage = error.localizedDescription
+            }
             throw error
         }
     }
@@ -157,7 +176,7 @@ class ContactsManager: ObservableObject {
         let profile: PubkyProfile = if let existingProfile {
             existingProfile
         } else {
-            await fetchProfileFromPubkyApp(publicKey: prefixedKey)
+            try await fetchProfileFromPubkyApp(publicKey: prefixedKey)
         }
 
         // Build PubkyProfileData and write to bitkit.to
@@ -174,35 +193,55 @@ class ContactsManager: ObservableObject {
     // MARK: - Import Contacts (batch fetch from pubky.app, store to bitkit.to)
 
     func importContacts(publicKeys: [String]) async throws {
-        let prefixedKeys = publicKeys.map { ensurePubkyPrefix($0) }
+        let prefixedKeys = Array(Set(publicKeys.map { ensurePubkyPrefix($0) }))
 
         // Fetch profiles from pubky.app and write each to bitkit.to
-        let loaded: [PubkyContact] = await withTaskGroup(of: PubkyContact?.self) { group in
+        let loadedResult: (contacts: [PubkyContact], failures: Int,
+                           firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
             for key in prefixedKeys {
                 group.addTask { [self] in
-                    let profile = await fetchProfileFromPubkyApp(publicKey: key)
-                    let contactData = PubkyProfileData.from(profile: profile)
                     do {
+                        let profile = try await fetchProfileFromPubkyApp(publicKey: key)
+                        let contactData = PubkyProfileData.from(profile: profile)
                         try await savePubkyProfileData(publicKey: key, data: contactData)
-                        return PubkyContact(publicKey: key, profile: profile)
+                        return .success(PubkyContact(publicKey: key, profile: profile))
                     } catch {
                         Logger.warn("Failed to save imported contact '\(key)': \(error)", context: "ContactsManager")
-                        return nil
+                        return .failure(error)
                     }
                 }
             }
+
             var results: [PubkyContact] = []
-            for await contact in group {
-                if let contact { results.append(contact) }
+            var failures = 0
+            var firstError: Error?
+
+            for await result in group {
+                switch result {
+                case let .success(contact):
+                    results.append(contact)
+                case let .failure(error):
+                    failures += 1
+                    firstError = firstError ?? error
+                }
             }
-            return results
+
+            return (results, failures, firstError)
+        }
+
+        if !prefixedKeys.isEmpty, loadedResult.contacts.isEmpty {
+            throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
         }
 
         // Merge with existing contacts, avoiding duplicates
         let existingKeys = Set(contacts.map(\.publicKey))
-        let newContacts = loaded.filter { !existingKeys.contains($0.publicKey) }
+        let newContacts = loadedResult.contacts.filter { !existingKeys.contains($0.publicKey) }
         contacts.append(contentsOf: newContacts)
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+
+        if loadedResult.failures > 0 {
+            Logger.warn("Skipped \(loadedResult.failures) contacts during import", context: "ContactsManager")
+        }
 
         Logger.info("Imported \(newContacts.count) new contacts", context: "ContactsManager")
     }
@@ -274,22 +313,40 @@ class ContactsManager: ObservableObject {
 
             Logger.info("Discovered \(contactKeys.count) contacts from pubky.app", context: "ContactsManager")
 
-            let discovered: [PubkyContact] = await withTaskGroup(of: PubkyContact?.self) { group in
+            let discoveryResult: (contacts: [PubkyContact], failures: Int) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
                     group.addTask { [self] in
-                        let profile = await fetchProfileFromPubkyApp(publicKey: pk)
-                        return PubkyContact(publicKey: pk, profile: profile)
+                        do {
+                            let profile = try await fetchProfileFromPubkyApp(publicKey: pk)
+                            return .success(PubkyContact(publicKey: pk, profile: profile))
+                        } catch {
+                            Logger.warn("Failed to discover remote contact '\(pk)': \(error)", context: "ContactsManager")
+                            return .failure(error)
+                        }
                     }
                 }
+
                 var results: [PubkyContact] = []
-                for await contact in group {
-                    if let contact { results.append(contact) }
+                var failures = 0
+
+                for await result in group {
+                    switch result {
+                    case let .success(contact):
+                        results.append(contact)
+                    case .failure:
+                        failures += 1
+                    }
                 }
-                return results
+
+                return (results, failures)
             }
 
-            pendingImportContacts = discovered.sorted {
+            if discoveryResult.failures > 0 {
+                Logger.warn("Skipped \(discoveryResult.failures) remote contacts during discovery", context: "ContactsManager")
+            }
+
+            pendingImportContacts = discoveryResult.contacts.sorted {
                 $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
             }
         } catch {
@@ -301,7 +358,11 @@ class ContactsManager: ObservableObject {
     // MARK: - Fetch Contact Profile (from pubky.app — used only during add/import)
 
     func fetchContactProfile(publicKey: String) async -> PubkyProfile? {
-        await fetchProfileFromPubkyApp(publicKey: ensurePubkyPrefix(publicKey))
+        do {
+            return try await fetchProfileFromPubkyApp(publicKey: ensurePubkyPrefix(publicKey))
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Helpers
@@ -341,7 +402,7 @@ class ContactsManager: ObservableObject {
     }
 
     /// Fetch a profile from pubky.app (external, one-time read)
-    private func fetchProfileFromPubkyApp(publicKey: String) async -> PubkyProfile {
+    private func fetchProfileFromPubkyApp(publicKey: String) async throws -> PubkyProfile {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         do {
             let dto = try await Task.detached {
@@ -350,7 +411,7 @@ class ContactsManager: ObservableObject {
             return PubkyProfile(publicKey: prefixedKey, ffiProfile: dto)
         } catch {
             Logger.warn("Failed to fetch profile from pubky.app for '\(prefixedKey)': \(error)", context: "ContactsManager")
-            return PubkyProfile.placeholder(publicKey: prefixedKey)
+            throw error
         }
     }
 
