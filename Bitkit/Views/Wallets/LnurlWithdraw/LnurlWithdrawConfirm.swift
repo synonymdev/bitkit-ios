@@ -8,13 +8,9 @@ struct LnurlWithdrawConfirm: View {
     let onFailure: (UInt64) -> Void
     @State private var isLoading = false
 
-    var isFixedAmount: Bool {
-        app.lnurlWithdrawData!.maxWithdrawable == app.lnurlWithdrawData!.minWithdrawable
-    }
-
     var displayAmountSats: UInt64 {
-        if isFixedAmount {
-            return LightningAmountConversion.satsCeil(fromMsats: app.lnurlWithdrawData!.maxWithdrawable)
+        if app.lnurlWithdrawData!.isFixedAmount {
+            return app.lnurlWithdrawData!.minWithdrawableSat
         }
         return wallet.lnurlWithdrawAmount!
     }
@@ -59,7 +55,7 @@ struct LnurlWithdrawConfirm: View {
                     throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL withdraw data"])
                 }
 
-                let invoice: String = if isFixedAmount {
+                let invoice: String = if withdrawData.isFixedAmount {
                     try await wallet.createInvoiceMsats(
                         amountMsats: withdrawData.maxWithdrawable,
                         note: withdrawData.defaultDescription,

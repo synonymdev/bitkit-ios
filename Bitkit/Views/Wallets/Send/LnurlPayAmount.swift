@@ -11,7 +11,7 @@ struct LnurlPayAmount: View {
 
     var maxAmount: UInt64 {
         // TODO: subtract fee
-        min(LightningAmountConversion.satsFloor(fromMsats: app.lnurlPayData!.maxSendable), UInt64(wallet.totalLightningSats))
+        min(app.lnurlPayData!.maxSendableSat, UInt64(wallet.totalLightningSats))
     }
 
     var amount: UInt64 {
@@ -80,7 +80,7 @@ struct LnurlPayAmount: View {
     }
 
     private func onContinue() {
-        let minSendableSats = max(1, LightningAmountConversion.satsCeil(fromMsats: app.lnurlPayData!.minSendable))
+        let minSendableSats = max(1, app.lnurlPayData!.minSendableSat)
 
         if amount < minSendableSats {
             app.toast(
