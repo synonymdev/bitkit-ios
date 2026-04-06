@@ -103,6 +103,7 @@
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
+				Utilities/LightningAmountConversion.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
