@@ -11,7 +11,7 @@ struct EditProfileView: View {
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
     @State private var isSaving = false
-    @State private var showDeleteConfirmation = false
+    @State private var showSignOutConfirmation = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarImage: UIImage?
 
@@ -29,10 +29,10 @@ struct EditProfileView: View {
                 tags: $tags,
                 publicKey: pubkyProfile.publicKey ?? "...",
                 isSaving: isSaving,
-                deleteLabel: t("profile__delete_label"),
+                deleteLabel: t("profile__sign_out"),
                 onSave: { await saveProfile() },
                 onCancel: { navigation.navigateBack() },
-                onDelete: { showDeleteConfirmation = true }
+                onDelete: { showSignOutConfirmation = true }
             ) {
                 avatarPicker
             }
@@ -44,13 +44,13 @@ struct EditProfileView: View {
         .task {
             loadProfileData()
         }
-        .alert(t("profile__delete_title"), isPresented: $showDeleteConfirmation) {
-            Button(t("profile__delete_confirm"), role: .destructive) {
-                Task { await deleteProfile() }
+        .alert(t("profile__sign_out_title"), isPresented: $showSignOutConfirmation) {
+            Button(t("profile__sign_out"), role: .destructive) {
+                Task { await disconnectProfile() }
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("profile__delete_description"))
+            Text(t("profile__sign_out_description"))
         }
     }
 
@@ -119,9 +119,9 @@ struct EditProfileView: View {
         tags = profile.tags
     }
 
-    // MARK: - Delete Profile
+    // MARK: - Disconnect Profile
 
-    private func deleteProfile() async {
+    private func disconnectProfile() async {
         await pubkyProfile.signOut()
         navigation.reset()
     }
