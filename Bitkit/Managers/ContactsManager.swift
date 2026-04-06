@@ -171,6 +171,10 @@ class ContactsManager: ObservableObject {
 
     func addContact(publicKey: String, existingProfile: PubkyProfile? = nil) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
+        guard !contacts.contains(where: { $0.publicKey == prefixedKey }) else {
+            Logger.debug("Contact \(prefixedKey) already exists, skipping add", context: "ContactsManager")
+            return
+        }
 
         // Use existing profile if provided (e.g., already fetched during preview), otherwise fetch from pubky.app
         let profile: PubkyProfile = if let existingProfile {

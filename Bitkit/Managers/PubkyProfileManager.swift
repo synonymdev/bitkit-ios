@@ -8,6 +8,17 @@ enum PubkyAuthState: Equatable {
     case error(String)
 }
 
+private enum PubkyProfileManagerError: LocalizedError {
+    case avatarEncodingFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .avatarEncodingFailed:
+            return "Failed to encode avatar image"
+        }
+    }
+}
+
 @MainActor
 class PubkyProfileManager: ObservableObject {
     @Published var authState: PubkyAuthState = .idle
@@ -152,7 +163,7 @@ class PubkyProfileManager: ObservableObject {
             }
 
             let rawKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
-            let imageData = compressAvatar(image)
+            let imageData = try compressAvatar(image)
             let blobPath = avatarBlobPath()
             let blobUri = "pubky://\(Self.stripPubkyPrefix(rawKey))\(blobPath)"
 
@@ -161,7 +172,7 @@ class PubkyProfileManager: ObservableObject {
         }
 
         let pk = Self.stripPubkyPrefix(publicKey ?? "")
-        let imageData = compressAvatar(image)
+        let imageData = try compressAvatar(image)
         let blobPath = avatarBlobPath()
         let blobUri = "pubky://\(pk)\(blobPath)"
 
@@ -174,7 +185,7 @@ class PubkyProfileManager: ObservableObject {
         key.hasPrefix("pubky") ? String(key.dropFirst(5)) : key
     }
 
-    private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) -> Data {
+    private func compressAvatar(_ image: UIImage, maxSize: CGFloat = 400) throws -> Data {
         // Resize to max dimensions
         let scale = min(maxSize / image.size.width, maxSize / image.size.height, 1.0)
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
@@ -182,8 +193,11 @@ class PubkyProfileManager: ObservableObject {
         let resized = renderer.image { _ in
             image.draw(in: CGRect(origin: .zero, size: newSize))
         }
-        // Compress as JPEG
-        return resized.jpegData(compressionQuality: 0.8) ?? Data()
+
+        guard let jpegData = resized.jpegData(compressionQuality: 0.8) else {
+            throw PubkyProfileManagerError.avatarEncodingFailed
+        }
+        return jpegData
     }
 
     private func avatarBlobPath() -> String {
