@@ -186,7 +186,8 @@
 "lightning__external_manual__paste" = "Вставить URI Узла";
 "lightning__external_manual__scan" = "Сканировать QR";
 "lightning__external_amount__title" = "Баланс\n<accent>Расходов</accent>";
-"lightning__external_success__title" = "Соединение\n<accent>Инициировано</accent>";
+"lightning__external_success__nav_title" = "Баланс расходов";
+"lightning__external_success__title" = "Открытие\n<accent>канала</accent>";
 "lightning__external_success__text" = "Lightning соединение инициировано. Вы сможете использовать ваш баланс расходов через <accent>±30 минут</accent> (зависит от конфигурации узла).";
 "lightning__error_channel_purchase" = "Ошибка Настройки Мгновенных Платежей";
 "lightning__error_channel_setup_msg" = "Произошла ошибка при настройке вашего мгновенного баланса. {raw}";

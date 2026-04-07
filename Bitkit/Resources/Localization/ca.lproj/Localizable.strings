@@ -172,7 +172,8 @@
 "lightning__external_manual__paste" = "Enganxa URI del node";
 "lightning__external_manual__scan" = "Escaneja el codi QR";
 "lightning__external_amount__title" = "Saldo de\n<accent>despesa</accent>";
-"lightning__external_success__title" = "Connexió\n<accent>iniciada</accent>";
+"lightning__external_success__nav_title" = "Saldo de despesa";
+"lightning__external_success__title" = "Obertura\n<accent>de canal</accent>";
 "lightning__external_success__text" = "Connexió Lightning iniciada. Podràs utilitzar el teu saldo de despesa en <accent>±30 minuts</accent> (depèn de la configuració del node).";
 "lightning__error_channel_purchase" = "Configuració de pagaments instantanis fallida";
 "lightning__error_channel_receiving" = "L\'import a rebre ha de ser superior a ${usdValue}";
