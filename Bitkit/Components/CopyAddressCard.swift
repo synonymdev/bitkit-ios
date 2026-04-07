@@ -28,6 +28,7 @@ struct CopyAddressCard: View {
 
                         BodySText(pair.address, textColor: .textPrimary)
                             .lineLimit(2)
+                            .truncationMode(.middle)
                             .padding(.bottom, 12)
 
                         HStack(spacing: 8) {
