@@ -2,6 +2,28 @@ import SwiftUI
 
 // MARK: - Config & Sheet Item
 
+enum PubkyApprovalLocalAuthMode: Equatable {
+    case authCheck
+    case biometrics
+    case none
+}
+
+func resolvePubkyApprovalLocalAuthMode(
+    isPinEnabled: Bool,
+    isBiometricEnabled: Bool,
+    isBiometrySupported: Bool
+) -> PubkyApprovalLocalAuthMode {
+    if isPinEnabled {
+        return .authCheck
+    }
+
+    if isBiometricEnabled, isBiometrySupported {
+        return .biometrics
+    }
+
+    return .none
+}
+
 struct PubkyAuthApprovalConfig {
     let authUrl: String
     let request: PubkyAuthRequest
@@ -20,10 +42,12 @@ struct PubkyAuthApprovalSheet: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject private var settings: SettingsViewModel
 
     let config: PubkyAuthApprovalSheetItem
 
     @State private var state: ApprovalState = .authorize
+    @State private var isShowingAuthCheck = false
 
     private enum ApprovalState {
         case authorize
@@ -50,6 +74,19 @@ struct PubkyAuthApprovalSheet: View {
                 }
             }
             .padding(.horizontal, 16)
+        }
+        .fullScreenCover(isPresented: $isShowingAuthCheck) {
+            AuthCheck(
+                onCancel: {
+                    isShowingAuthCheck = false
+                },
+                onPinVerified: {
+                    isShowingAuthCheck = false
+                    Task {
+                        await confirmAuthorize()
+                    }
+                }
+            )
         }
     }
 
@@ -235,25 +272,40 @@ struct PubkyAuthApprovalSheet: View {
 
     // MARK: - Actions
 
+    @MainActor
     private func onAuthorize() async {
-        state = .authorizing
+        switch resolvePubkyApprovalLocalAuthMode(
+            isPinEnabled: settings.pinEnabled,
+            isBiometricEnabled: settings.useBiometrics,
+            isBiometrySupported: BiometricAuth.isAvailable
+        ) {
+        case .authCheck:
+            isShowingAuthCheck = true
+        case .biometrics:
+            await authorizeWithBiometrics()
+        case .none:
+            await confirmAuthorize()
+        }
+    }
 
-        // Biometric authentication
+    @MainActor
+    private func authorizeWithBiometrics() async {
         let biometricResult = await BiometricAuth.authenticate()
 
         switch biometricResult {
         case .success:
-            break
+            await confirmAuthorize()
         case .cancelled:
-            state = .authorize
             return
         case let .failed(message):
             app.toast(type: .error, title: t("pubky_auth__biometric_failed"), description: message)
-            state = .authorize
-            return
         }
+    }
 
-        // Load secret key and approve
+    @MainActor
+    private func confirmAuthorize() async {
+        state = .authorizing
+
         do {
             guard let secretKey = try Keychain.loadString(key: .pubkySecretKey),
                   !secretKey.isEmpty

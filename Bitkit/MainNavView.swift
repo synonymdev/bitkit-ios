@@ -290,6 +290,27 @@ struct MainNavView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func pubkyInitializationErrorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            BodyMText(t("other__try_again"))
+
+            BodySText(message, textColor: .white64)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            CustomButton(title: t("common__retry"), variant: .secondary) {
+                await pubkyProfile.initialize()
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private var navigationContent: some View {
         HomeScreen()
             .navigationDestination(for: Route.self) { screenValue in
@@ -325,7 +346,9 @@ struct MainNavView: View {
 
                 // Profile & Contacts
                 case .contacts:
-                    if app.hasSeenContactsIntro {
+                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                        pubkyInitializationErrorView(message: initializationErrorMessage)
+                    } else if app.hasSeenContactsIntro {
                         if !pubkyProfile.isInitialized {
                             pubkyLoadingView
                         } else if pubkyProfile.isAuthenticated {
@@ -342,7 +365,7 @@ struct MainNavView: View {
                 case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
                 case .contactImportOverview:
                     ContactImportOverviewView(
-                        profile: contactsManager.pendingImportProfile ?? PubkyProfile.placeholder(publicKey: ""),
+                        profile: contactsManager.pendingImportProfile ?? PubkyProfile.placeholder(publicKey: pubkyProfile.publicKey ?? ""),
                         contacts: contactsManager.pendingImportContacts
                     )
                 case .contactImportSelect:
@@ -350,7 +373,9 @@ struct MainNavView: View {
                 case let .addContact(publicKey): AddContactView(publicKey: publicKey)
                 case let .editContact(publicKey): EditContactView(publicKey: publicKey)
                 case .profile:
-                    if !pubkyProfile.isInitialized {
+                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                        pubkyInitializationErrorView(message: initializationErrorMessage)
+                    } else if !pubkyProfile.isInitialized {
                         pubkyLoadingView
                     } else if pubkyProfile.isAuthenticated {
                         ProfileView()

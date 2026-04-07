@@ -26,6 +26,7 @@ class PubkyProfileManager: ObservableObject {
     @Published var publicKey: String?
     @Published var isLoadingProfile = false
     @Published var isInitialized = false
+    @Published var initializationErrorMessage: String?
     @Published var sessionRestorationFailed = false
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
@@ -45,7 +46,9 @@ class PubkyProfileManager: ObservableObject {
 
     /// Initializes Paykit and restores any persisted session in a single off-main-actor pass.
     func initialize() async {
-        defer { isInitialized = true }
+        isInitialized = false
+        initializationErrorMessage = nil
+        sessionRestorationFailed = false
 
         let result: InitResult
         do {
@@ -91,6 +94,8 @@ class PubkyProfileManager: ObservableObject {
             }.value
         } catch {
             Logger.error("Failed to initialize paykit: \(error)", context: "PubkyProfileManager")
+            authState = .idle
+            initializationErrorMessage = error.localizedDescription
             return
         }
 
@@ -107,6 +112,8 @@ class PubkyProfileManager: ObservableObject {
             sessionRestorationFailed = true
             clearCachedProfileMetadata()
         }
+
+        isInitialized = true
     }
 
     // MARK: - Key Derivation & Identity Creation
@@ -163,21 +170,15 @@ class PubkyProfileManager: ObservableObject {
             }
 
             let rawKey = try PubkyService.pubkyPublicKeyFromSecret(secretKeyHex: secretKeyHex)
-            let imageData = try compressAvatar(image)
-            let blobPath = avatarBlobPath()
-            let blobUri = "pubky://\(Self.stripPubkyPrefix(rawKey))\(blobPath)"
-
-            try await PubkyService.putWithSecretKey(secretKeyHex: secretKeyHex, path: blobPath, content: imageData)
-            return blobUri
+            let publicKey = rawKey.hasPrefix("pubky") ? rawKey : "pubky\(rawKey)"
+            return try await uploadAvatar(image: image, secretKeyHex: secretKeyHex, publicKey: publicKey)
         }
 
-        let pk = Self.stripPubkyPrefix(publicKey ?? "")
-        let imageData = try compressAvatar(image)
-        let blobPath = avatarBlobPath()
-        let blobUri = "pubky://\(pk)\(blobPath)"
+        guard let publicKey, !publicKey.isEmpty else {
+            throw PubkyServiceError.sessionNotActive
+        }
 
-        try await PubkyService.sessionPut(sessionSecret: sessionSecret, path: blobPath, content: imageData)
-        return blobUri
+        return try await uploadAvatar(image: image, sessionSecret: sessionSecret, publicKey: publicKey)
     }
 
     /// Strip the `pubky` prefix from a public key for use in `pubky://` URIs.
@@ -208,6 +209,24 @@ class PubkyProfileManager: ObservableObject {
         default:
             return "/pub/staging.bitkit.to/blobs/\(timestamp).jpg"
         }
+    }
+
+    private func uploadAvatar(image: UIImage, sessionSecret: String, publicKey: String) async throws -> String {
+        let imageData = try compressAvatar(image)
+        let blobPath = avatarBlobPath()
+        let blobUri = "pubky://\(Self.stripPubkyPrefix(publicKey))\(blobPath)"
+
+        try await PubkyService.sessionPut(sessionSecret: sessionSecret, path: blobPath, content: imageData)
+        return blobUri
+    }
+
+    private func uploadAvatar(image: UIImage, secretKeyHex: String, publicKey: String) async throws -> String {
+        let imageData = try compressAvatar(image)
+        let blobPath = avatarBlobPath()
+        let blobUri = "pubky://\(Self.stripPubkyPrefix(publicKey))\(blobPath)"
+
+        try await PubkyService.putWithSecretKey(secretKeyHex: secretKeyHex, path: blobPath, content: imageData)
+        return blobUri
     }
 
     /// Create a new Pubky identity: fetch signup code from Homegate, signup on homeserver,
@@ -244,27 +263,15 @@ class PubkyProfileManager: ObservableObject {
                 session = try await PubkyService.signIn(secretKeyHex: secretKeyHex)
             }
 
-            // 3. Persist secret key and session
-            try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
-            try Keychain.upsert(key: .paykitSession, data: Data(session.utf8))
-
-            // 4. Import session into Paykit
-            _ = try await PubkyService.importSession(secret: session)
-
             return session
         }.value
 
-        publicKey = publicKeyZ32
-        authState = .authenticated
-
-        // Upload avatar after session is established
         var avatarUri: String?
         if let avatarImage {
-            avatarUri = try await uploadAvatar(image: avatarImage)
+            avatarUri = try await uploadAvatar(image: avatarImage, sessionSecret: sessionSecret, publicKey: publicKeyZ32)
         }
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: avatarUri, existingImageUrl: existingImageUrl)
 
-        // Write profile data to homeserver
         try await writeProfile(
             sessionSecret: sessionSecret,
             name: name,
@@ -274,7 +281,17 @@ class PubkyProfileManager: ObservableObject {
             tags: tags
         )
 
-        // Set profile locally from the data we just wrote (avoids re-fetching from a different namespace)
+        do {
+            try Keychain.upsert(key: .pubkySecretKey, data: Data(secretKeyHex.utf8))
+            try Keychain.upsert(key: .paykitSession, data: Data(sessionSecret.utf8))
+            _ = try await PubkyService.importSession(secret: sessionSecret)
+        } catch {
+            try? Keychain.delete(key: .pubkySecretKey)
+            try? Keychain.delete(key: .paykitSession)
+            await PubkyService.forceSignOut()
+            throw error
+        }
+
         let createdProfile = PubkyProfile(
             publicKey: publicKeyZ32,
             name: name,
@@ -284,6 +301,9 @@ class PubkyProfileManager: ObservableObject {
             tags: tags,
             status: nil
         )
+
+        publicKey = publicKeyZ32
+        authState = .authenticated
         profile = createdProfile
         cacheProfileMetadata(createdProfile)
 

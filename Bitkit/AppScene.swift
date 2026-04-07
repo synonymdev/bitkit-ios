@@ -257,9 +257,12 @@ struct AppScene: View {
             WalletRestoreSuccess()
         } else {
             if !isPinVerified && settings.pinEnabled {
-                AuthCheck {
-                    isPinVerified = true
-                }
+                AuthCheck(
+                    onCancel: nil,
+                    onPinVerified: {
+                        isPinVerified = true
+                    }
+                )
             } else {
                 MainNavView()
             }

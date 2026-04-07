@@ -279,6 +279,8 @@ struct Suggestions: View {
         case .profile:
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 route = .profile
+            } else if pubkyProfile.initializationErrorMessage != nil {
+                route = .profile
             } else if !pubkyProfile.isInitialized {
                 return
             } else if app.hasSeenProfileIntro {

@@ -70,6 +70,8 @@ struct Header: View {
         Button {
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
                 navigation.navigate(.profile)
+            } else if pubkyProfile.initializationErrorMessage != nil {
+                navigation.navigate(.profile)
             } else if !pubkyProfile.isInitialized {
                 // Still initializing — don't navigate to choice screen yet
                 return

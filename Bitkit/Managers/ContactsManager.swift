@@ -301,9 +301,16 @@ class ContactsManager: ObservableObject {
     /// Returns true if any import data was found.
     @discardableResult
     func prepareImport(profile: PubkyProfile?, publicKey: String) async -> Bool {
-        pendingImportProfile = profile
+        pendingImportProfile = nil
+        pendingImportContacts = []
         await discoverRemoteContacts(publicKey: publicKey)
-        return pendingImportProfile != nil || !pendingImportContacts.isEmpty
+
+        guard !pendingImportContacts.isEmpty else {
+            return false
+        }
+
+        pendingImportProfile = profile ?? PubkyProfile.placeholder(publicKey: ensurePubkyPrefix(publicKey))
+        return true
     }
 
     /// Fetch the user's contacts from pubky.app and store as pending imports.
