@@ -6,6 +6,8 @@ struct FundingOptions: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var showNoFundsAlert = false
+
     var text: String {
         if GeoService.shared.isGeoBlocked {
             return t("lightning__funding__text_blocked")
@@ -42,6 +44,16 @@ struct FundingOptions: View {
                         navigation.navigate(.spendingIntro)
                     }
                 }
+                .allowsHitTesting(wallet.totalOnchainSats == 0 ? false : true)
+                .overlay {
+                    if wallet.totalOnchainSats == 0 && !GeoService.shared.isGeoBlocked {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                showNoFundsAlert = true
+                            }
+                    }
+                }
 
                 RectangleButton(
                     icon: "qr",
@@ -66,6 +78,19 @@ struct FundingOptions: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .alert(
+            t("lightning__no_funds__title"),
+            isPresented: $showNoFundsAlert
+        ) {
+            Button(t("lightning__no_funds__fund")) {
+                navigation.reset()
+                sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
+            }
+            Button(t("common__cancel"), role: .cancel) {}
+        } message: {
+            Text(t("lightning__no_funds__description"))
+        }
+        .tint(.purpleAccent)
         .task {
             await app.checkGeoStatus()
         }
