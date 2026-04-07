@@ -59,7 +59,9 @@ struct SendQuickpay: View {
         VStack {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
-            if let invoice = app.scannedLightningInvoice {
+            if let lnurlPayData = app.lnurlPayData {
+                MoneyStack(sats: Int(lnurlPayData.minSendableSat), showSymbol: true)
+            } else if let invoice = app.scannedLightningInvoice {
                 MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
             }
 
@@ -89,11 +91,11 @@ struct SendQuickpay: View {
         // Handle LNURL Pay
         if let lnurlPayData = app.lnurlPayData {
             // Set the amount in sats for the success screen
-            wallet.sendAmountSats = LightningAmountConversion.satsCeil(fromMsats: lnurlPayData.minSendable)
+            wallet.sendAmountSats = lnurlPayData.minSendableSat
 
             bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
                 callbackUrl: lnurlPayData.callback,
-                amountMsats: lnurlPayData.minSendable
+                amountMsats: lnurlPayData.callbackAmountMsats()
             )
         } else if let scannedInvoice = app.scannedLightningInvoice {
             wallet.sendAmountSats = scannedInvoice.amountSatoshis

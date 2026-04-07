@@ -19,8 +19,8 @@ struct PaymentNavigationHelper {
             return false
         }
 
-        // We need a lightning invoice to use quickpay
-        guard app.scannedLightningInvoice != nil else {
+        // We need a lightning invoice or LNURL pay data to use quickpay
+        guard app.scannedLightningInvoice != nil || app.lnurlPayData != nil else {
             return false
         }
 
@@ -32,8 +32,7 @@ struct PaymentNavigationHelper {
 
         // Check LNURL pay
         if let lnurlPayData = app.lnurlPayData {
-            // For LNURL pay, check if it's a fixed amount and within quickpay threshold
-            return lnurlPayData.minSendable == lnurlPayData.maxSendable && lnurlPayData.minSendable <= quickpayAmountSats
+            return lnurlPayData.isFixedAmount && lnurlPayData.minSendableSat <= quickpayAmountSats
         }
 
         // Check regular lightning invoice
@@ -50,7 +49,7 @@ struct PaymentNavigationHelper {
         // Handle LNURL withdraw
         if let lnurlWithdrawData = app.lnurlWithdrawData {
             Logger.info("LNURL withdraw data: \(lnurlWithdrawData)")
-            if lnurlWithdrawData.minWithdrawable == lnurlWithdrawData.maxWithdrawable {
+            if lnurlWithdrawData.isFixedAmount {
                 sheetViewModel.showSheet(.lnurlWithdraw, data: LnurlWithdrawConfig(view: .confirm))
             } else {
                 sheetViewModel.showSheet(.lnurlWithdraw, data: LnurlWithdrawConfig(view: .amount))
@@ -64,7 +63,7 @@ struct PaymentNavigationHelper {
         if let lnurlPayData = app.lnurlPayData {
             if shouldUseQuickpay {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .quickpay))
-            } else if lnurlPayData.minSendable == lnurlPayData.maxSendable {
+            } else if lnurlPayData.isFixedAmount {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .lnurlPayConfirm))
             } else {
                 sheetViewModel.showSheet(.send, data: SendConfig(view: .lnurlPayAmount))
@@ -104,7 +103,7 @@ struct PaymentNavigationHelper {
         settings: SettingsViewModel
     ) -> SendRoute? {
         if let lnurlWithdrawData = app.lnurlWithdrawData {
-            if lnurlWithdrawData.minWithdrawable == lnurlWithdrawData.maxWithdrawable {
+            if lnurlWithdrawData.isFixedAmount {
                 return .lnurlWithdrawConfirm
             } else {
                 return .lnurlWithdrawAmount
@@ -117,7 +116,7 @@ struct PaymentNavigationHelper {
         if let lnurlPayData = app.lnurlPayData {
             if shouldUseQuickpay {
                 return .quickpay
-            } else if lnurlPayData.minSendable == lnurlPayData.maxSendable {
+            } else if lnurlPayData.isFixedAmount {
                 return .lnurlPayConfirm
             } else {
                 return .lnurlPayAmount

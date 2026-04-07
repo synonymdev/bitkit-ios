@@ -485,9 +485,8 @@ extension AppViewModel {
             return
         }
 
-        let minSats = max(1, LightningAmountConversion.satsCeil(fromMsats: data.minSendable))
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < minSats {
+        if lightningBalance < max(1, data.minSendableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
@@ -506,10 +505,7 @@ extension AppViewModel {
             return
         }
 
-        let minMsats = data.minWithdrawable ?? Env.msatsPerSat
-        let maxMsats = data.maxWithdrawable
-
-        if minMsats > maxMsats {
+        if (data.minWithdrawable ?? 0) > data.maxWithdrawable {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -518,9 +514,8 @@ extension AppViewModel {
             return
         }
 
-        let minSats = max(1, LightningAmountConversion.satsCeil(fromMsats: minMsats))
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < minSats {
+        if lightningBalance < max(1, data.minWithdrawableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
