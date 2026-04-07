@@ -499,16 +499,20 @@ class LightningService {
     }
 
     func receive(amountSats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
+        try await receiveMsats(amountMsats: amountSats.map { $0 * 1000 }, description: description, expirySecs: expirySecs)
+    }
+
+    func receiveMsats(amountMsats: UInt64? = nil, description: String, expirySecs: UInt32 = 3600) async throws -> String {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
         let bolt11 = try await ServiceQueue.background(.ldk) {
-            if let amountSats {
+            if let amountMsats {
                 try node
                     .bolt11Payment()
                     .receive(
-                        amountMsat: amountSats * 1000,
+                        amountMsat: amountMsats,
                         description: Bolt11InvoiceDescription.direct(description: description),
                         expirySecs: expirySecs
                     )

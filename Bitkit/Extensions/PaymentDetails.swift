@@ -4,7 +4,7 @@ import LDKNode
 extension PaymentDetails {
     var amountSats: UInt64? {
         if let amountMsat {
-            return amountMsat / 1000
+            return LightningAmountConversion.satsCeil(fromMsats: amountMsat)
         }
 
         return nil

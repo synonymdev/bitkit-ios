@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Stabilize Home widgets calculator keyboard behavior by improving keyboard avoidance and adding a keyboard "Done" button. #513
-- In the calculator widget, show only the first character of multi-character currency symbols. #513
+- Fix keyboard and UI issues in the calculator widget #513
+- Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD
+- [Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD

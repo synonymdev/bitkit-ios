@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65DFF2EB964B500252335 /* VssRustClientFfi */; };
 		18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */ = {isa = PBXBuildFile; productRef = 18D65E012EB964BD00252335 /* VssRustClientFfi */; };
+		3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
+		3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
 		4AFCA3702E05933800205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA36F2E05933800205CAE /* Zip */; };
 		4AFCA3722E0596D900205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA3712E0596D900205CAE /* Zip */; };
@@ -62,6 +64,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreBluetooth.framework; path = System/Library/Frameworks/CoreBluetooth.framework; sourceTree = SDKROOT; };
 		961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BitkitNotification.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F612C2DE6AA006D0C8B /* Bitkit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Bitkit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FE1F722C2DE6AC006D0C8B /* BitkitTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BitkitTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -100,6 +103,7 @@
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
+				Utilities/LightningAmountConversion.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -123,6 +127,7 @@
 				Utilities/Crypto.swift,
 				Utilities/Errors.swift,
 				Utilities/Keychain.swift,
+				Utilities/LightningAmountConversion.swift,
 				Utilities/Logger.swift,
 				Utilities/StateLocker.swift,
 			);
@@ -149,6 +154,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */,
 				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
 				4AFCA3722E0596D900205CAE /* Zip in Frameworks */,
@@ -161,6 +167,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				4AFCA3702E05933800205CAE /* Zip in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
@@ -192,6 +199,7 @@
 		961058EC2C35798C00E1F1D8 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -917,14 +925,6 @@
 				minimumVersion = 2.1.2;
 			};
 		};
-		962045C92DE998F1007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/lightningdevkit/ldk-node";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 		968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
@@ -937,8 +937,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
-				branch = master;
-				kind = branch;
+				kind = revision;
+				revision = 99bd86bb60c1f14e8ce8a6356cd2ab36f222fc69;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {
@@ -987,7 +987,7 @@
 		};
 		9613018B2C5022D700878183 /* LDKNode */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 962045C92DE998F1007BAA26 /* XCRemoteSwiftPackageReference "ldk-node" */;
+			package = 968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */;
 			productName = LDKNode;
 		};
 		968FE13F2DFB016B0053CD7F /* LDKNode */ = {
