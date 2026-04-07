@@ -693,6 +693,7 @@
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bluetooth access is included as part of a library used for wallet operations. Bitkit does not actively use Bluetooth.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -736,6 +737,7 @@
 				INFOPLIST_FILE = Bitkit/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Bitkit;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Bluetooth access is included as part of a library used for wallet operations. Bitkit does not actively use Bluetooth.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Bitkit needs access to the camera to scan QR codes";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
