@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Use middle-ellipsis truncation for addresses on the receive screen
+- Use middle-ellipsis truncation for addresses on the receive screen #517
 
 ### Fixed
 - Fix keyboard and UI issues in the calculator widget #513
