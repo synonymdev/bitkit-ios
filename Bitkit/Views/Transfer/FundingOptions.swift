@@ -54,11 +54,11 @@ struct FundingOptions: View {
                 }
 
                 RectangleButton(
-                    icon: "external",
+                    icon: "pencil",
                     title: t("lightning__funding__button3"),
                     testID: "FundCustom"
                 ) {
-                    navigation.navigate(.fundingAdvanced)
+                    navigation.navigate(.fundManual(nodeUri: nil))
                 }
             }
 
