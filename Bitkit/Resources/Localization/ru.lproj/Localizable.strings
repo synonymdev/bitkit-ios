@@ -115,12 +115,12 @@
 "lightning__transfer_intro__button" = "Начать";
 "lightning__funding__nav_title" = "Баланс Расходов";
 "lightning__funding__title" = "Пополните свой <accent>Баланс Расходов</accent>";
-"lightning__funding__text" = "Вы можете использовать свои сбережения Bitkit или отправить биткойны из другого кошелька.";
+"lightning__funding__text" = "Самый простой вариант — использовать ваши сбережения Bitkit или отправить биткоин с другого кошелька.";
 "lightning__funding__text_blocked" = "Bitkit в настоящее время не предоставляет услуги Lightning в вашей стране, но вы всё равно можете подключаться к другим узлам напрямую.";
 "lightning__funding__text_blocked_cjit" = "Bitkit в настоящее время не предоставляет услуги Lightning в вашей стране, но вы всё равно можете подключаться к другим узлам напрямую.";
 "lightning__funding__button1" = "Перевести из Сбережений";
 "lightning__funding__button2" = "Использовать Другой Кошелёк";
-"lightning__funding__button3" = "Дополнительно";
+"lightning__funding__button3" = "Ручная настройка";
 "lightning__funding_advanced__nav_title" = "Баланс Расходов";
 "lightning__funding_advanced__title" = "Расширенная <accent>Настройка</accent>";
 "lightning__funding_advanced__text" = "Сканируйте QR-код, чтобы получить свой LNURL Канал от другого LSP, или выберите ручную настройку.";

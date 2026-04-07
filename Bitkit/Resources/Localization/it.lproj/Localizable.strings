@@ -114,12 +114,12 @@
 "lightning__transfer_intro__button" = "Inizia";
 "lightning__funding__nav_title" = "Conto di Spesa";
 "lightning__funding__title" = "Manda fondi al tuo <accent>conto di spesa</accent>";
-"lightning__funding__text" = "Puoi utilizzare i tuoi risparmi Bitkit o inviare bitcoin da un portafoglio diverso.";
+"lightning__funding__text" = "Il modo più semplice è usare i tuoi risparmi Bitkit o inviare bitcoin da un portafoglio diverso.";
 "lightning__funding__text_blocked" = "Bitkit attualmente non fornisce servizi Lightning nel tuo paese, ma puoi comunque connetterti direttamente ad altri nodi.";
 "lightning__funding__text_blocked_cjit" = "Bitkit attualmente non fornisce servizi Lightning nel tuo paese, ma puoi comunque connetterti direttamente ad altri nodi.";
 "lightning__funding__button1" = "Trasferimento da risparmio";
 "lightning__funding__button2" = "Usa un altro portafoglio";
-"lightning__funding__button3" = "Avanzate";
+"lightning__funding__button3" = "Configurazione manuale";
 "lightning__funding_advanced__nav_title" = "Conto Spendibile";
 "lightning__funding_advanced__title" = "Configurazione <accent>avanzata</accent>";
 "lightning__funding_advanced__text" = "Scansiona un QR per richiedere il tuo Canale LNURL da un altro LSP, oppure scegli la configurazione manuale.";
