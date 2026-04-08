@@ -50,6 +50,7 @@ struct FactsWidgetProvider: TimelineProvider {
 struct BitkitWidgetEntryView: View {
     var entry: FactsWidgetProvider.Entry
     @Environment(\.widgetFamily) var widgetFamily
+    @Environment(\.widgetRenderingMode) var widgetRenderingMode
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -57,11 +58,12 @@ struct BitkitWidgetEntryView: View {
             HStack {
                 Image(systemName: "bitcoinsign.circle.fill")
                     .font(.system(size: 20))
-                    .foregroundColor(.orange)
+                    .foregroundColor(iconColor)
+                    .widgetAccentable()
                 
                 Text("Bitcoin Fact")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.white.opacity(0.9))
+                    .foregroundColor(headerColor)
                 
                 Spacer()
             }
@@ -69,7 +71,7 @@ struct BitkitWidgetEntryView: View {
             // Fact text
             Text(entry.fact)
                 .font(fontForFamily())
-                .foregroundColor(.white)
+                .foregroundColor(factColor)
                 .lineLimit(lineLimit())
                 .minimumScaleFactor(0.8)
             
@@ -80,12 +82,19 @@ struct BitkitWidgetEntryView: View {
                 Spacer()
                 Text("synonym.to")
                     .font(.system(size: 10))
-                    .foregroundColor(.white.opacity(0.5))
+                    .foregroundColor(footerColor)
             }
         }
         // .padding(16)
         .containerBackground(for: .widget) {
-            // Background gradient
+            backgroundView
+        }
+    }
+
+    @ViewBuilder
+    private var backgroundView: some View {
+        if widgetRenderingMode == .fullColor {
+            // Keep custom styling only in full-color mode.
             LinearGradient(
                 gradient: Gradient(colors: [
                     Color(red: 0.1, green: 0.1, blue: 0.15),
@@ -94,7 +103,26 @@ struct BitkitWidgetEntryView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        } else {
+            // Let the system provide tinted/Liquid Glass treatment.
+            Color.clear
         }
+    }
+
+    private var iconColor: Color {
+        widgetRenderingMode == .fullColor ? .orange : .primary
+    }
+
+    private var headerColor: Color {
+        widgetRenderingMode == .fullColor ? .white.opacity(0.9) : .primary
+    }
+
+    private var factColor: Color {
+        widgetRenderingMode == .fullColor ? .white : .primary
+    }
+
+    private var footerColor: Color {
+        widgetRenderingMode == .fullColor ? .white.opacity(0.5) : .secondary
     }
     
     private func fontForFamily() -> Font {
@@ -105,6 +133,8 @@ struct BitkitWidgetEntryView: View {
             return .system(size: 16, weight: .medium)
         case .systemLarge, .systemExtraLarge:
             return .system(size: 18, weight: .medium)
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            return .system(size: 14, weight: .medium)
         @unknown default:
             return .system(size: 14, weight: .medium)
         }
@@ -118,6 +148,8 @@ struct BitkitWidgetEntryView: View {
             return 3
         case .systemLarge, .systemExtraLarge:
             return 8
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            return 1
         @unknown default:
             return 4
         }
