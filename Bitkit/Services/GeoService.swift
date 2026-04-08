@@ -29,7 +29,7 @@ class GeoService: ObservableObject {
 
             Logger.info("Geo status check completed: isGeoBlocked=\(isGeoBlocked)", context: "GeoService")
         } catch {
-            isGeoBlocked = false
+            isGeoBlocked = true
             Logger.error("Failed to check geo status: \(error)", context: "GeoService")
         }
     }

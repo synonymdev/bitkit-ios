@@ -23,7 +23,7 @@ struct ReceiveCjitGeoBlocked: View {
 
             CustomButton(title: t("lightning__funding_advanced__button_short")) {
                 sheets.hideSheet()
-                navigation.navigate(.fundManual(nodeUri: nil))
+                navigation.navigate(.fundingAdvanced)
             }
         }
         .navigationBarHidden(true)
