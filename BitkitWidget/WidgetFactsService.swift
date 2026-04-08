@@ -1,40 +1,47 @@
 import Foundation
 
-/// Service for managing Bitcoin facts
-class FactsService {
-    static let shared = FactsService()
-    
-    private let appGroupIdentifier = "group.bitkit"
+/// Service for managing Bitcoin facts for the widget
+/// This is a simplified version that works independently from the main app
+class WidgetFactsService {
+    static let shared = WidgetFactsService()
 
-    private init() {
-        // Share facts with widget on initialization
-        saveFactsForWidget()
-    }
+    private let appGroupIdentifier = "group.bitkit"
+    private let factsKey = "widget_facts"
+
+    private init() {}
 
     /// Returns a random Bitcoin fact
-    /// - Returns: A Bitcoin fact string
     func getRandomFact() -> String {
-        return facts.randomElement()!
+        // Try to get facts from App Group shared storage first
+        if let sharedFacts = getSharedFacts(), !sharedFacts.isEmpty {
+            return sharedFacts.randomElement() ?? defaultFacts.randomElement()!
+        }
+
+        // Fallback to default facts
+        return defaultFacts.randomElement()!
     }
 
-    /// Returns all available Bitcoin facts
-    /// - Returns: Array of Bitcoin facts
-    func getAllFacts() -> [String] {
-        return facts
+    /// Get facts shared from the main app via App Groups
+    private func getSharedFacts() -> [String]? {
+        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+            return nil
+        }
+
+        return userDefaults.stringArray(forKey: factsKey)
     }
-    
-    /// Saves facts to App Group shared storage for widget access
-    private func saveFactsForWidget() {
+
+    /// Save facts to App Group shared storage (called from main app)
+    func saveSharedFacts(_ facts: [String]) {
         guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
             return
         }
-        
-        userDefaults.set(facts, forKey: "widget_facts")
+
+        userDefaults.set(facts, forKey: factsKey)
     }
 
-    // MARK: - Private Properties
+    // MARK: - Default Facts
 
-    private let facts = [
+    private let defaultFacts = [
         "Satoshi Nakamoto mined more than 1M Bitcoin.",
         "You don't need permission to use Bitcoin.",
         "You don't need a bank account to use Bitcoin.",
@@ -50,7 +57,7 @@ class FactsService {
         "The largest transaction was 500,000 bitcoin.",
         "Bitcoin is legal tender in El Salvador.",
         "Not your keys, not your coins.",
-        "’Bitcoin’ is the network, ‘bitcoin’ is the currency.",
+        "'Bitcoin' is the network, 'bitcoin' is the currency.",
         "Bitcoin was not the first digital currency.",
         "Bitcoin was first created with 31,000 lines of code.",
         "Bitcoin does not have a CEO.",
@@ -62,10 +69,10 @@ class FactsService {
         "The identity of Bitcoin's inventor is unknown.",
         "If you lose your keys, you lose your coins.",
         "Bitcoins don't grow on trees.",
-        "There can only be 21 million bitcoins. ",
+        "There can only be 21 million bitcoins.",
         "Bitcoins are created when a block is mined.",
         "One bitcoin is 100,000,000 satoshis.",
-        "The smallest unit of Bitcoin is a “satoshi.”",
+        "The smallest unit of Bitcoin is a 'satoshi.'",
         "Bitcoins live on the blockchain, not in wallets.",
         "You can hold keys, but you cannot hold bitcoin.",
         "Private keys allow you to sign transactions.",
