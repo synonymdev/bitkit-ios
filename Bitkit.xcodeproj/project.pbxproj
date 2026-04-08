@@ -958,7 +958,7 @@
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
 				kind = exactVersion;
-				version = 0.1.48;
+				version = 0.1.50;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {

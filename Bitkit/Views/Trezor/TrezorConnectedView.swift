@@ -9,6 +9,8 @@ struct TrezorConnectedView: View {
     @State private var isSignMessageExpanded = false
     @State private var isPublicKeyExpanded = false
     @State private var isBalanceLookupExpanded = false
+    @State private var isTxHistoryExpanded = false
+    @State private var isTxDetailExpanded = false
     @State private var isDeviceInfoExpanded = false
 
     var body: some View {
@@ -56,6 +58,24 @@ struct TrezorConnectedView: View {
                         isExpanded: $isBalanceLookupExpanded
                     ) {
                         TrezorBalanceLookupContent()
+                    }
+
+                    TrezorExpandableSection(
+                        title: "Transaction History",
+                        icon: "list.bullet.rectangle",
+                        description: "Get transaction history for any xpub",
+                        isExpanded: $isTxHistoryExpanded
+                    ) {
+                        TrezorTransactionHistoryContent()
+                    }
+
+                    TrezorExpandableSection(
+                        title: "Transaction Detail",
+                        icon: "doc.text.magnifyingglass",
+                        description: "Get detailed info for a specific transaction",
+                        isExpanded: $isTxDetailExpanded
+                    ) {
+                        TrezorTransactionDetailContent()
                     }
 
                     TrezorExpandableSection(

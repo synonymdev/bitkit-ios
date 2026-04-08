@@ -156,6 +156,28 @@ class TrezorViewModel {
     /// Single address info result from address lookup
     var addressResult: SingleAddressInfoResult?
 
+    // MARK: - Transaction History State
+
+    /// Whether a transaction history lookup is in progress
+    var isTxHistoryLoading: Bool = false
+
+    /// Error from the last transaction history lookup
+    var txHistoryError: String?
+
+    /// Transaction history result from xpub lookup
+    var txHistoryResult: TransactionHistoryResult?
+
+    // MARK: - Transaction Detail State
+
+    /// Whether a transaction detail lookup is in progress
+    var isTxDetailLoading: Bool = false
+
+    /// Error from the last transaction detail lookup
+    var txDetailError: String?
+
+    /// Transaction detail result
+    var txDetailResult: TransactionDetail?
+
     // MARK: - Send Transaction State
 
     /// Destination address for the transaction
@@ -902,6 +924,8 @@ class TrezorViewModel {
                 return "Network mismatch: \(errorDetails)"
             case let .InvalidTxid(errorDetails):
                 return "Invalid transaction ID: \(errorDetails)"
+            case let .TransactionNotFound(errorDetails):
+                return "Transaction not found: \(errorDetails)"
             }
         }
         if let appError = error as? AppError,
@@ -910,6 +934,60 @@ class TrezorViewModel {
             return debugMessage
         }
         return error.localizedDescription
+    }
+
+    // MARK: - Transaction History Operations
+
+    /// Fetch transaction history for an extended public key
+    func fetchTransactionHistory(extendedKey: String) async {
+        let trimmedKey = extendedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else { return }
+
+        isTxHistoryLoading = true
+        txHistoryError = nil
+        txHistoryResult = nil
+
+        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+
+        do {
+            txHistoryResult = try await trezorService.getTransactionHistory(
+                extendedKey: trimmedKey,
+                electrumUrl: electrumUrl,
+                network: selectedNetwork
+            )
+        } catch {
+            txHistoryError = formatLookupError(error)
+        }
+
+        isTxHistoryLoading = false
+    }
+
+    // MARK: - Transaction Detail Operations
+
+    /// Fetch detailed information for a specific transaction
+    func fetchTransactionDetail(extendedKey: String, txid: String) async {
+        let trimmedKey = extendedKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTxid = txid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty, !trimmedTxid.isEmpty else { return }
+
+        isTxDetailLoading = true
+        txDetailError = nil
+        txDetailResult = nil
+
+        let electrumUrl = Self.electrumUrlForNetwork(selectedNetwork)
+
+        do {
+            txDetailResult = try await trezorService.getTransactionDetail(
+                extendedKey: trimmedKey,
+                electrumUrl: electrumUrl,
+                txid: trimmedTxid,
+                network: selectedNetwork
+            )
+        } catch {
+            txDetailError = formatLookupError(error)
+        }
+
+        isTxDetailLoading = false
     }
 
     // MARK: - Send Transaction Operations
