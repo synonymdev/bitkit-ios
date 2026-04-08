@@ -292,7 +292,6 @@ struct MainNavView: View {
                 case let .spendingAdvanced(order): SpendingAdvancedView(order: order)
                 case let .transferLearnMore(order): TransferLearnMoreView(order: order)
                 case .settingUp: SettingUpView()
-                case .fundingAdvanced: FundAdvancedOptions()
                 case let .fundManual(nodeUri): FundManualSetupView(initialNodeUri: nodeUri)
                 case let .fundManualAmount(lnPeer): FundManualAmountView(lnPeer: lnPeer)
                 case let .fundManualConfirm(lnPeer, amountSats): FundManualConfirmView(lnPeer: lnPeer, amountSats: amountSats)
