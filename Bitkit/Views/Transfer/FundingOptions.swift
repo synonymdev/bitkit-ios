@@ -35,23 +35,15 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: wallet.totalOnchainSats == 0 || GeoService.shared.isGeoBlocked,
+                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
-                    if app.hasSeenTransferToSpendingIntro {
+                    if wallet.totalOnchainSats == 0 {
+                        showNoFundsAlert = true
+                    } else if app.hasSeenTransferToSpendingIntro {
                         navigation.navigate(.spendingAmount)
                     } else {
                         navigation.navigate(.spendingIntro)
-                    }
-                }
-                .allowsHitTesting(wallet.totalOnchainSats == 0 ? false : true)
-                .overlay {
-                    if wallet.totalOnchainSats == 0 && !GeoService.shared.isGeoBlocked {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                showNoFundsAlert = true
-                            }
                     }
                 }
 
