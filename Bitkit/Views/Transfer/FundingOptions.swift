@@ -76,7 +76,7 @@ struct FundingOptions: View {
         ) {
             Button(t("lightning__no_funds__fund")) {
                 navigation.reset()
-                sheets.showSheet(.receive, data: ReceiveConfig(view: .cjitAmount))
+                sheets.showSheet(.receive, data: ReceiveConfig(view: .qr(cjitInvoice: nil, tab: .savings)))
             }
             Button(t("common__cancel"), role: .cancel) {}
         } message: {
