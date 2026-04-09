@@ -17,7 +17,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
-    @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better aniticipate the receive flow UI
+    @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better anticipate the receive flow UI
 
     // Send flow
     @Published var sendAmountSats: UInt64?
@@ -53,6 +53,7 @@ class WalletViewModel: ObservableObject {
     @Published var peers: [PeerDetails]?
     @Published var channels: [ChannelDetails]?
     private var eventHandlers: [String: (Event) -> Void] = [:]
+    private var probeOutcomes: [PaymentId: ProbeOutcome] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
 
@@ -185,6 +186,20 @@ class WalletViewModel: ObservableObject {
 
                     // Handle specific events for targeted UI updates
                     switch event {
+                    case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                        self.cacheProbeOutcome(
+                            success: true,
+                            paymentId: paymentId,
+                            paymentHash: paymentHash,
+                            shortChannelId: nil
+                        )
+                    case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                        self.cacheProbeOutcome(
+                            success: false,
+                            paymentId: paymentId,
+                            paymentHash: paymentHash,
+                            shortChannelId: shortChannelId
+                        )
                     case .paymentReceived, .channelReady:
                         self.bolt11 = ""
                         Task {
@@ -354,6 +369,7 @@ class WalletViewModel: ObservableObject {
         nodeLifecycleState = .stopping
         try await lightningService.stop(clearEventCallback: clearEventCallback)
         nodeLifecycleState = .stopped
+        probeOutcomes.removeAll()
         syncState()
     }
 
@@ -609,6 +625,91 @@ class WalletViewModel: ObservableObject {
             Logger.error("Failed to calculate routing fees: \(error)", context: "WalletViewModel")
             routingFeeEstimateSats = 0
         }
+    }
+
+    struct ProbeOutcome {
+        let success: Bool
+        let paymentId: PaymentId
+        let paymentHash: PaymentHash
+        let shortChannelId: UInt64?
+    }
+
+    /// Waits for probe results that match one of the returned probe `paymentId`s.
+    /// If any matching probe succeeds, this resolves success immediately.
+    /// If all matching probes fail, this resolves with the final failed probe event.
+    func waitForProbeOutcome(paymentIds: Set<PaymentId>) async throws -> ProbeOutcome {
+        guard !paymentIds.isEmpty else {
+            throw AppError(message: "No probe handles returned", debugMessage: "Cannot wait for probe outcome without payment IDs")
+        }
+
+        if let immediate = consumeProbeOutcomeIfReady(paymentIds: paymentIds) {
+            return immediate
+        }
+
+        let eventId = "probe-outcome-\(UUID().uuidString)"
+        var pendingPaymentIds = paymentIds
+        var lastFailure: ProbeOutcome?
+
+        return await withCheckedContinuation { continuation in
+            var resumed = false
+
+            addOnEvent(id: eventId) { event in
+                guard !resumed else { return }
+                switch event {
+                case let .probeSuccessful(paymentId, paymentHash: paymentHash):
+                    guard pendingPaymentIds.contains(paymentId) else { return }
+                    resumed = true
+                    self.removeOnEvent(id: eventId)
+                    continuation.resume(returning: .init(
+                        success: true,
+                        paymentId: paymentId,
+                        paymentHash: paymentHash,
+                        shortChannelId: nil
+                    ))
+                case let .probeFailed(paymentId, paymentHash: paymentHash, shortChannelId: shortChannelId):
+                    guard pendingPaymentIds.remove(paymentId) != nil else { return }
+                    lastFailure = .init(
+                        success: false,
+                        paymentId: paymentId,
+                        paymentHash: paymentHash,
+                        shortChannelId: shortChannelId
+                    )
+                    if pendingPaymentIds.isEmpty, let lastFailure {
+                        resumed = true
+                        self.removeOnEvent(id: eventId)
+                        continuation.resume(returning: lastFailure)
+                    }
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    private func cacheProbeOutcome(success: Bool, paymentId: PaymentId, paymentHash: PaymentHash, shortChannelId: UInt64?) {
+        probeOutcomes[paymentId] = ProbeOutcome(
+            success: success,
+            paymentId: paymentId,
+            paymentHash: paymentHash,
+            shortChannelId: shortChannelId
+        )
+    }
+
+    private func consumeProbeOutcomeIfReady(paymentIds: Set<PaymentId>) -> ProbeOutcome? {
+        let matched = paymentIds.compactMap { probeOutcomes[$0] }
+        guard !matched.isEmpty else { return nil }
+
+        for paymentId in paymentIds {
+            probeOutcomes.removeValue(forKey: paymentId)
+        }
+
+        if let firstSuccess = matched.first(where: \.success) {
+            return firstSuccess
+        }
+        if matched.count == paymentIds.count {
+            return matched.last
+        }
+        return nil
     }
 
     /// Sends a lightning payment with an optional timeout.
@@ -1041,6 +1142,8 @@ class WalletViewModel: ObservableObject {
         }
 
         try await lightningService.wipeStorage(walletIndex: 0)
+
+        probeOutcomes.removeAll()
 
         // Reset AppStorage display values
         totalBalanceSats = 0
