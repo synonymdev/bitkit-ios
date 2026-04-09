@@ -185,7 +185,8 @@
 "lightning__external_manual__paste" = "Vložte URI uzlu";
 "lightning__external_manual__scan" = "Skenovat QR";
 "lightning__external_amount__title" = "Disponibilní\n<accent>zůstatek</accent>";
-"lightning__external_success__title" = "Připojení\n<accent>iniciováno</accent>";
+"lightning__external_success__nav_title" = "Zůstatek k utracení";
+"lightning__external_success__title" = "Otevírání\n<accent>kanálu</accent>";
 "lightning__external_success__text" = "Iniciováno připojení lightning. Zůstatek na účtu budete moci použít do <accent>±30 minut</accent> (závisí na konfiguraci uzlu).";
 "lightning__error_channel_purchase" = "Nastavení okamžitých plateb se nezdařilo";
 "lightning__error_channel_setup_msg" = "Při nastavování okamžitého zůstatku došlo k chybě. {raw}";
