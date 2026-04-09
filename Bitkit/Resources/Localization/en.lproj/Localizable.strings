@@ -1062,8 +1062,8 @@
 "profile__create_pubky_label" = "PUBKY";
 "profile__create_username_label" = "USERNAME";
 "profile__create_avatar_label" = "AVATAR";
-"profile__create_bio_label" = "BIO";
-"profile__create_bio_placeholder" = "Short bio. Tell a bit about yourself.";
+"profile__create_bio_label" = "NOTES";
+"profile__create_bio_placeholder" = "Short note. Tell a bit about yourself.";
 "profile__create_add_link" = "Add Link";
 "profile__create_add_tag" = "Add Tag";
 "profile__create_tags_label" = "TAGS";
