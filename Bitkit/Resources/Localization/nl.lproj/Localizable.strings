@@ -187,7 +187,8 @@
 "lightning__external_manual__paste" = "Plak Node URI";
 "lightning__external_manual__scan" = "Scan QR";
 "lightning__external_amount__title" = "Bestedingssaldo\n<accent>saldo</accent>";
-"lightning__external_success__title" = "Verbinding\n<accent>geïnitieerd</accent>";
+"lightning__external_success__nav_title" = "Uitgavenbalans";
+"lightning__external_success__title" = "Kanaal wordt\n<accent>geopend</accent>";
 "lightning__external_success__text" = "Lightning verbinding geïnitieerd. U kunt uw bestedingssaldo gebruiken in <accent>±30 minuten</accent> (afhankelijk van nodeconfiguratie).";
 "lightning__error_channel_purchase" = "Directe Betalingen Instellen Mislukt";
 "lightning__error_channel_setup_msg" = "Ein Fehler ist bei der Einrichtung deines Sofortguthabens aufgetreten. {raw}";
