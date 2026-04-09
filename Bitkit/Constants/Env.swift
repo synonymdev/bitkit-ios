@@ -34,6 +34,14 @@ enum Env {
         (infoPlistValue("E2E_BACKEND") ?? "local").lowercased()
     }
 
+    private static var isLocalE2EBackend: Bool {
+        isE2E && e2eBackend == "local"
+    }
+
+    private static var e2eHomegateUrl: String {
+        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://127.0.0.1:6288"
+    }
+
     private static var e2eNetwork: LDKNode.Network {
         switch (infoPlistValue("E2E_NETWORK") ?? "regtest").lowercased() {
         case "bitcoin", "mainnet":
@@ -269,9 +277,17 @@ enum Env {
     }
 
     /// Homegate URL for auto-provisioned identity signup via IP verification.
-    /// TODO: Switch `.bitcoin` to production Homegate URL once available.
     static var homegateUrl: String {
-        return "https://homegate.staging.pubky.app"
+        if isLocalE2EBackend {
+            return e2eHomegateUrl
+        }
+
+        switch network {
+        case .bitcoin:
+            return "https://homegate.pubky.app"
+        default:
+            return "https://homegate.staging.pubky.app"
+        }
     }
 
     static var blockExplorerUrl: String {
