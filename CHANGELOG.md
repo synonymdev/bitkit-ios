@@ -15,8 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pay Contacts onboarding step after profile creation and Ring import. #476
 - Session restoration with automatic re-sign-in recovery. #476
 
-### Fixed
-- Stabilize Home widgets calculator keyboard behavior by improving keyboard avoidance and adding a keyboard "Done" button. #513
-- In the calculator widget, show only the first character of multi-character currency symbols. #513
+### Changed
+- Use middle-ellipsis truncation for addresses on the receive screen #517
 
-[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD
+### Fixed
+- Fix keyboard and UI issues in the calculator widget #513
+- Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
+
+- [Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD

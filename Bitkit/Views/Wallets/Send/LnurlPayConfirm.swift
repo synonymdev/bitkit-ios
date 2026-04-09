@@ -29,7 +29,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable),
+                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendableSat),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
@@ -186,12 +186,12 @@ struct LnurlPayConfirm: View {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amount = wallet.sendAmountSats ?? lnurlPayData.minSendable
+        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
 
         // Fetch the Lightning invoice from LNURL
         let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
             callbackUrl: lnurlPayData.callback,
-            amount: amount,
+            amountMsats: amountMsats,
             comment: comment.isEmpty ? nil : comment
         )
 
@@ -200,9 +200,11 @@ struct LnurlPayConfirm: View {
 
         do {
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+            // LNURL server returns invoices with the amount baked in, so pass sats: nil
+            // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
-                sats: wallet.sendAmountSats,
+                sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
                     navigationPath.append(.pending(paymentHash: paymentHash))
