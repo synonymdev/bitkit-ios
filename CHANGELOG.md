@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Use middle-ellipsis truncation for addresses on the receive screen #517
 
 ### Fixed
+- Fix probe results and add keysend probes #522
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 

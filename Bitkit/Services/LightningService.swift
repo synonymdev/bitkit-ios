@@ -913,6 +913,10 @@ class LightningService {
 // MARK: UI Helpers (Published via WalletViewModel)
 
 extension LightningService {
+    struct ProbeDispatch {
+        let paymentIds: Set<PaymentId>
+    }
+
     var nodeId: String? {
         node?.nodeId()
     }
@@ -1181,6 +1185,13 @@ extension LightningService {
                     Logger.info(
                         "🫰 Payment claimable: paymentId: \(paymentId) paymentHash: \(paymentHash) claimableAmountMsat: \(claimableAmountMsat)"
                     )
+                case let .probeSuccessful(paymentId, paymentHash):
+                    Logger.info("🤑 Probe successful: paymentId: \(paymentId) paymentHash: \(paymentHash)")
+                case let .probeFailed(paymentId, paymentHash, shortChannelId):
+                    Logger
+                        .info(
+                            "❌ Probe failed: paymentId: \(paymentId) paymentHash: \(paymentHash) shortChannelId: \(String(describing: shortChannelId))"
+                        )
                 // Payment claimable doesn't need activity update - it's still pending
                 // The payment will be updated when it succeeds or fails via paymentSuccessful/paymentFailed events
                 case let .channelPending(channelId, userChannelId, formerTemporaryChannelId, counterpartyNodeId, fundingTxo):
@@ -1503,19 +1514,40 @@ extension LightningService {
     /// - Parameters:
     ///   - bolt11: The Lightning invoice string (BOLT 11)
     ///   - amountSats: Optional amount in sats for variable-amount invoices
-    func sendProbe(bolt11: String, amountSats: UInt64? = nil) async throws {
+    func sendProbe(bolt11: String, amountSats: UInt64? = nil) async throws -> ProbeDispatch {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
-        try await ServiceQueue.background(.ldk) {
+        return try await ServiceQueue.background(.ldk) {
             let invoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
+            let handles: [ProbeHandle]
             if let amountSats {
                 let amountMsat = amountSats * 1000
-                try node.bolt11Payment().sendProbesUsingAmount(invoice: invoice, amountMsat: amountMsat, routeParameters: nil)
+                handles = try node.bolt11Payment().sendProbesUsingAmount(invoice: invoice, amountMsat: amountMsat, routeParameters: nil)
             } else {
-                try node.bolt11Payment().sendProbes(invoice: invoice, routeParameters: nil)
+                handles = try node.bolt11Payment().sendProbes(invoice: invoice, routeParameters: nil)
             }
+
+            return ProbeDispatch(paymentIds: Set(handles.map(\.paymentId)))
+        }
+    }
+
+    /// Sends payment probes over all paths of a route that would be used to pay the given
+    /// amount to the given nodeId.
+    /// - Parameters:
+    ///   - nodeId: The ID of the node to send the probe to
+    ///   - amountSats: Amount in sats to send
+    func sendProbesSpontaneous(nodeId: String, amountSats: UInt64) async throws -> ProbeDispatch {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            let amountMsat = amountSats * 1000
+            let handles = try node.spontaneousPayment().sendProbes(amountMsat: amountMsat, nodeId: nodeId)
+
+            return ProbeDispatch(paymentIds: Set(handles.map(\.paymentId)))
         }
     }
 }

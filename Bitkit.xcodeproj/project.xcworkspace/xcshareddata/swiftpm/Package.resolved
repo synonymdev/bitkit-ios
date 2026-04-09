@@ -1,5 +1,5 @@
 {
-  "originHash" : "17302aed9b1f94b6f928fd7e06b45ebec95883553cab0849836d3e292cab01d7",
+  "originHash" : "8b2b6fb08d6ba9f5dfb5b0576935550b29322970dfe2e1d98afaa86d411a043e",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -16,14 +16,6 @@
       "state" : {
         "revision" : "9fa582f4b36c69c2a55bff5fb3377eb170ae273c",
         "version" : "2.5.1"
-      }
-    },
-    {
-      "identity" : "ldk-node",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/synonymdev/ldk-node",
-      "state" : {
-        "revision" : "ae38eadab70fceb5dbe242bc02bf895581cb7c3f"
       }
     },
     {
