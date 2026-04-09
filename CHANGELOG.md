@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Use middle-ellipsis truncation for addresses on the receive screen #517
+
+## [2.2.0] - 2026-04-07
+
 ### Fixed
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
-- [Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...HEAD
+[Unreleased]: https://github.com/synonymdev/bitkit-ios/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/synonymdev/bitkit-ios/compare/v2.1.2...v2.2.0
