@@ -32,6 +32,7 @@ struct ReceiveSheetItem: SheetItem {
 struct ReceiveSheet: View {
     let config: ReceiveSheetItem
     @State private var navigationPath: [ReceiveRoute] = []
+    @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var wallet: WalletViewModel
     @EnvironmentObject private var tagManager: TagManager
 
@@ -44,6 +45,7 @@ struct ReceiveSheet: View {
                     }
             }
         }
+        .connectionIssuesOverlay(title: t("wallet__receive_bitcoin"), isOffline: !network.isConnected)
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""

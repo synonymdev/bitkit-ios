@@ -41,6 +41,7 @@ struct SendSheetItem: SheetItem {
 
 struct SendSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var tagManager: TagManager
@@ -95,6 +96,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
+        .connectionIssuesOverlay(title: t("wallet__send_bitcoin"), isOffline: !network.isConnected)
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)

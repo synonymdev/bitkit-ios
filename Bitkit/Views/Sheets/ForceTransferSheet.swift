@@ -7,6 +7,7 @@ struct ForceTransferSheetItem: SheetItem {
 
 struct ForceTransferSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var network: NetworkMonitor
     @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var transfer: TransferViewModel
     let config: ForceTransferSheetItem
@@ -29,6 +30,7 @@ struct ForceTransferSheet: View {
                 onContinue: onForceTransfer
             )
         }
+        .connectionIssuesOverlay(title: t("lightning__force_nav_title"), isOffline: !network.isConnected)
     }
 
     private func onCancel() {

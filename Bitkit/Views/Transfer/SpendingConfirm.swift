@@ -8,6 +8,7 @@ struct SpendingConfirm: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
@@ -134,6 +135,7 @@ struct SpendingConfirm: View {
         .task {
             await calculateTransactionFee()
         }
+        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"), isOffline: !network.isConnected)
     }
 
     private func onConfirm() async {

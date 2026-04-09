@@ -6,6 +6,7 @@ struct SpendingAmount: View {
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var network: NetworkMonitor
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -85,6 +86,7 @@ struct SpendingAmount: View {
                 await calculateMaxTransferAmount()
             }
         }
+        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"), isOffline: !network.isConnected)
     }
 
     private var actionButtons: some View {
