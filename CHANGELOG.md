@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Connection issues overlay on Send, Receive, Transfer, and Force Transfer flows
+- Connection issues overlay on Send, Receive, Transfer, and Force Transfer flows #524
 
 ### Fixed
 - Fix keyboard and UI issues in the calculator widget #513
