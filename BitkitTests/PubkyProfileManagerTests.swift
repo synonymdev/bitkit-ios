@@ -73,6 +73,46 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(resolved)
     }
 
+    // MARK: - Remote Profile Resolution
+
+    func testResolveRemoteProfilePrefersBitkitProfile() async throws {
+        let bitkitProfile = makeProfile(publicKey: "pubky_test", name: "Bitkit")
+        let pubkyFallback = makeProfile(publicKey: "pubky_test", name: "Pubky")
+
+        let resolved = try await PubkyProfileManager.resolveRemoteProfile(
+            publicKey: "pubky_test",
+            fetchBitkitProfile: { _ in bitkitProfile },
+            fetchPubkyProfile: { _ in
+                XCTFail("Expected bitkit profile to win before pubky fallback")
+                return pubkyFallback
+            }
+        )
+
+        XCTAssertEqual(resolved.name, "Bitkit")
+    }
+
+    func testResolveRemoteProfileFallsBackToPubkyProfile() async throws {
+        let fallbackProfile = makeProfile(publicKey: "pubky_test", name: "Pubky")
+
+        let resolved = try await PubkyProfileManager.resolveRemoteProfile(
+            publicKey: "pubky_test",
+            fetchBitkitProfile: { _ in nil },
+            fetchPubkyProfile: { _ in fallbackProfile }
+        )
+
+        XCTAssertEqual(resolved.name, "Pubky")
+    }
+
+    func testResolveRemoteProfileThrowsWhenNoRemoteProfileExists() async {
+        await XCTAssertThrowsErrorAsync {
+            try await PubkyProfileManager.resolveRemoteProfile(
+                publicKey: "pubky_missing",
+                fetchBitkitProfile: { _ in nil },
+                fetchPubkyProfile: { _ in throw PubkyServiceError.profileNotFound }
+            )
+        }
+    }
+
     // MARK: - Profile Link Input Model
 
     func testProfileLinkInputHasUniqueIds() {
@@ -81,4 +121,27 @@ final class PubkyProfileManagerTests: XCTestCase {
 
         XCTAssertNotEqual(link1.id, link2.id)
     }
+
+    private func makeProfile(publicKey: String, name: String) -> PubkyProfile {
+        PubkyProfile(
+            publicKey: publicKey,
+            name: name,
+            bio: "bio",
+            imageUrl: nil,
+            links: [],
+            tags: [],
+            status: nil
+        )
+    }
+}
+
+private func XCTAssertThrowsErrorAsync(
+    _ expression: () async throws -> some Any,
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected expression to throw", file: file, line: line)
+    } catch {}
 }

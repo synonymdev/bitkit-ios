@@ -183,7 +183,7 @@ class PubkyProfileManager: ObservableObject {
     }
 
     /// Strip the `pubky` prefix from a public key for use in `pubky://` URIs.
-    private static func stripPubkyPrefix(_ key: String) -> String {
+    private nonisolated static func stripPubkyPrefix(_ key: String) -> String {
         key.hasPrefix("pubky") ? String(key.dropFirst(5)) : key
     }
 
@@ -380,7 +380,7 @@ class PubkyProfileManager: ObservableObject {
         }.value
     }
 
-    private static var profilePath: String {
+    private nonisolated static var profilePath: String {
         switch Env.network {
         case .bitcoin:
             return "/pub/bitkit.to/profile.json"
@@ -501,19 +501,7 @@ class PubkyProfileManager: ObservableObject {
 
         do {
             let loadedProfile = try await Task.detached {
-                // Prefer our bitkit profile.json — it has the complete data we wrote
-                if let bitkitProfile = await Self.fetchBitkitProfile(publicKey: pk) {
-                    Logger.debug("Profile loaded from bitkit profile.json — name: \(bitkitProfile.name)", context: "PubkyProfileManager")
-                    return bitkitProfile
-                }
-
-                // Fall back to the generic pubky profile via FFI
-                let profileDto = try await PubkyService.getProfile(publicKey: pk)
-                Logger.debug(
-                    "Profile loaded from pubky FFI — name: \(profileDto.name), image: \(profileDto.image ?? "nil")",
-                    context: "PubkyProfileManager"
-                )
-                return PubkyProfile(publicKey: pk, ffiProfile: profileDto)
+                try await Self.resolveRemoteProfile(publicKey: pk)
             }.value
             profile = loadedProfile
             cacheProfileMetadata(loadedProfile)
@@ -526,21 +514,36 @@ class PubkyProfileManager: ObservableObject {
 
     /// Fetch a remote profile by public key. Returns nil if no profile exists.
     func fetchRemoteProfile(publicKey: String) async -> PubkyProfile? {
-        // Try bitkit profile.json first, then fall back to FFI
-        if let bitkitProfile = await Self.fetchBitkitProfile(publicKey: publicKey) {
-            return bitkitProfile
-        }
         do {
-            let profileDto = try await PubkyService.getProfile(publicKey: publicKey)
-            return PubkyProfile(publicKey: publicKey, ffiProfile: profileDto)
+            return try await Self.resolveRemoteProfile(publicKey: publicKey)
         } catch {
             Logger.debug("No remote profile found for \(publicKey): \(error)", context: "PubkyProfileManager")
             return nil
         }
     }
 
+    nonisolated static func resolveRemoteProfile(publicKey: String) async throws -> PubkyProfile {
+        try await resolveRemoteProfile(
+            publicKey: publicKey,
+            fetchBitkitProfile: fetchBitkitProfile,
+            fetchPubkyProfile: fetchPubkyProfile
+        )
+    }
+
+    nonisolated static func resolveRemoteProfile(
+        publicKey: String,
+        fetchBitkitProfile: @escaping @Sendable (String) async -> PubkyProfile?,
+        fetchPubkyProfile: @escaping @Sendable (String) async throws -> PubkyProfile
+    ) async throws -> PubkyProfile {
+        if let bitkitProfile = await fetchBitkitProfile(publicKey) {
+            return bitkitProfile
+        }
+
+        return try await fetchPubkyProfile(publicKey)
+    }
+
     /// Read the user's bitkit profile.json which contains the complete profile data we wrote.
-    private static func fetchBitkitProfile(publicKey: String) async -> PubkyProfile? {
+    private nonisolated static func fetchBitkitProfile(publicKey: String) async -> PubkyProfile? {
         let strippedKey = stripPubkyPrefix(publicKey)
         let uri = "pubky://\(strippedKey)\(profilePath)"
 
@@ -553,6 +556,15 @@ class PubkyProfileManager: ObservableObject {
             Logger.debug("Could not fetch bitkit profile.json: \(error)", context: "PubkyProfileManager")
             return nil
         }
+    }
+
+    private nonisolated static func fetchPubkyProfile(publicKey: String) async throws -> PubkyProfile {
+        let profileDto = try await PubkyService.getProfile(publicKey: publicKey)
+        Logger.debug(
+            "Profile loaded from pubky FFI — name: \(profileDto.name), image: \(profileDto.image ?? "nil")",
+            context: "PubkyProfileManager"
+        )
+        return PubkyProfile(publicKey: publicKey, ffiProfile: profileDto)
     }
 
     // MARK: - Sign Out

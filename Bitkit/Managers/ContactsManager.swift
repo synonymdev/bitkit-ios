@@ -193,7 +193,7 @@ class ContactsManager: ObservableObject {
         }
     }
 
-    // MARK: - Add Contact (fetch from pubky.app once, then store to bitkit.to)
+    // MARK: - Add Contact (prefer bitkit.to profile, then pubky.app, then placeholder)
 
     func addContact(publicKey: String, existingProfile: PubkyProfile? = nil) async throws {
         let prefixedKey = ensurePubkyPrefix(publicKey)
@@ -202,11 +202,12 @@ class ContactsManager: ObservableObject {
             return
         }
 
-        // Use existing profile if provided (e.g., already fetched during preview), otherwise fetch from pubky.app
+        // Use existing profile if provided (e.g., already fetched during preview),
+        // otherwise resolve remote profile with a placeholder fallback.
         let profile: PubkyProfile = if let existingProfile {
             existingProfile
         } else {
-            try await fetchProfileFromPubkyApp(publicKey: prefixedKey)
+            try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
         }
 
         // Build PubkyProfileData and write to bitkit.to
@@ -220,18 +221,18 @@ class ContactsManager: ObservableObject {
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    // MARK: - Import Contacts (batch fetch from pubky.app, store to bitkit.to)
+    // MARK: - Import Contacts (prefer bitkit.to profiles, then pubky.app, then store to bitkit.to)
 
     func importContacts(publicKeys: [String]) async throws {
         let prefixedKeys = Array(Set(publicKeys.map { ensurePubkyPrefix($0) }))
 
-        // Fetch profiles from pubky.app and write each to bitkit.to
+        // Resolve profiles remotely, then write each to bitkit.to
         let loadedResult: (contacts: [PubkyContact], failures: Int,
                            firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
             for key in prefixedKeys {
                 group.addTask { [self] in
                     do {
-                        let profile = try await fetchProfileFromPubkyApp(publicKey: key)
+                        let profile = try await resolveContactProfile(publicKey: key)
                         let contactData = PubkyProfileData.from(profile: profile)
                         try await savePubkyProfileData(publicKey: key, data: contactData)
                         return .success(PubkyContact(publicKey: key, profile: profile))
@@ -321,7 +322,7 @@ class ContactsManager: ObservableObject {
         contacts.removeAll { $0.publicKey == prefixedKey }
     }
 
-    // MARK: - Discover Remote Contacts (from pubky.app — for Ring auth import flow)
+    // MARK: - Discover Remote Contacts (list from pubky.app, then resolve each profile)
 
     /// Discover profile and contacts from pubky.app, store as pending imports.
     /// Returns true if any import data was found.
@@ -359,7 +360,7 @@ class ContactsManager: ObservableObject {
                     let pk = ensurePubkyPrefix(key)
                     group.addTask { [self] in
                         do {
-                            let profile = try await fetchProfileFromPubkyApp(publicKey: pk)
+                            let profile = try await resolveContactProfile(publicKey: pk)
                             return .success(PubkyContact(publicKey: pk, profile: profile))
                         } catch {
                             Logger.warn("Failed to discover remote contact '\(pk)': \(error)", context: "ContactsManager")
@@ -396,11 +397,11 @@ class ContactsManager: ObservableObject {
         }
     }
 
-    // MARK: - Fetch Contact Profile (from pubky.app — used only during add/import)
+    // MARK: - Fetch Contact Profile (prefer bitkit.to profile, then pubky.app)
 
-    func fetchContactProfile(publicKey: String) async -> PubkyProfile? {
+    func fetchContactProfile(publicKey: String, includePlaceholder: Bool = false) async -> PubkyProfile? {
         do {
-            return try await fetchProfileFromPubkyApp(publicKey: ensurePubkyPrefix(publicKey))
+            return try await resolveContactProfile(publicKey: ensurePubkyPrefix(publicKey), includePlaceholder: includePlaceholder)
         } catch {
             return nil
         }
@@ -442,16 +443,18 @@ class ContactsManager: ObservableObject {
         }.value
     }
 
-    /// Fetch a profile from pubky.app (external, one-time read)
-    private func fetchProfileFromPubkyApp(publicKey: String) async throws -> PubkyProfile {
+    /// Resolve a contact profile using bitkit.to first, then pubky.app, optionally falling back to a placeholder.
+    private func resolveContactProfile(publicKey: String, includePlaceholder: Bool = false) async throws -> PubkyProfile {
         let prefixedKey = ensurePubkyPrefix(publicKey)
         do {
-            let dto = try await Task.detached {
-                try await PubkyService.getProfile(publicKey: prefixedKey)
-            }.value
-            return PubkyProfile(publicKey: prefixedKey, ffiProfile: dto)
+            return try await PubkyProfileManager.resolveRemoteProfile(publicKey: prefixedKey)
         } catch {
-            Logger.warn("Failed to fetch profile from pubky.app for '\(prefixedKey)': \(error)", context: "ContactsManager")
+            if includePlaceholder, Self.isMissingContactsDataError(error) {
+                Logger.info("No remote profile found for '\(prefixedKey)', using placeholder", context: "ContactsManager")
+                return PubkyProfile.placeholder(publicKey: prefixedKey)
+            }
+
+            Logger.warn("Failed to resolve contact profile for '\(prefixedKey)': \(error)", context: "ContactsManager")
             throw error
         }
     }

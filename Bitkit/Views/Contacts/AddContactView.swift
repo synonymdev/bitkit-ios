@@ -172,7 +172,7 @@ struct AddContactView: View {
     private func loadProfile() async {
         isLoading = true
         fetchedProfile = nil
-        if let profile = await contactsManager.fetchContactProfile(publicKey: publicKey) {
+        if let profile = await contactsManager.fetchContactProfile(publicKey: publicKey, includePlaceholder: true) {
             fetchedProfile = profile
         }
         isLoading = false
