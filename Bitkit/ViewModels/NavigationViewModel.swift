@@ -102,6 +102,29 @@ enum Route: Hashable {
     case logs
 }
 
+extension Route {
+    var isContactImportRoute: Bool {
+        switch self {
+        case .contactImportOverview, .contactImportSelect:
+            true
+        default:
+            false
+        }
+    }
+}
+
+func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {
+    guard currentRoute?.isContactImportRoute == true else {
+        return false
+    }
+
+    return destination?.isContactImportRoute != true
+}
+
+func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
+    hasPendingImport ? nil : .payContacts
+}
+
 @MainActor
 class NavigationViewModel: ObservableObject {
     @Published var path: [Route] = []

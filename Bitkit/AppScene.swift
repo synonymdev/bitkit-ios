@@ -147,6 +147,13 @@ struct AppScene: View {
                     contactsManager.reset()
                 }
             }
+            .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
+                guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
+                    return
+                }
+
+                contactsManager.clearPendingImport()
+            }
             .onChange(of: pubkyProfile.sessionRestorationFailed) { _, failed in
                 if failed {
                     pubkyProfile.sessionRestorationFailed = false

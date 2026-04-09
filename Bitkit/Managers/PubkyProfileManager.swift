@@ -4,6 +4,7 @@ import SwiftUI
 enum PubkyAuthState: Equatable {
     case idle
     case authenticating
+    case completingAuthentication
     case authenticated
     case error(String)
 }
@@ -388,6 +389,14 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    static func isRingAvailable() -> Bool {
+        guard let url = URL(string: "pubkyauth://check") else {
+            return false
+        }
+
+        return UIApplication.shared.canOpenURL(url)
+    }
+
     // MARK: - Auth Flow (Ring)
 
     func cancelAuthentication() async {
@@ -405,6 +414,11 @@ class PubkyProfileManager: ObservableObject {
     func startAuthentication() async throws {
         authState = .authenticating
 
+        guard Self.isRingAvailable() else {
+            authState = .idle
+            throw PubkyServiceError.ringNotInstalled
+        }
+
         let authUrl: String
         do {
             authUrl = try await Task.detached {
@@ -416,21 +430,29 @@ class PubkyProfileManager: ObservableObject {
         }
 
         guard let url = URL(string: authUrl) else {
+            await cancelPendingAuthSetup()
             authState = .idle
             throw PubkyServiceError.invalidAuthUrl
         }
 
         let canOpen = UIApplication.shared.canOpenURL(url)
         guard canOpen else {
+            await cancelPendingAuthSetup()
             authState = .idle
             throw PubkyServiceError.ringNotInstalled
         }
 
-        await UIApplication.shared.open(url)
+        let didOpen = await UIApplication.shared.open(url)
+        guard didOpen else {
+            await cancelPendingAuthSetup()
+            authState = .idle
+            throw PubkyServiceError.authFailed("Failed to open Pubky Ring")
+        }
     }
 
     /// Long-polls the relay, persists + imports the session, and loads the profile in a single off-main-actor pass.
-    func completeAuthentication() async throws {
+    @discardableResult
+    func completeAuthentication() async throws -> String {
         do {
             let pk = try await Task.detached {
                 let sessionSecret = try await PubkyService.completeAuth()
@@ -452,9 +474,10 @@ class PubkyProfileManager: ObservableObject {
             }.value
 
             publicKey = pk
-            authState = .authenticated
+            authState = .completingAuthentication
             Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
             await loadProfile()
+            return pk
         } catch let serviceError as PubkyServiceError {
             authState = .idle
             throw serviceError
@@ -462,6 +485,11 @@ class PubkyProfileManager: ObservableObject {
             authState = .error(error.localizedDescription)
             throw error
         }
+    }
+
+    func finalizeAuthentication() {
+        guard case .completingAuthentication = authState else { return }
+        authState = .authenticated
     }
 
     // MARK: - Profile
@@ -584,5 +612,15 @@ class PubkyProfileManager: ObservableObject {
 
     var isAuthenticated: Bool {
         authState == .authenticated
+    }
+
+    private func cancelPendingAuthSetup() async {
+        do {
+            try await Task.detached {
+                try await PubkyService.cancelAuth()
+            }.value
+        } catch {
+            Logger.warn("Cancel pending auth setup failed: \(error)", context: "PubkyProfileManager")
+        }
     }
 }

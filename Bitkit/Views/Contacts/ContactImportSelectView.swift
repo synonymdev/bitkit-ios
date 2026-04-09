@@ -194,7 +194,8 @@ struct ContactImportSelectView: View {
         let selected = contacts.filter { selectedKeys.contains($0.publicKey) }
 
         guard !selected.isEmpty else {
-            navigation.navigate(.payContacts)
+            contactsManager.clearPendingImport()
+            navigation.path = [.payContacts]
             return
         }
 
@@ -203,7 +204,8 @@ struct ContactImportSelectView: View {
 
         do {
             try await contactsManager.importContacts(publicKeys: selected.map(\.publicKey))
-            navigation.navigate(.payContacts)
+            contactsManager.clearPendingImport()
+            navigation.path = [.payContacts]
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

@@ -62,6 +62,10 @@ class ContactsManager: ObservableObject {
     @Published var pendingImportProfile: PubkyProfile?
     @Published var pendingImportContacts: [PubkyContact] = []
 
+    var hasPendingImport: Bool {
+        pendingImportProfile != nil && !pendingImportContacts.isEmpty
+    }
+
     var groupedContacts: [ContactSection] {
         let grouped = Dictionary(grouping: contacts) { $0.sortLetter }
         return grouped.keys.sorted().map { letter in
@@ -74,6 +78,10 @@ class ContactsManager: ObservableObject {
         isLoading = false
         hasLoaded = false
         loadErrorMessage = nil
+        clearPendingImport()
+    }
+
+    func clearPendingImport() {
         pendingImportProfile = nil
         pendingImportContacts = []
     }
@@ -105,7 +113,7 @@ class ContactsManager: ObservableObject {
             let strippedKey = stripPubkyPrefix(publicKey)
 
             let loadedResult: (contacts: [PubkyContact], failures: Int,
-                               firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
+                               missingFailures: Int, firstError: Error?) = await withTaskGroup(of: Result<PubkyContact, Error>.self) { group in
                 for path in contactPaths {
                     let contactKey = extractPublicKey(from: path)
                     guard !contactKey.isEmpty else { continue }
@@ -128,6 +136,7 @@ class ContactsManager: ObservableObject {
 
                 var results: [PubkyContact] = []
                 var failures = 0
+                var missingFailures = 0
                 var firstError: Error?
 
                 for await result in group {
@@ -136,14 +145,23 @@ class ContactsManager: ObservableObject {
                         results.append(contact)
                     case let .failure(error):
                         failures += 1
+                        if Self.isMissingContactsDataError(error) {
+                            missingFailures += 1
+                        }
                         firstError = firstError ?? error
                     }
                 }
 
-                return (results, failures, firstError)
+                return (results, failures, missingFailures, firstError)
             }
 
             if !contactPaths.isEmpty, loadedResult.contacts.isEmpty {
+                if loadedResult.failures == loadedResult.missingFailures {
+                    contacts = []
+                    hasLoaded = true
+                    Logger.info("Contacts storage entries were missing, treating list as empty", context: "ContactsManager")
+                    return
+                }
                 throw loadedResult.firstError ?? PubkyServiceError.profileNotFound
             }
 
@@ -159,6 +177,14 @@ class ContactsManager: ObservableObject {
 
             Logger.info("Loaded \(contacts.count) contacts", context: "ContactsManager")
         } catch {
+            if Self.isMissingContactsDataError(error) {
+                contacts = []
+                hasLoaded = true
+                loadErrorMessage = nil
+                Logger.info("Contacts storage missing, treating list as empty", context: "ContactsManager")
+                return
+            }
+
             Logger.error("Failed to load contacts: \(error)", context: "ContactsManager")
             if contacts.isEmpty {
                 loadErrorMessage = error.localizedDescription
@@ -301,8 +327,7 @@ class ContactsManager: ObservableObject {
     /// Returns true if any import data was found.
     @discardableResult
     func prepareImport(profile: PubkyProfile?, publicKey: String) async -> Bool {
-        pendingImportProfile = nil
-        pendingImportContacts = []
+        clearPendingImport()
         await discoverRemoteContacts(publicKey: publicKey)
 
         guard !pendingImportContacts.isEmpty else {
@@ -311,6 +336,11 @@ class ContactsManager: ObservableObject {
 
         pendingImportProfile = profile ?? PubkyProfile.placeholder(publicKey: ensurePubkyPrefix(publicKey))
         return true
+    }
+
+    func destinationAfterAuthentication(profile: PubkyProfile?, publicKey: String) async -> Route {
+        let hasImportData = await prepareImport(profile: profile, publicKey: publicKey)
+        return hasImportData ? .contactImportOverview : .payContacts
     }
 
     /// Fetch the user's contacts from pubky.app and store as pending imports.
@@ -432,5 +462,65 @@ class ContactsManager: ObservableObject {
         let components = path.split(separator: "/")
         guard let last = components.last else { return "" }
         return String(last)
+    }
+
+    static func isMissingContactsDataError(_ error: Error) -> Bool {
+        if case .profileNotFound = error as? PubkyServiceError {
+            return true
+        }
+
+        if let appError = error as? AppError,
+           isMissingContactsDataMessage(appError.debugMessage)
+        {
+            return true
+        }
+
+        let nsError = error as NSError
+
+        if nsError.domain == NSCocoaErrorDomain {
+            let cocoaCode = CocoaError.Code(rawValue: nsError.code)
+            if cocoaCode == .fileNoSuchFile || cocoaCode == .fileReadNoSuchFile {
+                return true
+            }
+        }
+
+        if nsError.domain == NSPOSIXErrorDomain, nsError.code == Int(ENOENT) {
+            return true
+        }
+
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorFileDoesNotExist {
+            return true
+        }
+
+        if let underlyingError = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+            return isMissingContactsDataError(underlyingError)
+        }
+
+        if isMissingContactsDataMessage(String(describing: error))
+            || isMissingContactsDataMessage(String(reflecting: error))
+        {
+            return true
+        }
+
+        if isMissingContactsDataMessage(error.localizedDescription) {
+            return true
+        }
+
+        return false
+    }
+
+    private static func isMissingContactsDataMessage(_ message: String?) -> Bool {
+        guard let message else {
+            return false
+        }
+
+        let normalized = message.lowercased()
+        let indicatesMissingResource = normalized.contains("404")
+            || normalized.contains("no such file")
+            || normalized.contains("does not exist")
+            || normalized.contains("profile not found")
+            || (normalized.contains("fetch failed") && normalized.contains("not found"))
+
+        return indicatesMissingResource
     }
 }

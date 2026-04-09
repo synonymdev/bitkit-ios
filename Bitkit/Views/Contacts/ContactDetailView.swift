@@ -12,6 +12,7 @@ struct ContactDetailView: View {
     @State private var showDeleteConfirmation = false
     @State private var isDeleting = false
     @State private var showAddTagSheet = false
+    @State private var hasResolvedContactFromContacts = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -32,12 +33,18 @@ struct ContactDetailView: View {
         .task {
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
+                hasResolvedContactFromContacts = true
             }
             isLoading = false
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
             if let cached = updatedContacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
+                hasResolvedContactFromContacts = true
+            } else if hasResolvedContactFromContacts {
+                hasResolvedContactFromContacts = false
+                profile = nil
+                navigation.path = [.contacts]
             }
         }
         .alert(
@@ -249,7 +256,7 @@ struct ContactDetailView: View {
         do {
             try await contactsManager.removeContact(publicKey: publicKey)
             app.toast(type: .success, title: t("contacts__delete_success"))
-            navigation.navigateBack()
+            navigation.path = [.contacts]
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
             app.toast(type: .error, title: t("contacts__delete_error"))

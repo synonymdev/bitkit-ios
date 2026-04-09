@@ -170,7 +170,8 @@ struct ContactImportOverviewView: View {
 
         do {
             try await contactsManager.importContacts(publicKeys: contacts.map(\.publicKey))
-            navigation.navigate(.payContacts)
+            contactsManager.clearPendingImport()
+            navigation.path = [.payContacts]
         } catch {
             app.toast(type: .error, title: t("contacts__import_error"))
         }

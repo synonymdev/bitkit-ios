@@ -143,9 +143,7 @@ struct PubkyRingAuthView: View {
     }
 
     private func checkRingInstalled() {
-        if let url = URL(string: "pubkyauth://check") {
-            isRingInstalled = UIApplication.shared.canOpenURL(url)
-        }
+        isRingInstalled = PubkyProfileManager.isRingAvailable()
     }
 
     private func authenticate() async {
@@ -172,9 +170,9 @@ struct PubkyRingAuthView: View {
 
     private func waitForApproval() async {
         do {
-            try await pubkyProfile.completeAuthentication()
+            let publicKey = try await pubkyProfile.completeAuthentication()
             isLoadingAfterAuth = true
-            await navigateAfterAuth()
+            await navigateAfterAuth(publicKey: publicKey)
         } catch is CancellationError {
             isWaitingForRing = false
             await pubkyProfile.cancelAuthentication()
@@ -184,14 +182,13 @@ struct PubkyRingAuthView: View {
         }
     }
 
-    private func navigateAfterAuth() async {
-        guard let pk = pubkyProfile.publicKey else {
-            navigation.path = [.profile]
-            return
-        }
-
-        let hasImportData = await contactsManager.prepareImport(profile: pubkyProfile.profile, publicKey: pk)
-        navigation.path = [hasImportData ? .contactImportOverview : .payContacts]
+    private func navigateAfterAuth(publicKey: String) async {
+        let destination = await contactsManager.destinationAfterAuthentication(
+            profile: pubkyProfile.profile,
+            publicKey: publicKey
+        )
+        navigation.path = [destination]
+        pubkyProfile.finalizeAuthentication()
     }
 }
 

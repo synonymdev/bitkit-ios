@@ -93,7 +93,7 @@ struct EditContactView: View {
         do {
             try await contactsManager.removeContact(publicKey: publicKey)
             app.toast(type: .success, title: t("contacts__delete_success"))
-            navigation.navigateBack()
+            navigation.path = [.contacts]
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "EditContactView")
             app.toast(type: .error, title: t("contacts__delete_error"))

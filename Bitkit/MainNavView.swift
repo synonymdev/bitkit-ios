@@ -364,12 +364,22 @@ struct MainNavView: View {
                 case .contactsIntro: ContactsIntroView()
                 case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
                 case .contactImportOverview:
-                    ContactImportOverviewView(
-                        profile: contactsManager.pendingImportProfile ?? PubkyProfile.placeholder(publicKey: pubkyProfile.publicKey ?? ""),
-                        contacts: contactsManager.pendingImportContacts
-                    )
+                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                        missingPendingImportView(fallbackRoute: fallbackRoute)
+                    } else if let profile = contactsManager.pendingImportProfile {
+                        ContactImportOverviewView(
+                            profile: profile,
+                            contacts: contactsManager.pendingImportContacts
+                        )
+                    } else {
+                        missingPendingImportView(fallbackRoute: .payContacts)
+                    }
                 case .contactImportSelect:
-                    ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                        missingPendingImportView(fallbackRoute: fallbackRoute)
+                    } else {
+                        ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                    }
                 case let .addContact(publicKey): AddContactView(publicKey: publicKey)
                 case let .editContact(publicKey): EditContactView(publicKey: publicKey)
                 case .profile:
@@ -449,6 +459,18 @@ struct MainNavView: View {
                 case .orders: ChannelOrders()
                 case .logs: LogView()
                 }
+            }
+    }
+
+    @ViewBuilder
+    private func missingPendingImportView(fallbackRoute: Route) -> some View {
+        Color.customBlack
+            .task {
+                guard navigation.currentRoute?.isContactImportRoute == true else {
+                    return
+                }
+
+                navigation.path = [fallbackRoute]
             }
     }
 
