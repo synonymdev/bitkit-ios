@@ -9,8 +9,6 @@ struct ContactDetailView: View {
 
     @State private var profile: PubkyProfile?
     @State private var isLoading = true
-    @State private var showDeleteConfirmation = false
-    @State private var isDeleting = false
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
 
@@ -46,17 +44,6 @@ struct ContactDetailView: View {
                 profile = nil
                 navigation.path = [.contacts]
             }
-        }
-        .alert(
-            t("contacts__delete_title", variables: ["name": profile?.name ?? ""]),
-            isPresented: $showDeleteConfirmation
-        ) {
-            Button(t("contacts__delete_confirm"), role: .destructive) {
-                Task { await performDelete() }
-            }
-            Button(t("common__dialog_cancel"), role: .cancel) {}
-        } message: {
-            Text(t("contacts__delete_description"))
         }
     }
 
@@ -117,11 +104,6 @@ struct ContactDetailView: View {
                 navigation.navigate(.editContact(publicKey: publicKey))
             }
             .accessibilityIdentifier("ContactEdit")
-
-            GradientCircleButton(icon: "trash", accessibilityLabel: t("common__delete")) {
-                showDeleteConfirmation = true
-            }
-            .accessibilityIdentifier("ContactDelete")
         }
     }
 
@@ -245,22 +227,6 @@ struct ContactDetailView: View {
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Delete
-
-    private func performDelete() async {
-        isDeleting = true
-        defer { isDeleting = false }
-
-        do {
-            try await contactsManager.removeContact(publicKey: publicKey)
-            app.toast(type: .success, title: t("contacts__delete_success"))
-            navigation.path = [.contacts]
-        } catch {
-            Logger.error("Failed to delete contact: \(error)", context: "ContactDetailView")
-            app.toast(type: .error, title: t("contacts__delete_error"))
-        }
     }
 
     // MARK: - Share

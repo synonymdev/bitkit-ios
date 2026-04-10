@@ -27,6 +27,7 @@ struct EditContactView: View {
                 tags: $tags,
                 publicKey: publicKey,
                 isSaving: isSaving,
+                footerNote: nil,
                 deleteLabel: t("contacts__delete_label"),
                 onSave: { await saveContact() },
                 onCancel: { navigation.navigateBack() },

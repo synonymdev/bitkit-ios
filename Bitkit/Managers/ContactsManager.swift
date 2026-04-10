@@ -221,7 +221,7 @@ class ContactsManager: ObservableObject {
         contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
     }
 
-    // MARK: - Import Contacts (prefer bitkit.to profiles, then pubky.app, then store to bitkit.to)
+    // MARK: - Import Contacts (prefer bitkit.to profiles, then pubky.app, then placeholder)
 
     func importContacts(publicKeys: [String]) async throws {
         let prefixedKeys = Array(Set(publicKeys.map { ensurePubkyPrefix($0) }))
@@ -232,7 +232,7 @@ class ContactsManager: ObservableObject {
             for key in prefixedKeys {
                 group.addTask { [self] in
                     do {
-                        let profile = try await resolveContactProfile(publicKey: key)
+                        let profile = await resolveImportContactProfile(publicKey: key)
                         let contactData = PubkyProfileData.from(profile: profile)
                         try await savePubkyProfileData(publicKey: key, data: contactData)
                         return .success(PubkyContact(publicKey: key, profile: profile))
@@ -359,13 +359,8 @@ class ContactsManager: ObservableObject {
                 for key in contactKeys {
                     let pk = ensurePubkyPrefix(key)
                     group.addTask { [self] in
-                        do {
-                            let profile = try await resolveContactProfile(publicKey: pk)
-                            return .success(PubkyContact(publicKey: pk, profile: profile))
-                        } catch {
-                            Logger.warn("Failed to discover remote contact '\(pk)': \(error)", context: "ContactsManager")
-                            return .failure(error)
-                        }
+                        let profile = await resolveImportContactProfile(publicKey: pk)
+                        return .success(PubkyContact(publicKey: pk, profile: profile))
                     }
                 }
 
@@ -457,6 +452,33 @@ class ContactsManager: ObservableObject {
             Logger.warn("Failed to resolve contact profile for '\(prefixedKey)': \(error)", context: "ContactsManager")
             throw error
         }
+    }
+
+    private func resolveImportContactProfile(publicKey: String) async -> PubkyProfile {
+        let prefixedKey = ensurePubkyPrefix(publicKey)
+
+        for attempt in 0 ..< 2 {
+            do {
+                return try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
+            } catch {
+                if attempt == 0, !(error is CancellationError) {
+                    Logger.warn(
+                        "Retrying imported contact profile resolution for '\(prefixedKey)' after transient error: \(error)",
+                        context: "ContactsManager"
+                    )
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    continue
+                }
+
+                Logger.warn(
+                    "Falling back to placeholder while importing contact '\(prefixedKey)': \(error)",
+                    context: "ContactsManager"
+                )
+                return PubkyProfile.placeholder(publicKey: prefixedKey)
+            }
+        }
+
+        return PubkyProfile.placeholder(publicKey: prefixedKey)
     }
 
     /// Extract the public key from a path returned by sessionList

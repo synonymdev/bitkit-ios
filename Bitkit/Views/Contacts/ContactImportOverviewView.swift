@@ -99,47 +99,44 @@ struct ContactImportOverviewView: View {
     @ViewBuilder
     private var avatarStack: some View {
         let displayContacts = Array(contacts.prefix(4))
-        let remaining = contacts.count - displayContacts.count
-        HStack(spacing: -12) {
+        let overflow = contacts.count - displayContacts.count
+
+        ZStack(alignment: .leading) {
             ForEach(Array(displayContacts.enumerated()), id: \.element.id) { index, contact in
-                Group {
-                    if let imageUrl = contact.profile.imageUrl {
-                        PubkyImage(uri: imageUrl, size: 40)
-                    } else {
-                        Circle()
-                            .fill(Color.white.opacity(0.1))
-                            .frame(width: 40, height: 40)
-                            .overlay {
-                                Text(String(contact.displayName.prefix(1)).uppercased())
-                                    .font(Fonts.bold(size: 15))
-                                    .foregroundColor(.textPrimary)
-                            }
-                    }
-                }
-                .overlay(
-                    Circle()
-                        .stroke(Color.customBlack, lineWidth: 2)
-                )
-                .zIndex(Double(displayContacts.count - index))
+                contactImportAvatar(contact)
+                    .offset(x: CGFloat(index * 24))
             }
 
-            if remaining > 0 {
+            if overflow > 0 {
                 Circle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 40, height: 40)
+                    .fill(Color.gray4)
+                    .frame(width: 36, height: 36)
                     .overlay {
-                        Text("+\(remaining)")
-                            .font(Fonts.bold(size: 13))
+                        Text("+\(overflow)")
+                            .font(Fonts.bold(size: 12))
                             .foregroundColor(.textPrimary)
                     }
-                    .overlay(
-                        Circle()
-                            .stroke(Color.customBlack, lineWidth: 2)
-                    )
-                    .zIndex(0)
+                    .offset(x: CGFloat(displayContacts.count * 24))
             }
         }
+        .frame(width: CGFloat(max(displayContacts.count - 1, 0) * 24 + 36), height: 36, alignment: .leading)
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func contactImportAvatar(_ contact: PubkyContact) -> some View {
+        if let imageUrl = contact.profile.imageUrl {
+            PubkyImage(uri: imageUrl, size: 36)
+        } else {
+            Circle()
+                .fill(Color.white.opacity(0.1))
+                .frame(width: 36, height: 36)
+                .overlay {
+                    Text(String(contact.displayName.prefix(1)).uppercased())
+                        .font(Fonts.bold(size: 13))
+                        .foregroundColor(.textPrimary)
+                }
+        }
     }
 
     // MARK: - Button Bar

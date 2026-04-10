@@ -1074,6 +1074,8 @@
 "profile__session_expired_description" = "Your profile session has expired. Please reconnect to restore your profile.";
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
+"profile__edit_delete_section" = "DELETE";
+"profile__edit_public_note" = "Please note that all your profile information will be publicly available and visible.";
 "profile__delete_title" = "Delete Profile?";
 "profile__delete_description" = "This will permanently delete your Pubky profile.";
 "profile__delete_confirm" = "Yes, Delete";

@@ -319,11 +319,7 @@ class PubkyProfileManager: ObservableObject {
         tags: [String] = [],
         newImageUrl: String? = nil
     ) async throws {
-        guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
-              !sessionSecret.isEmpty
-        else {
-            throw PubkyServiceError.sessionNotActive
-        }
+        let sessionSecret = try activeSessionSecret()
 
         let resolvedImageUrl = Self.resolvedImageUrl(newImageUrl: newImageUrl, existingImageUrl: profile?.imageUrl)
 
@@ -349,6 +345,20 @@ class PubkyProfileManager: ObservableObject {
         )
         profile = updatedProfile
         cacheProfileMetadata(updatedProfile)
+    }
+
+    func deleteProfile() async throws {
+        let sessionSecret = try activeSessionSecret()
+        let path = Self.profilePath
+
+        try await Task.detached {
+            try await PubkyService.sessionDelete(
+                sessionSecret: sessionSecret,
+                path: path
+            )
+        }.value
+
+        await signOut()
     }
 
     /// Serialize profile JSON and PUT to homeserver.
@@ -618,6 +628,15 @@ class PubkyProfileManager: ObservableObject {
         cachedImageUri = nil
         UserDefaults.standard.removeObject(forKey: Self.cachedNameKey)
         UserDefaults.standard.removeObject(forKey: Self.cachedImageUriKey)
+    }
+
+    private func activeSessionSecret() throws -> String {
+        guard let sessionSecret = try? Keychain.loadString(key: .paykitSession),
+              !sessionSecret.isEmpty
+        else {
+            throw PubkyServiceError.sessionNotActive
+        }
+        return sessionSecret
     }
 
     // MARK: - Helpers

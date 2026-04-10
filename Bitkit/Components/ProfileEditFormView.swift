@@ -8,6 +8,7 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     let publicKey: String
     let isSaving: Bool
+    let footerNote: String?
     let deleteLabel: String?
     let onSave: () async -> Void
     let onCancel: () -> Void
@@ -69,10 +70,14 @@ struct ProfileEditFormView<Avatar: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, 16)
+            .padding(.bottom, 24)
         }
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {
             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            footerBar
         }
         .sheet(isPresented: $showAddLinkSheet) {
             AddLinkSheet { label, url in
@@ -84,22 +89,6 @@ struct ProfileEditFormView<Avatar: View>: View {
                 tags.append(tag)
             }
         }
-
-        HStack(spacing: 16) {
-            CustomButton(title: t("common__cancel"), variant: .secondary) {
-                onCancel()
-            }
-
-            CustomButton(
-                title: t("common__save"),
-                isLoading: isSaving
-            ) {
-                await onSave()
-            }
-            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(.top, 16)
-        .padding(.horizontal, 16)
     }
 
     // MARK: - Pubky Key Section
@@ -143,7 +132,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     private var linksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(links.indices, id: \.self) { index in
-                linkRow(link: links[index], index: index)
+                linkRow(index: index)
             }
 
             IconActionButton(
@@ -158,13 +147,32 @@ struct ProfileEditFormView<Avatar: View>: View {
     }
 
     @ViewBuilder
-    private func linkRow(link: ProfileLinkInput, index: Int) -> some View {
+    private func linkRow(index: Int) -> some View {
+        let link = links[index]
+
         VStack(alignment: .leading, spacing: 4) {
             CaptionMText(link.label, textColor: .white64)
 
             HStack {
-                BodySText(link.url, textColor: .white)
-                    .lineLimit(1)
+                ZStack(alignment: .leading) {
+                    if link.url.isEmpty {
+                        SwiftUI.Text(t("profile__add_link_url_placeholder"))
+                            .foregroundColor(.secondary)
+                            .font(.custom(Fonts.regular, size: 17))
+                    }
+
+                    SwiftUI.TextField(
+                        "",
+                        text: Binding(
+                            get: { links[index].url },
+                            set: { links[index].url = $0 }
+                        )
+                    )
+                    .font(.custom(Fonts.regular, size: 17))
+                    .foregroundColor(.textPrimary)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                }
 
                 Spacer()
 
@@ -183,6 +191,7 @@ struct ProfileEditFormView<Avatar: View>: View {
             .padding(.vertical, 12)
             .background(Color.gray6)
             .cornerRadius(8)
+            .accessibilityIdentifier("ProfileEditLink_\(index)")
         }
     }
 
@@ -190,17 +199,21 @@ struct ProfileEditFormView<Avatar: View>: View {
 
     @ViewBuilder
     private func deleteSection(label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image("trash")
+        VStack(alignment: .leading, spacing: 8) {
+            CaptionMText(t("profile__edit_delete_section"), textColor: .white64)
+
+            CustomButton(
+                title: label,
+                size: .small,
+                icon: Image("trash")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 16, height: 16)
-
-                Text(label)
-                    .font(Fonts.semiBold(size: 15))
+                    .foregroundColor(.red)
+                    .frame(width: 16, height: 16),
+                shouldExpand: false
+            ) {
+                action()
             }
-            .foregroundColor(.red)
         }
         .accessibilityIdentifier("ProfileEditDelete")
     }
@@ -229,6 +242,41 @@ struct ProfileEditFormView<Avatar: View>: View {
             ) {
                 showAddTagSheet = true
             }
+        }
+    }
+
+    @ViewBuilder
+    private var footerBar: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.customBlack.opacity(0), .customBlack],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 32)
+
+            VStack(alignment: .leading, spacing: 16) {
+                if let footerNote {
+                    BodySText(footerNote, textColor: .white64)
+                }
+
+                HStack(spacing: 16) {
+                    CustomButton(title: t("common__cancel"), variant: .secondary) {
+                        onCancel()
+                    }
+
+                    CustomButton(
+                        title: t("common__save"),
+                        isLoading: isSaving
+                    ) {
+                        await onSave()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+            .background(Color.customBlack)
         }
     }
 }
