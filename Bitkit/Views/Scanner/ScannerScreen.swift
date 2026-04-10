@@ -58,6 +58,7 @@ struct ScannerScreen: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .connectionIssuesOverlay(title: t("other__qr_scan"))
         .onAppear {
             scanner.configure(
                 app: app,

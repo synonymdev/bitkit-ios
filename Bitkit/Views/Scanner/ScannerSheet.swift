@@ -85,6 +85,7 @@ struct ScannerSheet: View {
                 .presentationDragIndicator(.visible)
             }
         }
+        .connectionIssuesOverlay(title: t("other__qr_scan"))
     }
 
     private func handleManualEntrySubmit() async {
