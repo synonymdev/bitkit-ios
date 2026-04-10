@@ -178,14 +178,17 @@ final class PubkyImageCache: @unchecked Sendable {
         }
     }
 
-    func clear() {
+    func clear() async {
         lock.lock()
         memoryCache.removeAll()
         lock.unlock()
 
-        diskQueue.async { [diskDirectory] in
-            try? FileManager.default.removeItem(at: diskDirectory)
-            try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
+        await withCheckedContinuation { continuation in
+            diskQueue.async { [diskDirectory] in
+                try? FileManager.default.removeItem(at: diskDirectory)
+                try? FileManager.default.createDirectory(at: diskDirectory, withIntermediateDirectories: true)
+                continuation.resume()
+            }
         }
     }
 

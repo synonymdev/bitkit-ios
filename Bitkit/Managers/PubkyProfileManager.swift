@@ -579,21 +579,23 @@ class PubkyProfileManager: ObservableObject {
 
     // MARK: - Sign Out
 
+    static func clearLocalState() async {
+        await PubkyService.forceSignOut()
+        try? Keychain.delete(key: .paykitSession)
+        try? Keychain.delete(key: .pubkySecretKey)
+        await PubkyImageCache.shared.clear()
+        UserDefaults.standard.removeObject(forKey: cachedNameKey)
+        UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+    }
+
     func signOut() async {
-        let nameKey = Self.cachedNameKey
-        let imageKey = Self.cachedImageUriKey
         await Task.detached {
             do {
                 try await PubkyService.signOut()
             } catch {
                 Logger.warn("Server sign out failed, forcing local sign out: \(error)", context: "PubkyProfileManager")
-                await PubkyService.forceSignOut()
             }
-            try? Keychain.delete(key: .paykitSession)
-            try? Keychain.delete(key: .pubkySecretKey)
-            PubkyImageCache.shared.clear()
-            UserDefaults.standard.removeObject(forKey: nameKey)
-            UserDefaults.standard.removeObject(forKey: imageKey)
+            await Self.clearLocalState()
         }.value
 
         cachedName = nil
