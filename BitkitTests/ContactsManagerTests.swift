@@ -100,6 +100,18 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(shouldDiscardPendingImport(currentRoute: .contacts, destination: .profile))
     }
 
+    func testDeleteAllContactsClearsLocalList() async {
+        let manager = ContactsManager()
+        manager.contacts = [
+            makeContact(publicKey: "pubkyaaa"),
+            makeContact(publicKey: "pubkybbb"),
+        ]
+
+        await manager.deleteAllContacts()
+
+        XCTAssertTrue(manager.contacts.isEmpty)
+    }
+
     func testFallbackRouteForMissingPendingImportUsesPayContacts() {
         XCTAssertEqual(fallbackRouteForMissingPendingImport(hasPendingImport: false), .payContacts)
         XCTAssertNil(fallbackRouteForMissingPendingImport(hasPendingImport: true))

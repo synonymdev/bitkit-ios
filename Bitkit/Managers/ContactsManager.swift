@@ -387,6 +387,53 @@ class ContactsManager: ObservableObject {
         contacts.removeAll { $0.publicKey == prefixedKey }
     }
 
+    /// Delete all contacts from the homeserver and clear the local list.
+    func deleteAllContacts() async {
+        let sessionSecret: String
+        do {
+            sessionSecret = try getSessionSecret()
+        } catch {
+            Logger.warn("No active session, clearing local contacts only", context: "ContactsManager")
+            contacts.removeAll()
+            return
+        }
+
+        let basePath = contactsBasePath
+
+        let contactPaths: [String]
+        do {
+            contactPaths = try await Task.detached {
+                try await PubkyService.sessionList(sessionSecret: sessionSecret, dirPath: basePath)
+            }.value
+        } catch {
+            if Self.isMissingContactsDataError(error) {
+                contacts.removeAll()
+                return
+            }
+            Logger.warn("Failed to list contacts for deletion: \(error)", context: "ContactsManager")
+            contacts.removeAll()
+            return
+        }
+
+        for path in contactPaths {
+            let contactKey = extractPublicKey(from: path)
+            guard !contactKey.isEmpty else { continue }
+            do {
+                try await Task.detached {
+                    try await PubkyService.sessionDelete(
+                        sessionSecret: sessionSecret,
+                        path: "\(basePath)\(contactKey)"
+                    )
+                }.value
+            } catch {
+                Logger.warn("Failed to delete contact '\(contactKey)': \(error)", context: "ContactsManager")
+            }
+        }
+
+        contacts.removeAll()
+        Logger.info("Deleted all contacts", context: "ContactsManager")
+    }
+
     // MARK: - Discover Remote Contacts (list from pubky.app, then resolve each profile)
 
     /// Discover profile and contacts from pubky.app, store as pending imports.

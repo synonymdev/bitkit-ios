@@ -5,6 +5,7 @@ struct EditProfileView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var contactsManager: ContactsManager
 
     @State private var username: String = ""
     @State private var bio: String = ""
@@ -125,6 +126,7 @@ struct EditProfileView: View {
 
     private func deleteProfile() async {
         do {
+            await contactsManager.deleteAllContacts()
             try await pubkyProfile.deleteProfile()
             navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
         } catch {
@@ -170,6 +172,7 @@ struct EditProfileView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(ContactsManager())
     }
     .preferredColorScheme(.dark)
 }
