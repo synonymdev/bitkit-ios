@@ -195,7 +195,8 @@
 "lightning__external_manual__paste" = "Paste Node URI";
 "lightning__external_manual__scan" = "Scan QR";
 "lightning__external_amount__title" = "Spending\n<accent>balance</accent>";
-"lightning__external_success__title" = "Connection\n<accent>initiated</accent>";
+"lightning__external_success__nav_title" = "Spending Balance";
+"lightning__external_success__title" = "Channel\n<accent>opening</accent>";
 "lightning__external_success__text" = "Lightning connection initiated. You will be able to use your spending balance in <accent>±30 minutes</accent> (depends on node configuration).";
 "lightning__error_channel_purchase" = "Instant Payments Setup Failed";
 "lightning__error_channel_setup_msg" = "An error occurred when setting up your instant balance. {raw}";

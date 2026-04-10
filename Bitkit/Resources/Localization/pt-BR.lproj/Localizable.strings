@@ -189,7 +189,8 @@
 "lightning__external_manual__paste" = "Colar URI do nó";
 "lightning__external_manual__scan" = "Escanear QR";
 "lightning__external_amount__title" = "Saldo de\n<accent>gastos</accent>";
-"lightning__external_success__title" = "Conexão\n<accent>iniciada</accent>";
+"lightning__external_success__nav_title" = "Saldo de gastos";
+"lightning__external_success__title" = "Abertura\n<accent>de canal</accent>";
 "lightning__external_success__text" = "Conexão Lightning iniciada. Você poderá usar seu saldo de gastos em <accent>±30 minutos</accent> (depende da configuração do nó).";
 "lightning__error_channel_purchase" = "Falha no setup dos Pagamentos Instantâneos";
 "lightning__error_channel_setup_msg" = "Ocorreu um erro ao configurar seu saldo de gastos. {raw}";

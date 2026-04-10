@@ -174,7 +174,8 @@
 "lightning__external_manual__paste" = "Pegar URI del Nodo";
 "lightning__external_manual__scan" = "Escanear QR";
 "lightning__external_amount__title" = "Saldo de\n<accent>gasto</accent>";
-"lightning__external_success__title" = "Conexión\n<accent>iniciada</accent>";
+"lightning__external_success__nav_title" = "Saldo de gasto";
+"lightning__external_success__title" = "Apertura\n<accent>de canal</accent>";
 "lightning__external_success__text" = "Conexión Lightning iniciada. Podrá usar su balance para pagar en <accent>±30 minutos</accent> (depende de la configuración del nodo).";
 "lightning__error_channel_purchase" = "Error en la Configuración de Pago Instántaneo";
 "lightning__error_channel_receiving" = "La cantidad a recibir debe ser mayor de $ 1 {usdValue}";

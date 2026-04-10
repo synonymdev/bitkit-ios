@@ -171,7 +171,8 @@
 "lightning__external_manual__paste" = "Επικόλληση Node URI";
 "lightning__external_manual__scan" = "Σάρωση QR";
 "lightning__external_amount__title" = "Υπόλοιπο\n<accent>δαπανών</accent>";
-"lightning__external_success__title" = "Η σύνδεση\n<accent>ξεκίνησε</accent>";
+"lightning__external_success__nav_title" = "Υπόλοιπο δαπανών";
+"lightning__external_success__title" = "Άνοιγμα\n<accent>καναλιού</accent>";
 "lightning__external_success__text" = "Η σύνδεση Lightning ξεκίνησε. Θα μπορείτε να χρησιμοποιήσετε το υπόλοιπο δαπανών σας σε <accent>±30 λεπτά</accent> (εξαρτάται από τη διαμόρφωση του κόμβου).";
 "lightning__spending" = "Δαπάνες";
 "lightning__savings" = "Αποταμιεύσεις";
