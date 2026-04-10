@@ -182,7 +182,8 @@
 "lightning__external_manual__paste" = "Incolla URI Nodo";
 "lightning__external_manual__scan" = "Scansiona QR";
 "lightning__external_amount__title" = "Saldo\n<accent>spendibile</accent>";
-"lightning__external_success__title" = "Connessione\n<accent>avviata</accent>";
+"lightning__external_success__nav_title" = "Saldo di spesa";
+"lightning__external_success__title" = "Apertura\n<accent>del canale</accent>";
 "lightning__external_success__text" = "Connessione Lightning avviata. Potrai utilizzare il tuo conto di spesa in <accent>±30 minuti</accent> (dipende dalla configurazione del nodo).";
 "lightning__error_channel_purchase" = "Configurazione dei Pagamenti Istantanei Fallita";
 "lightning__error_channel_setup_msg" = "Si è verificato un errore durante l\'impostazione del saldo istantaneo. {raw}";
