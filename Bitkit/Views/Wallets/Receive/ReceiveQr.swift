@@ -46,14 +46,14 @@ struct ReceiveQr: View {
         // Show unified tab when we have a Lightning invoice (even if channels not yet usable)
         if !wallet.bolt11.isEmpty {
             return [
-                TabItem(.savings, activeColor: .brandAccent),
-                TabItem(.unified, activeColor: .textPrimary),
-                TabItem(.spending, activeColor: .purpleAccent),
+                TabItem(.savings),
+                TabItem(.unified),
+                TabItem(.spending),
             ]
         } else {
             return [
-                TabItem(.savings, activeColor: .textPrimary),
-                TabItem(.spending, activeColor: .purpleAccent),
+                TabItem(.savings),
+                TabItem(.spending),
             ]
         }
     }

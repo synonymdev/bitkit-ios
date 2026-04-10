@@ -99,7 +99,7 @@ struct ShopDiscover: View {
             NavigationBar(title: t("other__shop__discover__nav_title"))
                 .padding(.horizontal, 16)
 
-            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases, activeColor: .yellowAccent)
+            SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases)
                 .padding(.horizontal, 16)
 
             Group {
