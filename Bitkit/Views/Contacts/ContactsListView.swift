@@ -140,12 +140,12 @@ struct ContactsListView: View {
 
     @ViewBuilder
     private var contactsList: some View {
-        ForEach(filteredSections) { section in
+        if !filteredContacts.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader(section.letter)
+                sectionHeader(t("contacts__nav_title").uppercased())
                 CustomDivider()
 
-                ForEach(section.contacts) { contact in
+                ForEach(filteredContacts) { contact in
                     contactRow(
                         name: contact.displayName,
                         truncatedKey: contact.profile.truncatedPublicKey,
@@ -210,20 +210,16 @@ struct ContactsListView: View {
         .accessibilityHidden(true)
     }
 
-    // MARK: - Filtered Sections
+    // MARK: - Filtered Contacts
 
-    private var filteredSections: [ContactSection] {
+    private var filteredContacts: [PubkyContact] {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return contactsManager.groupedContacts }
+        guard !trimmed.isEmpty else { return contactsManager.contacts }
 
         let query = trimmed.lowercased()
-        return contactsManager.groupedContacts.compactMap { section in
-            let filtered = section.contacts.filter {
-                $0.displayName.lowercased().contains(query) ||
-                    $0.publicKey.lowercased().contains(query)
-            }
-            guard !filtered.isEmpty else { return nil }
-            return ContactSection(id: section.id, letter: section.letter, contacts: filtered)
+        return contactsManager.contacts.filter {
+            $0.displayName.lowercased().contains(query) ||
+                $0.publicKey.lowercased().contains(query)
         }
     }
 
