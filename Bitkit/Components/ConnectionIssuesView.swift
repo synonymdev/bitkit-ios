@@ -88,19 +88,28 @@ private struct DashedRingsLayer: View {
 
 // MARK: - View Modifier
 
-extension View {
-    /// Overlays a `ConnectionIssuesView` when the device is offline.
-    /// The underlying content remains mounted so navigation state and inputs are preserved.
-    func connectionIssuesOverlay(title: String, isOffline: Bool) -> some View {
-        ZStack {
-            self
+private struct ConnectionIssuesOverlayModifier: ViewModifier {
+    let title: String
+    @EnvironmentObject private var network: NetworkMonitor
 
-            if isOffline {
+    func body(content: Content) -> some View {
+        ZStack {
+            content
+
+            if !network.isConnected {
                 ConnectionIssuesView(title: title)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: isOffline)
+        .animation(.easeInOut(duration: 0.3), value: network.isConnected)
+    }
+}
+
+extension View {
+    /// Overlays a `ConnectionIssuesView` when the device is offline.
+    /// The underlying content remains mounted so navigation state and inputs are preserved.
+    func connectionIssuesOverlay(title: String) -> some View {
+        modifier(ConnectionIssuesOverlayModifier(title: title))
     }
 }
 

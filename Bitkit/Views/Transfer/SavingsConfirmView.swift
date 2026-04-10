@@ -5,7 +5,6 @@ struct SavingsConfirmView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
-    @EnvironmentObject var network: NetworkMonitor
     @EnvironmentObject var transfer: TransferViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -101,7 +100,7 @@ struct SavingsConfirmView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
-        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"), isOffline: !network.isConnected)
+        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"))
     }
 }
 
