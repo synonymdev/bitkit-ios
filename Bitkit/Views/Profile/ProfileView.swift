@@ -75,10 +75,6 @@ struct ProfileView: View {
                         profileTags(profile)
                             .padding(.top, 16)
                     }
-
-                    signOutButton
-                        .padding(.top, 24)
-                        .padding(.bottom, 16)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -157,27 +153,6 @@ struct ProfileView: View {
                 }
             }
         }
-    }
-
-    // MARK: - Sign Out Button
-
-    @ViewBuilder
-    private var signOutButton: some View {
-        Button {
-            showSignOutConfirmation = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "rectangle.portrait.and.arrow.right")
-                    .font(.system(size: 14, weight: .medium))
-                Text(t("profile__sign_out"))
-                    .font(Fonts.regular(size: 15))
-            }
-            .foregroundColor(.white64)
-        }
-        .disabled(isSigningOut)
-        .opacity(isSigningOut ? 0.5 : 1)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityIdentifier("ProfileSignOut")
     }
 
     // MARK: - Loading / Empty States

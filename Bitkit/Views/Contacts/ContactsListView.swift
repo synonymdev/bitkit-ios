@@ -52,6 +52,7 @@ struct ContactsListView: View {
         }
         .sheet(isPresented: $showAddContactSheet) {
             AddContactSheet(
+                currentPublicKey: pubkyProfile.publicKey,
                 onAdd: { pubky in
                     navigation.navigate(.addContact(publicKey: pubky))
                 },
@@ -265,17 +266,32 @@ struct ContactsListView: View {
 
     @ViewBuilder
     private var emptyContent: some View {
-        VStack {
+        VStack(spacing: 0) {
+            if pubkyProfile.isAuthenticated, let profile = pubkyProfile.profile {
+                VStack(alignment: .leading, spacing: 0) {
+                    myProfileSection(profile)
+                        .padding(.horizontal, 16)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             Spacer()
 
-            BodyMText(t("contacts__empty_state"), textColor: .white64)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity)
+            VStack(spacing: 16) {
+                BodyMText(t("contacts__empty_state"), textColor: .white64)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+
+                CustomButton(title: t("contacts__add_button")) {
+                    showAddContactSheet = true
+                }
+                .accessibilityIdentifier("ContactsEmptyAddButton")
+            }
+            .padding(.horizontal, 32)
 
             Spacer()
         }
-        .padding(.horizontal, 32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 

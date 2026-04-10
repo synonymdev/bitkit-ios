@@ -11,6 +11,8 @@ struct AddContactView: View {
     @State private var fetchedProfile: PubkyProfile?
     @State private var isLoading = true
     @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var canRetry = true
 
     private var truncatedPublicKey: String {
         guard publicKey.count > 10 else { return publicKey }
@@ -156,11 +158,23 @@ struct AddContactView: View {
     private var errorContent: some View {
         VStack(spacing: 16) {
             Spacer()
-            BodyMText(t("contacts__add_error"))
-            CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                await loadProfile()
+
+            BodyMText(errorMessage ?? t("contacts__add_error"))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            if canRetry {
+                CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+                    await loadProfile()
+                }
+                .accessibilityIdentifier("AddContactRetry")
+            } else {
+                CustomButton(title: t("common__discard"), variant: .secondary) {
+                    navigation.navigateBack()
+                }
+                .accessibilityIdentifier("AddContactDiscardInvalid")
             }
-            .accessibilityIdentifier("AddContactRetry")
             Spacer()
         }
         .padding(.horizontal, 32)
@@ -172,9 +186,29 @@ struct AddContactView: View {
     private func loadProfile() async {
         isLoading = true
         fetchedProfile = nil
+        errorMessage = nil
+        canRetry = true
+
+        guard PubkyPublicKeyFormat.normalized(publicKey) != nil else {
+            errorMessage = t("slashtags__contact_error_key")
+            canRetry = false
+            isLoading = false
+            return
+        }
+
+        if PubkyPublicKeyFormat.matches(publicKey, pubkyProfile.publicKey) {
+            errorMessage = t("slashtags__contact_error_yourself")
+            canRetry = false
+            isLoading = false
+            return
+        }
+
         if let profile = await contactsManager.fetchContactProfile(publicKey: publicKey, includePlaceholder: true) {
             fetchedProfile = profile
+        } else {
+            errorMessage = t("contacts__add_error")
         }
+
         isLoading = false
     }
 
@@ -185,12 +219,16 @@ struct AddContactView: View {
         defer { isSaving = false }
 
         do {
-            try await contactsManager.addContact(publicKey: publicKey, existingProfile: fetchedProfile)
+            try await contactsManager.addContact(
+                publicKey: publicKey,
+                existingProfile: fetchedProfile,
+                ownPublicKey: pubkyProfile.publicKey
+            )
             app.toast(type: .success, title: t("contacts__add_success"))
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")
-            app.toast(type: .error, title: t("contacts__add_error"))
+            app.toast(type: .error, title: t("contacts__add_error"), description: error.localizedDescription)
         }
     }
 }

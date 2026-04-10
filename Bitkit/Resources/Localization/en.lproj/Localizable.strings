@@ -1055,6 +1055,7 @@
 "profile__choice_description" = "Create a new pubky and profile in Bitkit, or import an existing profile with Pubky Ring.";
 "profile__choice_create" = "Create profile with Bitkit";
 "profile__choice_import" = "Import with Pubky Ring";
+"profile__deriving_keys" = "Deriving your keys…";
 "profile__create_nav_title" = "Create Profile";
 "profile__restore_nav_title" = "Restore Profile";
 "profile__create_name_placeholder" = "YOUR NAME";
@@ -1077,7 +1078,7 @@
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note that all your profile information will be publicly available and visible.";
 "profile__delete_title" = "Delete Profile?";
-"profile__delete_description" = "This will permanently delete your Pubky profile.";
+"profile__delete_description" = "This will delete your Pubky profile.";
 "profile__delete_confirm" = "Yes, Delete";
 "profile__delete_label" = "Delete Profile";
 "profile__edit" = "Edit";

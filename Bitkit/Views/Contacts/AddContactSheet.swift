@@ -3,13 +3,34 @@ import SwiftUI
 struct AddContactSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    let currentPublicKey: String?
     let onAdd: (String) -> Void
     let onScanQR: () -> Void
 
     @State private var pubkyInput: String = ""
 
+    private var trimmedInput: String {
+        pubkyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var validationMessage: String? {
+        guard !trimmedInput.isEmpty else {
+            return nil
+        }
+
+        if PubkyPublicKeyFormat.matches(trimmedInput, currentPublicKey) {
+            return t("slashtags__contact_error_yourself")
+        }
+
+        guard PubkyPublicKeyFormat.normalized(trimmedInput) != nil else {
+            return t("slashtags__contact_error_key")
+        }
+
+        return nil
+    }
+
     private var canAdd: Bool {
-        !pubkyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        validationMessage == nil && !trimmedInput.isEmpty
     }
 
     var body: some View {
@@ -34,10 +55,17 @@ struct AddContactSheet: View {
                         )
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .keyboardType(.asciiCapable)
+                        .onChange(of: pubkyInput) { _, newValue in
+                            let boundedInput = PubkyPublicKeyFormat.bounded(newValue)
+                            if boundedInput != newValue {
+                                pubkyInput = boundedInput
+                            }
+                        }
 
                         Button {
                             if let clipboard = UIPasteboard.general.string {
-                                pubkyInput = clipboard
+                                pubkyInput = PubkyPublicKeyFormat.bounded(clipboard)
                             }
                         } label: {
                             Image("clipboard")
@@ -53,6 +81,11 @@ struct AddContactSheet: View {
                     .padding(.vertical, 12)
                     .background(Color.white08)
                     .cornerRadius(8)
+
+                    if let validationMessage {
+                        BodySText(validationMessage, textColor: .red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 HStack(spacing: 16) {
@@ -68,11 +101,14 @@ struct AddContactSheet: View {
                     }
                     .accessibilityIdentifier("AddContactScanQR")
 
-                    CustomButton(title: t("contacts__add_button")) {
-                        onAdd(pubkyInput.trimmingCharacters(in: .whitespacesAndNewlines))
+                    CustomButton(title: t("contacts__add_button"), isDisabled: !canAdd) {
+                        guard let normalizedKey = PubkyPublicKeyFormat.normalized(trimmedInput) else {
+                            return
+                        }
+
+                        onAdd(normalizedKey)
                         dismiss()
                     }
-                    .disabled(!canAdd)
                     .accessibilityIdentifier("AddContactAdd")
                 }
             }
@@ -88,7 +124,7 @@ struct AddContactSheet: View {
 #Preview {
     Color.clear
         .sheet(isPresented: .constant(true)) {
-            AddContactSheet(onAdd: { _ in }, onScanQR: {})
+            AddContactSheet(currentPublicKey: nil, onAdd: { _ in }, onScanQR: {})
         }
         .preferredColorScheme(.dark)
 }

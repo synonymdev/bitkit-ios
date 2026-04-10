@@ -1,9 +1,11 @@
+import PhotosUI
 import SwiftUI
 
 struct EditContactView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     let publicKey: String
 
@@ -14,6 +16,8 @@ struct EditContactView: View {
     @State private var tags: [String] = []
     @State private var isSaving = false
     @State private var showDeleteConfirmation = false
+    @State private var selectedPhotoItem: PhotosPickerItem?
+    @State private var avatarImage: UIImage?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -26,6 +30,7 @@ struct EditContactView: View {
                 links: $links,
                 tags: $tags,
                 publicKey: publicKey,
+                publicKeyLabel: t("profile__create_pubky_label"),
                 isSaving: isSaving,
                 footerNote: nil,
                 deleteLabel: t("contacts__delete_label"),
@@ -57,23 +62,50 @@ struct EditContactView: View {
 
     @ViewBuilder
     private var avatarSection: some View {
-        Group {
-            if let imageUrl {
-                PubkyImage(uri: imageUrl, size: 100)
-            } else {
-                Circle()
-                    .fill(Color.gray5)
-                    .frame(width: 100, height: 100)
-                    .overlay {
-                        Image("user-square")
-                            .resizable()
-                            .scaledToFit()
-                            .foregroundColor(.white32)
-                            .frame(width: 50, height: 50)
-                    }
+        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+            Group {
+                if let avatarImage {
+                    Image(uiImage: avatarImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 100, height: 100)
+                        .clipShape(Circle())
+                } else if let imageUrl {
+                    PubkyImage(uri: imageUrl, size: 100)
+                } else {
+                    Circle()
+                        .fill(Color.gray5)
+                        .frame(width: 100, height: 100)
+                        .overlay {
+                            Image("user-square")
+                                .resizable()
+                                .scaledToFit()
+                                .foregroundColor(.white32)
+                                .frame(width: 50, height: 50)
+                        }
+                }
             }
         }
+        .accessibilityIdentifier("EditContactAvatar")
+        .accessibilityLabel(t("profile__create_avatar_label"))
+        .onChange(of: selectedPhotoItem) { _, newItem in
+            Task { await loadSelectedImage(newItem) }
+        }
         .frame(maxWidth: .infinity)
+    }
+
+    private func loadSelectedImage(_ item: PhotosPickerItem?) async {
+        guard let item else { return }
+        do {
+            if let data = try await item.loadTransferable(type: Data.self),
+               let uiImage = UIImage(data: data)
+            {
+                avatarImage = uiImage
+            }
+        } catch {
+            Logger.error("Failed to load selected image: \(error)", context: "EditContactView")
+        }
+        selectedPhotoItem = nil
     }
 
     // MARK: - Data Loading
@@ -111,14 +143,21 @@ struct EditContactView: View {
         defer { isSaving = false }
 
         do {
+            let uploadedImageUrl = if let avatarImage {
+                try await pubkyProfile.uploadAvatar(image: avatarImage)
+            } else {
+                imageUrl
+            }
+
             try await contactsManager.updateContact(
                 publicKey: publicKey,
                 name: trimmedName,
                 bio: bio.trimmingCharacters(in: .whitespacesAndNewlines),
-                imageUrl: imageUrl,
+                imageUrl: uploadedImageUrl,
                 links: links.map { PubkyProfileLink(label: $0.label, url: $0.url) },
                 tags: tags
             )
+            imageUrl = uploadedImageUrl
             app.toast(type: .success, title: t("contacts__edit_saved"))
             navigation.navigateBack()
         } catch {
@@ -134,6 +173,7 @@ struct EditContactView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(PubkyProfileManager())
     }
     .preferredColorScheme(.dark)
 }

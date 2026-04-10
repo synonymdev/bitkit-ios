@@ -3,6 +3,27 @@ import XCTest
 
 @MainActor
 final class ContactsManagerTests: XCTestCase {
+    func testPubkyPublicKeyFormatNormalizesPrefixedAndUnprefixedKeys() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let prefixedKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(rawKey), prefixedKey)
+        XCTAssertEqual(PubkyPublicKeyFormat.normalized(prefixedKey), prefixedKey)
+    }
+
+    func testPubkyPublicKeyFormatRejectsInvalidLengthAndCharacters() {
+        XCTAssertNil(PubkyPublicKeyFormat.normalized("pubkyshort"))
+        XCTAssertNil(PubkyPublicKeyFormat.normalized("pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5x0"))
+    }
+
+    func testPubkyPublicKeyFormatMatchesEquivalentRepresentations() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let prefixedKey = "pubky\(rawKey)"
+
+        XCTAssertTrue(PubkyPublicKeyFormat.matches(rawKey, prefixedKey))
+        XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
+    }
+
     func testClearPendingImportOnlyClearsTemporaryImportState() {
         let manager = ContactsManager()
         let profile = makeProfile(publicKey: "pubky_profile")

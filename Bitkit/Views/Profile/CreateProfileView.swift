@@ -149,9 +149,10 @@ struct CreateProfileView: View {
 
     @ViewBuilder
     private var loadingView: some View {
-        VStack {
+        VStack(spacing: 12) {
             Spacer()
             ActivityIndicator(size: 32)
+            BodyMText(t("profile__deriving_keys"), textColor: .white64)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

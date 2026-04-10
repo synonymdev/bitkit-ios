@@ -28,6 +28,7 @@ struct EditProfileView: View {
                 links: $links,
                 tags: $tags,
                 publicKey: pubkyProfile.publicKey ?? "...",
+                publicKeyLabel: t("profile__create_pubky_display_label"),
                 isSaving: isSaving,
                 footerNote: t("profile__edit_public_note"),
                 deleteLabel: t("profile__delete_label"),

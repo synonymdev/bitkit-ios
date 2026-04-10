@@ -7,6 +7,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     @Binding var tags: [String]
 
     let publicKey: String
+    let publicKeyLabel: String
     let isSaving: Bool
     let footerNote: String?
     let deleteLabel: String?
@@ -96,7 +97,7 @@ struct ProfileEditFormView<Avatar: View>: View {
     @ViewBuilder
     private var pubkyKeySection: some View {
         VStack(spacing: 8) {
-            CaptionMText(t("profile__create_pubky_display_label"), textColor: .white64)
+            CaptionMText(publicKeyLabel, textColor: .white64)
 
             BodySText(
                 publicKey,

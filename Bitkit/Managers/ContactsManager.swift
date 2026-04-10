@@ -11,6 +11,56 @@ private func stripPubkyPrefix(_ key: String) -> String {
     key.hasPrefix(pubkyPrefix) ? String(key.dropFirst(pubkyPrefix.count)) : key
 }
 
+enum PubkyPublicKeyFormat {
+    private static let rawKeyLength = 52
+    private static let allowedCharacters = Set("ybndrfg8ejkmcpqxot1uwisza345h769")
+
+    static let maximumInputLength = pubkyPrefix.count + rawKeyLength
+
+    static func bounded(_ input: String) -> String {
+        String(input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().prefix(maximumInputLength))
+    }
+
+    static func normalized(_ input: String) -> String? {
+        let boundedInput = bounded(input)
+        let rawKey = stripPubkyPrefix(boundedInput)
+
+        guard rawKey.count == rawKeyLength else {
+            return nil
+        }
+
+        guard rawKey.allSatisfy({ allowedCharacters.contains($0) }) else {
+            return nil
+        }
+
+        return ensurePubkyPrefix(rawKey)
+    }
+
+    static func matches(_ lhs: String?, _ rhs: String?) -> Bool {
+        guard let lhs = lhs.flatMap(normalized),
+              let rhs = rhs.flatMap(normalized)
+        else {
+            return false
+        }
+
+        return lhs == rhs
+    }
+}
+
+enum ContactsManagerError: LocalizedError {
+    case invalidPublicKey
+    case cannotAddYourself
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidPublicKey:
+            return t("slashtags__contact_error_key")
+        case .cannotAddYourself:
+            return t("slashtags__contact_error_yourself")
+        }
+    }
+}
+
 // MARK: - PubkyContact
 
 struct PubkyContact: Identifiable, Hashable, Sendable {
@@ -195,8 +245,15 @@ class ContactsManager: ObservableObject {
 
     // MARK: - Add Contact (prefer bitkit.to profile, then pubky.app, then placeholder)
 
-    func addContact(publicKey: String, existingProfile: PubkyProfile? = nil) async throws {
-        let prefixedKey = ensurePubkyPrefix(publicKey)
+    func addContact(publicKey: String, existingProfile: PubkyProfile? = nil, ownPublicKey: String? = nil) async throws {
+        guard let prefixedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            throw ContactsManagerError.invalidPublicKey
+        }
+
+        if PubkyPublicKeyFormat.matches(prefixedKey, ownPublicKey) {
+            throw ContactsManagerError.cannotAddYourself
+        }
+
         guard !contacts.contains(where: { $0.publicKey == prefixedKey }) else {
             Logger.debug("Contact \(prefixedKey) already exists, skipping add", context: "ContactsManager")
             return
@@ -205,7 +262,15 @@ class ContactsManager: ObservableObject {
         // Use existing profile if provided (e.g., already fetched during preview),
         // otherwise resolve remote profile with a placeholder fallback.
         let profile: PubkyProfile = if let existingProfile {
-            existingProfile
+            PubkyProfile(
+                publicKey: prefixedKey,
+                name: existingProfile.name,
+                bio: existingProfile.bio,
+                imageUrl: existingProfile.imageUrl,
+                links: existingProfile.links,
+                tags: existingProfile.tags,
+                status: existingProfile.status
+            )
         } else {
             try await resolveContactProfile(publicKey: prefixedKey, includePlaceholder: true)
         }
@@ -224,7 +289,7 @@ class ContactsManager: ObservableObject {
     // MARK: - Import Contacts (prefer bitkit.to profiles, then pubky.app, then placeholder)
 
     func importContacts(publicKeys: [String]) async throws {
-        let prefixedKeys = Array(Set(publicKeys.map { ensurePubkyPrefix($0) }))
+        let prefixedKeys = Array(Set(publicKeys.compactMap(PubkyPublicKeyFormat.normalized)))
 
         // Resolve profiles remotely, then write each to bitkit.to
         let loadedResult: (contacts: [PubkyContact], failures: Int,
@@ -395,8 +460,12 @@ class ContactsManager: ObservableObject {
     // MARK: - Fetch Contact Profile (prefer bitkit.to profile, then pubky.app)
 
     func fetchContactProfile(publicKey: String, includePlaceholder: Bool = false) async -> PubkyProfile? {
+        guard let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) else {
+            return nil
+        }
+
         do {
-            return try await resolveContactProfile(publicKey: ensurePubkyPrefix(publicKey), includePlaceholder: includePlaceholder)
+            return try await resolveContactProfile(publicKey: normalizedKey, includePlaceholder: includePlaceholder)
         } catch {
             return nil
         }
