@@ -74,6 +74,12 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertTrue(ContactsManager.isMissingContactsDataError(error))
     }
 
+    func testIsMissingContactsDataErrorRecognizesPubkyProfileNotFoundIdentifier() {
+        let error = AppError(message: "App Error", debugMessage: "BitkitCore.PubkyError.ProfileNotFound")
+
+        XCTAssertTrue(ContactsManager.isMissingContactsDataError(error))
+    }
+
     func testIsMissingContactsDataErrorDoesNotTreatGenericNotFoundAsEmptyContacts() {
         let error = AppError(message: "App Error", debugMessage: "Resolution failed: relay host not found")
 

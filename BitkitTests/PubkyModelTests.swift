@@ -198,6 +198,45 @@ final class PubkyModelTests: XCTestCase {
         XCTAssertEqual(data.tags, [])
     }
 
+    func testProfileDataDecodesWithoutLinks() throws {
+        let json = """
+        {"name":"Satoshi","bio":"","image":null,"tags":["bitcoin"]}
+        """
+        let data = try PubkyProfileData.decode(from: json)
+
+        XCTAssertEqual(data.name, "Satoshi")
+        XCTAssertTrue(data.links.isEmpty)
+        XCTAssertEqual(data.tags, ["bitcoin"])
+    }
+
+    func testProfileDataDecodesWithMissingFieldsUsingDefaults() throws {
+        let json = """
+        {}
+        """
+        let data = try PubkyProfileData.decode(from: json)
+
+        XCTAssertEqual(data.name, "")
+        XCTAssertEqual(data.bio, "")
+        XCTAssertNil(data.image)
+        XCTAssertTrue(data.links.isEmpty)
+        XCTAssertEqual(data.tags, [])
+    }
+
+    func testProfileDataDecodesLinksWithMissingFieldsUsingDefaults() throws {
+        let json = """
+        {"links":[{"label":"Website"},{"url":"https://example.com"},{}]}
+        """
+        let data = try PubkyProfileData.decode(from: json)
+
+        XCTAssertEqual(data.links.count, 3)
+        XCTAssertEqual(data.links[0].label, "Website")
+        XCTAssertEqual(data.links[0].url, "")
+        XCTAssertEqual(data.links[1].label, "")
+        XCTAssertEqual(data.links[1].url, "https://example.com")
+        XCTAssertEqual(data.links[2].label, "")
+        XCTAssertEqual(data.links[2].url, "")
+    }
+
     func testProfileDataRoundTrip() throws {
         let original = PubkyProfileData(
             name: "Alice",

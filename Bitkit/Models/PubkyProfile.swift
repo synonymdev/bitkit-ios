@@ -13,6 +13,17 @@ struct PubkyProfileData: Codable {
     struct Link: Codable {
         let label: String
         let url: String
+
+        init(label: String, url: String) {
+            self.label = label
+            self.url = url
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            label = try container.decodeIfPresent(String.self, forKey: .label) ?? ""
+            url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        }
     }
 
     init(name: String, bio: String, image: String?, links: [Link], tags: [String]) {
@@ -25,10 +36,10 @@ struct PubkyProfileData: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decode(String.self, forKey: .name)
-        bio = try container.decode(String.self, forKey: .bio)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        bio = try container.decodeIfPresent(String.self, forKey: .bio) ?? ""
         image = try container.decodeIfPresent(String.self, forKey: .image)
-        links = try container.decode([Link].self, forKey: .links)
+        links = try container.decodeIfPresent([Link].self, forKey: .links) ?? []
         tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
     }
 

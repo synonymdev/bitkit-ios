@@ -660,6 +660,7 @@ class ContactsManager: ObservableObject {
             || normalized.contains("no such file")
             || normalized.contains("does not exist")
             || normalized.contains("profile not found")
+            || normalized.contains("profilenotfound")
             || (normalized.contains("fetch failed") && normalized.contains("not found"))
 
         return indicatesMissingResource
