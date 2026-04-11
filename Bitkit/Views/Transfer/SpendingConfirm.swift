@@ -134,6 +134,7 @@ struct SpendingConfirm: View {
         .task {
             await calculateTransactionFee()
         }
+        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"))
     }
 
     private func onConfirm() async {

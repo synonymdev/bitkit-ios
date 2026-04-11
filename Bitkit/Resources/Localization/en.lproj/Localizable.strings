@@ -390,6 +390,8 @@
 "other__connection_reconnect_msg" = "Lost connection to Electrum, trying to reconnect...";
 "other__connection_back_title" = "Internet Connection Restored";
 "other__connection_back_msg" = "Bitkit successfully reconnected to the Internet.";
+"other__connection_issues_title" = "<accent>Connection</accent>\nIssues";
+"other__connection_issues_explain" = "It appears you're disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "other__high_balance__nav_title" = "High Balance";
 "other__high_balance__title" = "High\n<accent>Balance</accent>";
 "other__high_balance__text" = "<accent>Your wallet balance exceeds $500.</accent>\nFor your security, consider moving some of your savings to an offline wallet.";

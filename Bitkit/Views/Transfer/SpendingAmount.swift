@@ -85,6 +85,7 @@ struct SpendingAmount: View {
                 await calculateMaxTransferAmount()
             }
         }
+        .connectionIssuesOverlay(title: t("lightning__transfer__nav_title"))
     }
 
     private var actionButtons: some View {

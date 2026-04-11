@@ -87,3 +87,35 @@ struct SyncNodeView: View {
         }
     }
 }
+
+// MARK: - View Modifier
+
+private struct SyncNodeOverlayModifier: ViewModifier {
+    @EnvironmentObject private var wallet: WalletViewModel
+
+    private var shouldShowSyncOverlay: Bool {
+        guard wallet.nodeLifecycleState == .running else { return true }
+        let hasAnyChannels = (wallet.channels?.isEmpty == false) || wallet.channelCount > 0
+        guard hasAnyChannels else { return false }
+        return !wallet.hasUsableChannels
+    }
+
+    func body(content: Content) -> some View {
+        ZStack {
+            content
+
+            if shouldShowSyncOverlay {
+                SyncNodeView()
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
+    }
+}
+
+extension View {
+    /// Overlays a `SyncNodeView` when the node is not running or channels aren't usable yet.
+    func syncNodeOverlay() -> some View {
+        modifier(SyncNodeOverlayModifier())
+    }
+}

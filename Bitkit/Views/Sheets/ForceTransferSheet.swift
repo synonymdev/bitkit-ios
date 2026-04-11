@@ -29,6 +29,7 @@ struct ForceTransferSheet: View {
                 onContinue: onForceTransfer
             )
         }
+        .connectionIssuesOverlay(title: t("lightning__force_nav_title"))
     }
 
     private func onCancel() {
