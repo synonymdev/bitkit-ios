@@ -116,12 +116,12 @@
 "lightning__transfer_intro__button" = "Commencer";
 "lightning__funding__nav_title" = "Solde Dépenses";
 "lightning__funding__title" = "Financez votre <accent>solde Dépenses</accent>";
-"lightning__funding__text" = "Vous pouvez utiliser votre épargne Bitkit ou envoyer des bitcoins à partir d\'un autre portefeuille.";
+"lightning__funding__text" = "Le plus simple est d\'utiliser vos économies Bitkit ou d\'envoyer des bitcoins depuis un autre portefeuille.";
 "lightning__funding__text_blocked" = "Bitkit ne fournit pas actuellement de services Lightning dans votre pays, mais vous pouvez toujours vous connecter directement à d\'autres nœuds.";
 "lightning__funding__text_blocked_cjit" = "Bitkit ne fournit pas actuellement de services Lightning dans votre pays, mais vous pouvez toujours vous connecter directement à d\'autres nœuds.";
 "lightning__funding__button1" = "Transfert depuis l\'épargne";
 "lightning__funding__button2" = "Utiliser un autre portefeuille";
-"lightning__funding__button3" = "Avancé";
+"lightning__funding__button3" = "Configuration manuelle";
 "lightning__funding_advanced__nav_title" = "Solde Dépenses";
 "lightning__funding_advanced__title" = "<accent>Configuration</accent> avancée";
 "lightning__funding_advanced__text" = "Scannez un QR code pour réclamer votre canal LNURL à un autre LSP, ou choisissez la configuration manuelle.";

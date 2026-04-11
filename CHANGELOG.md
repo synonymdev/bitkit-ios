@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add transfer from savings button on empty spending wallet when user has on-chain balance #523
 
 ### Changed
+- Update funding screen: replace Advanced with Manual Setup, update description text, add no-funds alert dialog #520
 - Update external channel success screen: rename title to "Channel opening", add dedicated "Spending Balance" nav title, and replace switch illustration with lightning bolt #521
 - Use middle-ellipsis truncation for addresses on the receive screen #517
 

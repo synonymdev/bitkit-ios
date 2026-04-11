@@ -6,6 +6,8 @@ struct FundingOptions: View {
     @EnvironmentObject var sheets: SheetViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
+    @State private var showNoFundsAlert = false
+
     var text: String {
         if GeoService.shared.isGeoBlocked {
             return t("lightning__funding__text_blocked")
@@ -33,10 +35,12 @@ struct FundingOptions: View {
                 RectangleButton(
                     icon: "transfer",
                     title: t("lightning__funding__button1"),
-                    isDisabled: wallet.totalOnchainSats == 0 || GeoService.shared.isGeoBlocked,
+                    isDisabled: GeoService.shared.isGeoBlocked,
                     testID: "FundTransfer"
                 ) {
-                    if app.hasSeenTransferToSpendingIntro {
+                    if wallet.totalOnchainSats == 0 {
+                        showNoFundsAlert = true
+                    } else if app.hasSeenTransferToSpendingIntro {
                         navigation.navigate(.spendingAmount)
                     } else {
                         navigation.navigate(.spendingIntro)
@@ -54,11 +58,11 @@ struct FundingOptions: View {
                 }
 
                 RectangleButton(
-                    icon: "external",
+                    icon: "pencil",
                     title: t("lightning__funding__button3"),
-                    testID: "FundCustom"
+                    testID: "FundManual"
                 ) {
-                    navigation.navigate(.fundingAdvanced)
+                    navigation.navigate(.fundManual(nodeUri: nil))
                 }
             }
 
@@ -66,6 +70,19 @@ struct FundingOptions: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
+        .alert(
+            t("lightning__no_funds__title"),
+            isPresented: $showNoFundsAlert
+        ) {
+            Button(t("lightning__no_funds__fund")) {
+                navigation.reset()
+                sheets.showSheet(.receive, data: ReceiveConfig(view: .qr(cjitInvoice: nil, tab: .savings)))
+            }
+            Button(t("common__cancel"), role: .cancel) {}
+        } message: {
+            Text(t("lightning__no_funds__description"))
+        }
+        .tint(.purpleAccent)
         .task {
             await app.checkGeoStatus()
         }
