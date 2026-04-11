@@ -39,6 +39,8 @@ struct CustomButtonStyle: ButtonStyle {
 }
 
 struct CustomButton: View {
+    @Environment(\.isEnabled) private var isEnabled
+
     enum Size {
         case small
         case large
@@ -69,6 +71,10 @@ struct CustomButton: View {
     let destination: AnyView?
 
     @State private var isPressed = false
+
+    private var effectiveIsDisabled: Bool {
+        isDisabled || !isEnabled
+    }
 
     /// Base initializer for optional action
     init(
@@ -148,7 +154,7 @@ struct CustomButton: View {
                 title: title,
                 size: size,
                 icon: icon,
-                isDisabled: isDisabled,
+                isDisabled: effectiveIsDisabled,
                 isLoading: isLoading,
                 isPressed: isPressed,
                 shouldExpand: shouldExpand,
@@ -159,7 +165,7 @@ struct CustomButton: View {
                 title: title,
                 size: size,
                 icon: icon,
-                isDisabled: isDisabled,
+                isDisabled: effectiveIsDisabled,
                 isPressed: isPressed
             ))
         case .tertiary:
@@ -185,17 +191,17 @@ struct CustomButton: View {
                         isPressed: $isPressed
                     )
                 )
-                .disabled(isDisabled)
+                .disabled(effectiveIsDisabled)
                 .simultaneousGesture(
                     TapGesture().onEnded {
-                        if !isDisabled {
+                        if !effectiveIsDisabled {
                             Haptics.play(.buttonTap)
                         }
                     }
                 )
             } else if let action {
                 Button {
-                    guard !isLoading, !isDisabled else { return }
+                    guard !isLoading, !effectiveIsDisabled else { return }
 
                     Haptics.play(.buttonTap)
 
@@ -213,10 +219,10 @@ struct CustomButton: View {
                         isPressed: $isPressed
                     )
                 )
-                .disabled(isDisabled || isLoading)
+                .disabled(effectiveIsDisabled || isLoading)
             } else {
                 buttonVariantView
-                    .opacity(isDisabled ? 0.5 : 1)
+                    .opacity(effectiveIsDisabled ? 0.5 : 1)
             }
         }
     }

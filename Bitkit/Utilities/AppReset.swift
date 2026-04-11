@@ -27,6 +27,9 @@ enum AppReset {
         let coreWipeResult = try await wipeAllDatabases()
         Logger.info("Core DB wipe: \(coreWipeResult)")
 
+        // Clear any live Pubky runtime state and cached profile images.
+        await PubkyProfileManager.clearLocalState()
+
         // Wipe keychain
         try Keychain.wipeEntireKeychain()
 

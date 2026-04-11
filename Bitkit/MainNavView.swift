@@ -3,11 +3,13 @@ import SwiftUI
 struct MainNavView: View {
     @EnvironmentObject private var app: AppViewModel
     @Environment(CameraManager.self) private var cameraManager
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var notificationManager: PushNotificationManager
-    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var settings: SettingsViewModel
+    @EnvironmentObject private var sheets: SheetViewModel
     @EnvironmentObject private var wallet: WalletViewModel
     @Environment(\.scenePhase) var scenePhase
 
@@ -88,6 +90,14 @@ struct MainNavView: View {
             }
         ) {
             config in LnurlAuthSheet(config: config)
+        }
+        .sheet(
+            item: $sheets.pubkyAuthApprovalSheetItem,
+            onDismiss: {
+                sheets.hideSheet()
+            }
+        ) {
+            config in PubkyAuthApprovalSheet(config: config)
         }
         .sheet(
             item: $sheets.lnurlWithdrawSheetItem,
@@ -269,7 +279,37 @@ struct MainNavView: View {
         }
     }
 
-    // MARK: - Computed Properties for Better Organization
+    // MARK: - Loading View
+
+    private var pubkyLoadingView: some View {
+        VStack {
+            Spacer()
+            ActivityIndicator()
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func pubkyInitializationErrorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            Spacer()
+
+            BodyMText(t("other__try_again"))
+
+            BodySText(message, textColor: .white64)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
+
+            CustomButton(title: t("common__retry"), variant: .secondary) {
+                await pubkyProfile.initialize()
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
     private var navigationContent: some View {
         HomeScreen()
@@ -305,10 +345,60 @@ struct MainNavView: View {
                 case .savingsProgress: SavingsProgressView()
 
                 // Profile & Contacts
-                case .contacts: ComingSoonScreen()
-                case .contactsIntro: ComingSoonScreen()
-                case .profile: ComingSoonScreen()
-                case .profileIntro: ComingSoonScreen()
+                case .contacts:
+                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                        pubkyInitializationErrorView(message: initializationErrorMessage)
+                    } else if app.hasSeenContactsIntro {
+                        if !pubkyProfile.isInitialized {
+                            pubkyLoadingView
+                        } else if pubkyProfile.isAuthenticated {
+                            ContactsListView()
+                        } else if app.hasSeenProfileIntro {
+                            PubkyChoiceView()
+                        } else {
+                            ProfileIntroView()
+                        }
+                    } else {
+                        ContactsIntroView()
+                    }
+                case .contactsIntro: ContactsIntroView()
+                case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
+                case .contactImportOverview:
+                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                        missingPendingImportView(fallbackRoute: fallbackRoute)
+                    } else if let profile = contactsManager.pendingImportProfile {
+                        ContactImportOverviewView(
+                            profile: profile,
+                            contacts: contactsManager.pendingImportContacts
+                        )
+                    } else {
+                        missingPendingImportView(fallbackRoute: .payContacts)
+                    }
+                case .contactImportSelect:
+                    if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
+                        missingPendingImportView(fallbackRoute: fallbackRoute)
+                    } else {
+                        ContactImportSelectView(contacts: contactsManager.pendingImportContacts)
+                    }
+                case let .addContact(publicKey): AddContactView(publicKey: publicKey)
+                case let .editContact(publicKey): EditContactView(publicKey: publicKey)
+                case .profile:
+                    if let initializationErrorMessage = pubkyProfile.initializationErrorMessage {
+                        pubkyInitializationErrorView(message: initializationErrorMessage)
+                    } else if !pubkyProfile.isInitialized {
+                        pubkyLoadingView
+                    } else if pubkyProfile.isAuthenticated {
+                        ProfileView()
+                    } else if app.hasSeenProfileIntro {
+                        PubkyChoiceView()
+                    } else {
+                        ProfileIntroView()
+                    }
+                case .profileIntro: ProfileIntroView()
+                case .pubkyChoice: PubkyChoiceView()
+                case .createProfile: CreateProfileView()
+                case .editProfile: EditProfileView()
+                case .payContacts: PayContactsView()
 
                 // Shop
                 case .shopIntro: ShopIntro()
@@ -369,6 +459,18 @@ struct MainNavView: View {
                 case .orders: ChannelOrders()
                 case .logs: LogView()
                 }
+            }
+    }
+
+    @ViewBuilder
+    private func missingPendingImportView(fallbackRoute: Route) -> some View {
+        Color.customBlack
+            .task {
+                guard navigation.currentRoute?.isContactImportRoute == true else {
+                    return
+                }
+
+                navigation.path = [fallbackRoute]
             }
     }
 

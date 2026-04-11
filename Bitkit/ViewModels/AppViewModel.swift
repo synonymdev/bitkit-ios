@@ -453,6 +453,8 @@ extension AppViewModel {
             }
 
             handleNodeUri(url)
+        case let .pubkyAuth(data: authUrl):
+            handlePubkyAuthApproval(authUrl)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -546,6 +548,31 @@ extension AppViewModel {
         }
 
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
+    }
+
+    private func handlePubkyAuthApproval(_ authUrl: String) {
+        // State 1: No Pubky identity at all
+        guard (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false else {
+            toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
+            return
+        }
+
+        // State 2: Ring-authenticated (has session but no local secret key)
+        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKey.isEmpty
+        else {
+            toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
+            return
+        }
+
+        // State 3: Bitkit-generated identity — can approve
+        do {
+            let request = try PubkyAuthRequest.parse(url: authUrl)
+            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
+        } catch {
+            Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
+            toast(type: .error, title: t("pubky_auth__invalid_request"))
+        }
     }
 
     private func handleNodeUri(_ url: String) {
