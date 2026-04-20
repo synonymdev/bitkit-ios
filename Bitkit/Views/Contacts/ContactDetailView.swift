@@ -57,7 +57,9 @@ struct ContactDetailView: View {
                     truncatedKey: profile.truncatedPublicKey,
                     name: profile.name,
                     bio: profile.bio,
-                    imageUrl: profile.imageUrl
+                    imageUrl: profile.imageUrl,
+                    nameAccessibilityIdentifier: "ContactViewName",
+                    notesAccessibilityIdentifier: "ContactViewNotes"
                 )
                 .padding(.top, 24)
                 .padding(.bottom, 24)
@@ -112,8 +114,8 @@ struct ContactDetailView: View {
     @ViewBuilder
     private func linksSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(profile.links) { link in
-                ProfileLinkRow(label: link.label, value: link.url)
+            ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
+                ProfileLinkRow(label: link.label, value: link.url, linkIndex: index)
             }
         }
     }
@@ -124,6 +126,7 @@ struct ContactDetailView: View {
     private func tagsSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+                .accessibilityIdentifier("ContactViewTagsHeader")
 
             WrappingHStack(spacing: 8) {
                 ForEach(profile.tags, id: \.self) { tag in
