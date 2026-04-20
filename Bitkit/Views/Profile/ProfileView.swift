@@ -97,7 +97,7 @@ struct ProfileView: View {
             GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
-                    app.toast(type: .success, title: t("common__copied"))
+                    app.toast(type: .success, title: t("common__copied"), accessibilityIdentifier: "ProfilePubkyCopiedToast")
                 }
             }
             .accessibilityIdentifier("ProfileCopy")
@@ -238,11 +238,11 @@ struct ProfileLinkRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 16)
+            .accessibilityElement(children: .contain)
 
             CustomDivider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel(Text("\(label): \(value)"))
     }
 }
 
