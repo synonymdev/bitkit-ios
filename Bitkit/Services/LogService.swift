@@ -1,8 +1,8 @@
 import Foundation
-import Zip
 
 class LogService {
     static let shared = LogService()
+    private let zipService = ZipService()
 
     private init() {}
 
@@ -32,7 +32,8 @@ class LogService {
             dateFormatter.timeZone = TimeZone(abbreviation: "UTC")
             let timestamp = dateFormatter.string(from: Date())
             let fileName = "bitkit_logs_\(timestamp)"
-            return try Zip.quickZipFiles(logFiles, fileName: fileName)
+            let filesToZip = logFiles.map { FileToZip.existingFile($0) }
+            return try zipService.createZipAtTmp(zipFilename: fileName, filesToZip: filesToZip)
 
         } catch {
             Logger.error(error, context: "Failed to create zip file for logs")
@@ -85,17 +86,12 @@ class LogService {
             let timestamp = dateFormatter.string(from: Date())
             let fileName = "bitkit_support_logs_\(timestamp)"
 
-            // Use quickZip helper to create zip file with selected log files
-            let zipURL = try Zip.quickZipFiles(filesToZip, fileName: fileName)
-
-            let zipData = try Data(contentsOf: zipURL)
+            let zipInputs = filesToZip.map { FileToZip.existingFile($0) }
+            let zipData = try zipService.getZipData(zipFilename: fileName, filesToZip: zipInputs)
             let base64Logs = zipData.base64EncodedString()
-            let finalFileName = zipURL.lastPathComponent
+            let finalFileName = "\(fileName).zip"
 
             Logger.info("Support logs zip created: \(zipData.count) bytes, base64: \(base64Logs.count) characters")
-
-            // Clean up temporary zip file
-            try? FileManager.default.removeItem(at: zipURL)
 
             return (logs: base64Logs, fileName: finalFileName)
 

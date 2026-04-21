@@ -12,8 +12,6 @@
 		3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
 		3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3D76260E4C9C4A53B1E4A001 /* CoreBluetooth.framework */; };
 		4AAB08CA2E1FE77600BA63DF /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 4AAB08C92E1FE77600BA63DF /* Lottie */; };
-		4AFCA3702E05933800205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA36F2E05933800205CAE /* Zip */; };
-		4AFCA3722E0596D900205CAE /* Zip in Frameworks */ = {isa = PBXBuildFile; productRef = 4AFCA3712E0596D900205CAE /* Zip */; };
 		961058E32C355B5500E1F1D8 /* BitkitNotification.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 961058DC2C355B5500E1F1D8 /* BitkitNotification.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 9613018B2C5022D700878183 /* LDKNode */; };
 		968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */ = {isa = PBXBuildFile; productRef = 968FE13F2DFB016B0053CD7F /* LDKNode */; };
@@ -157,7 +155,6 @@
 				3D7626104C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
 				968FE1402DFB016B0053CD7F /* LDKNode in Frameworks */,
 				96DEA03C2DE8BBAB009932BF /* BitkitCore in Frameworks */,
-				4AFCA3722E0596D900205CAE /* Zip in Frameworks */,
 				96E493A82C943184000E8BC2 /* secp256k1 in Frameworks */,
 				18D65E022EB964BD00252335 /* VssRustClientFfi in Frameworks */,
 			);
@@ -168,7 +165,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				3D76260F4C9C4A53B1E4A001 /* CoreBluetooth.framework in Frameworks */,
-				4AFCA3702E05933800205CAE /* Zip in Frameworks */,
 				968FDF162DFAFE230053CD7F /* LDKNode in Frameworks */,
 				18D65E002EB964B500252335 /* VssRustClientFfi in Frameworks */,
 				96E493A42C942FD1000E8BC2 /* secp256k1 in Frameworks */,
@@ -246,7 +242,6 @@
 			packageProductDependencies = (
 				96E493A72C943184000E8BC2 /* secp256k1 */,
 				96DEA03B2DE8BBAB009932BF /* BitkitCore */,
-				4AFCA3712E0596D900205CAE /* Zip */,
 				968FE13F2DFB016B0053CD7F /* LDKNode */,
 				18D65E012EB964BD00252335 /* VssRustClientFfi */,
 			);
@@ -278,7 +273,6 @@
 				96E493A32C942FD1000E8BC2 /* secp256k1 */,
 				96E20CD32CB6D91A00C24149 /* CodeScanner */,
 				96DEA0392DE8BBA1009932BF /* BitkitCore */,
-				4AFCA36F2E05933800205CAE /* Zip */,
 				4AAB08C92E1FE77600BA63DF /* Lottie */,
 				18D65DFF2EB964B500252335 /* VssRustClientFfi */,
 			);
@@ -384,7 +378,6 @@
 				96E493A22C942FD1000E8BC2 /* XCRemoteSwiftPackageReference "swift-secp256k1" */,
 				96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */,
 				96DEA0382DE8BBA1009932BF /* XCRemoteSwiftPackageReference "bitkit-core" */,
-				4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */,
 				968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */,
 				4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */,
 				18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */,
@@ -919,14 +912,6 @@
 				minimumVersion = 4.5.2;
 			};
 		};
-		4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/marmelroy/Zip.git";
-			requirement = {
-				kind = upToNextMinorVersion;
-				minimumVersion = 2.1.2;
-			};
-		};
 		968FE13E2DFB016B0053CD7F /* XCRemoteSwiftPackageReference "ldk-node" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/ldk-node";
@@ -976,16 +961,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4AAB08C82E1FE77600BA63DF /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
-		};
-		4AFCA36F2E05933800205CAE /* Zip */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */;
-			productName = Zip;
-		};
-		4AFCA3712E0596D900205CAE /* Zip */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4AFCA36E2E05933800205CAE /* XCRemoteSwiftPackageReference "Zip" */;
-			productName = Zip;
 		};
 		9613018B2C5022D700878183 /* LDKNode */ = {
 			isa = XCSwiftPackageProductDependency;
