@@ -120,12 +120,12 @@
 "lightning__transfer_intro__button" = "Get Started";
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
-"lightning__funding__text" = "You can use your Bitkit savings or send bitcoin from a different wallet.";
+"lightning__funding__text" = "The easiest option is to use your Bitkit savings or send bitcoin from a different wallet.";
 "lightning__funding__text_blocked" = "Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes directly.";
 "lightning__funding__text_blocked_cjit" = "Bitkit does not currently provide Lightning services in your country, but you can still connect to other nodes directly.";
 "lightning__funding__button1" = "Transfer from Savings";
 "lightning__funding__button2" = "Use Other Wallet";
-"lightning__funding__button3" = "Advanced";
+"lightning__funding__button3" = "Manual Setup";
 "lightning__funding_advanced__nav_title" = "Spending Balance";
 "lightning__funding_advanced__title" = "Advanced <accent>setup</accent>";
 "lightning__funding_advanced__text" = "Scan a QR to claim your LNURL Channel from another LSP, or choose manual setup.";
