@@ -86,7 +86,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Checkmark
 
-    @ViewBuilder
     private func checkmark(isSelected: Bool) -> some View {
         ZStack {
             if isSelected {
@@ -109,7 +108,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Contact Avatar
 
-    @ViewBuilder
     private func contactAvatar(name: String, imageUrl: String?) -> some View {
         Group {
             if let imageUrl {
@@ -130,7 +128,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Footer Bar
 
-    @ViewBuilder
     private var footerBar: some View {
         VStack(spacing: 0) {
             CustomDivider()
@@ -167,7 +164,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Pill Button
 
-    @ViewBuilder
     private func pillButton(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)

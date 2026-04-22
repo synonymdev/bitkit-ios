@@ -92,7 +92,6 @@ struct PubkyAuthApprovalSheet: View {
 
     // MARK: - Authorize State (Screen 3)
 
-    @ViewBuilder
     private var authorizeContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             descriptionText
@@ -125,7 +124,6 @@ struct PubkyAuthApprovalSheet: View {
 
     // MARK: - Authorizing State (Screen 4)
 
-    @ViewBuilder
     private var authorizingContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             descriptionText
@@ -149,7 +147,6 @@ struct PubkyAuthApprovalSheet: View {
 
     // MARK: - Success State (Screen 5)
 
-    @ViewBuilder
     private var successContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             successDescriptionText
@@ -178,7 +175,6 @@ struct PubkyAuthApprovalSheet: View {
         config.request.serviceNames.joined(separator: " and ")
     }
 
-    @ViewBuilder
     private var descriptionText: some View {
         BodyMText(
             t("pubky_auth__description_prefix") + "<accent>" + serviceText + "</accent>" + t("pubky_auth__description_suffix"),
@@ -201,7 +197,6 @@ struct PubkyAuthApprovalSheet: View {
         .lineSpacing(4)
     }
 
-    @ViewBuilder
     private var permissionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("pubky_auth__requested_permissions"), textColor: .white64)
@@ -214,7 +209,6 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    @ViewBuilder
     private func permissionRow(_ permission: PubkyAuthPermission) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "folder")
@@ -230,13 +224,11 @@ struct PubkyAuthApprovalSheet: View {
         }
     }
 
-    @ViewBuilder
     private var trustWarning: some View {
         BodySText(t("pubky_auth__trust_warning"))
             .lineSpacing(4)
     }
 
-    @ViewBuilder
     private var profileCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             CaptionMText(

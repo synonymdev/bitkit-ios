@@ -66,7 +66,6 @@ struct AddLinkSheet: View {
         }
     }
 
-    @ViewBuilder
     private var labelFieldWithSuggestions: some View {
         HStack(spacing: 0) {
             ZStack(alignment: .leading) {

@@ -45,7 +45,6 @@ struct AddProfileTagSheet: View {
         }
     }
 
-    @ViewBuilder
     private var tagFieldWithSuggestions: some View {
         HStack(spacing: 0) {
             ZStack(alignment: .leading) {

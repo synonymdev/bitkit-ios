@@ -10,25 +10,25 @@ final class PubkyProfileManagerTests: XCTestCase {
         let json = """
         {"signupCode":"abc-123","homeserverPubky":"z6MkPubkyTestKey"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try JSONDecoder().decode(HomegateResponse.self, from: data)
 
         XCTAssertEqual(response.signupCode, "abc-123")
         XCTAssertEqual(response.homeserverPubky, "z6MkPubkyTestKey")
     }
 
-    func testHomegateResponseRejectsIncompleteJson() {
+    func testHomegateResponseRejectsIncompleteJson() throws {
         let json = """
         {"signupCode":"abc-123"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
 
         XCTAssertThrowsError(try JSONDecoder().decode(HomegateResponse.self, from: data))
     }
 
-    func testHomegateResponseRejectsEmptyJson() {
+    func testHomegateResponseRejectsEmptyJson() throws {
         let json = "{}"
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
 
         XCTAssertThrowsError(try JSONDecoder().decode(HomegateResponse.self, from: data))
     }
@@ -37,7 +37,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let json = """
         {"signupCode":"abc","homeserverPubky":"z6Mk","extra":"ignored"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try JSONDecoder().decode(HomegateResponse.self, from: data)
 
         XCTAssertEqual(response.signupCode, "abc")

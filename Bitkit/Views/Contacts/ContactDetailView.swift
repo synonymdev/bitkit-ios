@@ -49,7 +49,6 @@ struct ContactDetailView: View {
 
     // MARK: - Contact Body
 
-    @ViewBuilder
     private func contactBody(_ profile: PubkyProfile) -> some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -88,7 +87,6 @@ struct ContactDetailView: View {
 
     // MARK: - Action Buttons
 
-    @ViewBuilder
     private var contactActions: some View {
         HStack(spacing: 16) {
             GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
@@ -111,7 +109,6 @@ struct ContactDetailView: View {
 
     // MARK: - Links / Metadata
 
-    @ViewBuilder
     private func linksSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
@@ -122,7 +119,6 @@ struct ContactDetailView: View {
 
     // MARK: - Tags
 
-    @ViewBuilder
     private func tagsSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
@@ -140,7 +136,6 @@ struct ContactDetailView: View {
         }
     }
 
-    @ViewBuilder
     private var addTagButton: some View {
         IconActionButton(
             icon: "tag",
@@ -203,7 +198,6 @@ struct ContactDetailView: View {
 
     // MARK: - Loading & Empty States
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack {
             Spacer()
@@ -213,7 +207,6 @@ struct ContactDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private var emptyContent: some View {
         VStack(spacing: 16) {
             Spacer()

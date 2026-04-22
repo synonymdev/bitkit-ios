@@ -56,7 +56,6 @@ struct ContactImportOverviewView: View {
 
     // MARK: - Profile Row
 
-    @ViewBuilder
     private var profileRow: some View {
         HStack(alignment: .top, spacing: 16) {
             HeadlineText(profile.name)
@@ -84,7 +83,6 @@ struct ContactImportOverviewView: View {
 
     // MARK: - Contacts Summary
 
-    @ViewBuilder
     private var contactsSummary: some View {
         HStack(spacing: 16) {
             BodyMSBText(t("contacts__import_friends_count", variables: ["count": "\(contacts.count)"]))
@@ -141,7 +139,6 @@ struct ContactImportOverviewView: View {
 
     // MARK: - Button Bar
 
-    @ViewBuilder
     private var buttonBar: some View {
         HStack(spacing: 16) {
             CustomButton(title: t("contacts__import_select"), variant: .secondary) {

@@ -60,7 +60,6 @@ struct EditContactView: View {
 
     // MARK: - Avatar
 
-    @ViewBuilder
     private var avatarSection: some View {
         PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
             Group {

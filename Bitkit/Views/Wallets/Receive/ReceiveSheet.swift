@@ -44,6 +44,7 @@ struct ReceiveSheet: View {
                     }
             }
         }
+        .connectionIssuesOverlay(title: t("wallet__receive_bitcoin"))
         .onAppear {
             wallet.invoiceAmountSats = 0
             wallet.invoiceNote = ""

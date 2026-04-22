@@ -95,6 +95,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
+        .connectionIssuesOverlay(title: t("wallet__send_bitcoin"))
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)

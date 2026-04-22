@@ -44,7 +44,6 @@ struct AddContactView: View {
 
     @State private var dashedCircleRotation: Double = 0
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack(spacing: 0) {
             CaptionMText(truncatedPublicKey, textColor: .white64)
@@ -83,7 +82,6 @@ struct AddContactView: View {
         }
     }
 
-    @ViewBuilder
     private var retrievingAnimation: some View {
         ZStack {
             Image("ellipse-outer-green")
@@ -107,7 +105,6 @@ struct AddContactView: View {
 
     // MARK: - Result State
 
-    @ViewBuilder
     private func resultContent(_ profile: PubkyProfile) -> some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -154,7 +151,6 @@ struct AddContactView: View {
 
     // MARK: - Error State
 
-    @ViewBuilder
     private var errorContent: some View {
         VStack(spacing: 16) {
             Spacer()

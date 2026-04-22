@@ -39,7 +39,7 @@ class PubkyProfileManager: ObservableObject {
 
     // MARK: - Initialization & Session Restoration
 
-    private enum InitResult: Sendable {
+    private enum InitResult {
         case noSession
         case restored(publicKey: String)
         case restorationFailed

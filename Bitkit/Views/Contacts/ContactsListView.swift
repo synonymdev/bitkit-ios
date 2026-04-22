@@ -65,7 +65,6 @@ struct ContactsListView: View {
 
     // MARK: - Search Bar + Add Button
 
-    @ViewBuilder
     private var searchAndAddBar: some View {
         HStack(spacing: 12) {
             HStack(spacing: 12) {
@@ -118,7 +117,6 @@ struct ContactsListView: View {
 
     // MARK: - My Profile Section
 
-    @ViewBuilder
     private func myProfileSection(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionHeader(t("contacts__my_profile"))
@@ -163,7 +161,6 @@ struct ContactsListView: View {
 
     // MARK: - Section Header
 
-    @ViewBuilder
     private func sectionHeader(_ title: String) -> some View {
         CaptionMText(title, textColor: .white64)
             .padding(.vertical, 16)
@@ -171,7 +168,6 @@ struct ContactsListView: View {
 
     // MARK: - Contact Row
 
-    @ViewBuilder
     private func contactRow(name: String, truncatedKey: String, imageUrl: String?, onTap: @escaping () -> Void) -> some View {
         Button(action: onTap) {
             HStack(spacing: 16) {
@@ -191,7 +187,6 @@ struct ContactsListView: View {
         .accessibilityLabel(name)
     }
 
-    @ViewBuilder
     private func contactAvatar(name: String, imageUrl: String?) -> some View {
         Group {
             if let imageUrl {
@@ -225,7 +220,6 @@ struct ContactsListView: View {
 
     // MARK: - Loading & Empty States
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack {
             Spacer()
@@ -235,7 +229,6 @@ struct ContactsListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private func errorContent(message: String) -> some View {
         VStack(spacing: 16) {
             Spacer()
@@ -260,7 +253,6 @@ struct ContactsListView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private var emptyContent: some View {
         VStack(spacing: 0) {
             if pubkyProfile.isAuthenticated, let profile = pubkyProfile.profile {

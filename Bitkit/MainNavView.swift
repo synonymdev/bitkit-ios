@@ -462,7 +462,6 @@ struct MainNavView: View {
             }
     }
 
-    @ViewBuilder
     private func missingPendingImportView(fallbackRoute: Route) -> some View {
         Color.customBlack
             .task {

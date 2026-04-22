@@ -59,7 +59,6 @@ struct EditProfileView: View {
 
     // MARK: - Avatar Picker
 
-    @ViewBuilder
     private var avatarPicker: some View {
         PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
             avatarContent

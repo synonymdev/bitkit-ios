@@ -25,8 +25,11 @@ final class NetworkMonitor: ObservableObject {
         // Set the pathUpdateHandler
         monitor.pathUpdateHandler = { [weak self] path in
             DispatchQueue.main.async {
+                let wasConnected = self?.isConnected
+                let isNowConnected = path.status == .satisfied
+
                 // Check if the device is connected to the internet
-                self?.isConnected = path.status == .satisfied
+                self?.isConnected = isNowConnected
 
                 // Check if the network is expensive (e.g. cellular data)
                 self?.isExpensive = path.isExpensive
@@ -36,6 +39,14 @@ final class NetworkMonitor: ObservableObject {
 
                 // Update the network path
                 self?.nwPath = path
+
+                if wasConnected != isNowConnected {
+                    let interfaceType = path.availableInterfaces.first?.type
+                    Logger
+                        .debug(
+                            "Network connectivity changed: \(isNowConnected ? "connected" : "disconnected") (interface: \(String(describing: interfaceType)), status: \(path.status))"
+                        )
+                }
             }
         }
 

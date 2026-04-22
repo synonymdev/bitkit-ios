@@ -63,7 +63,7 @@ enum ContactsManagerError: LocalizedError {
 
 // MARK: - PubkyContact
 
-struct PubkyContact: Identifiable, Hashable, Sendable {
+struct PubkyContact: Identifiable, Hashable {
     let id: String
     let publicKey: String
     let profile: PubkyProfile
@@ -656,13 +656,11 @@ class ContactsManager: ObservableObject {
         }
 
         let normalized = message.lowercased()
-        let indicatesMissingResource = normalized.contains("404")
+        return normalized.contains("404")
             || normalized.contains("no such file")
             || normalized.contains("does not exist")
             || normalized.contains("profile not found")
             || normalized.contains("profilenotfound")
             || (normalized.contains("fetch failed") && normalized.contains("not found"))
-
-        return indicatesMissingResource
     }
 }

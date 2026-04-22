@@ -65,7 +65,6 @@ struct Header: View {
         .padding(.trailing, 10)
     }
 
-    @ViewBuilder
     private var profileButton: some View {
         Button {
             if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
