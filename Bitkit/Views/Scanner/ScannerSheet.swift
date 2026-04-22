@@ -7,8 +7,10 @@ struct ScannerSheetItem: SheetItem {
 
 struct ScannerSheet: View {
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var currency: CurrencyViewModel
     @EnvironmentObject private var navigation: NavigationViewModel
+    @EnvironmentObject private var pubkyProfile: PubkyProfileManager
     @EnvironmentObject private var scanner: ScannerManager
     @EnvironmentObject private var settings: SettingsViewModel
     @EnvironmentObject private var sheets: SheetViewModel
@@ -63,9 +65,11 @@ struct ScannerSheet: View {
             .onAppear {
                 scanner.configure(
                     app: app,
+                    contactsManager: contactsManager,
                     currency: currency,
                     settings: settings,
                     navigation: navigation,
+                    pubkyProfile: pubkyProfile,
                     sheets: sheets
                 )
             }
