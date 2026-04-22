@@ -810,6 +810,10 @@ extension AppViewModel {
             break
         case .paymentForwarded:
             break
+        case .probeSuccessful(paymentId: _, paymentHash: _):
+            break
+        case .probeFailed(paymentId: _, paymentHash: _, shortChannelId: _):
+            break
 
         // MARK: New Onchain Transaction Events
 
