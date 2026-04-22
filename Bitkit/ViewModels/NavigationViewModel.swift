@@ -11,8 +11,17 @@ enum Route: Hashable {
     case buyBitcoin
     case contacts
     case contactsIntro
+    case contactDetail(publicKey: String)
+    case contactImportOverview
+    case contactImportSelect
+    case addContact(publicKey: String)
+    case editContact(publicKey: String)
     case profile
     case profileIntro
+    case pubkyChoice
+    case createProfile
+    case editProfile
+    case payContacts
     case transferIntro
     case fundingOptions
     case spendingIntro
@@ -91,6 +100,29 @@ enum Route: Hashable {
     case probingTool
     case orders
     case logs
+}
+
+extension Route {
+    var isContactImportRoute: Bool {
+        switch self {
+        case .contactImportOverview, .contactImportSelect:
+            true
+        default:
+            false
+        }
+    }
+}
+
+func shouldDiscardPendingImport(currentRoute: Route?, destination: Route?) -> Bool {
+    guard currentRoute?.isContactImportRoute == true else {
+        return false
+    }
+
+    return destination?.isContactImportRoute != true
+}
+
+func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
+    hasPendingImport ? nil : .payContacts
 }
 
 @MainActor
