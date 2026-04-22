@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.2.0] - 2026-04-07
 
 ### Fixed
+- Replace third-party Zip dependency with native ZipService using NSFileCoordinator #526
 - Fix keyboard and UI issues in the calculator widget #513
 - Preserve msat precision for LNURL pay, withdraw callbacks and bolt11 #512
 
