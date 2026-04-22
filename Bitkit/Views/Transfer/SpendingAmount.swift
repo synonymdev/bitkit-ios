@@ -77,6 +77,7 @@ struct SpendingAmount: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .offlineOverlay(title: t("lightning__transfer__nav_title"))
         .task(id: blocktank.info?.options.maxChannelSizeSat) {
             await calculateMaxTransferAmount()
         }

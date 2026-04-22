@@ -550,7 +550,7 @@ class BackupService {
             // Convert from milliseconds to seconds (matching Android behavior)
             return createdAtMillis / 1000
         } catch {
-            Logger.debug("Failed to get remote backup timestamp for \(category.rawValue): \(error)", context: "BackupService")
+            Logger.warn("Failed to get remote backup timestamp for \(category.rawValue): \(error)", context: "BackupService")
             return nil
         }
     }

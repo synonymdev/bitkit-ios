@@ -48,9 +48,13 @@ struct AppStatusHelper {
     static func nodeStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
         let isOnline = network.isConnected
 
+        if !isOnline {
+            return .error
+        }
+
         switch wallet.nodeLifecycleState {
         case .running:
-            return isOnline ? .ready : .error
+            return .ready
         case .starting, .initializing, .stopping, .stopped:
             return .pending
         case .errorStarting:
@@ -58,13 +62,17 @@ struct AppStatusHelper {
         }
     }
 
-    static func channelsStatus(from wallet: WalletViewModel) -> HealthStatus {
+    static func channelsStatus(from wallet: WalletViewModel, network: NetworkMonitor) -> HealthStatus {
+        let isOnline = network.isConnected
         let hasChannels = wallet.channelCount > 0
-        let hasUsableChannels = wallet.channels?.contains(where: \.isUsable) ?? false
+
+        if !isOnline {
+            return .error
+        }
 
         if !hasChannels {
             return .error
-        } else if hasUsableChannels {
+        } else if wallet.hasUsableChannels {
             return .ready
         } else {
             return .pending

@@ -1,53 +1,6 @@
 import LDKNode
 import SwiftUI
 
-struct LoadingView: View {
-    @State private var outerRotation: Double = 0
-    @State private var innerRotation: Double = 0
-    @State private var imageRotation: Double = 0
-
-    var body: some View {
-        ZStack(alignment: .center) {
-            // Outer ellipse
-            Image("ellipse-outer-purple")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 311, height: 311)
-                .rotationEffect(.degrees(outerRotation))
-
-            // Inner ellipse
-            Image("ellipse-inner-purple")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 207, height: 207)
-                .rotationEffect(.degrees(innerRotation))
-
-            // Image
-            Image("coin-stack-4")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 330, height: 330)
-                .rotationEffect(.degrees(imageRotation))
-        }
-        .frame(width: 320, height: 320)
-        .clipped()
-        .frame(maxWidth: .infinity)
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                outerRotation = -180
-            }
-
-            withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
-                innerRotation = 180
-            }
-
-            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                imageRotation = 20
-            }
-        }
-    }
-}
-
 struct SendQuickpay: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var sheets: SheetViewModel
@@ -65,11 +18,12 @@ struct SendQuickpay: View {
                 MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
             }
 
-            Spacer()
+            Spacer(minLength: 32)
 
-            LoadingView()
+            EllipseLoader(variant: .quickpay)
+                .padding(.horizontal, 16)
 
-            Spacer()
+            Spacer(minLength: 32)
 
             DisplayText(t("wallet__send_quickpay__title"), accentColor: .purpleAccent)
         }

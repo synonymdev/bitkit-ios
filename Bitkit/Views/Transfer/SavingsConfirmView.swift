@@ -100,6 +100,7 @@ struct SavingsConfirmView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .bottomSafeAreaPadding()
+        .offlineOverlay(title: t("lightning__transfer__nav_title"))
     }
 }
 

@@ -57,6 +57,8 @@ struct SendSheet: View {
     /// If there are no channels at all, we should NOT wait behind the sync UI – that's a capacity issue, not a sync issue.
     /// For onchain: only need node running.
     private var shouldShowSyncOverlay: Bool {
+        Logger.debug("shouldShowSyncOverlay: \(wallet.nodeLifecycleState)", context: "SendSheet")
+
         // Node must be running
         guard wallet.nodeLifecycleState == .running else { return true }
 
@@ -82,7 +84,7 @@ struct SendSheet: View {
     var body: some View {
         Sheet(id: .send, data: config) {
             if shouldShowSyncOverlay {
-                SyncNodeView()
+                SendSyncScreen()
                     .transition(.opacity)
             } else {
                 NavigationStack(path: $navigationPath) {
@@ -95,6 +97,7 @@ struct SendSheet: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: shouldShowSyncOverlay)
+        .offlineSheetOverlay(title: t("wallet__send_bitcoin"))
         .onAppear {
             tagManager.clearSelectedTags()
             wallet.resetSendState(speed: settings.defaultTransactionSpeed)
