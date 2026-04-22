@@ -159,7 +159,7 @@ class VssBackupClient {
                 return nil
             }
         } catch {
-            Logger.debug("VSS 'getObject' error for '\(key)': \(error)", context: "VssBackupClient")
+            Logger.warn("VSS 'getObject' error for '\(key)': \(error)", context: "VssBackupClient")
             throw error
         }
     }

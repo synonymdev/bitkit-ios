@@ -92,6 +92,7 @@ struct AppScene: View {
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
             .onChange(of: scenePhase) { _, newValue in handleScenePhaseChange(newValue) }
+            .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
                     SettingsViewModel.shared.updatePinEnabledState()
@@ -110,12 +111,6 @@ struct AppScene: View {
                             visibilityTime: 8.0
                         )
                     }
-                }
-            }
-            .onChange(of: network.isConnected) { _, isConnected in
-                // Retry starting wallet when network comes back online
-                if isConnected {
-                    handleNetworkRestored()
                 }
             }
             .environmentObject(app)
@@ -541,15 +536,12 @@ struct AppScene: View {
     }
 
     private func handleScenePhaseChange(_ newPhase: ScenePhase) {
-        Logger.debug("Scene phase changed: \(newPhase)")
+        Logger.info("Scene phase changed: \(newPhase)", context: "AppScene")
 
         if newPhase == .background {
             if settings.pinEnabled {
                 // If PIN is enabled, lock the app when the app goes to the background
                 isPinVerified = false
-            }
-            if wallet.walletExists == true {
-                app.resetAppStatusInit()
             }
         }
 
@@ -571,28 +563,34 @@ struct AppScene: View {
         center.removeDeliveredNotifications(withIdentifiers: deliveredNotifications.map(\.request.identifier))
     }
 
-    private func handleNetworkRestored() {
-        // Refresh currency rates when network is restored - critical for UI
-        // to display balances (MoneyText returns "0" if rates are nil)
-        Task {
-            await currency.refresh()
-        }
+    private func handleNetworkChange(_ isConnected: Bool) {
+        Logger.info("Network changed: \(isConnected ? "connected" : "disconnected")", context: "AppScene")
 
-        guard wallet.walletExists == true,
-              scenePhase == .active
-        else {
-            return
-        }
+        app.toast(
+            type: isConnected ? .success : .warning,
+            title: isConnected ? t("other__connection_back_title") : t("other__connection_issue"),
+            description: isConnected ? t("other__connection_back_msg") : t("other__connection_issue_explain")
+        )
 
-        // If node is stopped/failed, restart it
-        switch wallet.nodeLifecycleState {
-        case .stopped, .errorStarting:
-            Logger.info("Network restored, retrying wallet start...", context: "AppScene")
+        if isConnected {
+            guard wallet.walletExists == true else { return }
+
+            // Refresh currency rates when network is restored - critical for UI
+            // to display balances (MoneyText returns "0" if rates are nil)
             Task {
-                await startWallet()
+                await currency.refresh()
             }
-        default:
-            break
+
+            // Restart node if necessary (e.g. create/restore was skipped due to offline)
+            switch wallet.nodeLifecycleState {
+            case .stopped, .initializing, .errorStarting:
+                Logger.info("Network restored, retrying wallet start...", context: "AppScene")
+                Task {
+                    await startWallet()
+                }
+            default:
+                break
+            }
         }
     }
 

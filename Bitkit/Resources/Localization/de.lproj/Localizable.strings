@@ -661,7 +661,6 @@
 "settings__backup__export" = "Exportieren von Walletdaten auf das Telefon";
 "settings__backup__reset" = "Wallet zurücksetzen";
 "settings__backup__failed_title" = "Backup fehlgeschlagen";
-"settings__backup__failed_message" = "Bitkit failed to back up wallet data. Retrying in {interval, plural, one {# minute} other {# minutes}}.";
 "settings__backup__latest" = "Letzte Backups";
 "settings__backup__status_failed" = "Gescheitertes Backup: {time}";
 "settings__backup__status_success" = "Letztes Backup: {time}";

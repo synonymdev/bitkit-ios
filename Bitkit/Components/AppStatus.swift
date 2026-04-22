@@ -56,8 +56,11 @@ struct AppStatus: View {
     private var appStatus: HealthStatus {
         let realStatus = AppStatusHelper.combinedAppStatus(from: wallet, network: network)
 
-        // During init, hide error state but show pending (sync animation)
+        // During init, hide error state but show pending (sync animation).
+        // Always show error when offline so the header reflects no network.
         if !app.appStatusInit && realStatus == .error {
+            let internet = AppStatusHelper.internetStatus(network: network)
+            if internet == .error { return .error }
             return .ready
         }
 

@@ -305,8 +305,6 @@
 "lightning__order_state__open" = "Connection open";
 "lightning__order_state__inactive" = "Connection inactive";
 "lightning__peer_disconnected" = "Peer disconnected.";
-"lightning__wait_text_top" = "Please wait for Bitkit to connect to the payment network (±10 seconds).";
-"lightning__wait_text_bottom" = "Connecting & Syncing...";
 "onboarding__tos_header" = "Bitkit\n<accent>terms of use</accent>";
 "onboarding__tos_checkbox" = "Terms of use";
 "onboarding__tos_checkbox_value" = "I declare that I have read and accept the <accent>terms of use.</accent>";
@@ -1114,6 +1112,10 @@
 "wallet__create_wallet_mnemonic_restore_error" = "Please double-check if your recovery phrase is accurate.";
 "wallet__send_bitcoin" = "Send Bitcoin";
 "wallet__send_from" = "From";
+"wallet__send_sync_title" = "<accent>Connecting</accent>\nto network";
+"wallet__send_sync_description" = "Please wait for Bitkit to connect to the payment network (±10 seconds).";
+"wallet__send_sync_long_title" = "<accent>Connection</accent>\nissues";
+"wallet__send_sync_long_description" = "It appears you’re disconnected. Please check your connection. Bitkit will try to reconnect every few seconds.";
 "wallet__send_to" = "To";
 "wallet__recipient_contact" = "Contact";
 "wallet__recipient_invoice" = "Paste Invoice";
