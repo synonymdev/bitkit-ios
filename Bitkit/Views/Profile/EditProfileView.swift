@@ -157,7 +157,7 @@ struct EditProfileView: View {
                 tags: tags,
                 newImageUrl: avatarUri
             )
-            app.toast(type: .success, title: t("profile__edit_saved"))
+            app.toast(type: .success, title: t("profile__edit_saved"), accessibilityIdentifier: "ProfileUpdatedToast")
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save profile: \(error)", context: "EditProfileView")

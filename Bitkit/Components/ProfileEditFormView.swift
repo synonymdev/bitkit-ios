@@ -265,6 +265,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                     CustomButton(title: t("common__cancel"), variant: .secondary) {
                         onCancel()
                     }
+                    .accessibilityIdentifier("ProfileEditCancel")
 
                     CustomButton(
                         title: t("common__save"),
@@ -272,6 +273,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                     ) {
                         await onSave()
                     }
+                    .accessibilityIdentifier("ProfileEditSave")
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }

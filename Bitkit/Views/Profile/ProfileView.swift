@@ -55,7 +55,9 @@ struct ProfileView: View {
                     name: profile.name,
                     bio: profile.bio,
                     imageUrl: profile.imageUrl,
-                    showDivider: false
+                    showDivider: false,
+                    nameAccessibilityIdentifier: "ProfileViewName",
+                    notesAccessibilityIdentifier: "ProfileViewNotes"
                 )
                 .padding(.top, 24)
                 .padding(.bottom, 24)
@@ -95,7 +97,7 @@ struct ProfileView: View {
             GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 if let pk = pubkyProfile.publicKey {
                     UIPasteboard.general.string = pk
-                    app.toast(type: .success, title: t("common__copied"))
+                    app.toast(type: .success, title: t("common__copied"), accessibilityIdentifier: "ProfilePubkyCopiedToast")
                 }
             }
             .accessibilityIdentifier("ProfileCopy")
@@ -134,8 +136,8 @@ struct ProfileView: View {
     @ViewBuilder
     private func profileLinks(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(profile.links) { link in
-                ProfileLinkRow(label: link.label, value: link.url)
+            ForEach(Array(profile.links.enumerated()), id: \.element.id) { index, link in
+                ProfileLinkRow(label: link.label, value: link.url, linkIndex: index)
             }
         }
     }
@@ -146,6 +148,7 @@ struct ProfileView: View {
     private func profileTags(_ profile: PubkyProfile) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             CaptionMText(t("profile__create_tags_label"), textColor: .white64)
+                .accessibilityIdentifier("ProfileViewTagsHeader")
 
             WrappingHStack(spacing: 8) {
                 ForEach(profile.tags, id: \.self) { tag in
@@ -222,21 +225,24 @@ struct ProfileView: View {
 struct ProfileLinkRow: View {
     let label: String
     let value: String
+    let linkIndex: Int
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 CaptionMText(label, textColor: .white64)
+                    .accessibilityIdentifier("ProfileLinkLabel_\(linkIndex)")
 
                 BodySSBText(value, textColor: .white)
+                    .accessibilityIdentifier("ProfileLinkValue_\(linkIndex)")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 16)
+            .accessibilityElement(children: .contain)
 
             CustomDivider()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityLabel(Text("\(label): \(value)"))
     }
 }
 

@@ -8,6 +8,9 @@ struct CenteredProfileHeader: View {
     var avatarSize: CGFloat = 100
     var showBio: Bool = true
     var showDivider: Bool = true
+    /// Set on own Profile screen for E2E; omit on contact previews so IDs stay unique.
+    var nameAccessibilityIdentifier: String?
+    var notesAccessibilityIdentifier: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +28,7 @@ struct CenteredProfileHeader: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.bottom, showBio && !bio.isEmpty ? 8 : 0)
+                .accessibilityIdentifierIfPresent(nameAccessibilityIdentifier)
 
             if showBio, !bio.isEmpty {
                 BodyMText(bio, textColor: .white64)
@@ -32,6 +36,7 @@ struct CenteredProfileHeader: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 16)
+                    .accessibilityIdentifierIfPresent(notesAccessibilityIdentifier)
             }
 
             if showDivider {
