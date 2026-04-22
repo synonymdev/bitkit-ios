@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Restore pubky profiles by reconnecting seed-based identities or rehydrating imported sessions from wallet backups #527
+- Restore pubky sessions from wallet backups and improve iOS pubky profile, contacts, and clipboard flows #527
 - Pubky profile onboarding with contact sync, import, and editing #476
 - Add transfer from savings button on empty spending wallet when user has on-chain balance #523
 

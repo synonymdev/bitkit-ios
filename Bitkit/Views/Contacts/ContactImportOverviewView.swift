@@ -104,7 +104,7 @@ struct ContactImportOverviewView: View {
         ZStack(alignment: .leading) {
             ForEach(Array(displayContacts.enumerated()), id: \.element.id) { index, contact in
                 contactImportAvatar(contact)
-                    .offset(x: CGFloat(index * 24))
+                    .offset(x: CGFloat(index * 22))
             }
 
             if overflow > 0 {
@@ -116,10 +116,14 @@ struct ContactImportOverviewView: View {
                             .font(Fonts.bold(size: 12))
                             .foregroundColor(.textPrimary)
                     }
-                    .offset(x: CGFloat(displayContacts.count * 24))
+                    .overlay(
+                        Circle()
+                            .stroke(Color.customBlack, lineWidth: 2)
+                    )
+                    .offset(x: CGFloat(displayContacts.count * 22))
             }
         }
-        .frame(width: CGFloat(max(displayContacts.count - 1, 0) * 24 + 36), height: 36, alignment: .leading)
+        .frame(width: CGFloat(max(displayContacts.count - 1, 0) * 22 + 36), height: 36, alignment: .leading)
         .accessibilityHidden(true)
     }
 
@@ -127,6 +131,10 @@ struct ContactImportOverviewView: View {
     private func contactImportAvatar(_ contact: PubkyContact) -> some View {
         if let imageUrl = contact.profile.imageUrl {
             PubkyImage(uri: imageUrl, size: 36)
+                .overlay(
+                    Circle()
+                        .stroke(Color.customBlack, lineWidth: 2)
+                )
         } else {
             Circle()
                 .fill(Color.white.opacity(0.1))
@@ -136,6 +144,10 @@ struct ContactImportOverviewView: View {
                         .font(Fonts.bold(size: 13))
                         .foregroundColor(.textPrimary)
                 }
+                .overlay(
+                    Circle()
+                        .stroke(Color.customBlack, lineWidth: 2)
+                )
         }
     }
 

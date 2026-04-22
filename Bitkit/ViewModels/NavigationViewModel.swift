@@ -125,6 +125,22 @@ func fallbackRouteForMissingPendingImport(hasPendingImport: Bool) -> Route? {
     hasPendingImport ? nil : .payContacts
 }
 
+func resolvePastedPubkyRoute(input: String, ownPublicKey: String?, contacts: [PubkyContact]) -> Route? {
+    guard let normalizedKey = PubkyPublicKeyFormat.normalized(input) else {
+        return nil
+    }
+
+    if PubkyPublicKeyFormat.matches(normalizedKey, ownPublicKey) {
+        return .profile
+    }
+
+    if contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, normalizedKey) }) {
+        return .contactDetail(publicKey: normalizedKey)
+    }
+
+    return .addContact(publicKey: normalizedKey)
+}
+
 @MainActor
 class NavigationViewModel: ObservableObject {
     @Published var path: [Route] = []

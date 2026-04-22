@@ -31,9 +31,11 @@ struct EditContactView: View {
                 tags: $tags,
                 publicKey: publicKey,
                 publicKeyLabel: t("profile__create_pubky_label"),
+                bioPlaceholder: t("contacts__edit_bio_placeholder"),
                 isSaving: isSaving,
-                footerNote: nil,
+                footerNote: t("contacts__edit_public_note"),
                 deleteLabel: t("contacts__delete_label"),
+                deleteActionStyle: .buttonWithIcon,
                 onSave: { await saveContact() },
                 onCancel: { navigation.navigateBack() },
                 onDelete: { showDeleteConfirmation = true }

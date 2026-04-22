@@ -47,6 +47,42 @@ enum PubkyPublicKeyFormat {
     }
 }
 
+enum AddContactValidationResult: Equatable {
+    case empty
+    case invalidKey
+    case ownKey
+    case valid(normalizedKey: String)
+
+    var localizedMessage: String? {
+        switch self {
+        case .empty, .valid:
+            nil
+        case .invalidKey:
+            t("contacts__add_error_invalid_key")
+        case .ownKey:
+            t("contacts__add_error_self")
+        }
+    }
+}
+
+func resolveAddContactValidation(input: String, ownPublicKey: String?) -> AddContactValidationResult {
+    let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    guard !trimmedInput.isEmpty else {
+        return .empty
+    }
+
+    if PubkyPublicKeyFormat.matches(trimmedInput, ownPublicKey) {
+        return .ownKey
+    }
+
+    guard let normalizedKey = PubkyPublicKeyFormat.normalized(trimmedInput) else {
+        return .invalidKey
+    }
+
+    return .valid(normalizedKey: normalizedKey)
+}
+
 enum ContactsManagerError: LocalizedError {
     case invalidPublicKey
     case cannotAddYourself
@@ -54,9 +90,9 @@ enum ContactsManagerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidPublicKey:
-            return t("slashtags__contact_error_key")
+            return t("contacts__add_error_invalid_key")
         case .cannotAddYourself:
-            return t("slashtags__contact_error_yourself")
+            return t("contacts__add_error_self")
         }
     }
 }
@@ -387,16 +423,9 @@ class ContactsManager: ObservableObject {
         contacts.removeAll { $0.publicKey == prefixedKey }
     }
 
-    /// Delete all contacts from the homeserver and clear the local list.
-    func deleteAllContacts() async {
-        let sessionSecret: String
-        do {
-            sessionSecret = try getSessionSecret()
-        } catch {
-            Logger.warn("No active session, clearing local contacts only", context: "ContactsManager")
-            contacts.removeAll()
-            return
-        }
+    /// Delete all contacts from the homeserver and keep local state in sync with completed deletions.
+    func deleteAllContacts() async throws {
+        let sessionSecret = try getSessionSecret()
 
         let basePath = contactsBasePath
 
@@ -410,10 +439,12 @@ class ContactsManager: ObservableObject {
                 contacts.removeAll()
                 return
             }
-            Logger.warn("Failed to list contacts for deletion: \(error)", context: "ContactsManager")
-            contacts.removeAll()
-            return
+            Logger.error("Failed to list contacts for deletion: \(error)", context: "ContactsManager")
+            throw error
         }
+
+        var deletedKeys = Set<String>()
+        var firstError: Error?
 
         for path in contactPaths {
             let contactKey = extractPublicKey(from: path)
@@ -425,9 +456,19 @@ class ContactsManager: ObservableObject {
                         path: "\(basePath)\(contactKey)"
                     )
                 }.value
+                deletedKeys.insert(ensurePubkyPrefix(contactKey))
             } catch {
+                firstError = firstError ?? error
                 Logger.warn("Failed to delete contact '\(contactKey)': \(error)", context: "ContactsManager")
             }
+        }
+
+        if !deletedKeys.isEmpty {
+            contacts.removeAll { deletedKeys.contains($0.publicKey) }
+        }
+
+        if let firstError {
+            throw firstError
         }
 
         contacts.removeAll()

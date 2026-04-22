@@ -12,38 +12,54 @@ struct EditProfileView: View {
     @State private var links: [ProfileLinkInput] = []
     @State private var tags: [String] = []
     @State private var isSaving = false
+    @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
+    @State private var showDeleteFailureOptions = false
     @State private var selectedPhotoItem: PhotosPickerItem?
     @State private var avatarImage: UIImage?
 
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationBar(
-                title: t("profile__edit_nav_title")
-            )
-            .padding(.horizontal, 16)
+        ZStack {
+            VStack(spacing: 0) {
+                NavigationBar(
+                    title: t("profile__edit_nav_title")
+                )
+                .padding(.horizontal, 16)
 
-            ProfileEditFormView(
-                name: $username,
-                bio: $bio,
-                links: $links,
-                tags: $tags,
-                publicKey: pubkyProfile.publicKey ?? "...",
-                publicKeyLabel: t("profile__create_pubky_display_label"),
-                isSaving: isSaving,
-                footerNote: t("profile__edit_public_note"),
-                deleteLabel: t("profile__delete_label"),
-                onSave: { await saveProfile() },
-                onCancel: { navigation.navigateBack() },
-                onDelete: { showDeleteConfirmation = true }
-            ) {
-                avatarPicker
+                ProfileEditFormView(
+                    name: $username,
+                    bio: $bio,
+                    links: $links,
+                    tags: $tags,
+                    publicKey: pubkyProfile.publicKey ?? "...",
+                    publicKeyLabel: t("profile__create_pubky_display_label"),
+                    bioPlaceholder: t("profile__create_bio_placeholder"),
+                    isSaving: isSaving,
+                    footerNote: t("profile__edit_public_note"),
+                    deleteLabel: t("profile__delete_label"),
+                    deleteActionStyle: .buttonWithIcon,
+                    onSave: { await saveProfile() },
+                    onCancel: { navigation.navigateBack() },
+                    onDelete: { showDeleteConfirmation = true }
+                ) {
+                    avatarPicker
+                }
+            }
+
+            if isDeleting {
+                Color.customBlack.opacity(0.72)
+                    .ignoresSafeArea()
+
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.2)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .disabled(isDeleting)
         .task {
             loadProfileData()
         }
@@ -54,6 +70,17 @@ struct EditProfileView: View {
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
             Text(t("profile__delete_description"))
+        }
+        .alert(t("profile__delete_error_title"), isPresented: $showDeleteFailureOptions) {
+            Button(t("common__retry")) {
+                Task { await deleteProfile() }
+            }
+            Button(t("profile__sign_out"), role: .destructive) {
+                Task { await disconnectAfterFailedDelete() }
+            }
+            Button(t("common__dialog_cancel"), role: .cancel) {}
+        } message: {
+            Text(t("profile__delete_error_description"))
         }
     }
 
@@ -125,14 +152,38 @@ struct EditProfileView: View {
     // MARK: - Delete Profile
 
     private func deleteProfile() async {
+        guard !isDeleting else { return }
+
+        isDeleting = true
+        defer { isDeleting = false }
+
         do {
-            await contactsManager.deleteAllContacts()
-            try await pubkyProfile.deleteProfile()
-            navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+            try await performDeleteProfile()
         } catch {
-            Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
-            app.toast(type: .error, title: t("profile__edit_error_title"), description: error.localizedDescription)
+            if await pubkyProfile.refreshSessionIfPossible(after: error) {
+                do {
+                    try await performDeleteProfile()
+                    return
+                } catch {
+                    Logger.error("Failed to delete profile after session refresh: \(error)", context: "EditProfileView")
+                }
+            } else {
+                Logger.error("Failed to delete profile: \(error)", context: "EditProfileView")
+            }
+
+            showDeleteFailureOptions = true
         }
+    }
+
+    private func performDeleteProfile() async throws {
+        try await contactsManager.deleteAllContacts()
+        try await pubkyProfile.deleteProfile()
+        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
+    }
+
+    private func disconnectAfterFailedDelete() async {
+        await pubkyProfile.signOut()
+        navigation.path = [app.hasSeenProfileIntro ? .pubkyChoice : .profileIntro]
     }
 
     // MARK: - Save Profile

@@ -113,6 +113,82 @@ final class PubkyProfileManagerTests: XCTestCase {
         }
     }
 
+    func testIsMissingBitkitProfileStorageErrorRecognizes404DeleteFailure() {
+        let error = AppError(
+            message: "App Error",
+            debugMessage: #"BitkitCore.PubkyError.WriteFailed(reason: "delete failed: Request failed: Server responded with an error: 404 Not Found - Not Found")"#
+        )
+
+        XCTAssertTrue(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
+    }
+
+    func testIsMissingBitkitProfileStorageErrorRejectsNonMissingErrors() {
+        let error = AppError(
+            message: "App Error",
+            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error")"#
+        )
+
+        XCTAssertFalse(PubkyProfileManager.isMissingBitkitProfileStorageError(error))
+    }
+
+    func testIsSessionRefreshableErrorRecognizesSessionTransportFailure() {
+        let error = AppError(
+            message: "App Error",
+            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
+        )
+
+        XCTAssertTrue(PubkyProfileManager.isSessionRefreshableError(error))
+    }
+
+    func testRefreshSessionIfPossibleRefreshesSessionFromLocalSecret() async {
+        let error = AppError(
+            message: "App Error",
+            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
+        )
+        var persistedSession: String?
+
+        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
+            after: error,
+            loadKeychainString: { key in
+                switch key {
+                case .pubkySecretKey:
+                    return "local-secret"
+                default:
+                    return nil
+                }
+            },
+            signInWithSecretKey: { secretKey in
+                XCTAssertEqual(secretKey, "local-secret")
+                return "fresh-session"
+            },
+            persistSessionSecret: { persistedSession = $0 }
+        )
+
+        XCTAssertTrue(refreshed)
+        XCTAssertEqual(persistedSession, "fresh-session")
+    }
+
+    func testRefreshSessionIfPossibleReturnsFalseWithoutLocalSecret() async {
+        let error = AppError(
+            message: "App Error",
+            debugMessage: #"BitkitCore.PubkyError.AuthFailed(reason: "Request failed: HTTP transport error: error sending request for url (https://example.com/session)")"#
+        )
+
+        let refreshed = await PubkyProfileManager.refreshSessionIfPossible(
+            after: error,
+            loadKeychainString: { _ in nil },
+            signInWithSecretKey: { _ in
+                XCTFail("Expected refresh to stop when no local secret key exists")
+                return "fresh-session"
+            },
+            persistSessionSecret: { _ in
+                XCTFail("No refreshed session should be persisted")
+            }
+        )
+
+        XCTAssertFalse(refreshed)
+    }
+
     // MARK: - Session backup state
 
     func testSnapshotSessionBackupStatePrefersLocalSeedOverSessionSecret() throws {

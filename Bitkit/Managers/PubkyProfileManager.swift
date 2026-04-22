@@ -309,12 +309,20 @@ class PubkyProfileManager: ObservableObject {
         let sessionSecret = try activeSessionSecret()
         let path = Self.profilePath
 
-        try await Task.detached {
-            try await PubkyService.sessionDelete(
-                sessionSecret: sessionSecret,
-                path: path
-            )
-        }.value
+        do {
+            try await Task.detached {
+                try await PubkyService.sessionDelete(
+                    sessionSecret: sessionSecret,
+                    path: path
+                )
+            }.value
+        } catch {
+            guard Self.isMissingBitkitProfileStorageError(error) else {
+                throw error
+            }
+
+            Logger.info("Bitkit profile storage already missing, continuing sign out", context: "PubkyProfileManager")
+        }
 
         await signOut()
     }
@@ -560,6 +568,15 @@ class PubkyProfileManager: ObservableObject {
         clearAuthenticatedState()
     }
 
+    func refreshSessionIfPossible(after error: Error) async -> Bool {
+        await Self.refreshSessionIfPossible(
+            after: error,
+            loadKeychainString: { try Keychain.loadString(key: $0) },
+            signInWithSecretKey: { try await PubkyService.signIn(secretKeyHex: $0) },
+            persistSessionSecret: { try Self.upsertKeychainString(.paykitSession, value: $0) }
+        )
+    }
+
     // MARK: - Cached Profile Metadata
 
     private static let cachedNameKey = "pubky_profile_name"
@@ -719,6 +736,75 @@ class PubkyProfileManager: ObservableObject {
         let passphrase = try loadKeychainString(.bip39Passphrase(index: 0))
         let seed = try PubkyService.mnemonicToSeed(mnemonic: mnemonic, passphrase: passphrase)
         return try PubkyService.derivePubkySecretKey(seed: seed)
+    }
+
+    nonisolated static func isMissingBitkitProfileStorageError(_ error: Error) -> Bool {
+        if case .profileNotFound = error as? PubkyServiceError {
+            return true
+        }
+
+        let errorText = [
+            (error as? AppError)?.debugMessage,
+            error.localizedDescription,
+            String(describing: error),
+        ]
+        .compactMap { $0?.lowercased() }
+
+        if errorText.contains(where: { $0.contains("404 not found") || $0.contains("directory not found") }) {
+            return true
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSCocoaErrorDomain {
+            let cocoaCode = CocoaError.Code(rawValue: nsError.code)
+            return cocoaCode == .fileNoSuchFile || cocoaCode == .fileReadNoSuchFile
+        }
+
+        return false
+    }
+
+    nonisolated static func isSessionRefreshableError(_ error: Error) -> Bool {
+        let errorText = [
+            (error as? AppError)?.debugMessage,
+            error.localizedDescription,
+            String(describing: error),
+        ]
+        .compactMap { $0?.lowercased() }
+
+        return errorText.contains {
+            ($0.contains("authfailed") || $0.contains("authentication failed") || $0.contains("sessionnotactive"))
+                || ($0.contains("transport error") && $0.contains("/session"))
+        }
+    }
+
+    nonisolated static func refreshSessionIfPossible(
+        after error: Error,
+        loadKeychainString: (KeychainEntryType) throws -> String? = {
+            try Keychain.loadString(key: $0)
+        },
+        signInWithSecretKey: (String) async throws -> String,
+        persistSessionSecret: (String) throws -> Void
+    ) async -> Bool {
+        guard isSessionRefreshableError(error) else {
+            return false
+        }
+
+        guard let secretKeyHex = try? loadKeychainString(.pubkySecretKey),
+              !secretKeyHex.isEmpty
+        else {
+            Logger.warn("Cannot refresh pubky session without a local secret key", context: "PubkyProfileManager")
+            return false
+        }
+
+        do {
+            let newSessionSecret = try await signInWithSecretKey(secretKeyHex)
+            try persistSessionSecret(newSessionSecret)
+            Logger.info("Refreshed pubky session from local secret key", context: "PubkyProfileManager")
+            return true
+        } catch {
+            Logger.warn("Failed to refresh pubky session: \(error)", context: "PubkyProfileManager")
+            return false
+        }
     }
 
     nonisolated static func resolveSessionInitialization(

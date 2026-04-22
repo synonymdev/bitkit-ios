@@ -15,8 +15,17 @@ struct AddContactView: View {
     @State private var canRetry = true
 
     private var truncatedPublicKey: String {
-        guard publicKey.count > 10 else { return publicKey }
-        return "\(publicKey.prefix(4))...\(publicKey.suffix(4))"
+        let displayKey = normalizedPublicKey ?? publicKey
+        guard displayKey.count > 10 else { return displayKey }
+        return "\(displayKey.prefix(4))...\(displayKey.suffix(4))"
+    }
+
+    private var normalizedPublicKey: String? {
+        if case let .valid(normalizedKey) = resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+            return normalizedKey
+        }
+
+        return nil
     }
 
     var body: some View {
@@ -189,24 +198,23 @@ struct AddContactView: View {
         errorMessage = nil
         canRetry = true
 
-        guard PubkyPublicKeyFormat.normalized(publicKey) != nil else {
-            errorMessage = t("slashtags__contact_error_key")
+        switch resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+        case .empty, .invalidKey:
+            errorMessage = t("contacts__add_error_invalid_key")
             canRetry = false
             isLoading = false
             return
-        }
-
-        if PubkyPublicKeyFormat.matches(publicKey, pubkyProfile.publicKey) {
-            errorMessage = t("slashtags__contact_error_yourself")
+        case .ownKey:
+            errorMessage = t("contacts__add_error_self")
             canRetry = false
             isLoading = false
             return
-        }
-
-        if let profile = await contactsManager.fetchContactProfile(publicKey: publicKey, includePlaceholder: true) {
-            fetchedProfile = profile
-        } else {
-            errorMessage = t("contacts__add_error")
+        case let .valid(normalizedKey):
+            if let profile = await contactsManager.fetchContactProfile(publicKey: normalizedKey, includePlaceholder: true) {
+                fetchedProfile = profile
+            } else {
+                errorMessage = t("contacts__add_error")
+            }
         }
 
         isLoading = false
@@ -219,8 +227,13 @@ struct AddContactView: View {
         defer { isSaving = false }
 
         do {
+            guard let normalizedPublicKey else {
+                app.toast(type: .error, title: t("contacts__add_error_invalid_key"))
+                return
+            }
+
             try await contactsManager.addContact(
-                publicKey: publicKey,
+                publicKey: normalizedPublicKey,
                 existingProfile: fetchedProfile,
                 ownPublicKey: pubkyProfile.publicKey
             )

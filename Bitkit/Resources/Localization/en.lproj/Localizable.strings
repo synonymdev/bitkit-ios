@@ -960,6 +960,7 @@
 "contacts__detail_title" = "Contact";
 "contacts__detail_empty_state" = "Unable to load contact.";
 "contacts__empty_state" = "You don't have any contacts yet.";
+"contacts__intro_add_contact" = "Add Contact";
 "contacts__intro_description" = "Get automatic updates from contacts, pay them, and follow their public profiles.";
 "contacts__intro_title" = "Dynamic\n<accent>contacts</accent>";
 "contacts__my_profile" = "MY PROFILE";
@@ -969,8 +970,11 @@
 "contacts__add_title" = "Add Contact";
 "contacts__add_description" = "Add a new contact by scanning their QR or pasting their pubky below.";
 "contacts__add_pubky_label" = "PUBKY";
+"contacts__add_pubky_placeholder" = "Paste a pubky";
 "contacts__add_scan_qr" = "Scan QR";
 "contacts__add_button" = "Add";
+"contacts__add_error_invalid_key" = "Invalid pubky key format. Please check and try again.";
+"contacts__add_error_self" = "You can't add your own pubky as a contact.";
 "contacts__add_retrieving" = "Retrieving\n<accent>contact info</accent>";
 "contacts__add_success" = "Contact added";
 "contacts__add_error" = "Failed to add contact";
@@ -994,6 +998,8 @@
 "contacts__delete_error" = "Failed to delete contact";
 "contacts__delete_label" = "Delete Contact";
 "contacts__edit_title" = "Edit Contact";
+"contacts__edit_bio_placeholder" = "Short note about this contact.";
+"contacts__edit_public_note" = "Please note that all contact information saved here will be publicly available and visible.";
 "contacts__edit_saved" = "Contact saved";
 "contacts__edit_error" = "Failed to save contact";
 "contacts__error_saving" = "Failed to save changes";
@@ -1078,8 +1084,10 @@
 "profile__edit_delete_section" = "DELETE";
 "profile__edit_public_note" = "Please note that all your profile information will be publicly available and visible.";
 "profile__delete_title" = "Delete Profile?";
-"profile__delete_description" = "This will delete your Pubky profile.";
+"profile__delete_description" = "This will delete your current Pubky profile data. You can create a new profile for this pubky later.";
 "profile__delete_confirm" = "Yes, Delete";
+"profile__delete_error_title" = "Unable to Delete Profile";
+"profile__delete_error_description" = "We couldn't delete your profile data. Retry, or disconnect this pubky from Bitkit.";
 "profile__delete_label" = "Delete Profile";
 "profile__edit" = "Edit";
 "profile__pay_contacts_nav_title" = "Pay Contacts";
