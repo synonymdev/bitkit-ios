@@ -3,18 +3,26 @@ import SwiftUI
 struct ContactsIntroView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     var body: some View {
         OnboardingView(
-            navTitle: t("slashtags__contacts"),
-            title: t("slashtags__onboarding_header"),
-            description: t("slashtags__onboarding_text"),
+            navTitle: t("contacts__nav_title"),
+            title: t("contacts__intro_title"),
+            description: t("contacts__intro_description"),
             imageName: "group",
-            buttonText: t("slashtags__onboarding_button"),
+            buttonText: t("common__continue"),
             onButtonPress: {
                 app.hasSeenContactsIntro = true
-                navigation.navigate(.contacts)
+                if pubkyProfile.isAuthenticated {
+                    navigation.navigate(.contacts)
+                } else if app.hasSeenProfileIntro {
+                    navigation.navigate(.pubkyChoice)
+                } else {
+                    navigation.navigate(.profileIntro)
+                }
             },
+            accentColor: .pubkyGreen,
             imagePosition: .center,
             testID: "ContactsIntro"
         )
@@ -27,6 +35,7 @@ struct ContactsIntroView: View {
         ContactsIntroView()
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
+            .environmentObject(PubkyProfileManager())
             .preferredColorScheme(.dark)
     }
 }
