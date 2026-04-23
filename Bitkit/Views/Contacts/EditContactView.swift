@@ -56,7 +56,7 @@ struct EditContactView: View {
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("contacts__delete_description"))
+            Text(t("contacts__delete_description", variables: ["name": name]))
         }
     }
 
