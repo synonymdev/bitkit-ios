@@ -17,7 +17,6 @@ struct MetadataBackupV1: Codable {
     let pubkySession: PubkySessionBackupV1?
 }
 
-/// External sessions persist their session secret in encrypted metadata backup.
 struct PubkySessionBackupV1: Codable, Equatable {
     enum Kind: String, Codable {
         case localSeed

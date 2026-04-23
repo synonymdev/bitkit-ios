@@ -196,6 +196,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                 Image(systemName: "pencil")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.white50)
+                    .accessibilityHidden(true)
 
                 Button {
                     links.remove(at: index)
