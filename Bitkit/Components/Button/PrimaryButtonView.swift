@@ -41,6 +41,10 @@ struct PrimaryButtonView: View {
 
     private var backgroundGradient: some View {
         if let background {
+            if isPressed {
+                return AnyView(ButtonGradient(isPressed: isPressed))
+            }
+
             return background
         }
 
