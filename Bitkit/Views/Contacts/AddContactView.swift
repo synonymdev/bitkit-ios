@@ -237,7 +237,7 @@ struct AddContactView: View {
                 existingProfile: fetchedProfile,
                 ownPublicKey: pubkyProfile.publicKey
             )
-            app.toast(type: .success, title: t("contacts__add_success"))
+            app.toast(type: .success, title: t("contacts__add_success"), accessibilityIdentifier: "ContactSavedToast")
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "AddContactView")

@@ -127,7 +127,11 @@ struct EditContactView: View {
     private func deleteContact() async {
         do {
             try await contactsManager.removeContact(publicKey: publicKey)
-            app.toast(type: .success, title: t("contacts__delete_success"))
+            app.toast(
+                type: .success,
+                title: t("contacts__delete_success"),
+                accessibilityIdentifier: "ContactDeletedToast"
+            )
             navigation.path = [.contacts]
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "EditContactView")

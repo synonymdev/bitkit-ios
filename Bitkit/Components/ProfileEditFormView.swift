@@ -189,6 +189,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                     .foregroundColor(.textPrimary)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
+                    .accessibilityIdentifier("ProfileEditLink_\(index)")
                 }
 
                 Spacer()
@@ -207,6 +208,7 @@ struct ProfileEditFormView<Avatar: View>: View {
                         .foregroundColor(.white50)
                         .frame(width: 18, height: 18)
                 }
+                .accessibilityIdentifier("ProfileEditLinkRemove_\(index)")
                 .accessibilityLabel(t("common__delete"))
             }
             .padding(.horizontal, 16)
@@ -217,7 +219,6 @@ struct ProfileEditFormView<Avatar: View>: View {
                     .stroke(Color.white10, lineWidth: 1)
             )
             .cornerRadius(8)
-            .accessibilityIdentifier("ProfileEditLink_\(index)")
         }
     }
 
