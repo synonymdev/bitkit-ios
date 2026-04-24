@@ -100,6 +100,19 @@ class LightningService {
         )
         builder.setChainSourceElectrum(serverUrl: resolvedElectrumServerUrl, config: electrumConfig)
 
+        builder.setScoringFeeParams(params: ScoringFeeParameters(
+            basePenaltyMsat: 1024 * 500,
+            basePenaltyAmountMultiplierMsat: 131_072 * 3,
+            liquidityPenaltyMultiplierMsat: 0,
+            liquidityPenaltyAmountMultiplierMsat: 0,
+            historicalLiquidityPenaltyMultiplierMsat: 10000,
+            historicalLiquidityPenaltyAmountMultiplierMsat: 1250,
+            antiProbingPenaltyMsat: 250,
+            consideredImpossiblePenaltyMsat: 1_000_000_000_000,
+            linearSuccessProbability: false,
+            probingDiversityPenaltyMsat: 0
+        ))
+
         // Set pathfinding scores source from external scorer
         if let scorerUrl = Env.ldkScorerUrl {
             Logger.info("Setting pathfinding scores source from scorer url: \(scorerUrl)")
