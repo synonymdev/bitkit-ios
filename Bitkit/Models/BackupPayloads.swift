@@ -14,6 +14,17 @@ struct MetadataBackupV1: Codable {
     let createdAt: UInt64
     let tagMetadata: [PreActivityMetadata]
     let cache: AppCacheData
+    let pubkySession: PubkySessionBackupV1?
+}
+
+struct PubkySessionBackupV1: Codable, Equatable {
+    enum Kind: String, Codable {
+        case localSeed
+        case externalSession
+    }
+
+    let kind: Kind
+    let sessionSecret: String?
 }
 
 struct AppCacheData: Codable {

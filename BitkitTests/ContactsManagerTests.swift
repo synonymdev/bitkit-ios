@@ -24,6 +24,36 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
     }
 
+    func testResolveAddContactValidationReturnsEmptyForBlankInput() {
+        XCTAssertEqual(resolveAddContactValidation(input: "   ", ownPublicKey: nil), .empty)
+    }
+
+    func testResolveAddContactValidationReturnsInvalidKeyForBadInput() {
+        XCTAssertEqual(
+            resolveAddContactValidation(input: "pubkyinvalid", ownPublicKey: nil),
+            .invalidKey
+        )
+    }
+
+    func testResolveAddContactValidationReturnsOwnKeyForSelf() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let ownPublicKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(
+            resolveAddContactValidation(input: rawKey, ownPublicKey: ownPublicKey),
+            .ownKey
+        )
+    }
+
+    func testResolveAddContactValidationReturnsNormalizedKeyForValidInput() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolveAddContactValidation(input: rawKey, ownPublicKey: nil),
+            .valid(normalizedKey: "pubky\(rawKey)")
+        )
+    }
+
     func testClearPendingImportOnlyClearsTemporaryImportState() {
         let manager = ContactsManager()
         let profile = makeProfile(publicKey: "pubky_profile")
@@ -106,21 +136,69 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertFalse(shouldDiscardPendingImport(currentRoute: .contacts, destination: .profile))
     }
 
-    func testDeleteAllContactsClearsLocalList() async {
+    func testDeleteAllContactsThrowsWithoutActiveSession() async {
         let manager = ContactsManager()
         manager.contacts = [
             makeContact(publicKey: "pubkyaaa"),
             makeContact(publicKey: "pubkybbb"),
         ]
 
-        await manager.deleteAllContacts()
-
-        XCTAssertTrue(manager.contacts.isEmpty)
+        do {
+            try await manager.deleteAllContacts()
+            XCTFail("Expected deleteAllContacts to throw without an active session")
+        } catch {
+            XCTAssertFalse(manager.contacts.isEmpty)
+        }
     }
 
     func testFallbackRouteForMissingPendingImportUsesPayContacts() {
         XCTAssertEqual(fallbackRouteForMissingPendingImport(hasPendingImport: false), .payContacts)
         XCTAssertNil(fallbackRouteForMissingPendingImport(hasPendingImport: true))
+    }
+
+    func testResolvePastedPubkyRouteReturnsProfileForOwnKey() {
+        let ownPublicKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolvePastedPubkyRoute(input: ownPublicKey, ownPublicKey: ownPublicKey, contacts: []),
+            .profile
+        )
+    }
+
+    func testResolvePastedPubkyRouteReturnsContactDetailForExistingContact() {
+        let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolvePastedPubkyRoute(
+                input: contactKey,
+                ownPublicKey: "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg",
+                contacts: [makeContact(publicKey: contactKey)]
+            ),
+            .contactDetail(publicKey: contactKey)
+        )
+    }
+
+    func testResolvePastedPubkyRouteReturnsAddContactForUnknownKey() {
+        let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolvePastedPubkyRoute(
+                input: contactKey,
+                ownPublicKey: "pubky1rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg",
+                contacts: []
+            ),
+            .addContact(publicKey: contactKey)
+        )
+    }
+
+    func testResolvePastedPubkyRouteReturnsNilForInvalidInput() {
+        XCTAssertNil(
+            resolvePastedPubkyRoute(
+                input: "not-a-pubky",
+                ownPublicKey: nil,
+                contacts: []
+            )
+        )
     }
 
     private func makeProfile(publicKey: String) -> PubkyProfile {

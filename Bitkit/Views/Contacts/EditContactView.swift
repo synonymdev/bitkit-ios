@@ -31,9 +31,11 @@ struct EditContactView: View {
                 tags: $tags,
                 publicKey: publicKey,
                 publicKeyLabel: t("profile__create_pubky_label"),
+                bioPlaceholder: t("contacts__edit_bio_placeholder"),
                 isSaving: isSaving,
-                footerNote: nil,
+                footerNote: t("contacts__edit_public_note"),
                 deleteLabel: t("contacts__delete_label"),
+                deleteActionStyle: .buttonWithIcon,
                 onSave: { await saveContact() },
                 onCancel: { navigation.navigateBack() },
                 onDelete: { showDeleteConfirmation = true }
@@ -54,7 +56,7 @@ struct EditContactView: View {
             }
             Button(t("common__dialog_cancel"), role: .cancel) {}
         } message: {
-            Text(t("contacts__delete_description"))
+            Text(t("contacts__delete_description", variables: ["name": name]))
         }
     }
 
@@ -125,7 +127,11 @@ struct EditContactView: View {
     private func deleteContact() async {
         do {
             try await contactsManager.removeContact(publicKey: publicKey)
-            app.toast(type: .success, title: t("contacts__delete_success"))
+            app.toast(
+                type: .success,
+                title: t("contacts__delete_success"),
+                accessibilityIdentifier: "ContactDeletedToast"
+            )
             navigation.path = [.contacts]
         } catch {
             Logger.error("Failed to delete contact: \(error)", context: "EditContactView")
@@ -158,7 +164,11 @@ struct EditContactView: View {
                 tags: tags
             )
             imageUrl = uploadedImageUrl
-            app.toast(type: .success, title: t("contacts__edit_saved"))
+            app.toast(
+                type: .success,
+                title: t("contacts__edit_saved"),
+                accessibilityIdentifier: "ContactUpdatedToast"
+            )
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "EditContactView")

@@ -11,22 +11,28 @@ enum ScannerContext {
 @MainActor
 class ScannerManager: ObservableObject {
     private var app: AppViewModel?
+    private var contactsManager: ContactsManager?
     private var currency: CurrencyViewModel?
     private var settings: SettingsViewModel?
     private var navigation: NavigationViewModel?
+    private var pubkyProfile: PubkyProfileManager?
     private var sheets: SheetViewModel?
 
     func configure(
         app: AppViewModel,
+        contactsManager: ContactsManager? = nil,
         currency: CurrencyViewModel? = nil,
         settings: SettingsViewModel? = nil,
         navigation: NavigationViewModel? = nil,
+        pubkyProfile: PubkyProfileManager? = nil,
         sheets: SheetViewModel? = nil
     ) {
         self.app = app
+        self.contactsManager = contactsManager
         self.currency = currency
         self.settings = settings
         self.navigation = navigation
+        self.pubkyProfile = pubkyProfile
         self.sheets = sheets
     }
 
@@ -47,6 +53,10 @@ class ScannerManager: ObservableObject {
         guard let app else { return }
 
         do {
+            if handlePubkyRouteIfNeeded(uri) {
+                return
+            }
+
             try await app.handleScannedData(uri)
 
             if let currency, let settings, let sheets {
@@ -65,6 +75,22 @@ class ScannerManager: ObservableObject {
                 description: t("other__qr_error_text")
             )
         }
+    }
+
+    private func handlePubkyRouteIfNeeded(_ input: String) -> Bool {
+        guard let navigation,
+              let route = resolvePastedPubkyRoute(
+                  input: input,
+                  ownPublicKey: pubkyProfile?.publicKey,
+                  contacts: contactsManager?.contacts ?? []
+              )
+        else {
+            return false
+        }
+
+        sheets?.hideSheetIfActive(.scanner, reason: "Scanner routed pubky key")
+        navigation.navigate(route)
+        return true
     }
 
     func handleSendScan(_ uri: String, completion: @escaping (SendRoute?) -> Void) async {

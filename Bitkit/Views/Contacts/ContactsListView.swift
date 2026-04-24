@@ -142,7 +142,7 @@ struct ContactsListView: View {
     private var contactsList: some View {
         if !filteredContacts.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
-                sectionHeader(t("contacts__nav_title").uppercased())
+                sectionHeader(t("contacts__nav_title").localizedUppercase)
                 CustomDivider()
 
                 ForEach(filteredContacts) { contact in
@@ -271,20 +271,19 @@ struct ContactsListView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            Spacer()
-
             VStack(spacing: 16) {
+                CustomButton(title: t("contacts__intro_add_contact")) {
+                    showAddContactSheet = true
+                }
+                .accessibilityIdentifier("ContactsEmptyAddButton")
+
                 BodyMText(t("contacts__empty_state"), textColor: .white64)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
-
-                CustomButton(title: t("contacts__add_button")) {
-                    showAddContactSheet = true
-                }
-                .accessibilityIdentifier("ContactsEmptyAddButton")
             }
             .padding(.horizontal, 32)
+            .padding(.top, 48)
 
             Spacer()
         }
