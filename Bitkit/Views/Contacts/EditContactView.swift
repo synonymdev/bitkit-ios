@@ -164,7 +164,11 @@ struct EditContactView: View {
                 tags: tags
             )
             imageUrl = uploadedImageUrl
-            app.toast(type: .success, title: t("contacts__edit_saved"))
+            app.toast(
+                type: .success,
+                title: t("contacts__edit_saved"),
+                accessibilityIdentifier: "ContactUpdatedToast"
+            )
             navigation.navigateBack()
         } catch {
             Logger.error("Failed to save contact: \(error)", context: "EditContactView")
