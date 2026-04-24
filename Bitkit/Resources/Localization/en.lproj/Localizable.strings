@@ -999,7 +999,7 @@
 "contacts__delete_label" = "Delete Contact";
 "contacts__edit_title" = "Edit Contact";
 "contacts__edit_bio_placeholder" = "Short note about this contact.";
-"contacts__edit_public_note" = "Please note contact information is stored in public files.\nChanges you make to a contact in Bitkit will not update their profile.";
+"contacts__edit_public_note" = "Please note contact information is stored in public files. Changes you make to a contact in Bitkit will not update their profile.";
 "contacts__edit_saved" = "Contact saved";
 "contacts__edit_error" = "Failed to save contact";
 "contacts__error_saving" = "Failed to save changes";
@@ -1082,9 +1082,9 @@
 "profile__edit_nav_title" = "Edit Profile";
 "profile__edit_saved" = "Profile updated";
 "profile__edit_delete_section" = "DELETE";
-"profile__edit_public_note" = "Please note profile information is stored in public files.\nChanges you make in Bitkit will not update your pubky.app profile.";
+"profile__edit_public_note" = "Please note profile information is stored in public files. Changes you make in Bitkit will not update your pubky.app profile.";
 "profile__delete_title" = "Delete Profile?";
-"profile__delete_description" = "This will delete your current Pubky profile data. You can create a new profile for this pubky later.";
+"profile__delete_description" = "Are you sure you want to delete all of your profile information for your pubky?";
 "profile__delete_confirm" = "Yes, Delete";
 "profile__delete_error_title" = "Unable to Delete Profile";
 "profile__delete_error_description" = "We couldn't delete your profile data. Retry, or disconnect this pubky from Bitkit.";
