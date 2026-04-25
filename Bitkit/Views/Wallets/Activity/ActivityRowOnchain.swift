@@ -4,6 +4,13 @@ import SwiftUI
 struct ActivityRowOnchain: View {
     let item: OnchainActivity
     let feeEstimates: FeeRates?
+    let titleOverride: String?
+
+    init(item: OnchainActivity, feeEstimates: FeeRates?, titleOverride: String? = nil) {
+        self.item = item
+        self.feeEstimates = feeEstimates
+        self.titleOverride = titleOverride
+    }
 
     @State private var isCpfpChild: Bool = false
 
@@ -24,6 +31,10 @@ struct ActivityRowOnchain: View {
     }
 
     private var status: String {
+        if let titleOverride {
+            return titleOverride
+        }
+
         if item.isTransfer {
             return item.confirmed ? t("wallet__activity_transfer") : t("wallet__activity_transferring")
         }

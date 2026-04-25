@@ -6,6 +6,25 @@ import LDKNode
 // MARK: - Activity Service
 
 class ActivityService {
+    private enum PubkyContactKey {
+        private static let prefix = "pubky"
+        private static let rawKeyLength = 52
+        private static let allowedCharacters = Set("ybndrfg8ejkmcpqxot1uwisza345h769")
+
+        static func normalized(_ input: String) -> String? {
+            let boundedInput = String(input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().prefix(prefix.count + rawKeyLength))
+            let rawKey = boundedInput.hasPrefix(prefix) ? String(boundedInput.dropFirst(prefix.count)) : boundedInput
+
+            guard rawKey.count == rawKeyLength,
+                  rawKey.allSatisfy({ allowedCharacters.contains($0) })
+            else {
+                return nil
+            }
+
+            return "\(prefix)\(rawKey)"
+        }
+    }
+
     private let coreService: CoreService
 
     private let activitiesChangedSubject = PassthroughSubject<Void, Never>()
@@ -395,6 +414,7 @@ class ActivityService {
         var isTransfer = existingOnchain?.isTransfer ?? false
         var channelId = existingOnchain?.channelId
         let transferTxId = existingOnchain?.transferTxId
+        let contact = existingOnchain?.contact
         let feeRate = existingOnchain?.feeRate ?? 1
         let preservedAddress = existingOnchain?.address ?? "Loading..."
         let doesExist = existingOnchain?.doesExist ?? true
@@ -466,6 +486,7 @@ class ActivityService {
             confirmTimestamp: blockTimestamp,
             channelId: channelId,
             transferTxId: transferTxId,
+            contact: contact,
             createdAt: UInt64(payment.creationTime.timeIntervalSince1970),
             updatedAt: paymentTimestamp,
             seenAt: seenAt
@@ -691,6 +712,7 @@ class ActivityService {
             message: description ?? "",
             timestamp: paymentTimestamp,
             preimage: preimage,
+            contact: existingLightning?.contact,
             createdAt: paymentTimestamp,
             updatedAt: paymentTimestamp,
             seenAt: existingLightning?.seenAt
@@ -960,6 +982,20 @@ class ActivityService {
         }
     }
 
+    func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
+        let normalizedKey = PubkyContactKey.normalized(publicKey) ?? publicKey
+        let activities = try await get(filter: .all, sortDirection: sortDirection)
+
+        return activities.filter { activity in
+            switch activity {
+            case let .lightning(lightning):
+                return lightning.contact == normalizedKey
+            case let .onchain(onchain):
+                return onchain.contact == normalizedKey
+            }
+        }
+    }
+
     func update(id: String, activity: Activity) async throws {
         try await ServiceQueue.background(.core) {
             try updateActivity(activityId: id, activity: activity)
@@ -982,7 +1018,8 @@ class ActivityService {
         address: String,
         amount: UInt64,
         fee: UInt64,
-        feeRate: UInt32
+        feeRate: UInt32,
+        contact: String? = nil
     ) async {
         do {
             try await ServiceQueue.background(.core) {
@@ -1008,6 +1045,7 @@ class ActivityService {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
+                    contact: contact.map { PubkyContactKey.normalized($0) ?? $0 },
                     createdAt: now,
                     updatedAt: now,
                     seenAt: now
@@ -1019,6 +1057,32 @@ class ActivityService {
             }
         } catch {
             Logger.error("Failed to create sent onchain activity for txid \(txid): \(error)", context: "ActivityService")
+        }
+    }
+
+    func setContact(_ publicKey: String?, forActivity id: String) async throws {
+        let normalizedContact = publicKey.map { PubkyContactKey.normalized($0) ?? $0 }
+
+        try await ServiceQueue.background(.core) {
+            guard let activity = try getActivityById(activityId: id) else {
+                return
+            }
+
+            switch activity {
+            case var .lightning(lightning):
+                guard lightning.contact != normalizedContact else { return }
+                lightning.contact = normalizedContact
+                lightning.updatedAt = UInt64(Date().timeIntervalSince1970)
+                try updateActivity(activityId: id, activity: .lightning(lightning))
+                self.activitiesChangedSubject.send()
+
+            case var .onchain(onchain):
+                guard onchain.contact != normalizedContact else { return }
+                onchain.contact = normalizedContact
+                onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
+                try updateActivity(activityId: id, activity: .onchain(onchain))
+                self.activitiesChangedSubject.send()
+            }
         }
     }
 
@@ -1217,6 +1281,7 @@ class ActivityService {
                                 message: template.message,
                                 timestamp: timestamp,
                                 preimage: template.status == .succeeded ? "preimage\(activityId)" : nil,
+                                contact: nil,
                                 createdAt: timestamp,
                                 updatedAt: timestamp,
                                 seenAt: nil
@@ -1241,6 +1306,7 @@ class ActivityService {
                                 confirmTimestamp: template.confirmed == true ? timestamp + 3600 : nil,
                                 channelId: nil,
                                 transferTxId: nil,
+                                contact: nil,
                                 createdAt: timestamp,
                                 updatedAt: timestamp,
                                 seenAt: nil
