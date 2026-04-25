@@ -42,6 +42,7 @@ final class ActivityTests: XCTestCase {
                 message: "Test payment",
                 timestamp: timestamp,
                 preimage: nil,
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -90,6 +91,7 @@ final class ActivityTests: XCTestCase {
                 confirmTimestamp: nil,
                 channelId: nil,
                 transferTxId: nil,
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -128,6 +130,7 @@ final class ActivityTests: XCTestCase {
                 message: "Test payment",
                 timestamp: timestamp,
                 preimage: nil,
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -166,6 +169,7 @@ final class ActivityTests: XCTestCase {
                     message: "Test payment 1",
                     timestamp: timestamp,
                     preimage: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -182,6 +186,7 @@ final class ActivityTests: XCTestCase {
                     message: "Test payment 2",
                     timestamp: timestamp,
                     preimage: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -224,6 +229,7 @@ final class ActivityTests: XCTestCase {
                     message: "Test payment 1",
                     timestamp: timestamp,
                     preimage: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -247,6 +253,7 @@ final class ActivityTests: XCTestCase {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -302,6 +309,7 @@ final class ActivityTests: XCTestCase {
                 message: "Test payment",
                 timestamp: timestamp,
                 preimage: nil,
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -322,6 +330,7 @@ final class ActivityTests: XCTestCase {
                 message: "Updated test payment",
                 timestamp: timestamp,
                 preimage: "preimage123",
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -359,6 +368,7 @@ final class ActivityTests: XCTestCase {
                 message: "Test payment",
                 timestamp: timestamp,
                 preimage: nil,
+                contact: nil,
                 createdAt: nil,
                 updatedAt: nil,
                 seenAt: nil
@@ -396,6 +406,7 @@ final class ActivityTests: XCTestCase {
                     message: "Test payment 1",
                     timestamp: timestamp,
                     preimage: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -419,6 +430,7 @@ final class ActivityTests: XCTestCase {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil
@@ -435,6 +447,7 @@ final class ActivityTests: XCTestCase {
                     message: "Test payment 3",
                     timestamp: timestamp,
                     preimage: nil,
+                    contact: nil,
                     createdAt: nil,
                     updatedAt: nil,
                     seenAt: nil

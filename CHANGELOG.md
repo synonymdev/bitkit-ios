@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Support publishing spec-compliant public Paykit endpoints and paying pubky contacts or scanned pubkys through their public payment endpoints
 - Restore pubky sessions from wallet backups and improve iOS pubky profile, contacts, and clipboard flows #527
 - Pubky profile onboarding with contact sync, import, and editing #476
 - Add transfer from savings button on empty spending wallet when user has on-chain balance #523

@@ -2,12 +2,16 @@ import SwiftUI
 
 struct ContactDetailView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
 
     let publicKey: String
 
     @State private var profile: PubkyProfile?
+    @State private var hasPublicPaymentEndpoint = false
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
@@ -33,6 +37,7 @@ struct ContactDetailView: View {
                 profile = cached.profile
                 hasResolvedContactFromContacts = true
             }
+            await loadPaymentEndpoints()
             isLoading = false
         }
         .onReceive(contactsManager.$contacts) { updatedContacts in
@@ -91,6 +96,20 @@ struct ContactDetailView: View {
     @ViewBuilder
     private var contactActions: some View {
         HStack(spacing: 16) {
+            if hasPublicPaymentEndpoint {
+                GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
+                    Task {
+                        await payContact()
+                    }
+                }
+                .accessibilityIdentifier("ContactPay")
+            }
+
+            GradientCircleButton(icon: "activity", accessibilityLabel: t("wallet__activity")) {
+                navigation.navigate(.contactActivity(publicKey: publicKey))
+            }
+            .accessibilityIdentifier("ContactActivity")
+
             GradientCircleButton(icon: "copy", accessibilityLabel: t("common__copy")) {
                 UIPasteboard.general.string = publicKey
                 app.toast(type: .success, title: t("common__copied"))
@@ -224,6 +243,7 @@ struct ContactDetailView: View {
                 } else if let fetched = await contactsManager.fetchContactProfile(publicKey: publicKey) {
                     profile = fetched
                 }
+                await loadPaymentEndpoints()
             }
             .accessibilityIdentifier("ContactRetry")
             Spacer()
@@ -251,14 +271,54 @@ struct ContactDetailView: View {
             presentingVC.present(activityVC, animated: true)
         }
     }
+
+    private func loadPaymentEndpoints() async {
+        do {
+            let endpoints = try await PublicPaykitService.fetchPublicEndpoints(publicKey: publicKey)
+            hasPublicPaymentEndpoint = !endpoints.isEmpty
+        } catch {
+            Logger.warn("Failed to load public payment endpoints for \(publicKey): \(error)", context: "ContactDetailView")
+            hasPublicPaymentEndpoint = false
+        }
+    }
+
+    private func payContact() async {
+        do {
+            let result = try await PublicPaykitService.beginPayment(
+                to: publicKey,
+                app: app,
+                currency: currency,
+                settings: settings,
+                sheets: sheets
+            )
+
+            if case .noEndpoint = result {
+                app.toast(
+                    type: .warning,
+                    title: t("slashtags__error_pay_title"),
+                    description: t("slashtags__error_pay_empty_msg")
+                )
+            }
+        } catch {
+            Logger.error("Failed to pay contact \(publicKey): \(error)", context: "ContactDetailView")
+            app.toast(
+                type: .error,
+                title: t("slashtags__error_pay_title"),
+                description: error.localizedDescription
+            )
+        }
+    }
 }
 
 #Preview {
     NavigationStack {
         ContactDetailView(publicKey: "z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK")
             .environmentObject(AppViewModel())
+            .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)
 }

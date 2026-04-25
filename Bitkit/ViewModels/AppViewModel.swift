@@ -10,6 +10,10 @@ struct SendSheetPendingResolution: Equatable {
     let success: Bool
 }
 
+struct ContactPaymentContext: Equatable {
+    let publicKey: String
+}
+
 enum ManualEntryValidationResult: Equatable {
     case valid
     case empty
@@ -28,6 +32,7 @@ class AppViewModel: ObservableObject {
     @Published var manualEntryInput: String = ""
     @Published var isManualEntryInputValid: Bool = false
     @Published var manualEntryValidationResult: ManualEntryValidationResult = .empty
+    @Published var contactPaymentContext: ContactPaymentContext?
 
     // LNURL
     @Published var lnurlPayData: LnurlPayData?
@@ -586,6 +591,7 @@ extension AppViewModel {
         selectedWalletToPayFrom = .onchain // Reset to default
         lnurlPayData = nil
         lnurlWithdrawData = nil
+        contactPaymentContext = nil
     }
 }
 
@@ -774,6 +780,7 @@ extension AppViewModel {
                             message: "",
                             timestamp: now,
                             preimage: nil,
+                            contact: nil,
                             createdAt: now,
                             updatedAt: nil,
                             seenAt: nil

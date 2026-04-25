@@ -55,6 +55,7 @@ class WalletViewModel: ObservableObject {
     private var eventHandlers: [String: (Event) -> Void] = [:]
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
+    @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -892,6 +893,14 @@ class WalletViewModel: ObservableObject {
 
         // Persist metadata with migrated tags
         await persistPreActivityMetadata(tags: tagsToMigrate)
+
+        if sharesPublicPaykitEndpoints {
+            do {
+                try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+            } catch {
+                Logger.warn("Failed to refresh public paykit endpoints after receive refresh: \(error)", context: "WalletViewModel")
+            }
+        }
     }
 
     /// Payment hash from the current bolt11 invoice, if available

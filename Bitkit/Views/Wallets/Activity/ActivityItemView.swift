@@ -576,6 +576,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                         message: "Splitting the lunch bill. Thanks for suggesting that amazing restaurant!",
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: nil,
+                        contact: nil,
                         createdAt: nil,
                         updatedAt: nil,
                         seenAt: nil
@@ -605,6 +606,7 @@ struct ActivityItemView_Previews: PreviewProvider {
                         confirmTimestamp: nil,
                         channelId: nil,
                         transferTxId: nil,
+                        contact: nil,
                         createdAt: nil,
                         updatedAt: nil,
                         seenAt: nil

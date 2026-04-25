@@ -471,6 +471,7 @@ struct SendConfirmationView: View {
                             navigationPath.append(.pending(paymentHash: paymentHash))
                         }
                     )
+                    await syncContactForActivity(paymentId: paymentHash)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
                 } catch is PaymentTimeoutError {
@@ -494,7 +495,8 @@ struct SendConfirmationView: View {
                     address: invoice.address,
                     amount: amount,
                     fee: UInt64(transactionFee),
-                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1
+                    feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
+                    contact: app.contactPaymentContext?.publicKey
                 )
 
                 // Set the amount for the success screen
@@ -522,6 +524,22 @@ struct SendConfirmationView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 navigationPath.append(.failure)
             }
+        }
+    }
+
+    private func syncContactForActivity(paymentId: String) async {
+        guard let contactPublicKey = app.contactPaymentContext?.publicKey else {
+            return
+        }
+
+        if let payments = LightningService.shared.payments {
+            try? await CoreService.shared.activity.syncLdkNodePayments(payments)
+        }
+
+        do {
+            try await CoreService.shared.activity.setContact(contactPublicKey, forActivity: paymentId)
+        } catch {
+            Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")
         }
     }
 

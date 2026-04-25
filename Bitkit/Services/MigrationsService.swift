@@ -1404,6 +1404,7 @@ extension MigrationsService {
                 message: item.message ?? "",
                 timestamp: timestampSecs,
                 preimage: item.preimage,
+                contact: nil,
                 createdAt: timestampSecs,
                 updatedAt: timestampSecs,
                 seenAt: now
@@ -1853,6 +1854,7 @@ extension MigrationsService {
                     confirmTimestamp: item.confirmTimestamp.map { UInt64($0 / 1000) },
                     channelId: item.channelId,
                     transferTxId: item.transferTxId,
+                    contact: nil,
                     createdAt: activityTimestamp,
                     updatedAt: activityTimestamp,
                     seenAt: now

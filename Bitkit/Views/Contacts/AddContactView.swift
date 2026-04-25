@@ -2,13 +2,17 @@ import SwiftUI
 
 struct AddContactView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
 
     let publicKey: String
 
     @State private var fetchedProfile: PubkyProfile?
+    @State private var hasPublicPaymentEndpoint = false
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -144,6 +148,15 @@ struct AddContactView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
 
+            if hasPublicPaymentEndpoint {
+                CustomButton(title: t("wallet__send"), variant: .secondary) {
+                    await payContact()
+                }
+                .accessibilityIdentifier("AddContactPay")
+                .padding(.horizontal, 32)
+                .padding(.bottom, 16)
+            }
+
             HStack(spacing: 16) {
                 CustomButton(title: t("common__discard"), variant: .secondary) {
                     navigation.navigateBack()
@@ -215,6 +228,7 @@ struct AddContactView: View {
             } else {
                 errorMessage = t("contacts__add_error")
             }
+            await loadPaymentEndpoints(publicKey: normalizedKey)
         }
 
         isLoading = false
@@ -244,15 +258,60 @@ struct AddContactView: View {
             app.toast(type: .error, title: t("contacts__add_error"), description: error.localizedDescription)
         }
     }
+
+    private func loadPaymentEndpoints(publicKey: String) async {
+        do {
+            let endpoints = try await PublicPaykitService.fetchPublicEndpoints(publicKey: publicKey)
+            hasPublicPaymentEndpoint = !endpoints.isEmpty
+        } catch {
+            Logger.warn("Failed to load public payment endpoints for \(publicKey): \(error)", context: "AddContactView")
+            hasPublicPaymentEndpoint = false
+        }
+    }
+
+    private func payContact() async {
+        guard let normalizedPublicKey else {
+            app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t("slashtags__error_pay_empty_msg"))
+            return
+        }
+
+        do {
+            let result = try await PublicPaykitService.beginPayment(
+                to: normalizedPublicKey,
+                app: app,
+                currency: currency,
+                settings: settings,
+                sheets: sheets
+            )
+
+            if case .noEndpoint = result {
+                app.toast(
+                    type: .warning,
+                    title: t("slashtags__error_pay_title"),
+                    description: t("slashtags__error_pay_empty_msg")
+                )
+            }
+        } catch {
+            Logger.error("Failed to pay public pubky \(publicKey): \(error)", context: "AddContactView")
+            app.toast(
+                type: .error,
+                title: t("slashtags__error_pay_title"),
+                description: error.localizedDescription
+            )
+        }
+    }
 }
 
 #Preview {
     NavigationStack {
         AddContactView(publicKey: "pubkyz6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK")
             .environmentObject(AppViewModel())
+            .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)
 }

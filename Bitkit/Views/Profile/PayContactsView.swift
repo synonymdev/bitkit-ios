@@ -1,9 +1,15 @@
 import SwiftUI
 
 struct PayContactsView: View {
+    @AppStorage("hasConfirmedPublicPaykitEndpoints") private var hasConfirmedPublicPaykitEndpoints = false
+    @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
+
+    @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     @State private var enablePayments = true
+    @State private var isSaving = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,8 +48,8 @@ struct PayContactsView: View {
             .accessibilityIdentifier("PayContactsToggle")
             .padding(.horizontal, 32)
 
-            CustomButton(title: t("common__continue")) {
-                navigation.path = [.profile]
+            CustomButton(title: t("common__continue"), isLoading: isSaving) {
+                await continueFlow()
             }
             .accessibilityIdentifier("PayContactsContinue")
             .padding(.top, 16)
@@ -53,13 +59,37 @@ struct PayContactsView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
+        .onAppear {
+            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : true
+        }
+    }
+
+    private func continueFlow() async {
+        isSaving = true
+        defer { isSaving = false }
+
+        do {
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: enablePayments)
+            sharesPublicPaykitEndpoints = enablePayments
+            hasConfirmedPublicPaykitEndpoints = true
+            navigation.path = [.profile]
+        } catch {
+            Logger.error("Failed to sync public payment endpoints: \(error)", context: "PayContactsView")
+            app.toast(
+                type: .error,
+                title: t("common__error"),
+                description: error.localizedDescription
+            )
+        }
     }
 }
 
 #Preview {
     NavigationStack {
         PayContactsView()
+            .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }

@@ -443,6 +443,7 @@ struct BoostSheet: View {
                             confirmTimestamp: nil,
                             channelId: nil,
                             transferTxId: nil,
+                            contact: nil,
                             createdAt: nil,
                             updatedAt: nil,
                             seenAt: nil
