@@ -973,6 +973,7 @@
 "contacts__add_pubky_placeholder" = "Paste a pubky";
 "contacts__add_scan_qr" = "Scan QR";
 "contacts__add_button" = "Add";
+"contacts__add_error_existing" = "This pubky is already in your contacts.";
 "contacts__add_error_invalid_key" = "Invalid pubky key format. Please check and try again.";
 "contacts__add_error_self" = "You can't add your own pubky as a contact.";
 "contacts__add_retrieving" = "Retrieving\n<accent>contact info</accent>";

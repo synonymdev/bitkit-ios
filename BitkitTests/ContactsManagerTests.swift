@@ -45,6 +45,20 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    func testResolveAddContactValidationReturnsExistingContactForDuplicate() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let publicKey = "pubky\(rawKey)"
+
+        XCTAssertEqual(
+            resolveAddContactValidation(
+                input: rawKey,
+                ownPublicKey: nil,
+                existingContacts: [makeContact(publicKey: publicKey)]
+            ),
+            .existingContact
+        )
+    }
+
     func testResolveAddContactValidationReturnsNormalizedKeyForValidInput() {
         let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
@@ -62,6 +76,7 @@ final class ContactsManagerTests: XCTestCase {
         manager.contacts = [contact]
         manager.hasLoaded = true
         manager.loadErrorMessage = "still here"
+        manager.shouldOpenAddContactSheet = true
         manager.pendingImportProfile = profile
         manager.pendingImportContacts = [contact]
 
@@ -70,6 +85,7 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(manager.contacts, [contact])
         XCTAssertTrue(manager.hasLoaded)
         XCTAssertEqual(manager.loadErrorMessage, "still here")
+        XCTAssertTrue(manager.shouldOpenAddContactSheet)
         XCTAssertNil(manager.pendingImportProfile)
         XCTAssertTrue(manager.pendingImportContacts.isEmpty)
         XCTAssertFalse(manager.hasPendingImport)

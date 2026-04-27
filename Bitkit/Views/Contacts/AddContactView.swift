@@ -12,7 +12,6 @@ struct AddContactView: View {
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var canRetry = true
 
     private var truncatedPublicKey: String {
         let displayKey = normalizedPublicKey ?? publicKey
@@ -21,7 +20,11 @@ struct AddContactView: View {
     }
 
     private var normalizedPublicKey: String? {
-        if case let .valid(normalizedKey) = resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+        if case let .valid(normalizedKey) = resolveAddContactValidation(
+            input: publicKey,
+            ownPublicKey: pubkyProfile.publicKey,
+            existingContacts: contactsManager.contacts
+        ) {
             return normalizedKey
         }
 
@@ -53,7 +56,6 @@ struct AddContactView: View {
 
     @State private var dashedCircleRotation: Double = 0
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack(spacing: 0) {
             CaptionMText(truncatedPublicKey, textColor: .white64)
@@ -92,7 +94,6 @@ struct AddContactView: View {
         }
     }
 
-    @ViewBuilder
     private var retrievingAnimation: some View {
         ZStack {
             Image("ellipse-outer-green")
@@ -116,7 +117,6 @@ struct AddContactView: View {
 
     // MARK: - Result State
 
-    @ViewBuilder
     private func resultContent(_ profile: PubkyProfile) -> some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -163,7 +163,6 @@ struct AddContactView: View {
 
     // MARK: - Error State
 
-    @ViewBuilder
     private var errorContent: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -173,17 +172,11 @@ struct AddContactView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
 
-            if canRetry {
-                CustomButton(title: t("profile__retry_load"), variant: .secondary) {
-                    await loadProfile()
-                }
-                .accessibilityIdentifier("AddContactRetry")
-            } else {
-                CustomButton(title: t("common__discard"), variant: .secondary) {
-                    navigation.navigateBack()
-                }
-                .accessibilityIdentifier("AddContactDiscardInvalid")
+            CustomButton(title: t("common__retry"), variant: .secondary) {
+                await loadProfile()
             }
+            .accessibilityIdentifier("AddContactRetry")
+
             Spacer()
         }
         .padding(.horizontal, 32)
@@ -196,17 +189,22 @@ struct AddContactView: View {
         isLoading = true
         fetchedProfile = nil
         errorMessage = nil
-        canRetry = true
 
-        switch resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+        switch resolveAddContactValidation(
+            input: publicKey,
+            ownPublicKey: pubkyProfile.publicKey,
+            existingContacts: contactsManager.contacts
+        ) {
         case .empty, .invalidKey:
             errorMessage = t("contacts__add_error_invalid_key")
-            canRetry = false
             isLoading = false
             return
         case .ownKey:
             errorMessage = t("contacts__add_error_self")
-            canRetry = false
+            isLoading = false
+            return
+        case .existingContact:
+            errorMessage = t("contacts__add_error_existing")
             isLoading = false
             return
         case let .valid(normalizedKey):
