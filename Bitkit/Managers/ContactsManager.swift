@@ -49,6 +49,7 @@ enum PubkyPublicKeyFormat {
 
 enum AddContactValidationResult: Equatable {
     case empty
+    case existingContact
     case invalidKey
     case ownKey
     case valid(normalizedKey: String)
@@ -57,6 +58,8 @@ enum AddContactValidationResult: Equatable {
         switch self {
         case .empty, .valid:
             nil
+        case .existingContact:
+            t("contacts__add_error_existing")
         case .invalidKey:
             t("contacts__add_error_invalid_key")
         case .ownKey:
@@ -65,7 +68,11 @@ enum AddContactValidationResult: Equatable {
     }
 }
 
-func resolveAddContactValidation(input: String, ownPublicKey: String?) -> AddContactValidationResult {
+func resolveAddContactValidation(
+    input: String,
+    ownPublicKey: String?,
+    existingContacts: [PubkyContact] = []
+) -> AddContactValidationResult {
     let trimmedInput = input.trimmingCharacters(in: .whitespacesAndNewlines)
 
     guard !trimmedInput.isEmpty else {
@@ -80,12 +87,17 @@ func resolveAddContactValidation(input: String, ownPublicKey: String?) -> AddCon
         return .invalidKey
     }
 
+    if existingContacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, normalizedKey) }) {
+        return .existingContact
+    }
+
     return .valid(normalizedKey: normalizedKey)
 }
 
 enum ContactsManagerError: LocalizedError {
     case invalidPublicKey
     case cannotAddYourself
+    case alreadyExists
 
     var errorDescription: String? {
         switch self {
@@ -93,13 +105,15 @@ enum ContactsManagerError: LocalizedError {
             return t("contacts__add_error_invalid_key")
         case .cannotAddYourself:
             return t("contacts__add_error_self")
+        case .alreadyExists:
+            return t("contacts__add_error_existing")
         }
     }
 }
 
 // MARK: - PubkyContact
 
-struct PubkyContact: Identifiable, Hashable, Sendable {
+struct PubkyContact: Identifiable, Hashable {
     let id: String
     let publicKey: String
     let profile: PubkyProfile
@@ -142,6 +156,7 @@ class ContactsManager: ObservableObject {
     @Published var isLoading = false
     @Published var hasLoaded = false
     @Published var loadErrorMessage: String?
+    @Published var shouldOpenAddContactSheet = false
 
     /// Temporarily holds contacts discovered during import (e.g., from pubky.app after Ring auth).
     /// Cleared after import is completed or discarded.
@@ -164,6 +179,7 @@ class ContactsManager: ObservableObject {
         isLoading = false
         hasLoaded = false
         loadErrorMessage = nil
+        shouldOpenAddContactSheet = false
         clearPendingImport()
     }
 
@@ -290,9 +306,8 @@ class ContactsManager: ObservableObject {
             throw ContactsManagerError.cannotAddYourself
         }
 
-        guard !contacts.contains(where: { $0.publicKey == prefixedKey }) else {
-            Logger.debug("Contact \(prefixedKey) already exists, skipping add", context: "ContactsManager")
-            return
+        guard !contacts.contains(where: { PubkyPublicKeyFormat.matches($0.publicKey, prefixedKey) }) else {
+            throw ContactsManagerError.alreadyExists
         }
 
         // Use existing profile if provided (e.g., already fetched during preview),
@@ -697,13 +712,11 @@ class ContactsManager: ObservableObject {
         }
 
         let normalized = message.lowercased()
-        let indicatesMissingResource = normalized.contains("404")
+        return normalized.contains("404")
             || normalized.contains("no such file")
             || normalized.contains("does not exist")
             || normalized.contains("profile not found")
             || normalized.contains("profilenotfound")
             || (normalized.contains("fetch failed") && normalized.contains("not found"))
-
-        return indicatesMissingResource
     }
 }
