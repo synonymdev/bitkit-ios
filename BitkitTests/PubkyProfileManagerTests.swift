@@ -2,6 +2,42 @@
 import XCTest
 
 final class PubkyProfileManagerTests: XCTestCase {
+    // MARK: - Ring callbacks
+
+    func testPubkyRingAuthURLBuilderAddsXCallbackParams() throws {
+        let url = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: "pubkyauth://auth?relay=https%3A%2F%2Frelay.example"))
+        let components = try XCTUnwrap(URLComponents(string: url))
+        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(queryItems["relay"], "https://relay.example")
+        XCTAssertEqual(queryItems["x-success"], PubkyRingAuthURLBuilder.successCallback)
+        XCTAssertEqual(queryItems["x-cancel"], PubkyRingAuthURLBuilder.cancelCallback)
+        XCTAssertEqual(queryItems["x-error"], PubkyRingAuthURLBuilder.errorCallback)
+        XCTAssertEqual(queryItems["x-source"], PubkyRingAuthURLBuilder.source)
+    }
+
+    func testPubkyRingAuthCallbackParsesSuccessCancelAndError() throws {
+        XCTAssertEqual(
+            try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))),
+            .success
+        )
+        XCTAssertEqual(
+            try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/cancel"))),
+            .cancel
+        )
+        XCTAssertEqual(
+            try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/error?errorMessage=Denied"))),
+            .error(message: "Denied")
+        )
+    }
+
+    func testPubkyRingAuthCallbackRejectsOtherDeeplinks() throws {
+        XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://wallet/success"))))
+        XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "https://pubky-auth/success"))))
+    }
+
     // MARK: - HomegateResponse Decoding
 
     private typealias HomegateResponse = PubkyProfileManager.HomegateResponse
@@ -10,25 +46,25 @@ final class PubkyProfileManagerTests: XCTestCase {
         let json = """
         {"signupCode":"abc-123","homeserverPubky":"z6MkPubkyTestKey"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try JSONDecoder().decode(HomegateResponse.self, from: data)
 
         XCTAssertEqual(response.signupCode, "abc-123")
         XCTAssertEqual(response.homeserverPubky, "z6MkPubkyTestKey")
     }
 
-    func testHomegateResponseRejectsIncompleteJson() {
+    func testHomegateResponseRejectsIncompleteJson() throws {
         let json = """
         {"signupCode":"abc-123"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
 
         XCTAssertThrowsError(try JSONDecoder().decode(HomegateResponse.self, from: data))
     }
 
-    func testHomegateResponseRejectsEmptyJson() {
+    func testHomegateResponseRejectsEmptyJson() throws {
         let json = "{}"
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
 
         XCTAssertThrowsError(try JSONDecoder().decode(HomegateResponse.self, from: data))
     }
@@ -37,7 +73,7 @@ final class PubkyProfileManagerTests: XCTestCase {
         let json = """
         {"signupCode":"abc","homeserverPubky":"z6Mk","extra":"ignored"}
         """
-        let data = json.data(using: .utf8)!
+        let data = try XCTUnwrap(json.data(using: .utf8))
         let response = try JSONDecoder().decode(HomegateResponse.self, from: data)
 
         XCTAssertEqual(response.signupCode, "abc")

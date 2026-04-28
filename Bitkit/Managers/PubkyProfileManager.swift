@@ -9,6 +9,66 @@ enum PubkyAuthState: Equatable {
     case error(String)
 }
 
+enum PubkyRingAuthCallback: Equatable {
+    case success
+    case cancel
+    case error(message: String?)
+
+    static func parse(url: URL) -> PubkyRingAuthCallback? {
+        guard url.scheme == "bitkit", url.host == "pubky-auth" else {
+            return nil
+        }
+
+        switch url.path {
+        case "/success":
+            return .success
+        case "/cancel":
+            return .cancel
+        case "/error":
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let message = components?.queryItems?.first(where: { $0.name == "errorMessage" })?.value
+            return .error(message: message)
+        default:
+            return nil
+        }
+    }
+}
+
+enum PubkyRingAuthURLBuilder {
+    static let successCallback = "bitkit://pubky-auth/success"
+    static let cancelCallback = "bitkit://pubky-auth/cancel"
+    static let errorCallback = "bitkit://pubky-auth/error"
+    static let source = "Bitkit"
+
+    static func addingCallbacks(to authUrl: String) -> String? {
+        guard var components = URLComponents(string: authUrl), components.url != nil else {
+            return nil
+        }
+
+        let callbackQuery = [
+            ("x-success", successCallback),
+            ("x-cancel", cancelCallback),
+            ("x-error", errorCallback),
+            ("x-source", source),
+        ]
+        .map { "\($0.0)=\(Self.percentEncodedQueryValue($0.1))" }
+        .joined(separator: "&")
+
+        components.percentEncodedQuery = [components.percentEncodedQuery, callbackQuery]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "&")
+
+        return components.url?.absoluteString
+    }
+
+    private static func percentEncodedQueryValue(_ value: String) -> String {
+        var allowedCharacters = CharacterSet.urlQueryAllowed
+        allowedCharacters.remove(charactersIn: ":#[]@!$&'()*+,;=/?")
+        return value.addingPercentEncoding(withAllowedCharacters: allowedCharacters) ?? value
+    }
+}
+
 private enum PubkyProfileManagerError: LocalizedError {
     case avatarEncodingFailed
 
@@ -387,6 +447,20 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
+    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async {
+        switch callback {
+        case .success:
+            Logger.info("Pubky Ring returned auth success callback", context: "PubkyProfileManager")
+        case .cancel:
+            Logger.info("Pubky Ring returned auth cancel callback", context: "PubkyProfileManager")
+            await cancelAuthentication()
+        case let .error(message):
+            Logger.warn("Pubky Ring returned auth error callback: \(message ?? "Unknown error")", context: "PubkyProfileManager")
+            await cancelAuthentication()
+            authState = .error(message ?? t("profile__auth_error_title"))
+        }
+    }
+
     func startAuthentication() async throws {
         authState = .authenticating
 
@@ -405,7 +479,9 @@ class PubkyProfileManager: ObservableObject {
             throw error
         }
 
-        guard let url = URL(string: authUrl) else {
+        let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl) ?? authUrl
+
+        guard let url = URL(string: callbackAuthUrl) else {
             await cancelPendingAuthSetup()
             authState = .idle
             throw PubkyServiceError.invalidAuthUrl
