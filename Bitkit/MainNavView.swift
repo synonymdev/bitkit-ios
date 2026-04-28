@@ -491,6 +491,16 @@ struct MainNavView: View {
 
         Task { @MainActor in
             do {
+                if let route = resolvePastedPubkyRoute(
+                    input: uri,
+                    ownPublicKey: pubkyProfile.publicKey,
+                    contacts: contactsManager.contacts
+                ) {
+                    navigation.navigate(route)
+                    clipboardUri = nil
+                    return
+                }
+
                 await wallet.waitForNodeToRun()
                 try await Task.sleep(nanoseconds: Self.nodeReadyDelayNanoseconds)
                 try await app.handleScannedData(uri)

@@ -113,22 +113,30 @@ struct ProfileView: View {
 
     @ViewBuilder
     private func profileQRCode(_ profile: PubkyProfile) -> some View {
-        VStack(spacing: 12) {
-            ZStack {
-                QR(content: profile.publicKey)
+        Button {
+            UIPasteboard.general.string = profile.publicKey
+            app.toast(type: .success, title: t("common__copied"))
+        } label: {
+            VStack(spacing: 12) {
+                ZStack {
+                    QR(content: profile.publicKey)
 
-                if let imageUrl = profile.imageUrl {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 68, height: 68)
+                    if let imageUrl = profile.imageUrl {
+                        ZStack {
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 68, height: 68)
 
-                        PubkyImage(uri: imageUrl, size: 50)
+                            PubkyImage(uri: imageUrl, size: 50)
+                        }
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity)
+        .buttonStyle(.plain)
+        .accessibilityLabel(t("common__copy"))
+        .accessibilityIdentifier("ProfileQRCode")
     }
 
     // MARK: - Links / Metadata

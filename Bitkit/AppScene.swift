@@ -334,19 +334,25 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        if wallet.isRestoringWallet {
-            Task {
+        Task {
+            if wallet.isRestoringWallet {
                 await restoreFromMostRecentBackup()
 
                 await MainActor.run {
                     widgets.loadSavedWidgets()
                     widgets.objectWillChange.send()
                 }
-
+                await pubkyProfile.initialize()
                 await startWallet()
+                return
             }
-        } else {
-            Task { await startWallet() }
+
+            let initializePubkyTask = Task {
+                await pubkyProfile.initialize()
+            }
+
+            await startWallet()
+            await initializePubkyTask.value
         }
     }
 
@@ -423,10 +429,6 @@ struct AppScene: View {
         do {
             // Handle orphaned keychain before anything else
             handleOrphanedKeychain()
-
-            // Start Pubky/Paykit initialization after keychain cleanup so
-            // session restoration never races orphaned-keychain wiping.
-            Task { await pubkyProfile.initialize() }
 
             await checkAndPerformRNMigration()
             try wallet.setWalletExistsState()

@@ -9,28 +9,20 @@ struct AddContactSheet: View {
 
     @State private var pubkyInput: String = ""
 
-    private var trimmedInput: String {
-        pubkyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var validationResult: AddContactValidationResult {
+        resolveAddContactValidation(input: pubkyInput, ownPublicKey: currentPublicKey)
     }
 
     private var validationMessage: String? {
-        guard !trimmedInput.isEmpty else {
-            return nil
-        }
-
-        if PubkyPublicKeyFormat.matches(trimmedInput, currentPublicKey) {
-            return t("slashtags__contact_error_yourself")
-        }
-
-        guard PubkyPublicKeyFormat.normalized(trimmedInput) != nil else {
-            return t("slashtags__contact_error_key")
-        }
-
-        return nil
+        validationResult.localizedMessage
     }
 
     private var canAdd: Bool {
-        validationMessage == nil && !trimmedInput.isEmpty
+        if case .valid = validationResult {
+            return true
+        }
+
+        return false
     }
 
     var body: some View {
@@ -47,7 +39,7 @@ struct AddContactSheet: View {
 
                     HStack(spacing: 8) {
                         TextField(
-                            "",
+                            t("contacts__add_pubky_placeholder"),
                             text: $pubkyInput,
                             backgroundColor: .clear,
                             font: .custom(Fonts.regular, size: 17),
@@ -83,7 +75,7 @@ struct AddContactSheet: View {
                     .cornerRadius(8)
 
                     if let validationMessage {
-                        BodySText(validationMessage, textColor: .red)
+                        BodySText(validationMessage, textColor: .redAccent)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -102,7 +94,7 @@ struct AddContactSheet: View {
                     .accessibilityIdentifier("AddContactScanQR")
 
                     CustomButton(title: t("contacts__add_button"), isDisabled: !canAdd) {
-                        guard let normalizedKey = PubkyPublicKeyFormat.normalized(trimmedInput) else {
+                        guard case let .valid(normalizedKey) = validationResult else {
                             return
                         }
 
