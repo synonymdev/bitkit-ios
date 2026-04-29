@@ -447,6 +447,7 @@ struct SendConfirmationView: View {
 
     private func performPayment() async throws {
         var createdMetadataPaymentId: String? = nil
+        let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
             if app.selectedWalletToPayFrom == .lightning, let invoice = app.scannedLightningInvoice {
@@ -468,11 +469,11 @@ struct SendConfirmationView: View {
                         bolt11: invoice.bolt11,
                         sats: paymentSats,
                         onTimeout: {
-                            app.addPendingPaymentHash(paymentHash)
+                            app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
                             navigationPath.append(.pending(paymentHash: paymentHash))
                         }
                     )
-                    await syncContactForActivity(paymentId: paymentHash)
+                    await syncContactForActivity(paymentId: paymentHash, contactPublicKey: contactPublicKey)
                     Logger.info("Lightning payment successful: \(paymentHash)")
                     navigationPath.append(.success(paymentId: paymentHash))
                 } catch is PaymentTimeoutError {
@@ -497,7 +498,7 @@ struct SendConfirmationView: View {
                     amount: amount,
                     fee: UInt64(transactionFee),
                     feeRate: wallet.selectedFeeRateSatsPerVByte ?? 1,
-                    contact: app.contactPaymentContext?.publicKey
+                    contact: contactPublicKey
                 )
 
                 // Set the amount for the success screen
@@ -528,8 +529,8 @@ struct SendConfirmationView: View {
         }
     }
 
-    private func syncContactForActivity(paymentId: String) async {
-        guard let contactPublicKey = app.contactPaymentContext?.publicKey else {
+    private func syncContactForActivity(paymentId: String, contactPublicKey: String?) async {
+        guard let contactPublicKey else {
             return
         }
 
@@ -539,6 +540,7 @@ struct SendConfirmationView: View {
 
         do {
             try await CoreService.shared.activity.setContact(contactPublicKey, forActivity: paymentId)
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")
         }

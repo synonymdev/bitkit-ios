@@ -23,12 +23,23 @@ enum PublicPaykitPaymentLaunchResult {
     case opened
     case noEndpoint
     case notOpened
+
+    var contactPaymentFailureMessageKey: String? {
+        switch self {
+        case .opened:
+            nil
+        case .noEndpoint:
+            "slashtags__error_pay_empty_msg"
+        case .notOpened:
+            "slashtags__error_pay_not_opened_msg"
+        }
+    }
 }
 
 enum PublicPaykitService {
     enum MethodId: String, Hashable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
-        case bitcoinLightningLnurl = "btc-lightning-lnurl-pay"
+        case bitcoinLightningLnurl = "btc-lightning-lnurl"
         case bitcoinOnchainP2tr = "btc-bitcoin-p2tr"
         case bitcoinOnchainP2wpkh = "btc-bitcoin-p2wpkh"
         case bitcoinOnchainP2sh = "btc-bitcoin-p2sh"
@@ -45,6 +56,13 @@ enum PublicPaykitService {
 
         static let publishableMethodIds: [MethodId] = [
             .bitcoinLightningBolt11,
+            .bitcoinOnchainP2tr,
+            .bitcoinOnchainP2wpkh,
+            .bitcoinOnchainP2sh,
+            .bitcoinOnchainP2pkh,
+        ]
+
+        static let onchainPreferenceOrder: [MethodId] = [
             .bitcoinOnchainP2tr,
             .bitcoinOnchainP2wpkh,
             .bitcoinOnchainP2sh,
@@ -114,7 +132,7 @@ enum PublicPaykitService {
     @MainActor
     static func syncPublishedEndpoints(wallet: WalletViewModel, publish: Bool) async throws {
         guard publish else {
-            await removePublishedEndpoints()
+            try await removePublishedEndpoints()
             return
         }
 
@@ -128,10 +146,34 @@ enum PublicPaykitService {
         try await applyPublishedEndpoints(desiredEndpoints)
     }
 
-    static func removePublishedEndpoints() async {
-        for methodId in MethodId.publishableMethodIds {
-            try? await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+    static func removePublishedEndpoints() async throws {
+        let existingMethodIds = try await currentPublishedMethodIds()
+
+        for methodId in MethodId.publishableMethodIds where existingMethodIds.contains(methodId) {
+            try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
         }
+    }
+
+    static func hasPayablePublicEndpoint(publicKey: String) async throws -> Bool {
+        let endpoints = try await payablePublicEndpoints(publicKey: publicKey)
+        return !endpoints.isEmpty
+    }
+
+    static func payablePublicEndpoints(publicKey: String) async throws -> [Endpoint] {
+        let endpoints = try await fetchPublicEndpoints(publicKey: publicKey)
+        return await payableEndpoints(from: endpoints)
+    }
+
+    static func payableEndpoints(from endpoints: [Endpoint]) async -> [Endpoint] {
+        var payableEndpoints: [Endpoint] = []
+
+        for endpoint in endpoints {
+            if await isPayableEndpoint(endpoint) {
+                payableEndpoints.append(endpoint)
+            }
+        }
+
+        return payableEndpoints
     }
 
     @MainActor
@@ -143,26 +185,63 @@ enum PublicPaykitService {
         sheets: SheetViewModel
     ) async throws -> PublicPaykitPaymentLaunchResult {
         let endpoints = try await fetchPublicEndpoints(publicKey: publicKey)
+        let payableEndpoints = await payableEndpoints(from: endpoints)
 
-        guard let preferredEndpoint = await preferredPayableEndpoint(from: endpoints) else {
+        guard !payableEndpoints.isEmpty else {
             return endpoints.isEmpty ? .noEndpoint : .notOpened
         }
 
-        try await app.handleScannedData(preferredEndpoint.paymentRequest)
+        try await app.handleScannedData(paymentRequest(from: payableEndpoints))
 
-        guard PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) != nil else {
+        guard let route = contactPaymentRoute(app: app, currency: currency, settings: settings) else {
             return .notOpened
         }
 
         app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
-        PaymentNavigationHelper.openPaymentSheet(
-            app: app,
-            currency: currency,
-            settings: settings,
-            sheetViewModel: sheets
-        )
+        sheets.showSheet(.send, data: SendConfig(view: route))
 
         return .opened
+    }
+
+    static func paymentRequest(from endpoints: [Endpoint]) -> String {
+        guard let onchainEndpoint = MethodId.onchainPreferenceOrder.compactMap({ methodId in endpoints.first { $0.methodId == methodId } }).first,
+              let bolt11Endpoint = endpoints.first(where: { $0.methodId == .bitcoinLightningBolt11 })
+        else {
+            return endpoints.first?.paymentRequest ?? ""
+        }
+
+        return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(bolt11Endpoint.paymentRequest)"
+    }
+
+    @MainActor
+    private static func contactPaymentRoute(
+        app: AppViewModel,
+        currency: CurrencyViewModel,
+        settings: SettingsViewModel
+    ) -> SendRoute? {
+        guard let route = PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) else {
+            return nil
+        }
+
+        switch route {
+        case .quickpay:
+            if app.lnurlPayData != nil {
+                return .lnurlPayAmount
+            }
+
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+
+            return route
+        case .confirm:
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+            return route
+        default:
+            return route
+        }
     }
 
     static func onchainMethodId(for address: String) -> MethodId {
@@ -220,9 +299,20 @@ enum PublicPaykitService {
             )
         }
 
-        for methodId in MethodId.publishableMethodIds where !desiredMethodIds.contains(methodId) {
-            try? await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+        let existingMethodIds = try await currentPublishedMethodIds()
+
+        for methodId in MethodId.publishableMethodIds where existingMethodIds.contains(methodId) && !desiredMethodIds.contains(methodId) {
+            try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
         }
+    }
+
+    private static func currentPublishedMethodIds() async throws -> Set<MethodId> {
+        guard let publicKey = await PubkyService.currentPublicKey() else {
+            throw PubkyServiceError.sessionNotActive
+        }
+
+        let paymentEntries = try await PubkyService.getPaymentList(publicKey: publicKey)
+        return Set(paymentEntries.compactMap { MethodId(rawValue: $0.methodId) })
     }
 
     @MainActor
@@ -270,16 +360,6 @@ enum PublicPaykitService {
         }
 
         return endpoints
-    }
-
-    private static func preferredPayableEndpoint(from endpoints: [Endpoint]) async -> Endpoint? {
-        for endpoint in endpoints {
-            if await isPayableEndpoint(endpoint) {
-                return endpoint
-            }
-        }
-
-        return nil
     }
 
     private static func isPayableEndpoint(_ endpoint: Endpoint) async -> Bool {

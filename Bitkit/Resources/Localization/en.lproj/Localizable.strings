@@ -1040,6 +1040,7 @@
 "slashtags__error_deleting_profile" = "Unable To Delete Profile";
 "slashtags__error_pay_title" = "Unable To Pay Contact";
 "slashtags__error_pay_empty_msg" = "The contact you're trying to send to hasn't enabled payments.";
+"slashtags__error_pay_not_opened_msg" = "No compatible payment endpoint is available.";
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "profile__nav_title" = "Profile";

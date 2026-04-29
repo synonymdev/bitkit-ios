@@ -74,6 +74,7 @@ struct PayContactsView: View {
             hasConfirmedPublicPaykitEndpoints = true
             navigation.path = [.profile]
         } catch {
+            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : true
             Logger.error("Failed to sync public payment endpoints: \(error)", context: "PayContactsView")
             app.toast(
                 type: .error,

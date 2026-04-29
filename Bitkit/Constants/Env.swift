@@ -272,7 +272,7 @@ enum Env {
         case .bitcoin:
             return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
         default:
-            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/staging.paykit/v0/:rw"
+            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/paykit/v0/:rw"
         }
     }
 

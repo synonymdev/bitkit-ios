@@ -111,9 +111,28 @@ struct SendSuccess: View {
                 interval: 5
             )
 
-            foundActivity = activity
+            await applyPendingContactContextIfNeeded()
+            let updatedActivity = try? await activityListViewModel.findActivity(byPaymentId: paymentId)
+            foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for payment ID: \(paymentId) after 12 attempts")
+        }
+    }
+
+    private func applyPendingContactContextIfNeeded() async {
+        guard let contactPublicKey = app.contactPaymentContext(forPendingPaymentHash: paymentId)?.publicKey else {
+            return
+        }
+
+        if let payments = LightningService.shared.payments {
+            try? await CoreService.shared.activity.syncLdkNodePayments(payments)
+        }
+
+        do {
+            try await CoreService.shared.activity.setContact(contactPublicKey, forActivity: paymentId)
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
+        } catch {
+            Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")
         }
     }
 }

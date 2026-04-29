@@ -904,8 +904,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
-				kind = revision;
-				revision = cd1253291b1582759d569372d5942b8871527ea1;
+				kind = exactVersion;
+				version = 0.1.0-rc3;
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {

@@ -40,7 +40,7 @@ struct AddContactView: View {
             NavigationBar(title: t("contacts__add_title"))
                 .padding(.horizontal, 16)
 
-            if isLoading && fetchedProfile == nil {
+            if isLoading {
                 loadingContent
             } else if let profile = fetchedProfile {
                 resultContent(profile)
@@ -259,8 +259,7 @@ struct AddContactView: View {
 
     private func loadPaymentEndpoints(publicKey: String) async {
         do {
-            let endpoints = try await PublicPaykitService.fetchPublicEndpoints(publicKey: publicKey)
-            hasPublicPaymentEndpoint = !endpoints.isEmpty
+            hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
         } catch {
             Logger.warn("Failed to load public payment endpoints for \(publicKey): \(error)", context: "AddContactView")
             hasPublicPaymentEndpoint = false
@@ -282,11 +281,20 @@ struct AddContactView: View {
                 sheets: sheets
             )
 
-            if case .noEndpoint = result {
+            switch result {
+            case .opened:
+                break
+            case .noEndpoint:
                 app.toast(
                     type: .warning,
                     title: t("slashtags__error_pay_title"),
                     description: t("slashtags__error_pay_empty_msg")
+                )
+            case .notOpened:
+                app.toast(
+                    type: .warning,
+                    title: t("slashtags__error_pay_title"),
+                    description: t("slashtags__error_pay_not_opened_msg")
                 )
             }
         } catch {

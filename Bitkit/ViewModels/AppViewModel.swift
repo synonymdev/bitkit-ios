@@ -67,6 +67,7 @@ class AppViewModel: ObservableObject {
     /// Payment hashes for which we navigated to the pending screen.
     /// When payment succeeds/fails, we show toast and publish resolution so SendPendingScreen can navigate.
     private var pendingPaymentHashes: Set<String> = []
+    private var pendingContactPaymentContexts: [String: ContactPaymentContext] = [:]
 
     /// When a payment that was shown on the pending screen succeeds or fails, this is set so SendPendingScreen can navigate.
     /// Consumed by SendPendingScreen via consumeSendSheetPendingResolution.
@@ -293,8 +294,20 @@ extension AppViewModel {
 // MARK: Pending payment tracking
 
 extension AppViewModel {
-    func addPendingPaymentHash(_ hash: String) {
+    func addPendingPaymentHash(_ hash: String, contactPublicKey: String? = nil) {
         pendingPaymentHashes.insert(hash)
+
+        if let contactPublicKey {
+            pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+        }
+    }
+
+    func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
+        pendingContactPaymentContexts[hash]
+    }
+
+    func consumeContactPaymentContext(forPendingPaymentHash hash: String) {
+        pendingContactPaymentContexts.removeValue(forKey: hash)
     }
 
     /// Called by SendPendingScreen when it consumes a resolution. Clears the published value.
