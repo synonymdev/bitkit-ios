@@ -2,6 +2,7 @@ import BitkitCore
 import SwiftUI
 
 struct ContactActivityView: View {
+    @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var activityList: ActivityListViewModel
     @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
@@ -10,6 +11,7 @@ struct ContactActivityView: View {
 
     @State private var activities: [Activity] = []
     @State private var isLoading = true
+    @State private var hasError = false
     @State private var contactName = ""
 
     private var groupedActivities: [ActivityGroupItem] {
@@ -23,6 +25,8 @@ struct ContactActivityView: View {
 
             if isLoading {
                 loadingContent
+            } else if hasError {
+                errorContent
             } else if groupedActivities.isEmpty {
                 emptyContent
             } else {
@@ -72,7 +76,6 @@ struct ContactActivityView: View {
         }
     }
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack {
             Spacer()
@@ -82,11 +85,20 @@ struct ContactActivityView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder
     private var emptyContent: some View {
         VStack(spacing: 16) {
             Spacer()
             BodyMText(t("wallet__activity_no"))
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var errorContent: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            BodyMText(t("contacts__error_loading"))
             Spacer()
         }
         .padding(.horizontal, 16)
@@ -127,9 +139,12 @@ struct ContactActivityView: View {
 
         do {
             activities = try await CoreService.shared.activity.get(contact: publicKey, sortDirection: .desc)
+            hasError = false
         } catch {
             Logger.error(error, context: "ContactActivityView")
             activities = []
+            hasError = true
+            app.toast(type: .error, title: t("contacts__error_loading"), description: error.localizedDescription)
         }
     }
 }
