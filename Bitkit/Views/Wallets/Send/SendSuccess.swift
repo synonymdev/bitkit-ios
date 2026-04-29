@@ -124,12 +124,8 @@ struct SendSuccess: View {
             return
         }
 
-        if let payments = LightningService.shared.payments {
-            try? await CoreService.shared.activity.syncLdkNodePayments(payments)
-        }
-
         do {
-            try await CoreService.shared.activity.setContact(contactPublicKey, forActivity: paymentId)
+            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")

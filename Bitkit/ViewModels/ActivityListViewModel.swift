@@ -268,6 +268,15 @@ class ActivityListViewModel: ObservableObject {
         return activity
     }
 
+    func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
+        if syncLdkPayments {
+            try? await syncLdkNodePayments()
+        }
+
+        try await coreService.activity.setContact(contactPublicKey, forActivity: paymentId)
+        await syncState()
+    }
+
     func getAllPossibleTags() async throws -> [String] {
         try await coreService.activity.allPossibleTags()
     }

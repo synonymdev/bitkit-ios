@@ -3,6 +3,7 @@ import SwiftUI
 
 struct SendConfirmationView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var activityList: ActivityListViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject var settings: SettingsViewModel
@@ -534,12 +535,8 @@ struct SendConfirmationView: View {
             return
         }
 
-        if let payments = LightningService.shared.payments {
-            try? await CoreService.shared.activity.syncLdkNodePayments(payments)
-        }
-
         do {
-            try await CoreService.shared.activity.setContact(contactPublicKey, forActivity: paymentId)
+            try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set contact for activity \(paymentId): \(error)", context: "SendConfirmationView")
