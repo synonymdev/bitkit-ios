@@ -47,6 +47,10 @@ class ActivityListViewModel: ObservableObject {
 
     @Published private(set) var availableTags: [String] = []
 
+    var activitiesChangedPublisher: AnyPublisher<Void, Never> {
+        coreService.activity.activitiesChangedPublisher
+    }
+
     private func updateAvailableTags() async {
         do {
             availableTags = try await coreService.activity.allPossibleTags()
@@ -266,6 +270,10 @@ class ActivityListViewModel: ObservableObject {
         }
 
         return activity
+    }
+
+    func contactActivities(publicKey: String) async throws -> [Activity] {
+        try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
     }
 
     func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {

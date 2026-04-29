@@ -155,7 +155,7 @@ final class PublicPaykitServiceTests: XCTestCase {
     }
 
     func testPaymentLaunchResultFailureMessageKeys() {
-        XCTAssertNil(PublicPaykitPaymentLaunchResult.opened.contactPaymentFailureMessageKey)
+        XCTAssertNil(PublicPaykitPaymentLaunchResult.opened(paymentRequest: "bitcoin:bcrt1ptest").contactPaymentFailureMessageKey)
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.contactPaymentFailureMessageKey, "slashtags__error_pay_empty_msg")
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.contactPaymentFailureMessageKey, "slashtags__error_pay_not_opened_msg")
     }

@@ -20,7 +20,7 @@ enum PublicPaykitError: LocalizedError {
 }
 
 enum PublicPaykitPaymentLaunchResult {
-    case opened
+    case opened(paymentRequest: String)
     case noEndpoint
     case notOpened
 
@@ -176,13 +176,8 @@ enum PublicPaykitService {
         return payableEndpoints
     }
 
-    @MainActor
     static func beginPayment(
-        to publicKey: String,
-        app: AppViewModel,
-        currency: CurrencyViewModel,
-        settings: SettingsViewModel,
-        sheets: SheetViewModel
+        to publicKey: String
     ) async throws -> PublicPaykitPaymentLaunchResult {
         let endpoints = try await fetchPublicEndpoints(publicKey: publicKey)
         let payableEndpoints = await payableEndpoints(from: endpoints)
@@ -191,16 +186,7 @@ enum PublicPaykitService {
             return endpoints.isEmpty ? .noEndpoint : .notOpened
         }
 
-        try await app.handleScannedData(paymentRequest(from: payableEndpoints))
-
-        guard let route = contactPaymentRoute(app: app, currency: currency, settings: settings) else {
-            return .notOpened
-        }
-
-        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
-        sheets.showSheet(.send, data: SendConfig(view: route))
-
-        return .opened
+        return .opened(paymentRequest: paymentRequest(from: payableEndpoints))
     }
 
     static func paymentRequest(from endpoints: [Endpoint]) -> String {
@@ -211,37 +197,6 @@ enum PublicPaykitService {
         }
 
         return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(bolt11Endpoint.paymentRequest)"
-    }
-
-    @MainActor
-    private static func contactPaymentRoute(
-        app: AppViewModel,
-        currency: CurrencyViewModel,
-        settings: SettingsViewModel
-    ) -> SendRoute? {
-        guard let route = PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) else {
-            return nil
-        }
-
-        switch route {
-        case .quickpay:
-            if app.lnurlPayData != nil {
-                return .lnurlPayAmount
-            }
-
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-
-            return route
-        case .confirm:
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-            return route
-        default:
-            return route
-        }
     }
 
     static func onchainMethodId(for address: String) -> MethodId {

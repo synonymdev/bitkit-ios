@@ -279,17 +279,18 @@ struct ContactDetailView: View {
 
     private func payContact() async {
         do {
-            let result = try await PublicPaykitService.beginPayment(
-                to: publicKey,
-                app: app,
-                currency: currency,
-                settings: settings,
-                sheets: sheets
-            )
+            let result = try await PublicPaykitService.beginPayment(to: publicKey)
 
             switch result {
-            case .opened:
-                break
+            case let .opened(paymentRequest):
+                guard await openContactPayment(paymentRequest: paymentRequest) else {
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t("slashtags__error_pay_not_opened_msg")
+                    )
+                    return
+                }
             case .noEndpoint:
                 app.toast(
                     type: .warning,
@@ -310,6 +311,51 @@ struct ContactDetailView: View {
                 title: t("slashtags__error_pay_title"),
                 description: error.localizedDescription
             )
+        }
+    }
+
+    @MainActor
+    private func openContactPayment(paymentRequest: String) async -> Bool {
+        do {
+            try await app.handleScannedData(paymentRequest)
+        } catch {
+            Logger.warn("Failed to decode contact payment request: \(error)", context: "ContactDetailView")
+            return false
+        }
+
+        guard let route = contactPaymentRoute() else {
+            return false
+        }
+
+        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+        sheets.showSheet(.send, data: SendConfig(view: route))
+        return true
+    }
+
+    @MainActor
+    private func contactPaymentRoute() -> SendRoute? {
+        guard let route = PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) else {
+            return nil
+        }
+
+        switch route {
+        case .quickpay:
+            if app.lnurlPayData != nil {
+                return .lnurlPayAmount
+            }
+
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+
+            return route
+        case .confirm:
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+            return route
+        default:
+            return route
         }
     }
 }

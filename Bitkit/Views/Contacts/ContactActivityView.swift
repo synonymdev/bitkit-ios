@@ -40,7 +40,7 @@ struct ContactActivityView: View {
             resolveContactName()
             await loadActivities()
         }
-        .onReceive(CoreService.shared.activity.activitiesChangedPublisher) { _ in
+        .onReceive(activityList.activitiesChangedPublisher) { _ in
             Task {
                 await loadActivities()
             }
@@ -138,7 +138,7 @@ struct ContactActivityView: View {
         defer { isLoading = false }
 
         do {
-            activities = try await CoreService.shared.activity.get(contact: publicKey, sortDirection: .desc)
+            activities = try await activityList.contactActivities(publicKey: publicKey)
             hasError = false
         } catch {
             Logger.error(error, context: "ContactActivityView")
