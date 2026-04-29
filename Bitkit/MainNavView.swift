@@ -247,9 +247,9 @@ struct MainNavView: View {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
                 if let callback = PubkyRingAuthCallback.parse(url: url) {
-                    await pubkyProfile.handleAuthCallback(callback)
+                    let didHandleCallback = await pubkyProfile.handleAuthCallback(callback)
 
-                    if case let .error(message) = callback {
+                    if didHandleCallback, case let .error(message, _) = callback {
                         app.toast(
                             type: .error,
                             title: t("profile__auth_error_title"),

@@ -10,24 +10,35 @@ enum PubkyAuthState: Equatable {
 }
 
 enum PubkyRingAuthCallback: Equatable {
-    case success
-    case cancel
-    case error(message: String?)
+    case success(nonce: String?)
+    case cancel(nonce: String?)
+    case error(message: String?, nonce: String?)
+
+    var nonce: String? {
+        switch self {
+        case let .success(nonce), let .cancel(nonce):
+            return nonce
+        case let .error(_, nonce):
+            return nonce
+        }
+    }
 
     static func parse(url: URL) -> PubkyRingAuthCallback? {
         guard url.scheme == "bitkit", url.host == "pubky-auth" else {
             return nil
         }
 
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let nonce = components?.queryItems?.first(where: { $0.name == "nonce" })?.value
+
         switch url.path {
         case "/success":
-            return .success
+            return .success(nonce: nonce)
         case "/cancel":
-            return .cancel
+            return .cancel(nonce: nonce)
         case "/error":
-            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
             let message = components?.queryItems?.first(where: { $0.name == "errorMessage" })?.value
-            return .error(message: message)
+            return .error(message: message, nonce: nonce)
         default:
             return nil
         }
@@ -40,15 +51,15 @@ enum PubkyRingAuthURLBuilder {
     static let errorCallback = "bitkit://pubky-auth/error"
     static let source = "Bitkit"
 
-    static func addingCallbacks(to authUrl: String) -> String? {
+    static func addingCallbacks(to authUrl: String, nonce: UUID? = nil) -> String? {
         guard var components = URLComponents(string: authUrl), components.url != nil else {
             return nil
         }
 
         let callbackQuery = [
-            ("x-success", successCallback),
-            ("x-cancel", cancelCallback),
-            ("x-error", errorCallback),
+            ("x-success", callbackUrl(successCallback, nonce: nonce)),
+            ("x-cancel", callbackUrl(cancelCallback, nonce: nonce)),
+            ("x-error", callbackUrl(errorCallback, nonce: nonce)),
             ("x-source", source),
         ]
         .map { "\($0.0)=\(Self.percentEncodedQueryValue($0.1))" }
@@ -60,6 +71,14 @@ enum PubkyRingAuthURLBuilder {
             .joined(separator: "&")
 
         return components.url?.absoluteString
+    }
+
+    private static func callbackUrl(_ baseUrl: String, nonce: UUID?) -> String {
+        guard let nonce else {
+            return baseUrl
+        }
+
+        return "\(baseUrl)?nonce=\(percentEncodedQueryValue(nonce.uuidString))"
     }
 
     private static func percentEncodedQueryValue(_ value: String) -> String {
@@ -451,18 +470,25 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async {
+    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async -> Bool {
+        guard isCurrentAuthCallback(callback) else {
+            Logger.warn("Ignoring Pubky Ring auth callback with missing or invalid nonce", context: "PubkyProfileManager")
+            return false
+        }
+
         switch callback {
         case .success:
             Logger.info("Pubky Ring returned auth success callback", context: "PubkyProfileManager")
         case .cancel:
             Logger.info("Pubky Ring returned auth cancel callback", context: "PubkyProfileManager")
             await cancelAuthentication()
-        case let .error(message):
+        case let .error(message, _):
             Logger.warn("Pubky Ring returned auth error callback: \(message ?? "Unknown error")", context: "PubkyProfileManager")
             await cancelAuthentication()
             setAuthFlowError(message ?? t("profile__auth_error_title"))
         }
+
+        return true
     }
 
     func startAuthentication() async throws {
@@ -491,7 +517,7 @@ class PubkyProfileManager: ObservableObject {
             throw CancellationError()
         }
 
-        let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl) ?? authUrl
+        let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl, nonce: attemptID) ?? authUrl
 
         guard let url = URL(string: callbackAuthUrl) else {
             await cancelPendingAuthSetup()
@@ -587,6 +613,14 @@ class PubkyProfileManager: ObservableObject {
 
     private func setAuthFlowError(_ message: String) {
         authState = publicKey == nil ? .error(message) : .authenticated
+    }
+
+    private func isCurrentAuthCallback(_ callback: PubkyRingAuthCallback) -> Bool {
+        guard let activeAuthAttemptID else {
+            return false
+        }
+
+        return callback.nonce == activeAuthAttemptID.uuidString
     }
 
     // MARK: - Profile

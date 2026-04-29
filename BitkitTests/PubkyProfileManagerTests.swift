@@ -21,15 +21,35 @@ final class PubkyProfileManagerTests: XCTestCase {
     func testPubkyRingAuthCallbackParsesSuccessCancelAndError() throws {
         XCTAssertEqual(
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/success"))),
-            .success
+            .success(nonce: nil)
         )
         XCTAssertEqual(
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/cancel"))),
-            .cancel
+            .cancel(nonce: nil)
         )
         XCTAssertEqual(
             try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/error?errorMessage=Denied"))),
-            .error(message: "Denied")
+            .error(message: "Denied", nonce: nil)
+        )
+    }
+
+    func testPubkyRingAuthURLBuilderAddsNonceToCallbackParams() throws {
+        let nonce = try XCTUnwrap(UUID(uuidString: "12345678-1234-1234-1234-123456789ABC"))
+        let url = try XCTUnwrap(PubkyRingAuthURLBuilder.addingCallbacks(to: "pubkyauth://auth", nonce: nonce))
+        let components = try XCTUnwrap(URLComponents(string: url))
+        let queryItems = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        XCTAssertEqual(queryItems["x-success"], "bitkit://pubky-auth/success?nonce=12345678-1234-1234-1234-123456789ABC")
+        XCTAssertEqual(queryItems["x-cancel"], "bitkit://pubky-auth/cancel?nonce=12345678-1234-1234-1234-123456789ABC")
+        XCTAssertEqual(queryItems["x-error"], "bitkit://pubky-auth/error?nonce=12345678-1234-1234-1234-123456789ABC")
+    }
+
+    func testPubkyRingAuthCallbackParsesNonce() throws {
+        XCTAssertEqual(
+            try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/error?nonce=abc&errorMessage=Denied"))),
+            .error(message: "Denied", nonce: "abc")
         )
     }
 

@@ -198,11 +198,11 @@ struct PubkyChoiceView: View {
 
     private func handleAuthStateChange(_ authState: PubkyAuthState) {
         switch authState {
-        case .idle, .error:
+        case .idle, .authenticated, .error:
             isAuthenticating = false
             isWaitingForRing = false
             isLoadingAfterAuth = false
-        case .authenticating, .completingAuthentication, .authenticated:
+        case .authenticating, .completingAuthentication:
             break
         }
     }
