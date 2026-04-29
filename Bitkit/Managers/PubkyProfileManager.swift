@@ -98,6 +98,8 @@ class PubkyProfileManager: ObservableObject {
     @Published private(set) var cachedName: String?
     @Published private(set) var cachedImageUri: String?
 
+    private var activeAuthAttemptID: UUID?
+
     init() {
         cachedName = UserDefaults.standard.string(forKey: Self.cachedNameKey)
         cachedImageUri = UserDefaults.standard.string(forKey: Self.cachedImageUriKey)
@@ -436,13 +438,15 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Auth Flow (Ring)
 
     func cancelAuthentication() async {
+        activeAuthAttemptID = nil
+
         do {
             try await Task.detached {
                 try await PubkyService.cancelAuth()
             }.value
-            authState = .idle
+            restoreAuthStateAfterAuthFlow()
         } catch {
-            authState = .idle
+            restoreAuthStateAfterAuthFlow()
             Logger.warn("Cancel auth failed: \(error)", context: "PubkyProfileManager")
         }
     }
@@ -457,15 +461,18 @@ class PubkyProfileManager: ObservableObject {
         case let .error(message):
             Logger.warn("Pubky Ring returned auth error callback: \(message ?? "Unknown error")", context: "PubkyProfileManager")
             await cancelAuthentication()
-            authState = .error(message ?? t("profile__auth_error_title"))
+            setAuthFlowError(message ?? t("profile__auth_error_title"))
         }
     }
 
     func startAuthentication() async throws {
+        let attemptID = UUID()
+        activeAuthAttemptID = attemptID
         authState = .authenticating
 
         guard Self.isRingAvailable() else {
-            authState = .idle
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw PubkyServiceError.ringNotInstalled
         }
 
@@ -475,29 +482,37 @@ class PubkyProfileManager: ObservableObject {
                 try await PubkyService.startAuth()
             }.value
         } catch {
-            authState = .idle
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw error
+        }
+
+        guard activeAuthAttemptID == attemptID else {
+            throw CancellationError()
         }
 
         let callbackAuthUrl = PubkyRingAuthURLBuilder.addingCallbacks(to: authUrl) ?? authUrl
 
         guard let url = URL(string: callbackAuthUrl) else {
             await cancelPendingAuthSetup()
-            authState = .idle
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw PubkyServiceError.invalidAuthUrl
         }
 
         let canOpen = UIApplication.shared.canOpenURL(url)
         guard canOpen else {
             await cancelPendingAuthSetup()
-            authState = .idle
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw PubkyServiceError.ringNotInstalled
         }
 
         let didOpen = await UIApplication.shared.open(url)
         guard didOpen else {
             await cancelPendingAuthSetup()
-            authState = .idle
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw PubkyServiceError.authFailed("Failed to open Pubky Ring")
         }
     }
@@ -505,32 +520,58 @@ class PubkyProfileManager: ObservableObject {
     /// Long-polls the relay, persists + imports the session, then loads the profile.
     @discardableResult
     func completeAuthentication() async throws -> String {
+        guard let attemptID = activeAuthAttemptID else {
+            throw CancellationError()
+        }
+
         do {
-            let pk = try await Task.detached {
-                let sessionSecret = try await PubkyService.completeAuth()
-                let pk = try await PubkyService.importSession(secret: sessionSecret)
+            let sessionSecret = try await PubkyService.completeAuth()
+            try Task.checkCancellation()
+            guard activeAuthAttemptID == attemptID else {
+                throw CancellationError()
+            }
 
-                do {
-                    try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
-                    Self.notifyAppStateBackupChanged()
-                } catch {
-                    await PubkyService.forceSignOut()
-                    throw error
-                }
+            let pk = try await PubkyService.importSession(secret: sessionSecret)
+            try Task.checkCancellation()
+            guard activeAuthAttemptID == attemptID else {
+                throw CancellationError()
+            }
 
-                return pk
-            }.value
+            do {
+                try Self.upsertKeychainString(.paykitSession, value: sessionSecret)
+                Self.notifyAppStateBackupChanged()
+            } catch {
+                await PubkyService.forceSignOut()
+                throw error
+            }
 
+            activeAuthAttemptID = nil
             publicKey = pk
             authState = .completingAuthentication
             Logger.info("Pubky auth completed for \(pk)", context: "PubkyProfileManager")
             await loadProfile()
             return pk
+        } catch is CancellationError {
+            if activeAuthAttemptID == attemptID {
+                activeAuthAttemptID = nil
+                restoreAuthStateAfterAuthFlow()
+            }
+            throw CancellationError()
         } catch let serviceError as PubkyServiceError {
-            authState = .idle
+            guard activeAuthAttemptID == attemptID else {
+                throw CancellationError()
+            }
+
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
             throw serviceError
         } catch {
-            authState = .error(error.localizedDescription)
+            guard activeAuthAttemptID == attemptID else {
+                throw CancellationError()
+            }
+
+            activeAuthAttemptID = nil
+            setAuthFlowError(error.localizedDescription)
             throw error
         }
     }
@@ -538,6 +579,14 @@ class PubkyProfileManager: ObservableObject {
     func finalizeAuthentication() {
         guard case .completingAuthentication = authState else { return }
         authState = .authenticated
+    }
+
+    private func restoreAuthStateAfterAuthFlow() {
+        authState = publicKey == nil ? .idle : .authenticated
+    }
+
+    private func setAuthFlowError(_ message: String) {
+        authState = publicKey == nil ? .error(message) : .authenticated
     }
 
     // MARK: - Profile
@@ -699,7 +748,7 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Session & Backup Helpers
 
     var isAuthenticated: Bool {
-        authState == .authenticated
+        publicKey != nil
     }
 
     nonisolated static func snapshotSessionBackupState(

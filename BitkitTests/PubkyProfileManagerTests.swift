@@ -38,6 +38,25 @@ final class PubkyProfileManagerTests: XCTestCase {
         XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "https://pubky-auth/success"))))
     }
 
+    @MainActor
+    func testIsAuthenticatedUsesRestoredPublicKeyDuringTransientAuthError() {
+        let manager = PubkyProfileManager()
+
+        manager.publicKey = "pubky_test"
+        manager.authState = .error("Gateway timeout")
+
+        XCTAssertTrue(manager.isAuthenticated)
+    }
+
+    @MainActor
+    func testIsAuthenticatedRequiresPublicKey() {
+        let manager = PubkyProfileManager()
+
+        manager.authState = .authenticated
+
+        XCTAssertFalse(manager.isAuthenticated)
+    }
+
     // MARK: - HomegateResponse Decoding
 
     private typealias HomegateResponse = PubkyProfileManager.HomegateResponse

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Add Pubky Ring auth callbacks to return to Bitkit after approval, cancellation, or error #530
+- Add Pubky Ring auth callbacks and keep canceled auth attempts from disconnecting profiles #530
 - Restore pubky sessions from wallet backups and improve iOS pubky profile, contacts, and clipboard flows #527
 - Pubky profile onboarding with contact sync, import, and editing #476
 - Add transfer from savings button on empty spending wallet when user has on-chain balance #523
