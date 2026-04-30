@@ -105,14 +105,11 @@ Verify the edit updated exactly 4 occurrences of each (Bitkit Debug/Release + Bi
 
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
-# If changelog collection updated files:
-git add CHANGELOG.md
-git add changelog.d
 git commit -m "chore: version {newVersionName}"
 git push -u origin release-{newVersionName}
 ```
 
-Only stage `CHANGELOG.md` and `changelog.d` if changelog collection updated `CHANGELOG.md` or deleted consumed fragments.
+If changelog collection updated `CHANGELOG.md` or deleted consumed fragments, run `git add CHANGELOG.md changelog.d` before the commit.
 
 ### 4. Create Version Bump PR
 
