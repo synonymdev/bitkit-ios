@@ -53,6 +53,13 @@ final class PubkyProfileManagerTests: XCTestCase {
         )
     }
 
+    func testPubkyRingAuthCallbackTreatsBareNonceAsMissing() throws {
+        XCTAssertEqual(
+            try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://pubky-auth/cancel?nonce"))),
+            .cancel(nonce: nil)
+        )
+    }
+
     func testPubkyRingAuthCallbackRejectsOtherDeeplinks() throws {
         XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "bitkit://wallet/success"))))
         XCTAssertNil(try PubkyRingAuthCallback.parse(url: XCTUnwrap(URL(string: "https://pubky-auth/success"))))

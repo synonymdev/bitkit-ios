@@ -45,6 +45,13 @@ enum PubkyRingAuthCallback: Equatable {
     }
 }
 
+enum PubkyRingAuthCallbackHandlingResult: Equatable {
+    case ignored
+    case handled
+    case trustedError(message: String?)
+    case untrustedError
+}
+
 enum PubkyRingAuthURLBuilder {
     static let successCallback = "bitkit://pubky-auth/success"
     static let cancelCallback = "bitkit://pubky-auth/cancel"
@@ -101,7 +108,7 @@ private enum PubkyProfileManagerError: LocalizedError {
 
 @MainActor
 class PubkyProfileManager: ObservableObject {
-    enum SessionInitializationResult: Equatable, Sendable {
+    enum SessionInitializationResult: Equatable {
         case noSession
         case restored(publicKey: String)
         case restorationFailed
@@ -470,10 +477,9 @@ class PubkyProfileManager: ObservableObject {
         }
     }
 
-    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async -> Bool {
+    func handleAuthCallback(_ callback: PubkyRingAuthCallback) async -> PubkyRingAuthCallbackHandlingResult {
         guard isCurrentAuthCallback(callback) else {
-            Logger.warn("Ignoring Pubky Ring auth callback with missing or invalid nonce", context: "PubkyProfileManager")
-            return false
+            return await handleInvalidAuthCallback(callback)
         }
 
         switch callback {
@@ -486,9 +492,41 @@ class PubkyProfileManager: ObservableObject {
             Logger.warn("Pubky Ring returned auth error callback: \(message ?? "Unknown error")", context: "PubkyProfileManager")
             await cancelAuthentication()
             setAuthFlowError(message ?? t("profile__auth_error_title"))
+            return .trustedError(message: message)
         }
 
-        return true
+        return .handled
+    }
+
+    private func handleInvalidAuthCallback(_ callback: PubkyRingAuthCallback) async -> PubkyRingAuthCallbackHandlingResult {
+        guard activeAuthAttemptID != nil else {
+            Logger.warn("Ignoring Pubky Ring auth callback with missing or invalid nonce", context: "PubkyProfileManager")
+            return .ignored
+        }
+
+        switch callback {
+        case .success:
+            Logger.warn("Ignoring Pubky Ring auth success callback with missing or invalid nonce", context: "PubkyProfileManager")
+            return .ignored
+        case .cancel:
+            Logger.warn(
+                "Pubky Ring returned auth cancel callback with missing or invalid nonce; ending local auth flow",
+                context: "PubkyProfileManager"
+            )
+            activeAuthAttemptID = nil
+            restoreAuthStateAfterAuthFlow()
+            await cancelPendingAuthSetup()
+            return .handled
+        case let .error(message, _):
+            Logger.warn(
+                "Pubky Ring returned auth error callback with missing or invalid nonce; ending local auth flow: \(message ?? "Unknown error")",
+                context: "PubkyProfileManager"
+            )
+            activeAuthAttemptID = nil
+            setAuthFlowError(t("profile__auth_error_title"))
+            await cancelPendingAuthSetup()
+            return .untrustedError
+        }
     }
 
     func startAuthentication() async throws {
