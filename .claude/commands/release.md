@@ -53,11 +53,9 @@ If "Previous tag": ask `"Which tag?"` with a text input (default: `v{oldVersionN
 
 If "master" or if the release is minor/major: `{baseRef} = master`.
 
-### 2c. Check Changelog
-
-Read `CHANGELOG.md` and check whether `## [Unreleased]` has any entries beneath it. Remember the result for Step 3.
-
-**If no entries:** Print `⚠ CHANGELOG.md has no unreleased entries — continuing without changelog update.` and proceed.
+Set `{changelogTarget}`:
+- If `{baseRef}` is `master`: `next`
+- Otherwise: `hotfix`
 
 ### 3. Create Release Branch & Bump Version
 
@@ -72,19 +70,29 @@ If `{baseRef}` is `master`, pull latest: `git pull origin master`. Skip pull if 
 git checkout -b release-{newVersionName}
 ```
 
-**Finalize Changelog (if Step 2c found entries):**
-1. Replace `## [Unreleased]` with `## [{newVersionName}] - {YYYY-MM-DD}` (today's date)
-2. Insert a fresh empty `## [Unreleased]` section above the new version heading
-3. Update the compare link references at the bottom of the file:
-   - Change `[Unreleased]` link to compare from `v{newVersionName}...HEAD`
-   - Add a new `[{newVersionName}]` link comparing `v{oldVersionName}...v{newVersionName}`
-
 If the base is a tag (not master), print:
 ```
 Release branch created from {baseRef}.
 Cherry-pick the commits you need onto this branch now, then continue.
 ```
 Wait for the user to confirm they are done cherry-picking before proceeding.
+
+Finalize changelog after the release branch contains all release commits:
+
+```bash
+scripts/collect-changelog.sh --target {changelogTarget}
+```
+
+Read `CHANGELOG.md` and check whether `## [Unreleased]` has any entries beneath it after collecting fragments.
+
+**If entries exist:**
+1. Replace `## [Unreleased]` with `## [{newVersionName}] - {YYYY-MM-DD}` (today's date)
+2. Insert a fresh empty `## [Unreleased]` section above the new version heading
+3. Update the compare link references at the bottom of the file:
+   - Change `[Unreleased]` link to compare from `v{newVersionName}...HEAD`
+   - Add a new `[{newVersionName}]` link comparing `v{oldVersionName}...v{newVersionName}`
+
+**If no entries:** Print `⚠ CHANGELOG.md has no unreleased entries — continuing without changelog update.` and proceed.
 
 Edit `Bitkit.xcodeproj/project.pbxproj` using sed to replace **all** occurrences of the old values (test targets use `= 1` / `= 1.0` so they won't match):
 
@@ -97,11 +105,14 @@ Verify the edit updated exactly 4 occurrences of each (Bitkit Debug/Release + Bi
 
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
-# Only stage CHANGELOG.md if it was finalized above (i.e. unreleased entries were found in step 2c)
+# If changelog collection updated files:
 git add CHANGELOG.md
+git add changelog.d
 git commit -m "chore: version {newVersionName}"
 git push -u origin release-{newVersionName}
 ```
+
+Only stage `CHANGELOG.md` and `changelog.d` if changelog collection updated `CHANGELOG.md` or deleted consumed fragments.
 
 ### 4. Create Version Bump PR
 

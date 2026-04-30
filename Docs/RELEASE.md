@@ -34,6 +34,24 @@ git cherry-pick <commit-hash-1> <commit-hash-2> ...
 
 When branching from a tag, only the cherry-picked commits will be included. The PR to `master` will still be created so version bumps and patches are merged back after release.
 
+### Finalize Changelog
+
+Collect pending changelog fragments after the release branch contains all release commits.
+
+For minor and major releases, and patch releases from `master`:
+
+```bash
+scripts/collect-changelog.sh --target next
+```
+
+For hotfix releases from a previous tag:
+
+```bash
+scripts/collect-changelog.sh --target hotfix
+```
+
+Then finalize `CHANGELOG.md` by converting `## [Unreleased]` into `## [2.0.7] - YYYY-MM-DD`, inserting a fresh empty `## [Unreleased]` section above it, and updating the compare links.
+
 ### Bump Version
 
 Increment `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `Bitkit.xcodeproj/project.pbxproj`.
@@ -54,6 +72,7 @@ Commit and push:
 
 ```bash
 git add Bitkit.xcodeproj/project.pbxproj
+git add CHANGELOG.md changelog.d
 git commit -m "chore: version 2.0.7"
 git push -u origin release-2.0.7
 ```
@@ -258,9 +277,10 @@ The `/release` command (available in Claude Code and Cursor via `.claude/command
 
 1. Reads current version from `project.pbxproj`
 2. Prompts for the new version (patch/minor/major)
-3. Creates the release branch and bumps version
-4. Commits, pushes, and creates the version bump PR
-5. Creates tag and draft GitHub release
-6. Optionally archives and uploads to TestFlight via CLI
+3. Creates the release branch and collects changelog fragments
+4. Bumps version
+5. Commits, pushes, and creates the version bump PR
+6. Creates tag and draft GitHub release
+7. Optionally archives and uploads to TestFlight via CLI
 
 Steps 3-6 (QA, App Store submission, release, post-release) remain manual.
