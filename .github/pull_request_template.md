@@ -1,4 +1,4 @@
-<!-- Changelog: Add an entry under ## [Unreleased] in CHANGELOG.md for user-facing changes (skip for chores/CI/refactors). -->
+<!-- Changelog: For user-facing changes, add one fragment in changelog.d/next/ or changelog.d/hotfix/. Do not edit CHANGELOG.md in normal PRs. -->
 
 ### Description
 
