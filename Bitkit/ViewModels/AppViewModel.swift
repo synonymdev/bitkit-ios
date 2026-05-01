@@ -76,11 +76,6 @@ class AppViewModel: ObservableObject {
         appStatusInit = true
     }
 
-    /// Called when app goes to background to reset the status facade
-    func resetAppStatusInit() {
-        appStatusInit = false
-    }
-
     private let lightningService: LightningService
     private let coreService: CoreService
     private let sheetViewModel: SheetViewModel

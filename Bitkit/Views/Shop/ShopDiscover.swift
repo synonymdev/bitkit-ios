@@ -34,7 +34,10 @@ enum ShopTab: String, CaseIterable, CustomStringConvertible {
 
 struct ShopDiscover: View {
     @EnvironmentObject var navigation: NavigationViewModel
+
     @State private var selectedTab: ShopTab = .shop
+
+    let navTitle = t("other__shop__discover__nav_title")
 
     /// Categories data
     private let categories: [ShopCategory] = [
@@ -96,7 +99,7 @@ struct ShopDiscover: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("other__shop__discover__nav_title"))
+            NavigationBar(title: navTitle)
                 .padding(.horizontal, 16)
 
             SegmentedControl(selectedTab: $selectedTab, tabs: ShopTab.allCases, activeColor: .yellowAccent)
@@ -115,6 +118,7 @@ struct ShopDiscover: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationBarHidden(true)
+        .offlineOverlay(title: navTitle)
     }
 
     private var shopContent: some View {
