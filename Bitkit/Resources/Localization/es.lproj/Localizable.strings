@@ -111,12 +111,12 @@
 "lightning__transfer_intro__button" = "Empezar";
 "lightning__funding__nav_title" = "Saldo de gastos";
 "lightning__funding__title" = "Rellene su <accent>saldo de gastos</accent>";
-"lightning__funding__text" = "Puede usar sus ahorros en Bitkit o enviar bitcoin desde un monedero diferente.";
+"lightning__funding__text" = "La forma más fácil es usar tus ahorros de Bitkit o enviar bitcoin desde un monedero diferente.";
 "lightning__funding__text_blocked" = "Bitkit actualmente no proporciona servicios Lightning en su país, pero aún puede conectarse a otros nodos directamente.";
 "lightning__funding__text_blocked_cjit" = "Bitkit actualmente no proporciona servicios Lightning en su país, pero aún puede conectarse a otros nodos directamente.";
 "lightning__funding__button1" = "Transferir desde Ahorros";
 "lightning__funding__button2" = "Usar Otro Monedero";
-"lightning__funding__button3" = "Avanzado";
+"lightning__funding__button3" = "Configuración Manual";
 "lightning__funding_advanced__nav_title" = "Saldo de gastos";
 "lightning__funding_advanced__title" = "Configuración <accent>avanzada</accent>";
 "lightning__funding_advanced__text" = "Escanee un QR para reclamar su Canal LNURL de otro LSP, o elija la configuración manual.";
@@ -174,7 +174,8 @@
 "lightning__external_manual__paste" = "Pegar URI del Nodo";
 "lightning__external_manual__scan" = "Escanear QR";
 "lightning__external_amount__title" = "Saldo de\n<accent>gasto</accent>";
-"lightning__external_success__title" = "Conexión\n<accent>iniciada</accent>";
+"lightning__external_success__nav_title" = "Saldo de gasto";
+"lightning__external_success__title" = "Apertura\n<accent>de canal</accent>";
 "lightning__external_success__text" = "Conexión Lightning iniciada. Podrá usar su balance para pagar en <accent>±30 minutos</accent> (depende de la configuración del nodo).";
 "lightning__error_channel_purchase" = "Error en la Configuración de Pago Instántaneo";
 "lightning__error_channel_receiving" = "La cantidad a recibir debe ser mayor de $ 1 {usdValue}";
@@ -793,6 +794,7 @@
 "wallet__drawer__widgets" = "Widgets";
 "wallet__drawer__shop" = "Tienda";
 "wallet__drawer__settings" = "Ajustes";
+"wallet__drawer__support" = "Soporte";
 "wallet__drawer__status" = "Estado de la App";
 "wallet__send" = "Enviar";
 "wallet__receive" = "Recibir";

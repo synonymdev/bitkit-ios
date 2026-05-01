@@ -123,17 +123,17 @@ struct LnurlHelper {
     /// Fetches a Lightning invoice from an LNURL pay callback
     /// - Parameters:
     ///   - callbackUrl: The LNURL callback URL
-    ///   - amount: The amount in satoshis to pay
+    ///   - amountMsats: The amount in millisatoshis to pay
     ///   - comment: Optional comment to include with the payment
     /// - Returns: The bolt11 invoice string
     /// - Throws: Network or parsing errors
     static func fetchLnurlInvoice(
         callbackUrl: String,
-        amount: UInt64,
+        amountMsats: UInt64,
         comment: String? = nil
     ) async throws -> String {
         var queryItems = [
-            URLQueryItem(name: "amount", value: String(amount * 1000)), // Convert to millisatoshis
+            URLQueryItem(name: "amount", value: String(amountMsats)),
         ]
 
         // Add comment if provided

@@ -8,11 +8,12 @@ struct LnurlPayConfirm: View {
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var settings: SettingsViewModel
+
     @Binding var navigationPath: [SendRoute]
+    let requestPinCheck: () async -> Bool
+
     @State private var showWarningAlert = false
     @State private var alertContinuation: CheckedContinuation<Bool, Error>?
-    @State private var showPinCheck = false
-    @State private var pinCheckContinuation: CheckedContinuation<Bool, Error>?
     @State private var showingBiometricError = false
     @State private var biometricErrorMessage = ""
     @State private var comment = ""
@@ -28,7 +29,7 @@ struct LnurlPayConfirm: View {
 
             VStack(alignment: .leading) {
                 MoneyStack(
-                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendable),
+                    sats: Int(wallet.sendAmountSats ?? app.lnurlPayData!.minSendableSat),
                     showSymbol: true,
                     testIdPrefix: "ReviewAmount"
                 )
@@ -137,9 +138,8 @@ struct LnurlPayConfirm: View {
                             throw CancellationError()
                         }
                     } else {
-                        showPinCheck = true
-                        let shouldProceed = try await waitForPinCheck()
-                        if !shouldProceed {
+                        let shouldProceed = await requestPinCheck()
+                        guard shouldProceed else {
                             throw CancellationError()
                         }
                     }
@@ -173,20 +173,6 @@ struct LnurlPayConfirm: View {
         } message: {
             Text(biometricErrorMessage)
         }
-        .navigationDestination(isPresented: $showPinCheck) {
-            PinCheckView(
-                title: t("security__pin_send_title"),
-                explanation: t("security__pin_send"),
-                onCancel: {
-                    pinCheckContinuation?.resume(returning: false)
-                    pinCheckContinuation = nil
-                },
-                onPinVerified: { _ in
-                    pinCheckContinuation?.resume(returning: true)
-                    pinCheckContinuation = nil
-                }
-            )
-        }
     }
 
     private func waitForAlertDismissal() async throws -> Bool {
@@ -195,23 +181,17 @@ struct LnurlPayConfirm: View {
         }
     }
 
-    private func waitForPinCheck() async throws -> Bool {
-        return try await withCheckedThrowingContinuation { continuation in
-            pinCheckContinuation = continuation
-        }
-    }
-
     private func performPayment() async throws {
         guard let lnurlPayData = app.lnurlPayData else {
             throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL pay data"])
         }
 
-        let amount = wallet.sendAmountSats ?? lnurlPayData.minSendable
+        let amountMsats = lnurlPayData.callbackAmountMsats(userSats: wallet.sendAmountSats)
 
         // Fetch the Lightning invoice from LNURL
         let bolt11 = try await LnurlHelper.fetchLnurlInvoice(
             callbackUrl: lnurlPayData.callback,
-            amount: amount,
+            amountMsats: amountMsats,
             comment: comment.isEmpty ? nil : comment
         )
 
@@ -220,9 +200,11 @@ struct LnurlPayConfirm: View {
 
         do {
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
+            // LNURL server returns invoices with the amount baked in, so pass sats: nil
+            // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
-                sats: wallet.sendAmountSats,
+                sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
                     navigationPath.append(.pending(paymentHash: paymentHash))

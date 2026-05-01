@@ -117,14 +117,12 @@ struct CoinSelectionSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__adv__coin_selection"))
-                .padding(.bottom, 16)
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
+                VStack(spacing: 32) {
                     // COIN SELECTION METHOD Section
                     VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(t("settings__adv__cs_method"))
-                            .padding(.bottom, 8)
+                        SettingsSectionHeader(t("settings__adv__cs_method"))
 
                         VStack(spacing: 0) {
                             ForEach(CoinSelectionMethod.allCases, id: \.self) { method in
@@ -136,9 +134,7 @@ struct CoinSelectionSettingsView: View {
                                         settingsViewModel.coinSelectionMethod = method
                                     }
 
-                                    if method != CoinSelectionMethod.allCases.last {
-                                        Divider()
-                                    }
+                                    CustomDivider()
                                 }
                             }
                         }
@@ -147,9 +143,7 @@ struct CoinSelectionSettingsView: View {
                     // AUTOPILOT MODE Section (only show if Autopilot is selected)
                     if settingsViewModel.coinSelectionMethod == .autopilot {
                         VStack(alignment: .leading, spacing: 0) {
-                            CaptionMText(t("settings__adv__cs_auto_mode"))
-                                .padding(.top, 24)
-                                .padding(.bottom, 8)
+                            SettingsSectionHeader(t("settings__adv__cs_auto_mode"))
 
                             VStack(spacing: 0) {
                                 ForEach(CoinSelectionAlgorithm.supportedAlgorithms, id: \.self) { algorithm in
@@ -165,16 +159,12 @@ struct CoinSelectionSettingsView: View {
                             }
                         }
                     }
-
-                    // Add spacing at the bottom
-                    Spacer()
-                        .frame(height: 32)
                 }
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
     }
 }
 

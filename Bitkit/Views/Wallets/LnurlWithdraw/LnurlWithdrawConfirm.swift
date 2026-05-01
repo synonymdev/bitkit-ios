@@ -8,13 +8,10 @@ struct LnurlWithdrawConfirm: View {
     let onFailure: (UInt64) -> Void
     @State private var isLoading = false
 
-    var amount: UInt64 {
-        // Fixed amount
-        if app.lnurlWithdrawData!.maxWithdrawable == app.lnurlWithdrawData!.minWithdrawable {
-            return app.lnurlWithdrawData!.maxWithdrawable
+    var displayAmountSats: UInt64 {
+        if app.lnurlWithdrawData!.isFixedAmount {
+            return app.lnurlWithdrawData!.minWithdrawableSat
         }
-
-        // For variable amount, use the amount from the previous screen
         return wallet.lnurlWithdrawAmount!
     }
 
@@ -22,7 +19,7 @@ struct LnurlWithdrawConfirm: View {
         VStack(spacing: 0) {
             SheetHeader(title: t("wallet__lnurl_w_title"), showBackButton: true)
 
-            MoneyStack(sats: Int(amount), showSymbol: true, testIdPrefix: "WithdrawAmount")
+            MoneyStack(sats: Int(displayAmountSats), showSymbol: true, testIdPrefix: "WithdrawAmount")
                 .padding(.top, 16)
                 .padding(.bottom, 42)
 
@@ -58,12 +55,19 @@ struct LnurlWithdrawConfirm: View {
                     throw NSError(domain: "LNURL", code: -1, userInfo: [NSLocalizedDescriptionKey: "Missing LNURL withdraw data"])
                 }
 
-                // Create a Lightning invoice for the withdraw
-                let invoice = try await wallet.createInvoice(
-                    amountSats: amount,
-                    note: withdrawData.defaultDescription,
-                    expirySecs: 3600
-                )
+                let invoice: String = if withdrawData.isFixedAmount {
+                    try await wallet.createInvoiceMsats(
+                        amountMsats: withdrawData.maxWithdrawable,
+                        note: withdrawData.defaultDescription,
+                        expirySecs: 3600
+                    )
+                } else {
+                    try await wallet.createInvoice(
+                        amountSats: displayAmountSats,
+                        note: withdrawData.defaultDescription,
+                        expirySecs: 3600
+                    )
+                }
 
                 // Perform the LNURL withdraw
                 try await LnurlHelper.handleLnurlWithdraw(
@@ -84,7 +88,7 @@ struct LnurlWithdrawConfirm: View {
 
             } catch {
                 await MainActor.run {
-                    onFailure(amount)
+                    onFailure(displayAmountSats)
                     isLoading = false
                 }
             }

@@ -453,6 +453,8 @@ extension AppViewModel {
             }
 
             handleNodeUri(url)
+        case let .pubkyAuth(data: authUrl):
+            handlePubkyAuthApproval(authUrl)
         case let .gift(code, amount):
             sheetViewModel.showSheet(.gift, data: GiftConfig(code: code, amount: Int(amount)))
         default:
@@ -480,19 +482,13 @@ extension AppViewModel {
     }
 
     private func handleLnurlPayInvoice(_ data: LnurlPayData) {
-        // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
             toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
-        var normalizedData = data
-        normalizedData.minSendable = max(1, LightningAmountConversion.satsCeil(fromMsats: normalizedData.minSendable))
-        normalizedData.maxSendable = max(normalizedData.minSendable, LightningAmountConversion.satsFloor(fromMsats: normalizedData.maxSendable))
-
-        // Check if user has enough lightning balance to pay the minimum amount
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < normalizedData.minSendable {
+        if lightningBalance < max(1, data.minSendableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_pay_error"),
@@ -502,21 +498,16 @@ extension AppViewModel {
         }
 
         selectedWalletToPayFrom = .lightning
-        lnurlPayData = normalizedData
+        lnurlPayData = data
     }
 
     private func handleLnurlWithdraw(_ data: LnurlWithdrawData) {
-        // Check if lightning service is running
         guard lightningService.status?.isRunning == true else {
             toast(type: .error, title: "Lightning not running", description: "Please try again later.")
             return
         }
 
-        let minMsats = data.minWithdrawable ?? Env.msatsPerSat
-        let maxMsats = data.maxWithdrawable
-
-        // Check if minWithdrawable > maxWithdrawable
-        if minMsats > maxMsats {
+        if (data.minWithdrawable ?? 0) > data.maxWithdrawable {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -525,15 +516,8 @@ extension AppViewModel {
             return
         }
 
-        var normalizedData = data
-        let minSats = max(1, LightningAmountConversion.satsCeil(fromMsats: minMsats))
-        let maxSats = max(minSats, LightningAmountConversion.satsFloor(fromMsats: maxMsats))
-        normalizedData.minWithdrawable = minSats
-        normalizedData.maxWithdrawable = maxSats
-
-        // Check if we have enough receiving capacity
         let lightningBalance = lightningService.balances?.totalLightningBalanceSats ?? 0
-        if lightningBalance < minSats {
+        if lightningBalance < max(1, data.minWithdrawableSat) {
             toast(
                 type: .warning,
                 title: t("other__lnurl_withdr_error"),
@@ -542,7 +526,7 @@ extension AppViewModel {
             return
         }
 
-        lnurlWithdrawData = normalizedData
+        lnurlWithdrawData = data
     }
 
     private func handleLnurlChannel(_ data: LnurlChannelData) {
@@ -564,6 +548,31 @@ extension AppViewModel {
         }
 
         sheetViewModel.showSheet(.lnurlAuth, data: LnurlAuthConfig(lnurl: lnurl, authData: data))
+    }
+
+    private func handlePubkyAuthApproval(_ authUrl: String) {
+        // State 1: No Pubky identity at all
+        guard (try? Keychain.loadString(key: .paykitSession))?.isEmpty == false else {
+            toast(type: .warning, title: t("pubky_auth__no_identity"), description: t("pubky_auth__no_identity_desc"))
+            return
+        }
+
+        // State 2: Ring-authenticated (has session but no local secret key)
+        guard let secretKey = try? Keychain.loadString(key: .pubkySecretKey),
+              !secretKey.isEmpty
+        else {
+            toast(type: .info, title: t("pubky_auth__use_ring"), description: t("pubky_auth__use_ring_desc"))
+            return
+        }
+
+        // State 3: Bitkit-generated identity — can approve
+        do {
+            let request = try PubkyAuthRequest.parse(url: authUrl)
+            sheetViewModel.showSheet(.pubkyAuthApproval, data: PubkyAuthApprovalConfig(authUrl: authUrl, request: request))
+        } catch {
+            Logger.error("Failed to parse pubky auth URL: \(error)", context: "AppViewModel")
+            toast(type: .error, title: t("pubky_auth__invalid_request"))
+        }
     }
 
     private func handleNodeUri(_ url: String) {
@@ -739,7 +748,8 @@ extension AppViewModel {
                 }
 
                 await MainActor.run {
-                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: amountMsat / 1000))
+                    let sats = LightningAmountConversion.satsCeil(fromMsats: amountMsat)
+                    sheetViewModel.showSheet(.receivedTx, data: ReceivedTxSheetDetails(type: .lightning, sats: sats))
                 }
             }
         case .channelPending(channelId: _, userChannelId: _, formerTemporaryChannelId: _, counterpartyNodeId: _, fundingTxo: _):
@@ -826,6 +836,10 @@ extension AppViewModel {
         case .paymentClaimable:
             break
         case .paymentForwarded:
+            break
+        case .probeSuccessful(paymentId: _, paymentHash: _):
+            break
+        case .probeFailed(paymentId: _, paymentHash: _, shortChannelId: _):
             break
 
         // MARK: New Onchain Transaction Events

@@ -2,12 +2,20 @@ import SwiftUI
 
 struct HomeWidgetsView: View {
     @EnvironmentObject var app: AppViewModel
+    @Environment(KeyboardManager.self) private var keyboard
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var suggestionsManager: SuggestionsManager
     @EnvironmentObject var wallet: WalletViewModel
     @EnvironmentObject var widgets: WidgetsViewModel
+
     @Binding var isEditingWidgets: Bool
+
+    private var bottomPadding: CGFloat {
+        // Keep the calculator widget fully scrollable above the keyboard.
+        let inset = keyboard.height + ScreenLayout.bottomSpacing
+        return keyboard.isPresented ? inset : ScreenLayout.bottomPaddingWithSafeArea
+    }
 
     /// Widgets to display; suggestions widget is hidden when it would show no cards (unless editing).
     private var widgetsToShow: [Widget] {
@@ -46,9 +54,11 @@ struct HomeWidgetsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.top, ScreenLayout.topPaddingWithSafeArea)
-            .padding(.bottom, ScreenLayout.bottomPaddingWithSafeArea)
+            .padding(.bottom, bottomPadding)
             .padding(.horizontal)
         }
+        // Dismiss (calculator widget) keyboard when scrolling
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func rowContent(_ widget: Widget) -> some View {

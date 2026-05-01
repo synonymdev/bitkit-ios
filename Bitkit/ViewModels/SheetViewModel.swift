@@ -12,6 +12,7 @@ enum SheetID: String, CaseIterable {
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
+    case pubkyAuthApproval
     case notifications
     case quickpay
     case receive
@@ -232,6 +233,20 @@ class SheetViewModel: ObservableObject {
         }
     }
 
+    var pubkyAuthApprovalSheetItem: PubkyAuthApprovalSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
+            let pubkyConfig = config.data as? PubkyAuthApprovalConfig
+            guard let authUrl = pubkyConfig?.authUrl, let request = pubkyConfig?.request else { return nil }
+            return PubkyAuthApprovalSheetItem(authUrl: authUrl, request: request)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
     var notificationsSheetItem: NotificationsSheetItem? {
         get {
             guard let config = activeSheetConfiguration, config.id == .notifications else { return nil }
@@ -300,8 +315,8 @@ class SheetViewModel: ObservableObject {
         get {
             guard let config = activeSheetConfiguration, config.id == .security else { return nil }
             let securityConfig = config.data as? SecurityConfig
-            let showLaterButton = securityConfig?.showLaterButton ?? false
-            return SecuritySheetItem(showLaterButton: showLaterButton)
+            let initialRoute = securityConfig?.initialRoute ?? .intro
+            return SecuritySheetItem(initialRoute: initialRoute)
         }
         set {
             if newValue == nil {

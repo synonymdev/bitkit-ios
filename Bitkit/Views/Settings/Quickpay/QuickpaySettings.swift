@@ -13,7 +13,7 @@ struct QuickpaySettings: View {
             GeometryReader { geometry in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        SettingsListLabel(
+                        SettingsRow(
                             title: t("settings__quickpay__settings__toggle"),
                             toggle: $settings.enableQuickpay,
                             testIdentifier: "QuickpayToggle"
@@ -24,8 +24,8 @@ struct QuickpaySettings: View {
                         )
                         .padding(.top, 16)
 
-                        VStack(alignment: .leading, spacing: 16) {
-                            CaptionMText(t("settings__quickpay__settings__label"))
+                        VStack(alignment: .leading, spacing: 0) {
+                            SettingsSectionHeader(t("settings__quickpay__settings__label"))
                             CustomSlider(value: $settings.quickpayAmount, steps: sliderSteps)
                         }
                         .padding(.top, 32)

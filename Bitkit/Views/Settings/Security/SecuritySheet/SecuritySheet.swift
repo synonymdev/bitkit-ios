@@ -2,27 +2,31 @@ import SwiftUI
 
 enum SecurityRoute: Hashable {
     case intro
-    case pin
+    case setupPin
     case biometrics
     case noBiometrics
     case success
+    case changePin
+    case changePinSuccess
+    case disablePin
 }
 
 struct SecurityConfig {
-    let showLaterButton: Bool
+    let initialRoute: SecurityRoute
 
-    init(showLaterButton: Bool = false) {
-        self.showLaterButton = showLaterButton
+    init(initialRoute: SecurityRoute = .intro) {
+        self.initialRoute = initialRoute
     }
 }
 
 struct SecuritySheetItem: SheetItem {
     let id: SheetID = .security
-    let showLaterButton: Bool
     let size: SheetSize = .medium
+    let initialRoute: SecurityRoute
 
-    static let withLaterButton = SecuritySheetItem(showLaterButton: true)
-    static let withoutLaterButton = SecuritySheetItem(showLaterButton: false)
+    init(initialRoute: SecurityRoute = .intro) {
+        self.initialRoute = initialRoute
+    }
 }
 
 struct SecuritySheet: View {
@@ -32,7 +36,7 @@ struct SecuritySheet: View {
     var body: some View {
         Sheet(id: .security, data: config) {
             NavigationStack(path: $navigationPath) {
-                viewForRoute(.intro)
+                viewForRoute(config.initialRoute)
                     .navigationDestination(for: SecurityRoute.self) { route in
                         viewForRoute(route)
                     }
@@ -44,15 +48,21 @@ struct SecuritySheet: View {
     private func viewForRoute(_ route: SecurityRoute) -> some View {
         switch route {
         case .intro:
-            SecurityIntro(navigationPath: $navigationPath, showLaterButton: config.showLaterButton)
-        case .pin:
-            SecurityPin(navigationPath: $navigationPath)
+            SecurityIntro(navigationPath: $navigationPath)
+        case .setupPin:
+            SecuritySetupPin(navigationPath: $navigationPath)
         case .biometrics:
             SecurityBiometrics(navigationPath: $navigationPath)
         case .noBiometrics:
             SecurityNoBiometrics(navigationPath: $navigationPath)
         case .success:
-            SecuritySuccess(navigationPath: $navigationPath)
+            SecuritySuccess()
+        case .changePin:
+            SecurityChangePin(navigationPath: $navigationPath)
+        case .changePinSuccess:
+            SecurityChangePinSuccess()
+        case .disablePin:
+            SecurityDisablePin()
         }
     }
 }

@@ -1,8 +1,10 @@
 import BitkitCore
+import LDKNode
 import SwiftUI
 
 struct ProbingToolScreen: View {
-    @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var wallet: WalletViewModel
 
     @State private var invoice: String = ""
     @State private var amountSats: String = ""
@@ -11,6 +13,22 @@ struct ProbingToolScreen: View {
     @State private var showScannerSheet = false
     @State private var isZeroAmountInvoice: Bool? = nil
     @State private var lastDecoded: (bolt11: String, amountSatoshis: UInt64)? = nil
+
+    private enum ProbeTarget {
+        case invoice(bolt11: String, amountSatoshis: UInt64)
+        case nodeId(String)
+    }
+
+    private var isNodeIdTarget: Bool {
+        if case .nodeId = probeTarget {
+            return true
+        }
+        return false
+    }
+
+    private var isFixedAmountInvoice: Bool {
+        !isNodeIdTarget && isZeroAmountInvoice == false
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,8 +49,8 @@ struct ProbingToolScreen: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     VStack(alignment: .leading, spacing: 8) {
-                        CaptionMText("Probe Invoice")
-                        TextField("lnbc...", text: $invoice, axis: .vertical)
+                        CaptionMText("Probe Target")
+                        TextField("Enter an invoice or node ID", text: $invoice, axis: .vertical)
                             .lineLimit(3 ... 6)
                             .autocapitalization(.none)
                             .autocorrectionDisabled()
@@ -43,15 +61,18 @@ struct ProbingToolScreen: View {
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        if isZeroAmountInvoice == true {
+                        if isNodeIdTarget || isZeroAmountInvoice == true {
                             CaptionMText("Amount (required)")
-                        } else {
+                        } else if isFixedAmountInvoice {
                             CaptionMText("Amount (from invoice)")
+                        } else {
+                            CaptionMText("Amount")
                         }
+
                         TextField("Amount in sats", text: $amountSats)
                             .keyboardType(.numberPad)
-                            .disabled(isZeroAmountInvoice == false)
-                            .opacity(isZeroAmountInvoice == false ? 0.5 : 1)
+                            .disabled(!isNodeIdTarget && isZeroAmountInvoice == false)
+                            .opacity(!isNodeIdTarget && isZeroAmountInvoice == false ? 0.5 : 1)
                     }
 
                     CustomButton(title: "Send Probe", isDisabled: !canSendProbe, isLoading: isLoading) {
@@ -81,17 +102,49 @@ struct ProbingToolScreen: View {
 
     private var canSendProbe: Bool {
         let input = invoice.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !input.isEmpty, lastDecoded != nil else { return false }
+
+        guard !input.isEmpty else { return false }
+        if case .nodeId = probeTarget {
+            let value = UInt64(amountSats.filter(\.isNumber)) ?? 0
+            return value >= 1
+        }
+
+        guard lastDecoded != nil else { return false }
         if isZeroAmountInvoice == true {
             let value = UInt64(amountSats.filter(\.isNumber)) ?? 0
             return value >= 1
         }
+
         return true
+    }
+
+    private var probeTarget: ProbeTarget? {
+        let input = invoice.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !input.isEmpty else { return nil }
+
+        if isNodeId(input) {
+            return .nodeId(input)
+        }
+
+        if let decoded = lastDecoded {
+            return .invoice(bolt11: decoded.bolt11, amountSatoshis: decoded.amountSatoshis)
+        }
+
+        return nil
     }
 
     /// Decodes the current invoice and updates lastDecoded, isZeroAmountInvoice, and amountSats.
     private func decodeInvoiceAndUpdateState() async {
         let trimmed = invoice.trimmingCharacters(in: .whitespacesAndNewlines)
+        if isNodeId(trimmed) {
+            await MainActor.run {
+                lastDecoded = nil
+                isZeroAmountInvoice = true
+            }
+            return
+        }
+
         let decoded = await decodeInvoice(trimmed)
         await MainActor.run {
             lastDecoded = decoded
@@ -99,6 +152,14 @@ struct ProbingToolScreen: View {
             if let decoded {
                 amountSats = decoded.amountSatoshis > 0 ? "\(decoded.amountSatoshis)" : ""
             }
+        }
+    }
+
+    private func isNodeId(_ input: String) -> Bool {
+        let cleaned = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard cleaned.count == 66 else { return false }
+        return cleaned.unicodeScalars.allSatisfy { scalar in
+            CharacterSet(charactersIn: "0123456789abcdef").contains(scalar)
         }
     }
 
@@ -136,7 +197,7 @@ struct ProbingToolScreen: View {
     private func sendProbe() async {
         let input = invoice.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !input.isEmpty else {
-            app.toast(type: .warning, title: "Please enter an invoice")
+            app.toast(type: .warning, title: "Please enter an invoice or node ID")
             return
         }
 
@@ -145,13 +206,12 @@ struct ProbingToolScreen: View {
             probeResult = nil
         }
 
-        let decoded = await MainActor.run { lastDecoded }
-        guard let decoded else {
+        guard let target = await MainActor.run(body: { probeTarget }) else {
             await MainActor.run { isLoading = false }
             app.toast(
                 type: .warning,
-                title: "Invalid Invoice Format",
-                description: "Could not extract Lightning invoice"
+                title: "Invalid Target",
+                description: "Enter a valid Lightning invoice or node ID"
             )
             return
         }
@@ -172,18 +232,51 @@ struct ProbingToolScreen: View {
         let start = Date()
 
         do {
-            try await lightningService.sendProbe(bolt11: decoded.bolt11, amountSats: amountSatsValue)
-            let durationMs = Int(Date().timeIntervalSince(start) * 1000)
-            let estimatedFee: UInt64? = try? await lightningService.estimateRoutingFees(bolt11: decoded.bolt11, amountSats: amountSatsValue)
-            await MainActor.run {
-                probeResult = ProbeResult(
-                    success: true,
-                    durationMs: durationMs,
-                    estimatedFeeSats: estimatedFee,
-                    errorMessage: nil
-                )
+            let dispatch: LightningService.ProbeDispatch = switch target {
+            case let .invoice(bolt11, _):
+                try await lightningService.sendProbe(bolt11: bolt11, amountSats: amountSatsValue)
+            case let .nodeId(nodeId):
+                try await lightningService.sendProbesSpontaneous(nodeId: nodeId, amountSats: amountSatsValue)
             }
-            app.toast(type: .success, title: "Probe Successful", description: "Probe sent in \(durationMs) ms")
+
+            if dispatch.paymentIds.isEmpty {
+                await MainActor.run { isLoading = false }
+                app.toast(type: .error, title: "Probe Failed", description: "Probe was likely skipped (check logs)")
+                return
+            }
+
+            let resolved = try await wallet.waitForProbeOutcome(paymentIds: dispatch.paymentIds)
+            let durationMs = Int(Date().timeIntervalSince(start) * 1000)
+
+            if resolved.success {
+                let estimatedFee: UInt64? = switch target {
+                case let .invoice(bolt11, _):
+                    try? await lightningService.estimateRoutingFees(bolt11: bolt11, amountSats: amountSatsValue)
+                case .nodeId:
+                    nil
+                }
+                await MainActor.run {
+                    probeResult = ProbeResult(
+                        success: true,
+                        durationMs: durationMs,
+                        estimatedFeeSats: estimatedFee,
+                        errorMessage: nil
+                    )
+                }
+                app.toast(type: .success, title: "Probe Successful", description: "Route verified in \(durationMs) ms")
+            } else {
+                let scidText = resolved.shortChannelId.map(String.init) ?? "unknown"
+                let message = "Hash: \(resolved.paymentHash), SCID: \(scidText)"
+                await MainActor.run {
+                    probeResult = ProbeResult(
+                        success: false,
+                        durationMs: durationMs,
+                        estimatedFeeSats: nil,
+                        errorMessage: message
+                    )
+                }
+                app.toast(type: .error, title: "Probe Failed", description: message)
+            }
         } catch {
             let durationMs = Int(Date().timeIntervalSince(start) * 1000)
             await MainActor.run {

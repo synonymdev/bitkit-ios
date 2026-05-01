@@ -8,7 +8,7 @@ struct LanguageSettingsScreen: View {
         Button(action: {
             selectLanguage(language)
         }) {
-            SettingsListLabel(
+            SettingsRow(
                 title: language.name,
                 rightIcon: languageManager.currentLanguage.code == language.code ? .checkmark : nil
             )
@@ -26,22 +26,21 @@ struct LanguageSettingsScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__general__language_title"))
+                .padding(.horizontal, 16)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("settings__general__language_other"))
-                        .padding(.vertical, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsSectionHeader(t("settings__general__language_other"))
 
                     ForEach(SupportedLanguage.allLanguages, id: \.id) { language in
                         languageRow(language)
                     }
                 }
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
         .alert("Language Changed", isPresented: $showAlert) {
             Button("OK", role: .cancel) {}
         } message: {

@@ -3,6 +3,7 @@ import SwiftUI
 struct Header: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
+    @EnvironmentObject var pubkyProfile: PubkyProfileManager
 
     /// When true, shows the widget edit button (only on the widgets tab).
     var showWidgetEditButton: Bool = false
@@ -16,23 +17,7 @@ struct Header: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 0) {
-            // Button {
-            //     if app.hasSeenProfileIntro {
-            //         navigation.navigate(.profile)
-            //     } else {
-            //         navigation.navigate(.profileIntro)
-            //     }
-            // } label: {
-            //     HStack(alignment: .center, spacing: 16) {
-            //         Image(systemName: "person.circle.fill")
-            //             .resizable()
-            //             .font(.title2)
-            //             .foregroundColor(.gray1)
-            //             .frame(width: 32, height: 32)
-
-            //         TitleText(t("slashtags__your_name_capital"))
-            //     }
-            // }
+            profileButton
 
             Spacer()
 
@@ -78,5 +63,54 @@ struct Header: View {
         .zIndex(.infinity)
         .padding(.leading, 16)
         .padding(.trailing, 10)
+    }
+
+    @ViewBuilder
+    private var profileButton: some View {
+        Button {
+            if pubkyProfile.isAuthenticated || pubkyProfile.cachedName != nil {
+                navigation.navigate(.profile)
+            } else if pubkyProfile.initializationErrorMessage != nil {
+                navigation.navigate(.profile)
+            } else if !pubkyProfile.isInitialized {
+                // Still initializing — don't navigate to choice screen yet
+                return
+            } else if app.hasSeenProfileIntro {
+                navigation.navigate(.pubkyChoice)
+            } else {
+                navigation.navigate(.profileIntro)
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 16) {
+                profileAvatar
+
+                if let name = pubkyProfile.displayName {
+                    TitleText(name)
+                } else {
+                    TitleText(t("slashtags__your_name_capital"))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(pubkyProfile.displayName ?? t("profile__nav_title"))
+        .accessibilityIdentifier("ProfileButton")
+    }
+
+    @ViewBuilder
+    private var profileAvatar: some View {
+        if let imageUri = pubkyProfile.displayImageUri {
+            PubkyImage(uri: imageUri, size: 32)
+        } else {
+            Circle()
+                .fill(Color.gray4)
+                .frame(width: 32, height: 32)
+                .overlay {
+                    Image("user-square")
+                        .resizable()
+                        .scaledToFit()
+                        .foregroundColor(.white32)
+                        .frame(width: 16, height: 16)
+                }
+        }
     }
 }

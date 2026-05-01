@@ -2,6 +2,8 @@ import SwiftUI
 
 struct LocalCurrencySettingsView: View {
     @EnvironmentObject var currency: CurrencyViewModel
+    @EnvironmentObject var navigation: NavigationViewModel
+
     @State private var searchText = ""
 
     private let mostUsedCurrencies = ["USD", "GBP", "CAD", "CNY", "EUR"]
@@ -25,7 +27,7 @@ struct LocalCurrencySettingsView: View {
     }
 
     private func currencyRow(_ rate: FxRate) -> some View {
-        SettingsListLabel(
+        SettingsRow(
             title: "\(rate.quote) (\(rate.currencySymbol))",
             rightIcon: currency.selectedCurrency == rate.quote ? .checkmark : nil,
             testIdentifier: "Currency-\(rate.quote)"
@@ -35,6 +37,7 @@ struct LocalCurrencySettingsView: View {
             currency.selectedCurrency = rate.quote
             Task {
                 await currency.refresh()
+                navigation.navigateBack()
             }
         }
         .accessibilityAddTraits(.isButton)
@@ -64,10 +67,7 @@ struct LocalCurrencySettingsView: View {
             ScrollView(showsIndicators: false) {
                 if !availableMostUsed.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
-                        CaptionMText(t("settings__general__currency_most_used"))
-                            .padding(.top, 16)
-                            .padding(.bottom, 8)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        SettingsSectionHeader(t("settings__general__currency_most_used"))
 
                         ForEach(availableMostUsed, id: \.quote) { rate in
                             currencyRow(rate)
@@ -76,15 +76,13 @@ struct LocalCurrencySettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("settings__general__currency_other"))
-                        .padding(.top, 24)
-                        .padding(.bottom, 8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    SettingsSectionHeader(t("settings__general__currency_other"))
 
                     ForEach(otherCurrencies, id: \.quote) { rate in
                         currencyRow(rate)
                     }
                 }
+                .padding(.top, 16)
 
                 CaptionText(t("settings__general__currency_footer"))
                     .padding(.top, 16)

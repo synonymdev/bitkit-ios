@@ -18,12 +18,12 @@ struct DevSettingsView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     if Env.network == .regtest {
                         NavigationLink(value: Route.blocktankRegtest) {
-                            SettingsListLabel(title: "Blocktank Regtest")
+                            SettingsRow(title: "Blocktank Regtest")
                         }
                     }
 
                     if Env.network == .regtest {
-                        SettingsListLabel(
+                        SettingsRow(
                             title: "Override Fees",
                             rightIcon: nil,
                             toggle: $feeEstimatesManager.devOverrideFeeEstimates
@@ -31,19 +31,19 @@ struct DevSettingsView: View {
                     }
 
                     NavigationLink(value: Route.ldkDebug) {
-                        SettingsListLabel(title: "LDK")
+                        SettingsRow(title: "LDK")
                     }
 
                     NavigationLink(value: Route.vssDebug) {
-                        SettingsListLabel(title: "VSS")
+                        SettingsRow(title: "VSS")
                     }
 
                     NavigationLink(value: Route.probingTool) {
-                        SettingsListLabel(title: "Probing Tool")
+                        SettingsRow(title: "Probing Tool")
                     }
 
                     NavigationLink(value: Route.orders) {
-                        SettingsListLabel(title: "Orders")
+                        SettingsRow(title: "Orders")
                     }
 
                     Button {
@@ -57,7 +57,7 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(title: "Generate Test Activities", rightIcon: nil)
+                        SettingsRow(title: "Generate Test Activities", rightIcon: nil)
                     }
 
                     Button {
@@ -71,11 +71,11 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(title: "Reset All Activities", rightIcon: nil)
+                        SettingsRow(title: "Reset All Activities", rightIcon: nil)
                     }
 
                     NavigationLink(value: Route.logs) {
-                        SettingsListLabel(title: "Show Logs")
+                        SettingsRow(title: "Show Logs")
                     }
 
                     Button {
@@ -100,7 +100,7 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(title: "Export Logs", rightIcon: nil)
+                        SettingsRow(title: "Export Logs", rightIcon: nil)
                     }
 
                     Button {
@@ -117,13 +117,13 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(title: "Test Push Notification", rightIcon: nil)
+                        SettingsRow(title: "Test Push Notification", rightIcon: nil)
                     }
 
                     Button {
                         fatalError("Simulate Crash")
                     } label: {
-                        SettingsListLabel(title: "Simulate Crash", rightIcon: nil)
+                        SettingsRow(title: "Simulate Crash", rightIcon: nil)
                     }
 
                     Button {
@@ -139,7 +139,7 @@ struct DevSettingsView: View {
                             }
                         }
                     } label: {
-                        SettingsListLabel(title: "Wipe Wallet", rightIcon: nil)
+                        SettingsRow(title: "Wipe Wallet", rightIcon: nil)
                     }
                 }
                 .padding(.horizontal, 16)

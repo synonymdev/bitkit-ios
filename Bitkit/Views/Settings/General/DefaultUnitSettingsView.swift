@@ -6,64 +6,61 @@ struct DefaultUnitSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(title: t("settings__general__unit_title"))
+                .padding(.horizontal, 16)
 
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("settings__general__unit_display"))
-                        .padding(.vertical, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 0) {
+                    SettingsSectionHeader(t("settings__general__unit_display"))
 
                     Button(action: {
                         currency.primaryDisplay = .bitcoin
                     }) {
-                        SettingsListLabel(
+                        SettingsRow(
                             title: t("settings__general__unit_bitcoin"),
                             iconName: "b-unit",
+                            iconColor: .textPrimary,
                             rightIcon: currency.primaryDisplay == .bitcoin ? .checkmark : nil
                         )
                     }
-                    .buttonStyle(PlainButtonStyle())
 
                     if let rate = currency.convert(sats: 1)?.currency {
                         Button(action: {
                             currency.primaryDisplay = .fiat
                         }) {
-                            SettingsListLabel(
+                            SettingsRow(
                                 title: rate,
                                 iconName: "globe",
+                                iconColor: .textPrimary,
                                 rightIcon: currency.primaryDisplay == .fiat ? .checkmark : nil
                             )
                         }
-                        .buttonStyle(PlainButtonStyle())
                     }
 
                     BodyMText(t("settings__general__unit_note", variables: ["currency": currency.selectedCurrency]))
                         .padding(.vertical, 16)
-                }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    CaptionMText(t("settings__general__denomination_label"))
-                        .padding(.vertical, 16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    CustomDivider()
+
+                    SettingsSectionHeader(t("settings__general__denomination_label"))
+                        .padding(.top, 16)
 
                     ForEach(BitcoinDisplayUnit.allCases, id: \.self) { unit in
                         Button(action: {
                             currency.displayUnit = unit
                         }) {
-                            SettingsListLabel(
+                            SettingsRow(
                                 title: t("settings__general__denomination_\(unit.rawValue)"),
                                 rightIcon: currency.displayUnit == unit ? .checkmark : nil
                             )
                         }
-                        .buttonStyle(PlainButtonStyle())
                         .accessibilityIdentifier(unit.testIdentifier)
                     }
                 }
+                .padding(.horizontal, 16)
+                .bottomSafeAreaPadding()
             }
         }
         .navigationBarHidden(true)
-        .padding(.horizontal, 16)
-        .bottomSafeAreaPadding()
     }
 }
 

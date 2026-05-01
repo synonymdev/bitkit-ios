@@ -59,7 +59,9 @@ struct SendQuickpay: View {
         VStack {
             SheetHeader(title: t("wallet__send_quickpay__nav_title"))
 
-            if let invoice = app.scannedLightningInvoice {
+            if let lnurlPayData = app.lnurlPayData {
+                MoneyStack(sats: Int(lnurlPayData.minSendableSat), showSymbol: true)
+            } else if let invoice = app.scannedLightningInvoice {
                 MoneyStack(sats: Int(invoice.amountSatoshis), showSymbol: true)
             }
 
@@ -88,14 +90,12 @@ struct SendQuickpay: View {
 
         // Handle LNURL Pay
         if let lnurlPayData = app.lnurlPayData {
-            let amount = lnurlPayData.minSendable
-
-            // Set the amount for the success screen
-            wallet.sendAmountSats = amount
+            // Set the amount in sats for the success screen
+            wallet.sendAmountSats = lnurlPayData.minSendableSat
 
             bolt11Invoice = try await LnurlHelper.fetchLnurlInvoice(
                 callbackUrl: lnurlPayData.callback,
-                amount: amount
+                amountMsats: lnurlPayData.callbackAmountMsats()
             )
         } else if let scannedInvoice = app.scannedLightningInvoice {
             wallet.sendAmountSats = scannedInvoice.amountSatoshis
@@ -110,12 +110,13 @@ struct SendQuickpay: View {
 
         let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
         let paymentHash = String(describing: parsedInvoice.paymentHash())
-        let amount = wallet.sendAmountSats
 
         do {
+            // Quickpay only triggers for invoices with built-in amounts, so pass sats: nil
+            // to let LDK use the invoice's native millisatoshi precision.
             try await wallet.sendWithTimeout(
                 bolt11: bolt11,
-                sats: amount,
+                sats: nil,
                 onTimeout: {
                     app.addPendingPaymentHash(paymentHash)
                     navigationPath.append(.pending(paymentHash: paymentHash))

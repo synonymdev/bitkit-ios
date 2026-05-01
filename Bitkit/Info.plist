@@ -23,6 +23,17 @@
 	<string>$(E2E_BACKEND)</string>
 	<key>E2E_NETWORK</key>
 	<string>$(E2E_NETWORK)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>pubkyauth</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Bitkit uses Bluetooth to connect to your Trezor hardware wallet for signing transactions.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>

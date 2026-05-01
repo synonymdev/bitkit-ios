@@ -9,7 +9,7 @@ struct FundManualSuccessView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            NavigationBar(title: t("lightning__external__nav_title"), showBackButton: false)
+            NavigationBar(title: t("lightning__external_success__nav_title"), showBackButton: false)
                 .padding(.bottom, 16)
 
             VStack(alignment: .leading, spacing: 16) {
@@ -26,7 +26,7 @@ struct FundManualSuccessView: View {
 
                 Spacer()
 
-                Image("switch")
+                Image("lightning")
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 256, height: 256)

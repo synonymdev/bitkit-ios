@@ -227,6 +227,12 @@ class BackupService {
 
                 await SettingsViewModel.shared.restoreAppCacheData(payload.cache)
 
+                do {
+                    try await PubkyProfileManager.restoreSessionBackupState(payload.pubkySession)
+                } catch {
+                    Logger.warn("Failed to restore pubky session backup state: \(error)", context: "BackupService")
+                }
+
                 // Force address rotation by clearing onchain address
                 UserDefaults.standard.set("", forKey: "onchainAddress")
 
@@ -657,6 +663,7 @@ class BackupService {
         case .metadata:
             let currentTime = UInt64(Date().timeIntervalSince1970 * 1000)
             let cache = await SettingsViewModel.shared.getAppCacheData()
+            let pubkySession = try PubkyProfileManager.snapshotSessionBackupState()
 
             let preActivityMetadata = try await CoreService.shared.activity.getAllPreActivityMetadata()
 
@@ -664,7 +671,8 @@ class BackupService {
                 version: 1,
                 createdAt: currentTime,
                 tagMetadata: preActivityMetadata,
-                cache: cache
+                cache: cache,
+                pubkySession: pubkySession
             )
             return try JSONEncoder().encode(payload)
 

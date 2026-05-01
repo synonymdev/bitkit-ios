@@ -13,6 +13,22 @@ struct SendSuccess: View {
 
     @State private var foundActivity: Activity?
 
+    private var successDisplaySats: Int? {
+        if let sendAmountSats = wallet.sendAmountSats {
+            return Int(sendAmountSats)
+        }
+        if let lnurlPayData = app.lnurlPayData {
+            return Int(lnurlPayData.minSendableSat)
+        }
+        if let invoice = app.scannedLightningInvoice, invoice.amountSatoshis > 0 {
+            return Int(invoice.amountSatoshis)
+        }
+        if let invoice = app.scannedOnchainInvoice, invoice.amountSatoshis > 0 {
+            return Int(invoice.amountSatoshis)
+        }
+        return nil
+    }
+
     /// Load the confetti animation
     private var confettiAnimation: LottieAnimation? {
         let isOnchain = app.selectedWalletToPayFrom == .onchain
@@ -42,8 +58,8 @@ struct SendSuccess: View {
                     SheetHeader(title: t("wallet__send_sent"), showBackButton: false)
                         .accessibilityIdentifier("SendSuccess")
 
-                    if let sendAmountSats = wallet.sendAmountSats {
-                        MoneyStack(sats: Int(sendAmountSats), showSymbol: true)
+                    if let sats = successDisplaySats {
+                        MoneyStack(sats: sats, showSymbol: true)
                     }
 
                     Spacer()

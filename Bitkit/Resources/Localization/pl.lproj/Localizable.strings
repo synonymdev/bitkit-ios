@@ -115,12 +115,12 @@
 "lightning__transfer_intro__button" = "Rozpocznij";
 "lightning__funding__nav_title" = "Saldo wydatków";
 "lightning__funding__title" = "Zasil swoje <accent>saldo wydatków</accent>";
-"lightning__funding__text" = "Możesz użyć oszczędności zgromadzonych w Twoim portfelu Bitkit lub wysłać bitcoiny z innego portfela.";
+"lightning__funding__text" = "Najłatwiejszą opcją jest użycie oszczędności Bitkit lub wysłanie bitcoinów z innego portfela.";
 "lightning__funding__text_blocked" = "Bitkit nie świadczy obecnie usług Lightning w Twoim kraju, ale nadal możesz łączyć się z innymi węzłami.";
 "lightning__funding__text_blocked_cjit" = "Bitkit nie świadczy obecnie usług Lightning w Twoim kraju, ale nadal możesz łączyć się bezpośrednio z innymi węzłami.";
 "lightning__funding__button1" = "Prześlij z Oszczędności";
 "lightning__funding__button2" = "Użyj innego portfela";
-"lightning__funding__button3" = "Zaawansowane";
+"lightning__funding__button3" = "Ręczna konfiguracja";
 "lightning__funding_advanced__nav_title" = "Saldo do wydawania";
 "lightning__funding_advanced__title" = "<accent>Ustawienia</accent> zaawansowane";
 "lightning__funding_advanced__text" = "Zeskanuj kod QR, aby odebrać swój kanał LNURL od innego LSP, lub wybierz ręczną konfigurację.";
@@ -189,7 +189,8 @@
 "lightning__external_manual__paste" = "Wklej adres URI węzła";
 "lightning__external_manual__scan" = "Skanuj QR";
 "lightning__external_amount__title" = "Saldo\n<accent>wydatków</accent>";
-"lightning__external_success__title" = "Połączenie\n<accent>zainicjowane</accent>";
+"lightning__external_success__nav_title" = "Saldo wydatków";
+"lightning__external_success__title" = "Otwieranie\n<accent>kanału</accent>";
 "lightning__external_success__text" = "Połączenie Lightning zostało zainicjowane. Będą Państwo mogli wykorzystać swoje saldo wydatków w ciągu <accent>±30 minut</accent> (w zależności od konfiguracji węzła).";
 "lightning__error_channel_purchase" = "Konfiguracja płatności natychmiastowych nie powiodła się";
 "lightning__error_channel_setup_msg" = "Wystąpił błąd podczas konfigurowania salda natychmiastowego. {raw}";
@@ -912,6 +913,7 @@
 "wallet__drawer__widgets" = "Widgety";
 "wallet__drawer__shop" = "Sklep";
 "wallet__drawer__settings" = "Ustawienia";
+"wallet__drawer__support" = "Wsparcie";
 "wallet__drawer__status" = "Status aplikacji";
 "wallet__send" = "Wyślij";
 "wallet__receive" = "Otrzymaj";

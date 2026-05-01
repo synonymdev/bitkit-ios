@@ -1,35 +1,26 @@
 import SwiftUI
 
 struct SecuritySuccess: View {
-    @EnvironmentObject private var sheets: SheetViewModel
+    @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
-    @Binding var navigationPath: [SecurityRoute]
+    @EnvironmentObject private var sheets: SheetViewModel
 
     private var biometryTypeName: String {
         switch Env.biometryType {
-        case .touchID:
-            return t("security__bio_touch_id")
-        case .faceID:
-            return t("security__bio_face_id")
-        default:
-            return t("security__bio_face_id") // Default to Face ID
+        case .touchID: t("security__bio_touch_id")
+        default: t("security__bio_face_id")
         }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SheetHeader(title: t("security__success_title"))
-                .padding(.horizontal, 16)
 
             VStack(spacing: 0) {
                 BodyMText(
                     settings.useBiometrics
-                        ? t(
-                            "security__success_bio",
-                            variables: ["biometricsName": biometryTypeName]
-                        )
-                        : t("security__success_no_bio"),
-                    textColor: .textSecondary
+                        ? t("security__success_bio", variables: ["biometricsName": biometryTypeName])
+                        : t("security__success_no_bio")
                 )
 
                 Spacer()
@@ -55,6 +46,7 @@ struct SecuritySuccess: View {
 
                 CustomButton(title: t("common__ok")) {
                     sheets.hideSheet()
+                    navigation.navigateBack()
                 }
             }
             .padding(.horizontal, 16)
@@ -67,7 +59,7 @@ struct SecuritySuccess: View {
 }
 
 #Preview {
-    SecuritySuccess(navigationPath: .constant([.success]))
+    SecuritySuccess()
         .environmentObject(SheetViewModel())
         .environmentObject(SettingsViewModel.shared)
 }

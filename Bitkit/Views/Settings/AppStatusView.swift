@@ -159,7 +159,7 @@ struct AppStatusView: View {
             description: description,
             status: status,
             onTap: {
-                navigation.navigate(.backupSettings)
+                navigation.navigate(.dataBackups)
             }
         )
         .accessibilityIdentifier("Status-backup")

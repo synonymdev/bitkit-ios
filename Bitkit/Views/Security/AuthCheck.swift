@@ -13,6 +13,7 @@ struct AuthCheck: View {
     @State private var biometricFailedOnce = false
     @State private var errorIdentifier: String?
 
+    let onCancel: (() -> Void)?
     let onPinVerified: () -> Void
 
     private var biometryTypeName: String {
@@ -57,39 +58,22 @@ struct AuthCheck: View {
         pinInput = ""
         Haptics.notify(.error)
 
-        if settings.hasExceededPinAttempts() {
+        let pinAttemptOutcome = settings.pinAttemptOutcomeAfterFailure()
+        if case .exceededAttempts = pinAttemptOutcome {
             Task {
-                do {
-                    try await AppReset.wipe(
-                        app: app,
-                        wallet: wallet,
-                        session: session,
-                        toastType: .warning
-                    )
-                } catch {
-                    Logger.error("Failed to wipe wallet after PIN attempts exceeded: \(error)", context: "AuthCheck")
-                    app.toast(error)
-                }
+                await settings.wipeWalletAfterExceededPinAttempts(
+                    app: app,
+                    wallet: wallet,
+                    session: session,
+                    context: "AuthCheck"
+                )
             }
 
             return
         }
 
-        let remainingAttempts = settings.getRemainingPinAttempts()
-
-        if remainingAttempts == 1 {
-            // Last attempt warning
-            errorMessage = t(
-                "security__pin_last_attempt", comment: "Last attempt. Entering the wrong PIN again will reset your wallet."
-            )
-            errorIdentifier = "LastAttempt"
-        } else {
-            // Show remaining attempts
-            errorMessage = t(
-                "security__pin_attempts", comment: "%d attempts remaining. Forgot your PIN?", variables: ["attemptsRemaining": "\(remainingAttempts)"]
-            )
-            errorIdentifier = "AttemptsRemaining"
-        }
+        errorMessage = pinAttemptOutcome.errorMessage ?? ""
+        errorIdentifier = pinAttemptOutcome.errorIdentifier
     }
 
     private func handleBiometricAuthentication() {
@@ -123,6 +107,26 @@ struct AuthCheck: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let onCancel {
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Image("arrow-left")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.textPrimary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .accessibilityIdentifier("NavigationBack")
+
+                    Spacer()
+                }
+                .frame(height: 48)
+                .padding(.horizontal, 16)
+            } else {
+                Spacer()
+                    .frame(height: 48)
+            }
+
             Spacer()
 
             Image("logo")
@@ -152,10 +156,10 @@ struct AuthCheck: View {
                 if !errorMessage.isEmpty {
                     BodySText(errorMessage, textColor: .brandAccent)
                         .frame(maxWidth: .infinity, alignment: .center)
+                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                         .onTapGesture {
                             sheets.showSheet(.forgotPin)
                         }
-                        .accessibilityIdentifier(errorIdentifier ?? "WrongPIN")
                 }
             }
             .frame(maxWidth: .infinity)
@@ -178,11 +182,16 @@ struct AuthCheck: View {
 }
 
 #Preview {
-    AuthCheck {
-        print("PIN verified!")
-    }
-    .environmentObject(SettingsViewModel.shared)
-    .environmentObject(WalletViewModel())
+    AuthCheck(
+        onCancel: nil,
+        onPinVerified: {
+            print("PIN verified!")
+        }
+    )
     .environmentObject(AppViewModel())
+    .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SheetViewModel())
+    .environmentObject(WalletViewModel())
+    .environmentObject(SessionManager())
     .preferredColorScheme(.dark)
 }

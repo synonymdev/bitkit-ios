@@ -5,3 +5,4 @@
 "slashtags__contact_retrieving" = "Recebimento\ninformações de contato...";
 "slashtags__profile_link_label_placeholder" = "Por exemplo, \"Website\".";
 "wallet__error_broadcast_tx_connection" = "Por favor, verifique sua conexão e tente novamente.\n{message}";
+"wallet__drawer__support" = "Suporte";

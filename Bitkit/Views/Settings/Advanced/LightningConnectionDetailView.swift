@@ -66,12 +66,12 @@ struct LightningConnectionDetailView: View {
                             )
                             .padding(.bottom, 28)
 
-                            VStack(alignment: .leading, spacing: 32) {
+                            VStack(alignment: .leading, spacing: 16) {
                                 // STATUS Section
-                                VStack(alignment: .leading, spacing: 16) {
-                                    Divider()
+                                VStack(alignment: .leading, spacing: 0) {
+                                    CustomDivider()
 
-                                    CaptionMText(t("lightning__status"))
+                                    SettingsSectionHeader(t("lightning__status"))
 
                                     HStack(alignment: .center, spacing: 8) {
                                         let status = detailedStatus(for: channel)
@@ -84,15 +84,15 @@ struct LightningConnectionDetailView: View {
 
                                         BodyMSBText(status.text, textColor: status.color)
                                     }
+                                    .padding(.bottom, 16)
 
-                                    Divider()
+                                    CustomDivider()
                                 }
 
                                 // ORDER DETAILS Section
                                 if let order = channelDetails.linkedOrder {
                                     VStack(alignment: .leading, spacing: 0) {
-                                        CaptionMText(t("lightning__order_details"))
-                                            .padding(.bottom, 16)
+                                        SettingsSectionHeader(t("lightning__order_details"))
 
                                         DetailRow(label: t("lightning__order"), value: order.id)
 
@@ -116,8 +116,7 @@ struct LightningConnectionDetailView: View {
 
                                 // BALANCE Section
                                 VStack(alignment: .leading, spacing: 0) {
-                                    CaptionMText(t("lightning__balance"))
-                                        .padding(.bottom, 16)
+                                    SettingsSectionHeader(t("lightning__balance"))
 
                                     DetailRowWithAmount(
                                         label: t("lightning__receiving_label"),
@@ -140,49 +139,45 @@ struct LightningConnectionDetailView: View {
 
                                 // FEES Section
                                 VStack(alignment: .leading, spacing: 0) {
-                                    CaptionMText(t("lightning__fees"))
-                                        .padding(.bottom, 16)
-
+                                    SettingsSectionHeader(t("lightning__fees"))
                                     DetailRowWithAmount(label: t("lightning__base_fee"), amount: UInt64(channel.forwardingFeeBaseMsat / 1000))
                                     DetailRow(label: t("lightning__fee_rate"), value: "\(channel.forwardingFeeProportionalMillionths) ppm")
                                 }
 
                                 // OTHER Section
-                                VStack(alignment: .leading, spacing: 16) {
-                                    CaptionMText(t("lightning__other"))
+                                VStack(alignment: .leading, spacing: 0) {
+                                    SettingsSectionHeader(t("lightning__other"))
 
-                                    VStack(spacing: 0) {
-                                        DetailRow(
-                                            label: t("lightning__is_usable"),
-                                            value: channel.isUsable ? t("common__yes") : t("common__no"),
-                                            valueTestId: channel.isUsable ? "IsUsableYes" : "IsUsableNo"
-                                        )
+                                    DetailRow(
+                                        label: t("lightning__is_usable"),
+                                        value: channel.isUsable ? t("common__yes") : t("common__no"),
+                                        valueTestId: channel.isUsable ? "IsUsableYes" : "IsUsableNo"
+                                    )
 
-                                        // TODO: Add channel opening date
-                                        // if let formattedDate = formatDate(channel.fundingTxo) {
-                                        //     DetailRow(label: t("lightning__opened_on"), value: formattedDate)
-                                        // }
+                                    // TODO: Add channel opening date
+                                    // if let formattedDate = formatDate(channel.fundingTxo) {
+                                    //     DetailRow(label: t("lightning__opened_on"), value: formattedDate)
+                                    // }
 
-                                        if let closedAt = channel.displayedClosedAt {
-                                            if let formattedCloseDate = formatDate(closedAt) {
-                                                DetailRow(label: t("lightning__closed_on"), value: formattedCloseDate)
-                                            }
+                                    if let closedAt = channel.displayedClosedAt {
+                                        if let formattedCloseDate = formatDate(closedAt) {
+                                            DetailRow(label: t("lightning__closed_on"), value: formattedCloseDate)
                                         }
+                                    }
 
-                                        DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
+                                    DetailRow(label: t("lightning__channel_id"), value: channel.channelIdString)
 
-                                        if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
-                                            DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
-                                        }
+                                    if let txid = channel.displayedFundingTxoTxid, let vout = channel.fundingTxoVout {
+                                        DetailRow(label: t("lightning__channel_point"), value: "\(txid):\(vout)")
+                                    }
 
-                                        DetailRow(
-                                            label: t("lightning__channel_node_id"),
-                                            value: channel.counterpartyNodeIdString
-                                        )
+                                    DetailRow(
+                                        label: t("lightning__channel_node_id"),
+                                        value: channel.counterpartyNodeIdString
+                                    )
 
-                                        if let reason = channel.closureReason {
-                                            DetailRow(label: t("lightning__closure_reason"), value: reason)
-                                        }
+                                    if let reason = channel.closureReason {
+                                        DetailRow(label: t("lightning__closure_reason"), value: reason)
                                     }
                                 }
                             }
@@ -352,7 +347,7 @@ struct LightningConnectionDetailView: View {
                 .frame(height: 50)
             }
 
-            Divider()
+            CustomDivider()
         }
         .frame(height: 51)
     }
@@ -371,7 +366,7 @@ struct LightningConnectionDetailView: View {
                 .frame(height: 50)
             }
 
-            Divider()
+            CustomDivider()
         }
         .frame(height: 51)
     }

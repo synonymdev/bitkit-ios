@@ -66,8 +66,7 @@ struct TransactionSpeedSettingsView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CaptionMText(t("settings__general__speed_default"))
-                        .frame(height: 50)
+                    SettingsSectionHeader(t("settings__general__speed_default"))
 
                     VStack(spacing: 0) {
                         TransactionSpeedSettingsRow(
@@ -79,7 +78,7 @@ struct TransactionSpeedSettingsView: View {
                             }
                         )
 
-                        Divider()
+                        CustomDivider()
 
                         TransactionSpeedSettingsRow(
                             speed: .normal,
@@ -90,7 +89,7 @@ struct TransactionSpeedSettingsView: View {
                             }
                         )
 
-                        Divider()
+                        CustomDivider()
 
                         TransactionSpeedSettingsRow(
                             speed: .slow,
@@ -101,7 +100,7 @@ struct TransactionSpeedSettingsView: View {
                             }
                         )
 
-                        Divider()
+                        CustomDivider()
 
                         TransactionSpeedSettingsRow(
                             speed: .custom(satsPerVByte: 1), // Placeholder

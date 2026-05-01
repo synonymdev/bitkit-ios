@@ -25,5 +25,6 @@
 "slashtags__contact_select" = "اختر جهة اتصال";
 "slashtags__profile_delete_dialogue_yes" = "نعم، احذف";
 "wallet__drawer__contacts" = "جهات الاتصال";
+"wallet__drawer__support" = "الدعم";
 "wallet__recipient_contact" = "جهة الاتصال";
 "wallet__activity_contact" = "جهة الاتصال";

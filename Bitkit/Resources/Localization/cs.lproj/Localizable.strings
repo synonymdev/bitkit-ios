@@ -112,12 +112,12 @@
 "lightning__transfer_intro__button" = "Začít";
 "lightning__funding__nav_title" = "Dostupný zůstatek";
 "lightning__funding__title" = "Navyšte svůj <accent>disponibilní zůstatek</accent>";
-"lightning__funding__text" = "Můžete použít své úspory na BitKitu nebo poslat bitcoin z jiné peněženky.";
+"lightning__funding__text" = "Nejjednodušší možností je použít úspory z Bitkitu nebo poslat bitcoin z jiné peněženky.";
 "lightning__funding__text_blocked" = "Bitkit v současné době neposkytuje služby lightning ve vaší zemi, ale stále se můžete připojit k jiným uzlům přímo.";
 "lightning__funding__text_blocked_cjit" = "Bitkit v současné době neposkytuje služby lightning ve vaší zemi, ale stále se můžete připojit k jiným uzlům přímo.";
 "lightning__funding__button1" = "Převod z úspor";
 "lightning__funding__button2" = "Použijte jinou peněženku";
-"lightning__funding__button3" = "Pokročilé";
+"lightning__funding__button3" = "Manuální nastavení";
 "lightning__funding_advanced__nav_title" = "Dostupný zůstatek";
 "lightning__funding_advanced__title" = "Pokročilé <accent>nastavení</accent>";
 "lightning__funding_advanced__text" = "Naskenujte QR kód pro nárokování svého LNURL kanálu od jiného LSP nebo si vyberte ruční nastavení.";
@@ -185,7 +185,8 @@
 "lightning__external_manual__paste" = "Vložte URI uzlu";
 "lightning__external_manual__scan" = "Skenovat QR";
 "lightning__external_amount__title" = "Disponibilní\n<accent>zůstatek</accent>";
-"lightning__external_success__title" = "Připojení\n<accent>iniciováno</accent>";
+"lightning__external_success__nav_title" = "Zůstatek k utracení";
+"lightning__external_success__title" = "Otevírání\n<accent>kanálu</accent>";
 "lightning__external_success__text" = "Iniciováno připojení lightning. Zůstatek na účtu budete moci použít do <accent>±30 minut</accent> (závisí na konfiguraci uzlu).";
 "lightning__error_channel_purchase" = "Nastavení okamžitých plateb se nezdařilo";
 "lightning__error_channel_setup_msg" = "Při nastavování okamžitého zůstatku došlo k chybě. {raw}";
@@ -888,6 +889,7 @@
 "wallet__drawer__widgets" = "Widgety";
 "wallet__drawer__shop" = "Nakoupit";
 "wallet__drawer__settings" = "Nastavení";
+"wallet__drawer__support" = "Podpora";
 "wallet__drawer__status" = "Stav aplikace";
 "wallet__send" = "Odeslat";
 "wallet__receive" = "Přijmout";

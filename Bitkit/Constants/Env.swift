@@ -34,6 +34,14 @@ enum Env {
         (infoPlistValue("E2E_BACKEND") ?? "local").lowercased()
     }
 
+    private static var isLocalE2EBackend: Bool {
+        isE2E && e2eBackend == "local"
+    }
+
+    private static var e2eHomegateUrl: String {
+        infoPlistValue("E2E_HOMEGATE_URL") ?? "http://127.0.0.1:6288"
+    }
+
     private static var e2eNetwork: LDKNode.Network {
         switch (infoPlistValue("E2E_NETWORK") ?? "regtest").lowercased() {
         case "bitcoin", "mainnet":
@@ -255,6 +263,30 @@ enum Env {
         switch network {
         case .bitcoin: "https://blocktank.synonym.to/backups-ldk"
         default: "https://bitkit.stag0.blocktank.to/backups-ldk"
+        }
+    }
+
+    /// Pubky/Paykit capabilities — production for mainnet, staging for regtest/testnet/signet.
+    static var pubkyCapabilities: String {
+        switch network {
+        case .bitcoin:
+            return "/pub/bitkit.to/:rw,/pub/pubky.app/:r,/pub/paykit/v0/:rw"
+        default:
+            return "/pub/staging.bitkit.to/:rw,/pub/staging.pubky.app/:r,/pub/staging.paykit/v0/:rw"
+        }
+    }
+
+    /// Homegate URL for auto-provisioned identity signup via IP verification.
+    static var homegateUrl: String {
+        if isLocalE2EBackend {
+            return e2eHomegateUrl
+        }
+
+        switch network {
+        case .bitcoin:
+            return "https://homegate.pubky.app"
+        default:
+            return "https://homegate.staging.pubky.app"
         }
     }
 

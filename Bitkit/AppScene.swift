@@ -27,6 +27,9 @@ struct AppScene: View {
     @StateObject private var transferTracking: TransferTrackingManager
     @StateObject private var channelDetails = ChannelDetailsViewModel.shared
     @StateObject private var migrations = MigrationsService.shared
+    @StateObject private var pubkyProfile = PubkyProfileManager()
+    @StateObject private var contactsManager = ContactsManager()
+    @State private var keyboardManager = KeyboardManager()
     @State private var trezorViewModel = TrezorViewModel()
 
     @State private var hideSplash = false
@@ -99,6 +102,7 @@ struct AppScene: View {
                     if UserDefaults.standard.bool(forKey: "pinOnLaunch") && settings.pinEnabled {
                         isPinVerified = false
                     }
+
                     if migrations.needsPostMigrationSync {
                         app.toast(
                             type: .warning,
@@ -134,7 +138,30 @@ struct AppScene: View {
             .environmentObject(tagManager)
             .environmentObject(transferTracking)
             .environmentObject(channelDetails)
+            .environmentObject(pubkyProfile)
+            .environmentObject(contactsManager)
+            .environment(keyboardManager)
             .environment(trezorViewModel)
+            .onChange(of: pubkyProfile.authState, initial: true) { _, authState in
+                if authState == .authenticated, let pk = pubkyProfile.publicKey {
+                    Task { try? await contactsManager.loadContacts(for: pk) }
+                } else if authState == .idle {
+                    contactsManager.reset()
+                }
+            }
+            .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
+                guard shouldDiscardPendingImport(currentRoute: oldRoute, destination: newRoute) else {
+                    return
+                }
+
+                contactsManager.clearPendingImport()
+            }
+            .onChange(of: pubkyProfile.sessionRestorationFailed) { _, failed in
+                if failed {
+                    pubkyProfile.sessionRestorationFailed = false
+                    app.toast(type: .error, title: t("profile__session_expired_title"), description: t("profile__session_expired_description"))
+                }
+            }
             .onAppear {
                 if !settings.pinEnabled {
                     isPinVerified = true
@@ -239,9 +266,12 @@ struct AppScene: View {
             WalletRestoreSuccess()
         } else {
             if !isPinVerified && settings.pinEnabled {
-                AuthCheck {
-                    isPinVerified = true
-                }
+                AuthCheck(
+                    onCancel: nil,
+                    onPinVerified: {
+                        isPinVerified = true
+                    }
+                )
             } else {
                 MainNavView()
             }
@@ -306,19 +336,25 @@ struct AppScene: View {
             app?.handleLdkNodeEvent(lightningEvent)
         }
 
-        if wallet.isRestoringWallet {
-            Task {
+        Task {
+            if wallet.isRestoringWallet {
                 await restoreFromMostRecentBackup()
 
                 await MainActor.run {
                     widgets.loadSavedWidgets()
                     widgets.objectWillChange.send()
                 }
-
+                await pubkyProfile.initialize()
                 await startWallet()
+                return
             }
-        } else {
-            Task { await startWallet() }
+
+            let initializePubkyTask = Task {
+                await pubkyProfile.initialize()
+            }
+
+            await startWallet()
+            await initializePubkyTask.value
         }
     }
 
