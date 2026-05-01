@@ -163,11 +163,29 @@
 			);
 			target = 961058DB2C355B5500E1F1D8 /* BitkitNotification */;
 		};
+		4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Fonts/InterTight-Black.ttf,
+				Fonts/InterTight-Bold.ttf,
+				Fonts/InterTight-ExtraBold.ttf,
+				Fonts/InterTight-Medium.ttf,
+				Fonts/InterTight-Regular.ttf,
+				Fonts/InterTight-SemiBold.ttf,
+				Models/BlocksWidgetOptions.swift,
+				Services/Widgets/BlocksHomeScreenWidgetOptionsStore.swift,
+				Services/Widgets/BlocksService.swift,
+				Styles/Colors.swift,
+				Styles/Fonts.swift,
+				Styles/TextStyle.swift,
+			);
+			target = 4A319B4E2E8F24F2002B9AC9 /* BitkitWidgetExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4A319B542E8F24F2002B9AC9 /* BitkitWidget */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (4A319B662E8F24F4002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BitkitWidget; sourceTree = "<group>"; };
-		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
+		96A44E912CEF5EA700FBACFF /* Bitkit */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F3D2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3E2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 96A44F3F2CEF5EA700FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 4A319B672E8F24F5002B9AC9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = Bitkit; sourceTree = "<group>"; };
 		96A44F4A2CEF5F4B00FBACFF /* BitkitTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitTests; sourceTree = "<group>"; };
 		96A44F562CEF5F5400FBACFF /* BitkitUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = BitkitUITests; sourceTree = "<group>"; };
 		96A44F5C2CEF5F5800FBACFF /* BitkitNotification */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (96A44F5E2CEF5F5800FBACFF /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = BitkitNotification; sourceTree = "<group>"; };
@@ -599,7 +617,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -611,7 +629,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -632,7 +650,7 @@
 				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
 				CODE_SIGN_ENTITLEMENTS = BitkitWidgetExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 186;
 				DEVELOPMENT_TEAM = KYH47R284B;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = BitkitWidget/Info.plist;
@@ -644,7 +662,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "to.bitkit.widget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;

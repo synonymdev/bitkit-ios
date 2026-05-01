@@ -8,7 +8,9 @@ See the main **WIDGET_SETUP.md** file in the project root for detailed setup ins
 
 ## Files in this Directory
 
-- **BitkitWidget.swift** - Main widget implementation with timeline provider and views
+- **BitkitWidget.swift** - `WidgetBundle` entry point (`@main`)
+- **FactsHomeScreenWidget.swift** - Bitcoin Facts timeline, view, and `BitkitFactsWidget` configuration
+- **BlocksHomeScreenWidget.swift** - Bitcoin blocks timeline, view, and `BitkitBlocksWidget` configuration
 - **WidgetFactsService.swift** - Service for managing and providing Bitcoin facts
 - **Info.plist** - Widget extension configuration
 - **BitkitWidget.entitlements** - App Groups entitlement for data sharing
@@ -25,20 +27,14 @@ Each `FactsWidgetEntry` contains:
 - A Bitcoin fact string
 
 ### Widget View
-The `BitkitWidgetEntryView` displays the fact with:
-- A gradient background
+`FactsHomeScreenWidgetEntryView` displays the fact with:
+- Background tuned for full-color vs accented (Liquid Glass) mode
 - Bitcoin icon header
 - Fact text (responsive to widget size)
 - Source attribution footer
 
 ### Data Sharing
 Facts are shared between the main app and widget via App Groups (`group.bitkit`), allowing the widget to display the same facts as the in-app widget.
-
-## Widget Sizes
-
-- **Small (2x2)**: Shows 4 lines of text
-- **Medium (4x2)**: Shows 3 lines of text  
-- **Large (4x4)**: Shows 8 lines of text
 
 ## Testing
 

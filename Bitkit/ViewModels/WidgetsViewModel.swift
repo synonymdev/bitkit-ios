@@ -301,6 +301,7 @@ class WidgetsViewModel: ObservableObject {
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
+        syncBlocksOptionsToHomeScreenWidget()
     }
 
     private func persistSavedWidgets() {
@@ -310,5 +311,13 @@ class WidgetsViewModel: ObservableObject {
         } catch {
             print("Failed to persist widgets: \(error)")
         }
+        syncBlocksOptionsToHomeScreenWidget()
+    }
+
+    /// Keeps home screen WidgetKit blocks widget in sync with in-app blocks widget options (App Group).
+    private func syncBlocksOptionsToHomeScreenWidget() {
+        let options: BlocksWidgetOptions = getOptions(for: .blocks, as: BlocksWidgetOptions.self)
+        BlocksHomeScreenWidgetOptionsStore.save(options)
+        BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }
