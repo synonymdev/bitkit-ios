@@ -208,6 +208,48 @@ class TrezorService {
         }
     }
 
+    // MARK: - Transaction History & Detail (No Device Required)
+
+    /// Get transaction history for an extended public key (xpub/ypub/zpub/tpub/upub/vpub).
+    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
+    func getTransactionHistory(
+        extendedKey: String,
+        electrumUrl: String,
+        network: TrezorCoinType? = nil,
+        scriptType: AccountType? = nil
+    ) async throws -> TransactionHistoryResult {
+        let networkParam = toNetwork(network)
+        return try await ServiceQueue.background(.core) {
+            try await onchainGetTransactionHistory(
+                extendedKey: extendedKey,
+                electrumUrl: electrumUrl,
+                network: networkParam,
+                scriptType: scriptType
+            )
+        }
+    }
+
+    /// Get detailed information for a specific transaction by its ID.
+    /// This does NOT require a connected Trezor device — it queries the Electrum server directly.
+    func getTransactionDetail(
+        extendedKey: String,
+        electrumUrl: String,
+        txid: String,
+        network: TrezorCoinType? = nil,
+        scriptType: AccountType? = nil
+    ) async throws -> TransactionDetail {
+        let networkParam = toNetwork(network)
+        return try await ServiceQueue.background(.core) {
+            try await onchainGetTransactionDetail(
+                extendedKey: extendedKey,
+                electrumUrl: electrumUrl,
+                txid: txid,
+                network: networkParam,
+                scriptType: scriptType
+            )
+        }
+    }
+
     // MARK: - Transaction Composition & Broadcasting
 
     /// Compose a transaction using BDK-based PSBT generation (signer-agnostic).
