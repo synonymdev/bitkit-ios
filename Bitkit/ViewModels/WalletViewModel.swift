@@ -962,7 +962,9 @@ class WalletViewModel: ObservableObject {
         let publicOnchainAddress = try await refreshReusableOnchainAddress()
 
         if hasReadyChannels {
-            if await forceRefreshBolt11 || !hasReusablePublicPaykitInvoice() {
+            let hasReusableInvoice = await hasReusablePublicPaykitInvoice()
+            let shouldRefreshBolt11 = forceRefreshBolt11 || !hasReusableInvoice
+            if shouldRefreshBolt11 {
                 try await refreshPublicPaykitBolt11()
             }
         } else {
