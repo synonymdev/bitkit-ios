@@ -16,6 +16,7 @@ struct AddContactView: View {
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var canRetryError = true
 
     private var truncatedPublicKey: String {
         let displayKey = normalizedPublicKey ?? publicKey
@@ -177,10 +178,14 @@ struct AddContactView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
 
-            CustomButton(title: t("common__retry"), variant: .secondary) {
-                await loadProfile()
+            CustomButton(title: canRetryError ? t("common__retry") : t("common__discard"), variant: .secondary) {
+                if canRetryError {
+                    await loadProfile()
+                } else {
+                    navigation.navigateBack()
+                }
             }
-            .accessibilityIdentifier("AddContactRetry")
+            .accessibilityIdentifier(canRetryError ? "AddContactRetry" : "AddContactDiscard")
 
             Spacer()
         }
@@ -194,6 +199,7 @@ struct AddContactView: View {
         isLoading = true
         fetchedProfile = nil
         errorMessage = nil
+        canRetryError = true
 
         switch resolveAddContactValidation(
             input: publicKey,
@@ -202,14 +208,17 @@ struct AddContactView: View {
         ) {
         case .empty, .invalidKey:
             errorMessage = t("contacts__add_error_invalid_key")
+            canRetryError = false
             isLoading = false
             return
         case .ownKey:
             errorMessage = t("contacts__add_error_self")
+            canRetryError = false
             isLoading = false
             return
         case .existingContact:
             errorMessage = t("contacts__add_error_existing")
+            canRetryError = false
             isLoading = false
             return
         case let .valid(normalizedKey):
