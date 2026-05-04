@@ -144,14 +144,14 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
-    func testMethodIdsToRemoveWhenUnpublishingIncludesAllPayableEndpoints() {
+    func testMethodIdsToRemoveWhenUnpublishingOnlyIncludesBitkitManagedEndpoints() {
         let methodIds = PublicPaykitService.methodIdsToRemoveWhenUnpublishing(existingMethodIds: [
             .bitcoinLightningBolt11,
             .bitcoinLightningLnurl,
             .bitcoinOnchainP2tr,
         ])
 
-        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinLightningLnurl, .bitcoinOnchainP2tr])
+        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinOnchainP2tr])
     }
 
     func testPublishedEndpointSyncPlanRemovesStalePublishedMethods() {
@@ -186,6 +186,20 @@ final class PublicPaykitServiceTests: XCTestCase {
         )
 
         XCTAssertEqual(plan.endpointsToSet, [taproot])
+        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
+    }
+
+    func testPublishedEndpointSyncPlanPreservesExternallyOwnedLnurlEndpoint() {
+        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
+
+        let plan = PublicPaykitService.publishedEndpointSyncPlan(
+            existingEndpoints: [
+                .bitcoinLightningLnurl: #"{"value":"lnurl1external"}"#,
+            ],
+            desiredEndpoints: [bolt11]
+        )
+
+        XCTAssertEqual(plan.endpointsToSet, [bolt11])
         XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
     }
 

@@ -18,6 +18,8 @@ class WalletViewModel: ObservableObject {
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
     @AppStorage("publicPaykitBolt11") var publicPaykitBolt11 = ""
+    @AppStorage("publicPaykitBolt11PaymentHash") var publicPaykitBolt11PaymentHash = ""
+    @AppStorage("publicPaykitBolt11ExpiresAt") var publicPaykitBolt11ExpiresAt = 0.0
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better anticipate the receive flow UI
 
     // Send flow
@@ -58,6 +60,8 @@ class WalletViewModel: ObservableObject {
 
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
     @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
+
+    private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 15 * 60
 
     private let lightningService: LightningService
     private let coreService: CoreService
@@ -202,7 +206,14 @@ class WalletViewModel: ObservableObject {
                             paymentHash: paymentHash,
                             shortChannelId: shortChannelId
                         )
-                    case .paymentReceived, .channelReady:
+                    case let .paymentReceived(paymentId, paymentHash, _, _):
+                        self.bolt11 = ""
+                        self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentId ?? paymentHash)
+                        Task {
+                            await self.refreshAndSyncState()
+                            try? await self.refreshBip21()
+                        }
+                    case .channelReady:
                         self.bolt11 = ""
                         Task {
                             await self.refreshAndSyncState()
@@ -951,20 +962,58 @@ class WalletViewModel: ObservableObject {
         let publicOnchainAddress = try await refreshReusableOnchainAddress()
 
         if hasReadyChannels {
-            if forceRefreshBolt11 || publicPaykitBolt11.isEmpty {
-                publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
-            } else if case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) {
-                if lightningInvoice.isExpired || lightningInvoice.amountSatoshis > 0 || !(lightningInvoice.description ?? "").isEmpty {
-                    publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
-                }
-            } else {
-                publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
+            if await forceRefreshBolt11 || !hasReusablePublicPaykitInvoice() {
+                try await refreshPublicPaykitBolt11()
             }
         } else {
-            publicPaykitBolt11 = ""
+            clearPublicPaykitBolt11()
         }
 
         return (publicOnchainAddress, publicPaykitBolt11)
+    }
+
+    func refreshPublicPaykitEndpointsOnForeground() async {
+        guard sharesPublicPaykitEndpoints else { return }
+
+        do {
+            try await PublicPaykitService.syncCurrentPublishedEndpoints(wallet: self)
+        } catch {
+            Logger.warn("Failed to refresh public Paykit endpoints on foreground: \(error)", context: "WalletViewModel")
+        }
+    }
+
+    private func hasReusablePublicPaykitInvoice() async -> Bool {
+        guard !publicPaykitBolt11.isEmpty else { return false }
+        guard publicPaykitBolt11ExpiresAt > Date().timeIntervalSince1970 + Self.publicPaykitInvoiceRefreshBufferSeconds else { return false }
+
+        guard case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) else { return false }
+        return !lightningInvoice.isExpired && lightningInvoice.amountSatoshis == 0 && (lightningInvoice.description ?? "").isEmpty
+    }
+
+    private func refreshPublicPaykitBolt11() async throws {
+        let invoice = try await createInvoice(amountSats: nil, note: "")
+        guard case let .lightning(lightningInvoice) = try await decode(invoice: invoice) else {
+            clearPublicPaykitBolt11()
+            throw PublicPaykitError.invalidPayload
+        }
+
+        publicPaykitBolt11 = invoice
+        publicPaykitBolt11PaymentHash = lightningInvoice.paymentHash.hex
+        publicPaykitBolt11ExpiresAt = Double(lightningInvoice.timestampSeconds + lightningInvoice.expirySeconds)
+    }
+
+    private func clearPublicPaykitBolt11() {
+        publicPaykitBolt11 = ""
+        publicPaykitBolt11PaymentHash = ""
+        publicPaykitBolt11ExpiresAt = 0
+    }
+
+    private func rotatePublicPaykitInvoiceIfNeeded(paymentHash: String) {
+        guard !publicPaykitBolt11PaymentHash.isEmpty,
+              publicPaykitBolt11PaymentHash == paymentHash
+        else { return }
+
+        clearPublicPaykitBolt11()
     }
 
     func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
@@ -1191,7 +1240,7 @@ class WalletViewModel: ObservableObject {
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
-        publicPaykitBolt11 = ""
+        clearPublicPaykitBolt11()
 
         try? await coreService.activity.removeAll()
 

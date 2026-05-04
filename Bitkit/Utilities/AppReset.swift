@@ -20,6 +20,8 @@ enum AppReset {
         await VssBackupClient.shared.reset()
         VssStoreIdProvider.shared.clearCache()
 
+        await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
+
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()
 

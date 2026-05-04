@@ -22,7 +22,7 @@ private enum PubkyProfileManagerError: LocalizedError {
 
 @MainActor
 class PubkyProfileManager: ObservableObject {
-    enum SessionInitializationResult: Equatable, Sendable {
+    enum SessionInitializationResult: Equatable {
         case noSession
         case restored(publicKey: String)
         case restorationFailed
@@ -555,8 +555,19 @@ class PubkyProfileManager: ObservableObject {
         notifyAppStateBackupChanged()
     }
 
+    static func removePublicPaykitEndpointsBestEffort(context: String) async {
+        do {
+            try await PublicPaykitService.removePublishedEndpoints()
+        } catch PubkyServiceError.sessionNotActive {
+            Logger.debug("Skipping public Paykit endpoint cleanup because no session is active", context: context)
+        } catch {
+            Logger.warn("Failed to remove public Paykit endpoints before clearing session: \(error)", context: context)
+        }
+    }
+
     func signOut() async {
         await Task.detached {
+            await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {
