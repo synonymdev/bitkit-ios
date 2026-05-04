@@ -230,11 +230,11 @@ enum PublicPaykitService {
         MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) }
     }
 
-    static func publishedEndpointSyncPlan(existingMethodIds: Set<MethodId>, desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {
+    static func publishedEndpointSyncPlan(existingEndpoints: [MethodId: String], desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {
         let desiredMethodIds = Set(desiredEndpoints.map(\.methodId))
         return EndpointSyncPlan(
-            endpointsToSet: desiredEndpoints,
-            methodIdsToRemove: MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) && !desiredMethodIds.contains($0) }
+            endpointsToSet: desiredEndpoints.filter { existingEndpoints[$0.methodId] != $0.rawPayload },
+            methodIdsToRemove: MethodId.publishableMethodIds.filter { existingEndpoints[$0] != nil && !desiredMethodIds.contains($0) }
         )
     }
 
@@ -266,8 +266,8 @@ enum PublicPaykitService {
     }
 
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
-        let existingMethodIds = try await currentPublishedMethodIds()
-        let plan = publishedEndpointSyncPlan(existingMethodIds: existingMethodIds, desiredEndpoints: desiredEndpoints)
+        let existingEndpoints = try await currentPublishedEndpoints()
+        let plan = publishedEndpointSyncPlan(existingEndpoints: existingEndpoints, desiredEndpoints: desiredEndpoints)
 
         for endpoint in plan.endpointsToSet {
             try await PubkyService.setPaymentEndpoint(
@@ -282,12 +282,25 @@ enum PublicPaykitService {
     }
 
     private static func currentPublishedMethodIds() async throws -> Set<MethodId> {
+        Set((try await currentPublishedEndpoints()).keys)
+    }
+
+    private static func currentPublishedEndpoints() async throws -> [MethodId: String] {
         guard let publicKey = await PubkyService.currentPublicKey() else {
             throw PubkyServiceError.sessionNotActive
         }
 
         let paymentEntries = try await PubkyService.getPaymentList(publicKey: publicKey)
-        return Set(paymentEntries.compactMap { MethodId(rawValue: $0.methodId) })
+        var endpoints: [MethodId: String] = [:]
+        for entry in paymentEntries {
+            guard let methodId = MethodId(rawValue: entry.methodId) else {
+                continue
+            }
+
+            endpoints[methodId] = entry.endpointData
+        }
+
+        return endpoints
     }
 
     @MainActor

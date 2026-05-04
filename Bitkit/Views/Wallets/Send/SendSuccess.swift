@@ -127,7 +127,7 @@ struct SendSuccess: View {
         }
 
         do {
-            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId)
+            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId, syncLdkPayments: false)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
             Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")

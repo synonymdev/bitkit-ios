@@ -965,6 +965,7 @@ class ActivityService {
 
     func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        // TODO: push contact filtering into BitkitCore once the activity store exposes it.
         let activities = try await get(filter: .all, sortDirection: sortDirection)
 
         return activities.filter { activity in

@@ -114,6 +114,14 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(request, "lnbc1invoice")
     }
 
+    func testPaymentRequestFallsBackToLnurlOnlyEndpoint() {
+        let request = PublicPaykitService.paymentRequest(from: [
+            endpoint(.bitcoinLightningLnurl, value: "lnurl1example"),
+        ])
+
+        XCTAssertEqual(request, "lnurl1example")
+    }
+
     func testOnchainMethodIdUsesAddressPrefix() {
         XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "bc1pexample"), .bitcoinOnchainP2tr)
         XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "tb1qexample"), .bitcoinOnchainP2wpkh)
@@ -153,12 +161,32 @@ final class PublicPaykitServiceTests: XCTestCase {
         ]
 
         let plan = PublicPaykitService.publishedEndpointSyncPlan(
-            existingMethodIds: [.bitcoinLightningBolt11, .bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh],
+            existingEndpoints: [
+                .bitcoinLightningBolt11: #"{"value":"oldinvoice"}"#,
+                .bitcoinOnchainP2wpkh: #"{"value":"bc1qsegwit"}"#,
+                .bitcoinOnchainP2sh: #"{"value":"3nested"}"#,
+            ],
             desiredEndpoints: desired
         )
 
         XCTAssertEqual(plan.endpointsToSet, desired)
         XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh])
+    }
+
+    func testPublishedEndpointSyncPlanSkipsUnchangedPublishedPayloads() {
+        let bolt11 = endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice")
+        let taproot = endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot")
+
+        let plan = PublicPaykitService.publishedEndpointSyncPlan(
+            existingEndpoints: [
+                .bitcoinLightningBolt11: bolt11.rawPayload,
+                .bitcoinOnchainP2tr: #"{"value":"oldtaproot"}"#,
+            ],
+            desiredEndpoints: [bolt11, taproot]
+        )
+
+        XCTAssertEqual(plan.endpointsToSet, [taproot])
+        XCTAssertTrue(plan.methodIdsToRemove.isEmpty)
     }
 
     private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {

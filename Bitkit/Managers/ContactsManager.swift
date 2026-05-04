@@ -77,7 +77,7 @@ enum ContactsManagerError: LocalizedError {
 
 // MARK: - PubkyContact
 
-struct PubkyContact: Identifiable, Hashable {
+struct PubkyContact: Identifiable, Hashable, Sendable {
     let id: String
     let publicKey: String
     let profile: PubkyProfile
