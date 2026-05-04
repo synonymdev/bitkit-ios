@@ -282,7 +282,8 @@ enum PublicPaykitService {
     }
 
     private static func currentPublishedMethodIds() async throws -> Set<MethodId> {
-        Set((try await currentPublishedEndpoints()).keys)
+        let endpoints = try await currentPublishedEndpoints()
+        return Set(endpoints.keys)
     }
 
     private static func currentPublishedEndpoints() async throws -> [MethodId: String] {
@@ -312,12 +313,13 @@ enum PublicPaykitService {
                 throw PublicPaykitError.walletNotReady
             }
 
-            try await wallet.refreshBip21(forceRefreshBolt11: true)
+            _ = try await wallet.refreshPublicPaykitEndpoints(forceRefreshBolt11: true)
         }
 
+        let publicEndpoints = try await wallet.refreshPublicPaykitEndpoints(forceRefreshBolt11: false)
         var endpoints: [Endpoint] = []
 
-        let onchainAddress = wallet.onchainAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        let onchainAddress = publicEndpoints.onchainAddress.trimmingCharacters(in: .whitespacesAndNewlines)
         if !onchainAddress.isEmpty {
             try endpoints.append(
                 Endpoint(
@@ -330,7 +332,7 @@ enum PublicPaykitService {
             )
         }
 
-        let bolt11 = wallet.bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bolt11 = publicEndpoints.bolt11.trimmingCharacters(in: .whitespacesAndNewlines)
         if !bolt11.isEmpty {
             try endpoints.append(
                 Endpoint(

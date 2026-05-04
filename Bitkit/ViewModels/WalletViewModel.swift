@@ -17,6 +17,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("onchainAddress") var onchainAddress = ""
     @AppStorage("bolt11") var bolt11 = ""
     @AppStorage("bip21") var bip21 = ""
+    @AppStorage("publicPaykitBolt11") var publicPaykitBolt11 = ""
     @AppStorage("channelCount") var channelCount: Int = 0 // Keeping a cached version of this so we can better anticipate the receive flow UI
 
     // Send flow
@@ -929,16 +930,8 @@ class WalletViewModel: ObservableObject {
         return channels?.contains(where: \.isUsable) ?? false
     }
 
-    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
-        // Get old payment ID and tags before refreshing (which may change payment ID)
-        let oldPaymentId = await paymentId()
-        var tagsToMigrate: [String] = []
-        if let oldPaymentId, !oldPaymentId.isEmpty {
-            if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
-                tagsToMigrate = oldMetadata.tags
-            }
-        }
-
+    @discardableResult
+    private func refreshReusableOnchainAddress() async throws -> String {
         if onchainAddress.isEmpty {
             onchainAddress = try await lightningService.newAddress()
         } else {
@@ -950,6 +943,41 @@ class WalletViewModel: ObservableObject {
                 onchainAddress = try await lightningService.newAddress()
             }
         }
+
+        return onchainAddress
+    }
+
+    func refreshPublicPaykitEndpoints(forceRefreshBolt11: Bool = false) async throws -> (onchainAddress: String, bolt11: String) {
+        let publicOnchainAddress = try await refreshReusableOnchainAddress()
+
+        if hasReadyChannels {
+            if forceRefreshBolt11 || publicPaykitBolt11.isEmpty {
+                publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
+            } else if case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) {
+                if lightningInvoice.isExpired || lightningInvoice.amountSatoshis > 0 || !lightningInvoice.description.isEmpty {
+                    publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
+                }
+            } else {
+                publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
+            }
+        } else {
+            publicPaykitBolt11 = ""
+        }
+
+        return (publicOnchainAddress, publicPaykitBolt11)
+    }
+
+    func refreshBip21(forceRefreshBolt11: Bool = false) async throws {
+        // Get old payment ID and tags before refreshing (which may change payment ID)
+        let oldPaymentId = await paymentId()
+        var tagsToMigrate: [String] = []
+        if let oldPaymentId, !oldPaymentId.isEmpty {
+            if let oldMetadata = try? await coreService.activity.getPreActivityMetadata(searchKey: oldPaymentId, searchByAddress: false) {
+                tagsToMigrate = oldMetadata.tags
+            }
+        }
+
+        try await refreshReusableOnchainAddress()
 
         var newBip21 = "bitcoin:\(onchainAddress)"
 
@@ -1163,6 +1191,7 @@ class WalletViewModel: ObservableObject {
         onchainAddress = ""
         bolt11 = ""
         bip21 = ""
+        publicPaykitBolt11 = ""
 
         try? await coreService.activity.removeAll()
 

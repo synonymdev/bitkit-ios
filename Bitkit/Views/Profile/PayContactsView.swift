@@ -8,7 +8,7 @@ struct PayContactsView: View {
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
-    @State private var enablePayments = true
+    @State private var enablePayments = false
     @State private var isSaving = false
 
     var body: some View {
@@ -60,7 +60,7 @@ struct PayContactsView: View {
         .background(Color.customBlack)
         .navigationBarHidden(true)
         .onAppear {
-            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : true
+            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : false
         }
     }
 
@@ -74,7 +74,7 @@ struct PayContactsView: View {
             hasConfirmedPublicPaykitEndpoints = true
             navigation.path = [.profile]
         } catch {
-            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : true
+            enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : false
             Logger.error("Failed to sync public payment endpoints: \(error)", context: "PayContactsView")
             app.toast(
                 type: .error,
