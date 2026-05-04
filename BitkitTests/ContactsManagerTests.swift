@@ -273,8 +273,8 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
-    private func makeProfile(publicKey: String) -> PubkyProfile {
-        PubkyProfile(
+    private func makeProfile(publicKey: String) -> Bitkit.PubkyProfile {
+        Bitkit.PubkyProfile(
             publicKey: publicKey,
             name: "Alice",
             bio: "bio",
@@ -285,7 +285,7 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
-    private func makeContact(publicKey: String) -> PubkyContact {
-        PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
+    private func makeContact(publicKey: String) -> Bitkit.PubkyContact {
+        Bitkit.PubkyContact(publicKey: publicKey, profile: makeProfile(publicKey: publicKey))
     }
 }
