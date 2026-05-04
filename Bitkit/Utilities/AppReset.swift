@@ -9,6 +9,8 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
+        try await PubkyProfileManager.removePublicPaykitEndpoints(context: "AppReset.wipe")
+
         // Set wiping flag to prevent backups during wipe operations
         BackupService.shared.setWiping(true)
         defer {
@@ -19,8 +21,6 @@ enum AppReset {
         await BackupService.shared.stopObservingBackups()
         await VssBackupClient.shared.reset()
         VssStoreIdProvider.shared.clearCache()
-
-        try await PubkyProfileManager.removePublicPaykitEndpoints(context: "AppReset.wipe")
 
         // Stop node and wipe LDK persistence via the wallet API.
         try await wallet.wipe()

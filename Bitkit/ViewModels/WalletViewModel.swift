@@ -206,9 +206,9 @@ class WalletViewModel: ObservableObject {
                             paymentHash: paymentHash,
                             shortChannelId: shortChannelId
                         )
-                    case let .paymentReceived(paymentId, paymentHash, _, _):
+                    case let .paymentReceived(_, paymentHash, _, _):
                         self.bolt11 = ""
-                        self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentId ?? paymentHash)
+                        self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
                         Task {
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()

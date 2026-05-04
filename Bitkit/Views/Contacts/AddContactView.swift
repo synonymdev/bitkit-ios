@@ -289,18 +289,14 @@ struct AddContactView: View {
                     )
                     return
                 }
-            case .noEndpoint:
-                app.toast(
-                    type: .warning,
-                    title: t("slashtags__error_pay_title"),
-                    description: t("slashtags__error_pay_empty_msg")
-                )
-            case .notOpened:
-                app.toast(
-                    type: .warning,
-                    title: t("slashtags__error_pay_title"),
-                    description: t("slashtags__error_pay_not_opened_msg")
-                )
+            case .noEndpoint, .notOpened:
+                if let messageKey = result.contactPaymentFailureMessageKey {
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t(messageKey)
+                    )
+                }
             }
         } catch {
             Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
