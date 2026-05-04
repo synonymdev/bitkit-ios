@@ -4,6 +4,7 @@ import SwiftUI
 struct ActivityLatest: View {
     @EnvironmentObject private var activity: ActivityListViewModel
     @EnvironmentObject private var app: AppViewModel
+    @EnvironmentObject private var contactsManager: ContactsManager
     @EnvironmentObject private var feeEstimatesManager: FeeEstimatesManager
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var settings: SettingsViewModel
@@ -60,7 +61,11 @@ struct ActivityLatest: View {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(zip(rows.indices, rows)), id: \.1) { index, item in
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
+                            ActivityRow(
+                                item: item,
+                                feeEstimates: feeEstimatesManager.estimates,
+                                contact: item.contact(in: contactsManager.contacts)
+                            )
                         }
                         .accessibilityIdentifier("ActivityShort-\(index)")
                     }

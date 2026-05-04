@@ -1,4 +1,5 @@
 @testable import Bitkit
+import BitkitCore
 import XCTest
 
 @MainActor
@@ -22,6 +23,61 @@ final class ContactsManagerTests: XCTestCase {
 
         XCTAssertTrue(PubkyPublicKeyFormat.matches(rawKey, prefixedKey))
         XCTAssertFalse(PubkyPublicKeyFormat.matches(prefixedKey, "pubkyinvalid"))
+    }
+
+    func testActivityContactResolvesLightningContactKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = makeContact(publicKey: "pubky\(rawKey)")
+        let activity = Activity.lightning(
+            LightningActivity(
+                id: "test-lightning-contact",
+                txType: .sent,
+                status: .succeeded,
+                value: 1000,
+                fee: 10,
+                invoice: "lnbc...",
+                message: "",
+                timestamp: 0,
+                preimage: nil,
+                contact: rawKey,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertEqual(activity.contact(in: [contact])?.publicKey, contact.publicKey)
+    }
+
+    func testActivityContactResolvesBoostingOnchainContactKey() {
+        let rawKey = "3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+        let contact = makeContact(publicKey: "pubky\(rawKey)")
+        let activity = Activity.onchain(
+            OnchainActivity(
+                id: "test-onchain-boosting-contact",
+                txType: .sent,
+                txId: "txid",
+                value: 1000,
+                fee: 10,
+                feeRate: 1,
+                address: "bcrt1...",
+                confirmed: false,
+                timestamp: 0,
+                isBoosted: true,
+                boostTxIds: [],
+                isTransfer: false,
+                doesExist: true,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                contact: contact.publicKey,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertEqual(activity.contact(in: [contact])?.publicKey, contact.publicKey)
     }
 
     func testResolveAddContactValidationReturnsEmptyForBlankInput() {

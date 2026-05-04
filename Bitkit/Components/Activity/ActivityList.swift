@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ActivityList: View {
     @EnvironmentObject var activity: ActivityListViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var feeEstimatesManager: FeeEstimatesManager
     @State private var isHorizontalSwipe = false
 
@@ -28,7 +29,11 @@ struct ActivityList: View {
 
                     case let .activity(item):
                         NavigationLink(value: Route.activityDetail(item)) {
-                            ActivityRow(item: item, feeEstimates: feeEstimatesManager.estimates)
+                            ActivityRow(
+                                item: item,
+                                feeEstimates: feeEstimatesManager.estimates,
+                                contact: item.contact(in: contactsManager.contacts)
+                            )
                         }
                         .accessibilityIdentifier("Activity-\(index)")
                         .disabled(isHorizontalSwipe)

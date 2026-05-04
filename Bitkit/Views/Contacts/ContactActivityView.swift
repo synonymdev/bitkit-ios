@@ -114,7 +114,7 @@ struct ContactActivityView: View {
     }
 
     private func resolveContactName() {
-        contactName = contactsManager.contacts.first(where: { $0.publicKey == publicKey })?.profile.name ?? ""
+        contactName = contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })?.displayName ?? ""
     }
 
     private func activityTitle(_ activity: Activity) -> String {
