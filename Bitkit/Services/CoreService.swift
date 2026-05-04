@@ -1047,7 +1047,7 @@ class ActivityService {
 
         try await ServiceQueue.background(.core) {
             guard let activity = try getActivityById(activityId: id) else {
-                return
+                throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(id) not found")
             }
 
             switch activity {

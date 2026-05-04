@@ -302,6 +302,11 @@ extension AppViewModel {
         }
     }
 
+    func addPendingContactPaymentContext(_ hash: String, contactPublicKey: String?) {
+        guard let contactPublicKey else { return }
+        pendingContactPaymentContexts[hash] = ContactPaymentContext(publicKey: contactPublicKey)
+    }
+
     func contactPaymentContext(forPendingPaymentHash hash: String) -> ContactPaymentContext? {
         pendingContactPaymentContexts[hash]
     }

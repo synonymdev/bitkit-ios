@@ -536,6 +536,7 @@ struct SendConfirmationView: View {
         }
 
         do {
+            app.addPendingContactPaymentContext(paymentId, contactPublicKey: contactPublicKey)
             try await activityList.setContact(contactPublicKey, forPaymentId: paymentId)
             app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
         } catch {
