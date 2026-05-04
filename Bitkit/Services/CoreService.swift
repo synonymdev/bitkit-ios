@@ -6,25 +6,6 @@ import LDKNode
 // MARK: - Activity Service
 
 class ActivityService {
-    private enum PubkyContactKey {
-        private static let prefix = "pubky"
-        private static let rawKeyLength = 52
-        private static let allowedCharacters = Set("ybndrfg8ejkmcpqxot1uwisza345h769")
-
-        static func normalized(_ input: String) -> String? {
-            let boundedInput = String(input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().prefix(prefix.count + rawKeyLength))
-            let rawKey = boundedInput.hasPrefix(prefix) ? String(boundedInput.dropFirst(prefix.count)) : boundedInput
-
-            guard rawKey.count == rawKeyLength,
-                  rawKey.allSatisfy({ allowedCharacters.contains($0) })
-            else {
-                return nil
-            }
-
-            return "\(prefix)\(rawKey)"
-        }
-    }
-
     private let coreService: CoreService
 
     private let activitiesChangedSubject = PassthroughSubject<Void, Never>()
@@ -983,15 +964,15 @@ class ActivityService {
     }
 
     func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
-        let normalizedKey = PubkyContactKey.normalized(publicKey) ?? publicKey
+        let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
         let activities = try await get(filter: .all, sortDirection: sortDirection)
 
         return activities.filter { activity in
             switch activity {
             case let .lightning(lightning):
-                return lightning.contact == normalizedKey
+                return PubkyPublicKeyFormat.matches(lightning.contact, normalizedKey)
             case let .onchain(onchain):
-                return onchain.contact == normalizedKey
+                return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
             }
         }
     }
@@ -1045,7 +1026,7 @@ class ActivityService {
                     confirmTimestamp: nil,
                     channelId: nil,
                     transferTxId: nil,
-                    contact: contact.map { PubkyContactKey.normalized($0) ?? $0 },
+                    contact: contact.map { PubkyPublicKeyFormat.normalized($0) ?? $0 },
                     createdAt: now,
                     updatedAt: now,
                     seenAt: now
@@ -1061,7 +1042,7 @@ class ActivityService {
     }
 
     func setContact(_ publicKey: String?, forActivity id: String) async throws {
-        let normalizedContact = publicKey.map { PubkyContactKey.normalized($0) ?? $0 }
+        let normalizedContact = publicKey.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
 
         try await ServiceQueue.background(.core) {
             guard let activity = try getActivityById(activityId: id) else {

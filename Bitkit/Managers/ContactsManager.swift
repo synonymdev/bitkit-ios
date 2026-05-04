@@ -45,6 +45,10 @@ enum PubkyPublicKeyFormat {
 
         return lhs == rhs
     }
+
+    static func redacted(_ input: String) -> String {
+        (normalized(input) ?? input.trimmingCharacters(in: .whitespacesAndNewlines)).ellipsis(maxLength: 12, style: .end)
+    }
 }
 
 enum AddContactValidationResult: Equatable {
@@ -201,7 +205,7 @@ class ContactsManager: ObservableObject {
         defer { isLoading = false }
 
         let basePath = contactsBasePath
-        Logger.info("Loading contacts from \(basePath) for \(publicKey)", context: "ContactsManager")
+        Logger.info("Loading contacts from \(basePath) for \(PubkyPublicKeyFormat.redacted(publicKey))", context: "ContactsManager")
 
         do {
             let sessionSecret = try getSessionSecret()
@@ -230,7 +234,10 @@ class ContactsManager: ObservableObject {
                             let profile = profileData.toProfile(publicKey: prefixedKey)
                             return .success(PubkyContact(publicKey: prefixedKey, profile: profile))
                         } catch {
-                            Logger.warn("Failed to load contact data for '\(prefixedKey)': \(error)", context: "ContactsManager")
+                            Logger.warn(
+                                "Failed to load contact data for '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)",
+                                context: "ContactsManager"
+                            )
                             return .failure(error)
                         }
                     }
@@ -330,7 +337,7 @@ class ContactsManager: ObservableObject {
         let contactData = PubkyProfileData.from(profile: profile)
         try await savePubkyProfileData(publicKey: prefixedKey, data: contactData)
 
-        Logger.info("Added contact \(prefixedKey)", context: "ContactsManager")
+        Logger.info("Added contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
         let contact = PubkyContact(publicKey: prefixedKey, profile: profile)
         contacts.append(contact)
@@ -353,7 +360,7 @@ class ContactsManager: ObservableObject {
                         try await savePubkyProfileData(publicKey: key, data: contactData)
                         return .success(PubkyContact(publicKey: key, profile: profile))
                     } catch {
-                        Logger.warn("Failed to save imported contact '\(key)': \(error)", context: "ContactsManager")
+                        Logger.warn("Failed to save imported contact '\(PubkyPublicKeyFormat.redacted(key))': \(error)", context: "ContactsManager")
                         return .failure(error)
                     }
                 }
@@ -415,7 +422,7 @@ class ContactsManager: ObservableObject {
             contacts.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         }
 
-        Logger.info("Updated contact \(prefixedKey)", context: "ContactsManager")
+        Logger.info("Updated contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
     }
 
     // MARK: - Delete Contact
@@ -433,7 +440,7 @@ class ContactsManager: ObservableObject {
             )
         }.value
 
-        Logger.info("Removed contact \(prefixedKey)", context: "ContactsManager")
+        Logger.info("Removed contact \(PubkyPublicKeyFormat.redacted(prefixedKey))", context: "ContactsManager")
 
         contacts.removeAll { $0.publicKey == prefixedKey }
     }
@@ -474,18 +481,18 @@ class ContactsManager: ObservableObject {
                 deletedKeys.insert(ensurePubkyPrefix(contactKey))
             } catch {
                 firstError = firstError ?? error
-                Logger.warn("Failed to delete contact '\(contactKey)': \(error)", context: "ContactsManager")
+                Logger.warn("Failed to delete contact '\(PubkyPublicKeyFormat.redacted(contactKey))': \(error)", context: "ContactsManager")
             }
         }
 
-        if !deletedKeys.isEmpty {
-            contacts.removeAll { deletedKeys.contains($0.publicKey) }
-        }
-
         if let firstError {
+            if !deletedKeys.isEmpty {
+                contacts.removeAll { deletedKeys.contains($0.publicKey) }
+            }
             throw firstError
         }
 
+        // All remote deletes succeeded, so clear any local-only contacts too.
         contacts.removeAll()
         Logger.info("Deleted all contacts", context: "ContactsManager")
     }
@@ -617,11 +624,14 @@ class ContactsManager: ObservableObject {
             return try await PubkyProfileManager.resolveRemoteProfile(publicKey: prefixedKey)
         } catch {
             if includePlaceholder, Self.isMissingContactsDataError(error) {
-                Logger.info("No remote profile found for '\(prefixedKey)', using placeholder", context: "ContactsManager")
+                Logger.info(
+                    "No remote profile found for '\(PubkyPublicKeyFormat.redacted(prefixedKey))', using placeholder",
+                    context: "ContactsManager"
+                )
                 return PubkyProfile.placeholder(publicKey: prefixedKey)
             }
 
-            Logger.warn("Failed to resolve contact profile for '\(prefixedKey)': \(error)", context: "ContactsManager")
+            Logger.warn("Failed to resolve contact profile for '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)", context: "ContactsManager")
             throw error
         }
     }
@@ -635,7 +645,7 @@ class ContactsManager: ObservableObject {
             } catch {
                 if attempt == 0, !(error is CancellationError) {
                     Logger.warn(
-                        "Retrying imported contact profile resolution for '\(prefixedKey)' after transient error: \(error)",
+                        "Retrying imported contact profile resolution for '\(PubkyPublicKeyFormat.redacted(prefixedKey))' after transient error: \(error)",
                         context: "ContactsManager"
                     )
                     try? await Task.sleep(nanoseconds: 250_000_000)
@@ -643,7 +653,7 @@ class ContactsManager: ObservableObject {
                 }
 
                 Logger.warn(
-                    "Falling back to placeholder while importing contact '\(prefixedKey)': \(error)",
+                    "Falling back to placeholder while importing contact '\(PubkyPublicKeyFormat.redacted(prefixedKey))': \(error)",
                     context: "ContactsManager"
                 )
                 return PubkyProfile.placeholder(publicKey: prefixedKey)

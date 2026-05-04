@@ -79,7 +79,9 @@ struct SendSuccess: View {
                             variant: .secondary,
                             isDisabled: foundActivity == nil
                         ) {
-                            navigation.navigate(.activityDetail(foundActivity!))
+                            if let foundActivity {
+                                navigation.navigate(.activityDetail(foundActivity))
+                            }
                             sheets.hideSheet()
                         }
                         .accessibilityIdentifier("Details")

@@ -38,11 +38,11 @@ struct ContactActivityView: View {
         .navigationBarHidden(true)
         .task {
             resolveContactName()
-            await loadActivities()
+            await loadActivities(showLoading: true)
         }
         .onReceive(activityList.activitiesChangedPublisher) { _ in
             Task {
-                await loadActivities()
+                await loadActivities(showLoading: activities.isEmpty)
             }
         }
         .onReceive(contactsManager.$contacts) { _ in
@@ -133,17 +133,27 @@ struct ContactActivityView: View {
         }
     }
 
-    private func loadActivities() async {
-        isLoading = true
-        defer { isLoading = false }
+    private func loadActivities(showLoading: Bool) async {
+        if showLoading {
+            isLoading = true
+        }
+        defer {
+            if showLoading {
+                isLoading = false
+            }
+        }
 
         do {
             activities = try await activityList.contactActivities(publicKey: publicKey)
             hasError = false
         } catch {
             Logger.error(error, context: "ContactActivityView")
-            activities = []
-            hasError = true
+            if showLoading || activities.isEmpty {
+                activities = []
+                hasError = true
+            } else {
+                hasError = false
+            }
             app.toast(type: .error, title: t("contacts__error_loading"), description: error.localizedDescription)
         }
     }

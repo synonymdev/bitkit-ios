@@ -79,55 +79,28 @@ final class PublicPaykitServiceTests: XCTestCase {
 
     func testPaymentRequestCombinesOnchainAndBolt11Endpoints() {
         let request = PublicPaykitService.paymentRequest(from: [
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinLightningBolt11,
-                value: "lnbc1invoice",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"lnbc1invoice"}"#
-            ),
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinOnchainP2wpkh,
-                value: "bc1qaddress",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"bc1qaddress"}"#
-            ),
+            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
+            endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress"),
         ])
 
         XCTAssertEqual(request, "bitcoin:bc1qaddress?lightning=lnbc1invoice")
     }
 
+    func testPaymentRequestPercentEncodesLightningParameter() {
+        let request = PublicPaykitService.paymentRequest(from: [
+            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice?amount=1&label=test"),
+            endpoint(.bitcoinOnchainP2wpkh, value: "bc1qaddress"),
+        ])
+
+        XCTAssertEqual(request, "bitcoin:bc1qaddress?lightning=lnbc1invoice%3Famount%3D1%26label%3Dtest")
+    }
+
     func testPaymentRequestPrefersTaprootWhenMultipleOnchainEndpointsExist() {
         let request = PublicPaykitService.paymentRequest(from: [
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinLightningBolt11,
-                value: "lnbc1invoice",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"lnbc1invoice"}"#
-            ),
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinOnchainP2pkh,
-                value: "1legacy",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"1legacy"}"#
-            ),
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinOnchainP2wpkh,
-                value: "bc1qsegwit",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"bc1qsegwit"}"#
-            ),
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinOnchainP2tr,
-                value: "bc1ptaproot",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"bc1ptaproot"}"#
-            ),
+            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
+            endpoint(.bitcoinOnchainP2pkh, value: "1legacy"),
+            endpoint(.bitcoinOnchainP2wpkh, value: "bc1qsegwit"),
+            endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot"),
         ])
 
         XCTAssertEqual(request, "bitcoin:bc1ptaproot?lightning=lnbc1invoice")
@@ -135,13 +108,7 @@ final class PublicPaykitServiceTests: XCTestCase {
 
     func testPaymentRequestFallsBackToPreferredEndpointWhenCombinedRequestIsNotAvailable() {
         let request = PublicPaykitService.paymentRequest(from: [
-            PublicPaykitService.Endpoint(
-                methodId: .bitcoinLightningBolt11,
-                value: "lnbc1invoice",
-                min: nil,
-                max: nil,
-                rawPayload: #"{"value":"lnbc1invoice"}"#
-            ),
+            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
         ])
 
         XCTAssertEqual(request, "lnbc1invoice")
@@ -158,5 +125,49 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertNil(PublicPaykitPaymentLaunchResult.opened(paymentRequest: "bitcoin:bcrt1ptest").contactPaymentFailureMessageKey)
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.noEndpoint.contactPaymentFailureMessageKey, "slashtags__error_pay_empty_msg")
         XCTAssertEqual(PublicPaykitPaymentLaunchResult.notOpened.contactPaymentFailureMessageKey, "slashtags__error_pay_not_opened_msg")
+    }
+
+    func testPayableEndpointsFiltersInvalidDecodedEndpoints() async {
+        let payable = await PublicPaykitService.payableEndpoints(from: [
+            endpoint(.bitcoinLightningBolt11, value: "not-a-bolt11"),
+            endpoint(.bitcoinOnchainP2tr, value: "not-an-address"),
+        ])
+
+        XCTAssertTrue(payable.isEmpty)
+    }
+
+    func testMethodIdsToRemoveWhenUnpublishingOnlyIncludesPublishableEndpoints() {
+        let methodIds = PublicPaykitService.methodIdsToRemoveWhenUnpublishing(existingMethodIds: [
+            .bitcoinLightningBolt11,
+            .bitcoinLightningLnurl,
+            .bitcoinOnchainP2tr,
+        ])
+
+        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinOnchainP2tr])
+    }
+
+    func testPublishedEndpointSyncPlanRemovesStalePublishedMethods() {
+        let desired = [
+            endpoint(.bitcoinLightningBolt11, value: "lnbc1invoice"),
+            endpoint(.bitcoinOnchainP2tr, value: "bc1ptaproot"),
+        ]
+
+        let plan = PublicPaykitService.publishedEndpointSyncPlan(
+            existingMethodIds: [.bitcoinLightningBolt11, .bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh],
+            desiredEndpoints: desired
+        )
+
+        XCTAssertEqual(plan.endpointsToSet, desired)
+        XCTAssertEqual(plan.methodIdsToRemove, [.bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh])
+    }
+
+    private func endpoint(_ methodId: PublicPaykitService.MethodId, value: String) -> PublicPaykitService.Endpoint {
+        PublicPaykitService.Endpoint(
+            methodId: methodId,
+            value: value,
+            min: nil,
+            max: nil,
+            rawPayload: #"{"value":"\#(value)"}"#
+        )
     }
 }

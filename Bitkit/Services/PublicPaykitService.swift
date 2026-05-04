@@ -82,6 +82,11 @@ enum PublicPaykitService {
         }
     }
 
+    struct EndpointSyncPlan: Equatable {
+        let endpointsToSet: [Endpoint]
+        let methodIdsToRemove: [MethodId]
+    }
+
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
         let paymentEntries = try await PubkyService.getPaymentList(publicKey: publicKey)
         var endpointsByMethodId: [MethodId: Endpoint] = [:]
@@ -149,7 +154,7 @@ enum PublicPaykitService {
     static func removePublishedEndpoints() async throws {
         let existingMethodIds = try await currentPublishedMethodIds()
 
-        for methodId in MethodId.publishableMethodIds where existingMethodIds.contains(methodId) {
+        for methodId in methodIdsToRemoveWhenUnpublishing(existingMethodIds: existingMethodIds) {
             try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
         }
     }
@@ -196,7 +201,11 @@ enum PublicPaykitService {
             return endpoints.first?.paymentRequest ?? ""
         }
 
-        return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(bolt11Endpoint.paymentRequest)"
+        var allowedCharacters = CharacterSet.urlQueryAllowed
+        allowedCharacters.remove(charactersIn: "?&=")
+        let lightningPaymentRequest = bolt11Endpoint.paymentRequest
+        let encodedLightning = lightningPaymentRequest.addingPercentEncoding(withAllowedCharacters: allowedCharacters) ?? lightningPaymentRequest
+        return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(encodedLightning)"
     }
 
     static func onchainMethodId(for address: String) -> MethodId {
@@ -215,6 +224,18 @@ enum PublicPaykitService {
         }
 
         return .bitcoinOnchainP2pkh
+    }
+
+    static func methodIdsToRemoveWhenUnpublishing(existingMethodIds: Set<MethodId>) -> [MethodId] {
+        MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) }
+    }
+
+    static func publishedEndpointSyncPlan(existingMethodIds: Set<MethodId>, desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {
+        let desiredMethodIds = Set(desiredEndpoints.map(\.methodId))
+        return EndpointSyncPlan(
+            endpointsToSet: desiredEndpoints,
+            methodIdsToRemove: MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) && !desiredMethodIds.contains($0) }
+        )
     }
 
     private struct ParsedPayload {
@@ -245,18 +266,17 @@ enum PublicPaykitService {
     }
 
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
-        let desiredMethodIds = Set(desiredEndpoints.map(\.methodId))
+        let existingMethodIds = try await currentPublishedMethodIds()
+        let plan = publishedEndpointSyncPlan(existingMethodIds: existingMethodIds, desiredEndpoints: desiredEndpoints)
 
-        for endpoint in desiredEndpoints {
+        for endpoint in plan.endpointsToSet {
             try await PubkyService.setPaymentEndpoint(
                 methodId: endpoint.methodId.rawValue,
                 endpointData: endpoint.rawPayload
             )
         }
 
-        let existingMethodIds = try await currentPublishedMethodIds()
-
-        for methodId in MethodId.publishableMethodIds where existingMethodIds.contains(methodId) && !desiredMethodIds.contains(methodId) {
+        for methodId in plan.methodIdsToRemove {
             try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
         }
     }

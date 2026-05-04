@@ -66,15 +66,7 @@ struct AddContactView: View {
                 .padding(.top, 24)
                 .padding(.bottom, 16)
 
-            Circle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 80, height: 80)
-                .overlay {
-                    Text(String(publicKey.prefix(1)).uppercased())
-                        .font(Fonts.bold(size: 28))
-                        .foregroundColor(.textPrimary)
-                }
-                .accessibilityHidden(true)
+            ContactAvatarLetter(source: publicKey, size: 80)
                 .padding(.bottom, 24)
 
             DisplayText(t("contacts__add_retrieving"), accentColor: .pubkyGreen)
@@ -261,7 +253,10 @@ struct AddContactView: View {
         do {
             hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
         } catch {
-            Logger.warn("Failed to load public payment endpoints for \(publicKey): \(error)", context: "AddContactView")
+            Logger.warn(
+                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                context: "AddContactView"
+            )
             hasPublicPaymentEndpoint = false
         }
     }
@@ -299,7 +294,7 @@ struct AddContactView: View {
                 )
             }
         } catch {
-            Logger.error("Failed to pay public pubky \(publicKey): \(error)", context: "AddContactView")
+            Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
             app.toast(
                 type: .error,
                 title: t("slashtags__error_pay_title"),

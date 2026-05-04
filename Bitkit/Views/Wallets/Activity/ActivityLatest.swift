@@ -37,7 +37,7 @@ struct ActivityLatest: View {
     /// Three or four vertical slots (by screen size) shared by: transfer banner, widgets onboarding
     /// and activity items; only the item count shrinks so the total stays within the cap.
     private var maxActivityItemsOnHome: Int {
-        let slotCapacity = UIScreen.main.isSmall ? 3 : 4
+        let slotCapacity = UIScreen.main.isSmall ? ActivityDisplayConstants.maxHomeActivityItems - 1 : ActivityDisplayConstants.maxHomeActivityItems
         var nonItemSlots = 0
         if shouldShowBanner { nonItemSlots += 1 }
         if settings.showWidgets, !app.hasDismissedWidgetsOnboardingHint { nonItemSlots += 1 }

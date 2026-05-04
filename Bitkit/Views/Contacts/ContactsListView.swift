@@ -198,14 +198,7 @@ struct ContactsListView: View {
             if let imageUrl {
                 PubkyImage(uri: imageUrl, size: 48)
             } else {
-                Circle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 48, height: 48)
-                    .overlay {
-                        Text(String(name.prefix(1)).uppercased())
-                            .font(Fonts.bold(size: 17))
-                            .foregroundColor(.textPrimary)
-                    }
+                ContactAvatarLetter(source: name, size: 48)
             }
         }
         .accessibilityHidden(true)
