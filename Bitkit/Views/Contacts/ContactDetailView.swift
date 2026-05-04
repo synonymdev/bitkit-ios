@@ -323,40 +323,13 @@ struct ContactDetailView: View {
             return false
         }
 
-        guard let route = contactPaymentRoute() else {
+        guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
             return false
         }
 
         app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
         sheets.showSheet(.send, data: SendConfig(view: route))
         return true
-    }
-
-    @MainActor
-    private func contactPaymentRoute() -> SendRoute? {
-        guard let route = PaymentNavigationHelper.appropriateSendRoute(app: app, currency: currency, settings: settings) else {
-            return nil
-        }
-
-        switch route {
-        case .quickpay:
-            if app.lnurlPayData != nil {
-                return .lnurlPayAmount
-            }
-
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-
-            return route
-        case .confirm:
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
-                return .amount
-            }
-            return route
-        default:
-            return route
-        }
     }
 }
 

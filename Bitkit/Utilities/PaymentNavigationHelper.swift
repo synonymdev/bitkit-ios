@@ -146,4 +146,34 @@ struct PaymentNavigationHelper {
         // No valid invoice data
         return nil
     }
+
+    static func contactPaymentRoute(
+        app: AppViewModel,
+        currency: CurrencyViewModel,
+        settings: SettingsViewModel
+    ) -> SendRoute? {
+        guard let route = appropriateSendRoute(app: app, currency: currency, settings: settings) else {
+            return nil
+        }
+
+        switch route {
+        case .quickpay:
+            if app.lnurlPayData != nil {
+                return .lnurlPayAmount
+            }
+
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+
+            return route
+        case .confirm:
+            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+                return .amount
+            }
+            return route
+        default:
+            return route
+        }
+    }
 }
