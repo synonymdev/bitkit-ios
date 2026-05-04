@@ -60,7 +60,7 @@ struct PayContactsView: View {
         .bottomSafeAreaPadding()
         .background(Color.customBlack)
         .navigationBarHidden(true)
-        .onAppear {
+        .task {
             enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : false
         }
     }
