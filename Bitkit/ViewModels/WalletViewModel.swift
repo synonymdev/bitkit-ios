@@ -61,7 +61,7 @@ class WalletViewModel: ObservableObject {
     @AppStorage("legacyNetworkGraphCleanupDone") private var legacyNetworkGraphCleanupDone = false
     @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
 
-    private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 15 * 60
+    private static let publicPaykitInvoiceRefreshBufferSeconds: TimeInterval = 30 * 60
 
     private let lightningService: LightningService
     private let coreService: CoreService

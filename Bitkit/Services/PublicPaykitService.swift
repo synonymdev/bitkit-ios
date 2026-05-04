@@ -36,7 +36,39 @@ enum PublicPaykitPaymentLaunchResult {
     }
 }
 
+private actor PublicPaykitEndpointLock {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func withLock<T>(_ operation: () async throws -> T) async throws -> T {
+        await lock()
+        defer { unlock() }
+        return try await operation()
+    }
+
+    private func lock() async {
+        if !isLocked {
+            isLocked = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func unlock() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+
+        waiters.removeFirst().resume()
+    }
+}
+
 enum PublicPaykitService {
+    private static let endpointLock = PublicPaykitEndpointLock()
     enum MethodId: String, Hashable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
@@ -88,7 +120,8 @@ enum PublicPaykitService {
     }
 
     static func fetchPublicEndpoints(publicKey: String) async throws -> [Endpoint] {
-        let paymentEntries = try await PubkyService.getPaymentList(publicKey: publicKey)
+        let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        let paymentEntries = try await PubkyService.getPaymentList(publicKey: normalizedKey)
         var endpointsByMethodId: [MethodId: Endpoint] = [:]
 
         for entry in paymentEntries {
@@ -152,10 +185,12 @@ enum PublicPaykitService {
     }
 
     static func removePublishedEndpoints() async throws {
-        let existingMethodIds = try await currentPublishedMethodIds()
+        try await endpointLock.withLock {
+            let existingMethodIds = try await currentPublishedMethodIds()
 
-        for methodId in methodIdsToRemoveWhenUnpublishing(existingMethodIds: existingMethodIds) {
-            try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+            for methodId in methodIdsToRemoveWhenUnpublishing(existingMethodIds: existingMethodIds) {
+                try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+            }
         }
     }
 
@@ -266,18 +301,20 @@ enum PublicPaykitService {
     }
 
     private static func applyPublishedEndpoints(_ desiredEndpoints: [Endpoint]) async throws {
-        let existingEndpoints = try await currentPublishedEndpoints()
-        let plan = publishedEndpointSyncPlan(existingEndpoints: existingEndpoints, desiredEndpoints: desiredEndpoints)
+        try await endpointLock.withLock {
+            let existingEndpoints = try await currentPublishedEndpoints()
+            let plan = publishedEndpointSyncPlan(existingEndpoints: existingEndpoints, desiredEndpoints: desiredEndpoints)
 
-        for endpoint in plan.endpointsToSet {
-            try await PubkyService.setPaymentEndpoint(
-                methodId: endpoint.methodId.rawValue,
-                endpointData: endpoint.rawPayload
-            )
-        }
+            for endpoint in plan.endpointsToSet {
+                try await PubkyService.setPaymentEndpoint(
+                    methodId: endpoint.methodId.rawValue,
+                    endpointData: endpoint.rawPayload
+                )
+            }
 
-        for methodId in plan.methodIdsToRemove {
-            try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+            for methodId in plan.methodIdsToRemove {
+                try await PubkyService.removePaymentEndpoint(methodId: methodId.rawValue)
+            }
         }
     }
 
