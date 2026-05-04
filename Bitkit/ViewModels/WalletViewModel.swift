@@ -954,7 +954,7 @@ class WalletViewModel: ObservableObject {
             if forceRefreshBolt11 || publicPaykitBolt11.isEmpty {
                 publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
             } else if case let .lightning(lightningInvoice) = try? await decode(invoice: publicPaykitBolt11) {
-                if lightningInvoice.isExpired || lightningInvoice.amountSatoshis > 0 || !lightningInvoice.description.isEmpty {
+                if lightningInvoice.isExpired || lightningInvoice.amountSatoshis > 0 || !(lightningInvoice.description ?? "").isEmpty {
                     publicPaykitBolt11 = try await createInvoice(amountSats: nil, note: "")
                 }
             } else {
