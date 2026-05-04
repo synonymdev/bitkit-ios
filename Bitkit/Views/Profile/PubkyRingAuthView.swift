@@ -130,6 +130,13 @@ struct PubkyRingAuthView: View {
                 checkRingInstalled()
             }
         }
+        .onChange(of: pubkyProfile.authState) { _, authState in
+            authState.resetRingAuthViewStateIfNeeded(
+                isAuthenticating: $isAuthenticating,
+                isWaitingForRing: $isWaitingForRing,
+                isLoadingAfterAuth: $isLoadingAfterAuth
+            )
+        }
         .alert(t("profile__ring_not_installed_title"), isPresented: $showRingNotInstalledDialog) {
             Button(t("profile__ring_download")) {
                 if let url = URL(string: pubkyRingAppStoreUrl) {
