@@ -45,6 +45,7 @@ struct PayContactsView: View {
                 BodyMText(t("profile__pay_contacts_toggle"), textColor: .white)
             }
             .tint(.pubkyGreen)
+            .disabled(isSaving)
             .accessibilityIdentifier("PayContactsToggle")
             .padding(.horizontal, 32)
 
@@ -65,12 +66,13 @@ struct PayContactsView: View {
     }
 
     private func continueFlow() async {
+        let publish = enablePayments
         isSaving = true
         defer { isSaving = false }
 
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: enablePayments)
-            sharesPublicPaykitEndpoints = enablePayments
+            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish)
+            sharesPublicPaykitEndpoints = publish
             hasConfirmedPublicPaykitEndpoints = true
             navigation.path = [.profile]
         } catch {

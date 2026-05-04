@@ -227,7 +227,7 @@ enum PublicPaykitService {
     }
 
     static func methodIdsToRemoveWhenUnpublishing(existingMethodIds: Set<MethodId>) -> [MethodId] {
-        MethodId.publishableMethodIds.filter { existingMethodIds.contains($0) }
+        MethodId.payablePreferenceOrder.filter { existingMethodIds.contains($0) }
     }
 
     static func publishedEndpointSyncPlan(existingEndpoints: [MethodId: String], desiredEndpoints: [Endpoint]) -> EndpointSyncPlan {

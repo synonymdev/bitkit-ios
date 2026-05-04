@@ -315,10 +315,6 @@ extension AppViewModel {
         pendingContactPaymentContexts.removeValue(forKey: hash)
     }
 
-    func clearPendingContactPaymentContexts() {
-        pendingContactPaymentContexts.removeAll()
-    }
-
     /// Called by SendPendingScreen when it consumes a resolution. Clears the published value.
     func consumeSendSheetPendingResolution(paymentHash hash: String) {
         guard sendSheetPendingResolution?.paymentHash == hash else { return }

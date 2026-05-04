@@ -162,14 +162,18 @@ struct PaymentNavigationHelper {
                 return .lnurlPayAmount
             }
 
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
+            if let invoice = app.scannedLightningInvoice {
+                return invoice.amountSatoshis == 0 ? .amount : .confirm
+            }
+
+            if app.scannedOnchainInvoice != nil {
                 return .amount
             }
 
             return route
         case .confirm:
-            if app.scannedLightningInvoice != nil || app.scannedOnchainInvoice != nil {
-                return .amount
+            if let invoice = app.scannedLightningInvoice {
+                return invoice.amountSatoshis == 0 ? .amount : .confirm
             }
             return route
         default:

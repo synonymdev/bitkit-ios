@@ -144,14 +144,14 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertTrue(payable.isEmpty)
     }
 
-    func testMethodIdsToRemoveWhenUnpublishingOnlyIncludesPublishableEndpoints() {
+    func testMethodIdsToRemoveWhenUnpublishingIncludesAllPayableEndpoints() {
         let methodIds = PublicPaykitService.methodIdsToRemoveWhenUnpublishing(existingMethodIds: [
             .bitcoinLightningBolt11,
             .bitcoinLightningLnurl,
             .bitcoinOnchainP2tr,
         ])
 
-        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinOnchainP2tr])
+        XCTAssertEqual(methodIds, [.bitcoinLightningBolt11, .bitcoinLightningLnurl, .bitcoinOnchainP2tr])
     }
 
     func testPublishedEndpointSyncPlanRemovesStalePublishedMethods() {

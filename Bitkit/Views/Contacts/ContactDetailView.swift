@@ -272,7 +272,10 @@ struct ContactDetailView: View {
         do {
             hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
         } catch {
-            Logger.warn("Failed to load public payment endpoints for \(publicKey): \(error)", context: "ContactDetailView")
+            Logger.warn(
+                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                context: "ContactDetailView"
+            )
             hasPublicPaymentEndpoint = false
         }
     }
@@ -305,7 +308,7 @@ struct ContactDetailView: View {
                 )
             }
         } catch {
-            Logger.error("Failed to pay contact \(publicKey): \(error)", context: "ContactDetailView")
+            Logger.error("Failed to pay contact \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "ContactDetailView")
             app.toast(
                 type: .error,
                 title: t("slashtags__error_pay_title"),

@@ -64,7 +64,7 @@ struct ContactActivityView: View {
                             ActivityRow(
                                 item: activity,
                                 feeEstimates: feeEstimatesManager.estimates,
-                                titleOverride: activityTitle(activity)
+                                contact: activityContact
                             )
                         }
                         .accessibilityIdentifier("ContactActivity-\(index)")
@@ -113,24 +113,22 @@ struct ContactActivityView: View {
         return publicKey.ellipsis(maxLength: 18)
     }
 
-    private func resolveContactName() {
-        contactName = contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })?.displayName ?? ""
+    private var activityContact: PubkyContact {
+        PubkyContact(
+            publicKey: publicKey,
+            profile: PubkyProfile(
+                publicKey: publicKey,
+                name: contactDisplayName,
+                bio: "",
+                imageUrl: nil,
+                links: [],
+                status: nil
+            )
+        )
     }
 
-    private func activityTitle(_ activity: Activity) -> String {
-        let txType: PaymentType = switch activity {
-        case let .lightning(lightningActivity):
-            lightningActivity.txType
-        case let .onchain(onchainActivity):
-            onchainActivity.txType
-        }
-
-        switch txType {
-        case .sent:
-            return t("contacts__activity_sent_to", variables: ["name": contactDisplayName])
-        case .received:
-            return t("contacts__activity_received_from", variables: ["name": contactDisplayName])
-        }
+    private func resolveContactName() {
+        contactName = contactsManager.contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, publicKey) })?.displayName ?? ""
     }
 
     private func loadActivities(showLoading: Bool) async {

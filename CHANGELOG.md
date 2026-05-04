@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Fix probe results and add keysend probes #522
+- Fix design: minor UI fixes #525
 
 ## [2.2.0] - 2026-04-07
 
