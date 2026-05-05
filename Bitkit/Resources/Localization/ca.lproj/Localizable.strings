@@ -112,12 +112,12 @@
 "lightning__transfer_intro__button" = "Començar";
 "lightning__funding__nav_title" = "Saldo de despesa";
 "lightning__funding__title" = "Finança el teu <accent>saldo de despesa</accent>";
-"lightning__funding__text" = "Pots utilitzar els teus estalvis de Bitkit o enviar bitcoin des d\'una altra cartera.";
+"lightning__funding__text" = "La forma més fàcil és utilitzar els teus estalvis de Bitkit o enviar bitcoin des d\'una altra cartera.";
 "lightning__funding__text_blocked" = "Bitkit actualment no ofereix serveis Lightning al teu país, però encara pots connectar-te directament a altres nodes.";
 "lightning__funding__text_blocked_cjit" = "Bitkit actualment no ofereix serveis Lightning al teu país, però encara pots connectar-te directament a altres nodes.";
 "lightning__funding__button1" = "Transferir des d\'estalvis";
 "lightning__funding__button2" = "Utilitza un altre moneder";
-"lightning__funding__button3" = "Avançat";
+"lightning__funding__button3" = "Configuració manual";
 "lightning__funding_advanced__nav_title" = "Saldo de despesa";
 "lightning__funding_advanced__title" = "Configuració <accent>avançada</accent>";
 "lightning__funding_advanced__text" = "Escaneja un QR per reclamar el teu canal LNURL d\'un altre LSP, o tria la configuració manual.";
@@ -172,7 +172,8 @@
 "lightning__external_manual__paste" = "Enganxa URI del node";
 "lightning__external_manual__scan" = "Escaneja el codi QR";
 "lightning__external_amount__title" = "Saldo de\n<accent>despesa</accent>";
-"lightning__external_success__title" = "Connexió\n<accent>iniciada</accent>";
+"lightning__external_success__nav_title" = "Saldo de despesa";
+"lightning__external_success__title" = "Obertura\n<accent>de canal</accent>";
 "lightning__external_success__text" = "Connexió Lightning iniciada. Podràs utilitzar el teu saldo de despesa en <accent>±30 minuts</accent> (depèn de la configuració del node).";
 "lightning__error_channel_purchase" = "Configuració de pagaments instantanis fallida";
 "lightning__error_channel_receiving" = "L\'import a rebre ha de ser superior a ${usdValue}";

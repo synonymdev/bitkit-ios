@@ -116,6 +116,8 @@ This project follows **modern SwiftUI patterns** and explicitly **AVOIDS traditi
    - Async operations should delegate to `@Observable` business logic objects
 
 4. **Component Design**
+   - **Always reuse existing components** before creating new ones — check `Components/` for buttons, text styles, layouts, and other shared UI. If identical or near-identical UI exists elsewhere in the codebase, extract it into a shared component rather than duplicating it.
+   - Use the project's text components (`DisplayText`, `HeadlineText`, `TitleText`, `SubtitleText`, `BodyMText`, `BodyMSBText`, `BodySSBText`, `BodySText`, `CaptionMText`, `CaptionText`) instead of raw `Text().font().foregroundColor()` chains.
    - Decompose views into small, focused, single-purpose components
    - Use descriptive names (e.g., `UserProfileCard` not `Card`)
    - Prefer composition over deep view hierarchies
@@ -276,13 +278,14 @@ Ensure accessibility modifiers and labels are added to custom components.
 
 ### Changelog
 
-- ALWAYS add exactly ONE entry per PR under `## [Unreleased]` in `CHANGELOG.md` for `feat:` and `fix:` PRs; skip for `chore:`, `ci:`, `refactor:`, `test:`, `docs:` unless the change is user-facing
-- NEVER add multiple changelog lines for the same PR — summarize all changes in a single concise entry
-- USE standard Keep a Changelog categories: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`
-- ALWAYS append `#PR_NUMBER` at the end of each changelog entry when the PR number is known
-- ALWAYS place new entries at the top of their category section (newest first)
-- NEVER modify released version sections — only edit `## [Unreleased]`
-- ALWAYS create category headings on demand (don't add empty stubs)
+- NEVER edit `CHANGELOG.md` in normal feature/fix PRs; release automation collects changelog fragments into it
+- ALWAYS add exactly ONE changelog fragment for user-facing `feat:` and `fix:` PRs; skip for `chore:`, `ci:`, `refactor:`, `test:`, `docs:` unless the change is user-facing
+- PUT normal release fragments in `changelog.d/next/` and hotfix fragments in `changelog.d/hotfix/`
+- NAME fragments `<issue-or-pr>.<category>.md`, where category is one of `added`, `changed`, `deprecated`, `removed`, `fixed`, or `security`
+- WRITE the fragment as one polished user-facing sentence without a leading bullet and without a PR number
+- NEVER add multiple changelog fragments for the same PR — summarize all changes in one concise fragment
+- Release commits consume fragments with `scripts/collect-changelog.sh --target next|hotfix`, update `CHANGELOG.md`, and delete consumed fragment files
+- NEVER modify released version sections manually
 
 ## Common Workflows
 

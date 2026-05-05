@@ -85,25 +85,18 @@ struct SheetIntro: View {
     private var buttonStack: some View {
         if let cancelText, let onCancel {
             HStack(alignment: .center, spacing: 16) {
-                CustomButton(
-                    title: cancelText,
-                    variant: .secondary
-                ) {
+                CustomButton(title: cancelText, variant: .secondary) {
                     onCancel()
                 }
                 .accessibilityIdentifier("\(baseTestID)Cancel")
 
-                CustomButton(
-                    title: continueText
-                ) {
+                CustomButton(title: continueText) {
                     onContinue()
                 }
                 .accessibilityIdentifier(continueButtonTestID)
             }
         } else {
-            CustomButton(
-                title: continueText
-            ) {
+            CustomButton(title: continueText) {
                 onContinue()
             }
             .accessibilityIdentifier(continueButtonTestID)

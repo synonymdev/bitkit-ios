@@ -1,5 +1,5 @@
 {
-  "originHash" : "17302aed9b1f94b6f928fd7e06b45ebec95883553cab0849836d3e292cab01d7",
+  "originHash" : "d158db056599c21ce7702af0c74aa95296da8e9b08fcbc00728f449ce4872dde",
   "pins" : [
     {
       "identity" : "bitkit-core",
@@ -23,7 +23,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/ldk-node",
       "state" : {
-        "revision" : "ae38eadab70fceb5dbe242bc02bf895581cb7c3f"
+        "revision" : "52f73c4402cfb06a020ab8fa9594b5ecb94e3cd6"
       }
     },
     {
@@ -33,6 +33,14 @@
       "state" : {
         "revision" : "a004050748dc197c56256a14dca49a035d74726c",
         "version" : "4.5.2"
+      }
+    },
+    {
+      "identity" : "paykit-rs",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/pubky/paykit-rs",
+      "state" : {
+        "revision" : "cd1253291b1582759d569372d5942b8871527ea1"
       }
     },
     {
@@ -51,15 +59,6 @@
       "state" : {
         "branch" : "master",
         "revision" : "9f01c135c7e22e594bb1dee749130b82b505ab5e"
-      }
-    },
-    {
-      "identity" : "zip",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/marmelroy/Zip.git",
-      "state" : {
-        "revision" : "67fa55813b9e7b3b9acee9c0ae501def28746d76",
-        "version" : "2.1.2"
       }
     }
   ],

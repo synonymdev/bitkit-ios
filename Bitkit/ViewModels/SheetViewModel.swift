@@ -12,6 +12,7 @@ enum SheetID: String, CaseIterable {
     case highBalance
     case lnurlAuth
     case lnurlWithdraw
+    case pubkyAuthApproval
     case notifications
     case quickpay
     case receive
@@ -224,6 +225,20 @@ class SheetViewModel: ObservableObject {
             let lnurlWithdrawConfig = config.data as? LnurlWithdrawConfig
             let initialRoute = lnurlWithdrawConfig?.initialRoute ?? .amount
             return LnurlWithdrawSheetItem(initialRoute: initialRoute)
+        }
+        set {
+            if newValue == nil {
+                activeSheetConfiguration = nil
+            }
+        }
+    }
+
+    var pubkyAuthApprovalSheetItem: PubkyAuthApprovalSheetItem? {
+        get {
+            guard let config = activeSheetConfiguration, config.id == .pubkyAuthApproval else { return nil }
+            let pubkyConfig = config.data as? PubkyAuthApprovalConfig
+            guard let authUrl = pubkyConfig?.authUrl, let request = pubkyConfig?.request else { return nil }
+            return PubkyAuthApprovalSheetItem(authUrl: authUrl, request: request)
         }
         set {
             if newValue == nil {

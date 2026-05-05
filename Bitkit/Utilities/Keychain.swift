@@ -6,6 +6,8 @@ enum KeychainEntryType {
     case bip39Passphrase(index: Int)
     case pushNotificationPrivateKey // For secp256k1 shared secret when decrypting push payload
     case securityPin
+    case paykitSession
+    case pubkySecretKey
 
     var storageKey: String {
         switch self {
@@ -13,6 +15,8 @@ enum KeychainEntryType {
         case let .bip39Passphrase(index): "bip39_passphrase_\(index)"
         case .pushNotificationPrivateKey: "push_notification_private_key"
         case .securityPin: "security_pin"
+        case .paykitSession: "paykit_session"
+        case .pubkySecretKey: "pubky_secret_key"
         }
     }
 }
@@ -122,12 +126,45 @@ class Keychain {
 
         let status = SecItemDelete(query as CFDictionary)
 
+        if status == errSecItemNotFound {
+            Logger.debug("\(key.storageKey) not found in keychain, nothing to delete", context: "Keychain")
+            return
+        }
+
         if status != noErr {
             Logger.error("Failed to delete \(key.storageKey) from keychain. \(status.description)", context: "Keychain")
             throw KeychainError.failedToDelete
         }
 
         Logger.debug("Deleted \(key.storageKey)", context: "Keychain")
+    }
+
+    /// Atomically inserts or updates a keychain entry, avoiding the delete-then-save race window.
+    class func upsert(key: KeychainEntryType, data: Data) throws {
+        Logger.debug("Upserting \(key.storageKey)", context: "Keychain")
+
+        let existingData = try load(key: key)
+
+        if existingData != nil {
+            let searchQuery: [String: Any] = [
+                kSecClass as String: kSecClassGenericPassword,
+                kSecAttrAccount as String: key.storageKey,
+                kSecAttrAccessGroup as String: Env.keychainGroup,
+            ]
+            let updateAttributes: [String: Any] = [
+                kSecValueData as String: data,
+            ]
+
+            let status = SecItemUpdate(searchQuery as CFDictionary, updateAttributes as CFDictionary)
+            if status != noErr {
+                Logger.error("Failed to update \(key.storageKey) in keychain. \(status.description)", context: "Keychain")
+                throw KeychainError.failedToSave
+            }
+
+            Logger.info("Updated \(key.storageKey)", context: "Keychain")
+        } else {
+            try save(key: key, data: data)
+        }
     }
 
     class func exists(key: KeychainEntryType) throws -> Bool {

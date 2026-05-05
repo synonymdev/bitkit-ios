@@ -13,6 +13,7 @@ struct AuthCheck: View {
     @State private var biometricFailedOnce = false
     @State private var errorIdentifier: String?
 
+    let onCancel: (() -> Void)?
     let onPinVerified: () -> Void
 
     private var biometryTypeName: String {
@@ -106,6 +107,26 @@ struct AuthCheck: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let onCancel {
+                HStack(spacing: 0) {
+                    Button(action: onCancel) {
+                        Image("arrow-left")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundColor(.textPrimary)
+                            .frame(width: 24, height: 24)
+                    }
+                    .accessibilityIdentifier("NavigationBack")
+
+                    Spacer()
+                }
+                .frame(height: 48)
+                .padding(.horizontal, 16)
+            } else {
+                Spacer()
+                    .frame(height: 48)
+            }
+
             Spacer()
 
             Image("logo")
@@ -161,11 +182,16 @@ struct AuthCheck: View {
 }
 
 #Preview {
-    AuthCheck {
-        print("PIN verified!")
-    }
-    .environmentObject(SettingsViewModel.shared)
-    .environmentObject(WalletViewModel())
+    AuthCheck(
+        onCancel: nil,
+        onPinVerified: {
+            print("PIN verified!")
+        }
+    )
     .environmentObject(AppViewModel())
+    .environmentObject(SettingsViewModel.shared)
+    .environmentObject(SheetViewModel())
+    .environmentObject(WalletViewModel())
+    .environmentObject(SessionManager())
     .preferredColorScheme(.dark)
 }

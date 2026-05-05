@@ -112,12 +112,12 @@
 "lightning__transfer_intro__button" = "Los geht\'s";
 "lightning__funding__nav_title" = "Spending Balance";
 "lightning__funding__title" = "Fund your <accent>spending balance</accent>";
-"lightning__funding__text" = "Du kannst dein Bitkit-Sparkonto verwenden oder Bitcoin aus einer anderen Wallet senden.";
+"lightning__funding__text" = "Am einfachsten ist es, deine Bitkit-Ersparnisse zu verwenden oder Bitcoin von einer anderen Wallet zu senden.";
 "lightning__funding__text_blocked" = "Bitkit bietet derzeit keine Lightning-Dienste in deinem Land an,  aber du kannst dich trotzdem direkt mit anderen Knotenpunkten verbinden.";
 "lightning__funding__text_blocked_cjit" = "Bitkit bietet derzeit keine Lightning-Dienste in deinem Land an,  aber du kannst dich trotzdem direkt mit anderen Knotenpunkten verbinden.";
 "lightning__funding__button1" = "Von Sparkonto übertragen";
 "lightning__funding__button2" = "Anderes Wallet verwenden";
-"lightning__funding__button3" = "Fortgeschritten";
+"lightning__funding__button3" = "Manuelle Einrichtung";
 "lightning__funding_advanced__nav_title" = "Ausgabenkonto";
 "lightning__funding_advanced__title" = "Fortgeschrittene<accent>setup</accent>";
 "lightning__funding_advanced__text" = "Scannen Sie einen QR-Code, um Ihren LNURL-Kanal von einem anderen LSP zu beanspruchen, oder wählen Sie die manuelle Einrichtung.";
@@ -183,7 +183,8 @@
 "lightning__external_manual__paste" = "Paste Node URI";
 "lightning__external_manual__scan" = "QR-Code scannen";
 "lightning__external_amount__title" = "Spending\n<accent>balance</accent>";
-"lightning__external_success__title" = "Verbindung\n<accent>initiiert</accent>";
+"lightning__external_success__nav_title" = "Ausgabenguthaben";
+"lightning__external_success__title" = "Kanal wird\n<accent>geöffnet</accent>";
 "lightning__external_success__text" = "Lightning-Verbindung initiiert. Du kannst dein Guthaben in <accent>±30 Minuten</accent> verwenden (abhängig von der Node-Konfiguration).";
 "lightning__error_channel_purchase" = "Einrichtung der Instant-Zahlungen fehlgeschlagen";
 "lightning__error_channel_setup_msg" = "Ein Fehler ist bei der Einrichtung deines Sofortguthabens aufgetreten. {raw}";
