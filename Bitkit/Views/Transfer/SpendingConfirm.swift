@@ -212,7 +212,8 @@ struct SpendingConfirm: View {
                 useSendAll = DustChangeHelper.shouldUseSendAllToAvoidDust(
                     totalInput: totalInput,
                     amountSats: currentOrder.feeSat,
-                    normalFee: normalFee
+                    normalFee: normalFee,
+                    isMaxAmount: true
                 )
             } catch {
                 Logger.info("Normal coin selection failed, using sendAll: \(error)")
