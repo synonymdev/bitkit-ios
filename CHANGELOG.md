@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Restore pubky sessions from wallet backups and improve iOS pubky profile, contacts, and clipboard flows #527
+- Pubky profile onboarding with contact sync, import, and editing #476
+- Add transfer from savings button on empty spending wallet when user has on-chain balance #523
+
+### Changed
+- Update funding screen: replace Advanced with Manual Setup, update description text, add no-funds alert dialog #520
+- Update external channel success screen: rename title to "Channel opening", add dedicated "Spending Balance" nav title, and replace switch illustration with lightning bolt #521
+- Use middle-ellipsis truncation for addresses on the receive screen #517
+
+### Fixed
+- Fix probe results and add keysend probes #522
+- Fix design: minor UI fixes #525
+
 ## [2.2.1] - 2026-05-05
 
 ### Fixed
