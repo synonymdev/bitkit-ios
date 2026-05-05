@@ -48,6 +48,13 @@ struct PubkyChoiceView: View {
                 // Ring returned to app — approval task handles completion
             }
         }
+        .onChange(of: pubkyProfile.authState) { _, authState in
+            authState.resetRingAuthViewStateIfNeeded(
+                isAuthenticating: $isAuthenticating,
+                isWaitingForRing: $isWaitingForRing,
+                isLoadingAfterAuth: $isLoadingAfterAuth
+            )
+        }
         .alert(t("profile__ring_not_installed_title"), isPresented: $showRingNotInstalledDialog) {
             Button(t("profile__ring_download")) {
                 if let url = URL(string: pubkyRingAppStoreUrl) {
@@ -62,7 +69,6 @@ struct PubkyChoiceView: View {
 
     // MARK: - Title Section
 
-    @ViewBuilder
     private var titleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             DisplayText(
@@ -82,7 +88,6 @@ struct PubkyChoiceView: View {
 
     // MARK: - Option Cards
 
-    @ViewBuilder
     private var optionCards: some View {
         VStack(spacing: 8) {
             choiceCard(
@@ -110,7 +115,6 @@ struct PubkyChoiceView: View {
         }
     }
 
-    @ViewBuilder
     private func choiceCard(
         icon: String? = nil,
         systemIcon: String? = nil,
@@ -198,7 +202,6 @@ struct PubkyChoiceView: View {
 
     // MARK: - Ring Waiting Card
 
-    @ViewBuilder
     private var ringWaitingCard: some View {
         VStack(spacing: 12) {
             HStack(spacing: 16) {
@@ -234,7 +237,6 @@ struct PubkyChoiceView: View {
 
     // MARK: - Background Illustrations
 
-    @ViewBuilder
     private var backgroundIllustrations: some View {
         GeometryReader { geo in
             Image("tag-pubky")

@@ -246,6 +246,28 @@ struct MainNavView: View {
             Task {
                 Logger.info("Received deeplink: \(url.absoluteString)")
 
+                if let callback = PubkyRingAuthCallback.parse(url: url) {
+                    let handlingResult = await pubkyProfile.handleAuthCallback(callback)
+
+                    switch handlingResult {
+                    case let .trustedError(message):
+                        app.toast(
+                            type: .error,
+                            title: t("profile__auth_error_title"),
+                            description: message ?? t("other__qr_error_text")
+                        )
+                    case .untrustedError:
+                        app.toast(
+                            type: .error,
+                            title: t("profile__auth_error_title")
+                        )
+                    case .handled, .ignored:
+                        break
+                    }
+
+                    return
+                }
+
                 do {
                     try await app.handleScannedData(url.absoluteString)
                     PaymentNavigationHelper.openPaymentSheet(
@@ -463,7 +485,6 @@ struct MainNavView: View {
             }
     }
 
-    @ViewBuilder
     private func missingPendingImportView(fallbackRoute: Route) -> some View {
         Color.customBlack
             .task {
