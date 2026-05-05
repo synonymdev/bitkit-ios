@@ -69,37 +69,96 @@ private actor PublicPaykitEndpointLock {
 
 enum PublicPaykitService {
     private static let endpointLock = PublicPaykitEndpointLock()
-    enum MethodId: String, Hashable {
+    enum MethodId: String, Hashable, CaseIterable {
         case bitcoinLightningBolt11 = "btc-lightning-bolt11"
         case bitcoinLightningLnurl = "btc-lightning-lnurl"
         case bitcoinOnchainP2tr = "btc-bitcoin-p2tr"
         case bitcoinOnchainP2wpkh = "btc-bitcoin-p2wpkh"
         case bitcoinOnchainP2sh = "btc-bitcoin-p2sh"
         case bitcoinOnchainP2pkh = "btc-bitcoin-p2pkh"
+        case testnetOnchainP2tr = "btc-testnet-p2tr"
+        case testnetOnchainP2wpkh = "btc-testnet-p2wpkh"
+        case testnetOnchainP2sh = "btc-testnet-p2sh"
+        case testnetOnchainP2pkh = "btc-testnet-p2pkh"
+        case signetOnchainP2tr = "btc-signet-p2tr"
+        case signetOnchainP2wpkh = "btc-signet-p2wpkh"
+        case signetOnchainP2sh = "btc-signet-p2sh"
+        case signetOnchainP2pkh = "btc-signet-p2pkh"
+        case regtestOnchainP2tr = "btc-regtest-p2tr"
+        case regtestOnchainP2wpkh = "btc-regtest-p2wpkh"
+        case regtestOnchainP2sh = "btc-regtest-p2sh"
+        case regtestOnchainP2pkh = "btc-regtest-p2pkh"
 
         static let payablePreferenceOrder: [MethodId] = [
             .bitcoinLightningBolt11,
             .bitcoinLightningLnurl,
-            .bitcoinOnchainP2tr,
-            .bitcoinOnchainP2wpkh,
-            .bitcoinOnchainP2sh,
-            .bitcoinOnchainP2pkh,
-        ]
+        ] + onchainPreferenceOrder
 
         static let publishableMethodIds: [MethodId] = [
             .bitcoinLightningBolt11,
-            .bitcoinOnchainP2tr,
-            .bitcoinOnchainP2wpkh,
-            .bitcoinOnchainP2sh,
-            .bitcoinOnchainP2pkh,
-        ]
+        ] + onchainPreferenceOrder
 
         static let onchainPreferenceOrder: [MethodId] = [
             .bitcoinOnchainP2tr,
+            .testnetOnchainP2tr,
+            .signetOnchainP2tr,
+            .regtestOnchainP2tr,
             .bitcoinOnchainP2wpkh,
+            .testnetOnchainP2wpkh,
+            .signetOnchainP2wpkh,
+            .regtestOnchainP2wpkh,
             .bitcoinOnchainP2sh,
+            .testnetOnchainP2sh,
+            .signetOnchainP2sh,
+            .regtestOnchainP2sh,
             .bitcoinOnchainP2pkh,
+            .testnetOnchainP2pkh,
+            .signetOnchainP2pkh,
+            .regtestOnchainP2pkh,
         ]
+
+        var onchainNetwork: LDKNode.Network? {
+            switch self {
+            case .bitcoinOnchainP2tr, .bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh, .bitcoinOnchainP2pkh:
+                .bitcoin
+            case .testnetOnchainP2tr, .testnetOnchainP2wpkh, .testnetOnchainP2sh, .testnetOnchainP2pkh:
+                .testnet
+            case .signetOnchainP2tr, .signetOnchainP2wpkh, .signetOnchainP2sh, .signetOnchainP2pkh:
+                .signet
+            case .regtestOnchainP2tr, .regtestOnchainP2wpkh, .regtestOnchainP2sh, .regtestOnchainP2pkh:
+                .regtest
+            case .bitcoinLightningBolt11, .bitcoinLightningLnurl:
+                nil
+            }
+        }
+
+        static func onchainMethodId(network: LDKNode.Network, scriptType: OnchainScriptType) -> MethodId {
+            switch (network, scriptType) {
+            case (.bitcoin, .p2tr): .bitcoinOnchainP2tr
+            case (.bitcoin, .p2wpkh): .bitcoinOnchainP2wpkh
+            case (.bitcoin, .p2sh): .bitcoinOnchainP2sh
+            case (.bitcoin, .p2pkh): .bitcoinOnchainP2pkh
+            case (.testnet, .p2tr): .testnetOnchainP2tr
+            case (.testnet, .p2wpkh): .testnetOnchainP2wpkh
+            case (.testnet, .p2sh): .testnetOnchainP2sh
+            case (.testnet, .p2pkh): .testnetOnchainP2pkh
+            case (.signet, .p2tr): .signetOnchainP2tr
+            case (.signet, .p2wpkh): .signetOnchainP2wpkh
+            case (.signet, .p2sh): .signetOnchainP2sh
+            case (.signet, .p2pkh): .signetOnchainP2pkh
+            case (.regtest, .p2tr): .regtestOnchainP2tr
+            case (.regtest, .p2wpkh): .regtestOnchainP2wpkh
+            case (.regtest, .p2sh): .regtestOnchainP2sh
+            case (.regtest, .p2pkh): .regtestOnchainP2pkh
+            }
+        }
+    }
+
+    enum OnchainScriptType {
+        case p2tr
+        case p2wpkh
+        case p2sh
+        case p2pkh
     }
 
     struct Endpoint: Equatable, Hashable {
@@ -243,22 +302,21 @@ enum PublicPaykitService {
         return "bitcoin:\(onchainEndpoint.paymentRequest)?lightning=\(encodedLightning)"
     }
 
-    static func onchainMethodId(for address: String) -> MethodId {
+    static func onchainMethodId(for address: String, network: LDKNode.Network = Env.network) -> MethodId {
         let normalizedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
-        if normalizedAddress.hasPrefix("bc1p") || normalizedAddress.hasPrefix("tb1p") || normalizedAddress.hasPrefix("bcrt1p") {
-            return .bitcoinOnchainP2tr
+        let scriptType: OnchainScriptType = if normalizedAddress.hasPrefix("bc1p") || normalizedAddress.hasPrefix("tb1p") || normalizedAddress
+            .hasPrefix("bcrt1p")
+        {
+            .p2tr
+        } else if normalizedAddress.hasPrefix("bc1q") || normalizedAddress.hasPrefix("tb1q") || normalizedAddress.hasPrefix("bcrt1q") {
+            .p2wpkh
+        } else if normalizedAddress.hasPrefix("3") || normalizedAddress.hasPrefix("2") {
+            .p2sh
+        } else {
+            .p2pkh
         }
 
-        if normalizedAddress.hasPrefix("bc1q") || normalizedAddress.hasPrefix("tb1q") || normalizedAddress.hasPrefix("bcrt1q") {
-            return .bitcoinOnchainP2wpkh
-        }
-
-        if normalizedAddress.hasPrefix("3") || normalizedAddress.hasPrefix("2") {
-            return .bitcoinOnchainP2sh
-        }
-
-        return .bitcoinOnchainP2pkh
+        return MethodId.onchainMethodId(network: network, scriptType: scriptType)
     }
 
     static func methodIdsToRemoveWhenUnpublishing(existingMethodIds: Set<MethodId>) -> [MethodId] {
@@ -410,7 +468,14 @@ enum PublicPaykitService {
 
             return true
 
-        case .bitcoinOnchainP2tr, .bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh, .bitcoinOnchainP2pkh:
+        case .bitcoinOnchainP2tr, .bitcoinOnchainP2wpkh, .bitcoinOnchainP2sh, .bitcoinOnchainP2pkh,
+             .testnetOnchainP2tr, .testnetOnchainP2wpkh, .testnetOnchainP2sh, .testnetOnchainP2pkh,
+             .signetOnchainP2tr, .signetOnchainP2wpkh, .signetOnchainP2sh, .signetOnchainP2pkh,
+             .regtestOnchainP2tr, .regtestOnchainP2wpkh, .regtestOnchainP2sh, .regtestOnchainP2pkh:
+            guard endpoint.methodId.onchainNetwork == Env.network else {
+                return false
+            }
+
             guard case let .onChain(invoice) = try? await decode(invoice: endpoint.paymentRequest) else {
                 return false
             }

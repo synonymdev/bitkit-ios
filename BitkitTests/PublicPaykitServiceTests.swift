@@ -1,5 +1,6 @@
 @testable import Bitkit
 import Foundation
+import LDKNode
 import XCTest
 
 final class PublicPaykitServiceTests: XCTestCase {
@@ -43,6 +44,23 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(endpoint?.value, "lnurl1example")
     }
 
+    func testParseEndpointReadsNetworkSpecificOnchainMethodIds() {
+        XCTAssertEqual(
+            PublicPaykitService.parseEndpoint(
+                methodId: "btc-testnet-p2wpkh",
+                endpointData: #"{"value":"tb1qexample"}"#
+            )?.methodId,
+            .testnetOnchainP2wpkh
+        )
+        XCTAssertEqual(
+            PublicPaykitService.parseEndpoint(
+                methodId: "btc-regtest-p2tr",
+                endpointData: #"{"value":"bcrt1pexample"}"#
+            )?.methodId,
+            .regtestOnchainP2tr
+        )
+    }
+
     func testParseEndpointRejectsNonSpecLegacyLnurlMethodId() {
         let endpoint = PublicPaykitService.parseEndpoint(
             methodId: "btc-lightning-lnurl-pay",
@@ -54,16 +72,8 @@ final class PublicPaykitServiceTests: XCTestCase {
 
     func testKnownMethodIdsFollowPaymentEndpointIdentifierSpec() {
         let specPattern = #"^[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$"#
-        let methodIds: [PublicPaykitService.MethodId] = [
-            .bitcoinLightningBolt11,
-            .bitcoinLightningLnurl,
-            .bitcoinOnchainP2tr,
-            .bitcoinOnchainP2wpkh,
-            .bitcoinOnchainP2sh,
-            .bitcoinOnchainP2pkh,
-        ]
 
-        for methodId in methodIds {
+        for methodId in PublicPaykitService.MethodId.allCases {
             XCTAssertNotNil(methodId.rawValue.range(of: specPattern, options: .regularExpression), "\(methodId.rawValue) must be asset-rail-endpoint")
         }
     }
@@ -122,11 +132,13 @@ final class PublicPaykitServiceTests: XCTestCase {
         XCTAssertEqual(request, "lnurl1example")
     }
 
-    func testOnchainMethodIdUsesAddressPrefix() {
-        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "bc1pexample"), .bitcoinOnchainP2tr)
-        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "tb1qexample"), .bitcoinOnchainP2wpkh)
-        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "3Example"), .bitcoinOnchainP2sh)
-        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "1Example"), .bitcoinOnchainP2pkh)
+    func testOnchainMethodIdUsesAddressPrefixAndNetwork() {
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "bc1pexample", network: .bitcoin), .bitcoinOnchainP2tr)
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "tb1qexample", network: .testnet), .testnetOnchainP2wpkh)
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "bcrt1qexample", network: .regtest), .regtestOnchainP2wpkh)
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "3Example", network: .bitcoin), .bitcoinOnchainP2sh)
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "2Example", network: .regtest), .regtestOnchainP2sh)
+        XCTAssertEqual(PublicPaykitService.onchainMethodId(for: "1Example", network: .bitcoin), .bitcoinOnchainP2pkh)
     }
 
     func testPaymentLaunchResultFailureMessageKeys() {
