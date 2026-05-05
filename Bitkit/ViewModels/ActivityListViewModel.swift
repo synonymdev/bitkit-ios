@@ -273,7 +273,8 @@ class ActivityListViewModel: ObservableObject {
     }
 
     func contactActivities(publicKey: String) async throws -> [Activity] {
-        try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
+        let activities = try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
+        return await filterOutReplacedSentTransactions(activities)
     }
 
     func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {

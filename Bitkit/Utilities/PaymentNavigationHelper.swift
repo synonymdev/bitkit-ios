@@ -158,8 +158,8 @@ struct PaymentNavigationHelper {
 
         switch route {
         case .quickpay:
-            if app.lnurlPayData != nil {
-                return .lnurlPayAmount
+            if let lnurlPayData = app.lnurlPayData {
+                return lnurlPayData.isFixedAmount ? .lnurlPayConfirm : .lnurlPayAmount
             }
 
             if let invoice = app.scannedLightningInvoice {

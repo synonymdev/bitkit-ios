@@ -54,6 +54,11 @@ class ScannerManager: ObservableObject {
 
     private func handleAddContactScan(_ input: String) {
         navigation?.navigateBack()
+
+        guard !handlePubkyRouteIfNeeded(input) else {
+            return
+        }
+
         navigation?.navigate(.addContact(publicKey: input))
     }
 
