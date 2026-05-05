@@ -619,10 +619,10 @@ private struct FlexibleTextView: View {
 #Preview {
     ScrollView {
         HStack {
-            DisplayText("Display Text With An\n<accent>Accent</accent> Over Here")
+            DisplayText(t("onboarding__empty_wallet"))
                 .background(Color.red.opacity(0.1))
 
-            DisplayText("Display Text With An\n<accent>Accent</accent> Over Here")
+            DisplayText(t("onboarding__welcome_title"))
                 .background(Color.blue.opacity(0.1))
         }
         .padding(.bottom, 20)
@@ -636,11 +636,11 @@ private struct FlexibleTextView: View {
         }
         .padding(.bottom, 20)
 
-        DisplayText("Display Text With An\n<accent>Accent</accent> Over Here")
+        DisplayText(t("onboarding__slide0_header"))
             .background(Color.orange.opacity(0.1))
             .padding(.bottom, 20)
 
-        DisplayText("Display Text With An\n<accent>Accent</accent> Over Here")
+        DisplayText("Display Style With An\n<accent>Accent</accent> Over Here")
             .background(Color.green.opacity(0.1))
             .padding(.bottom, 20)
 

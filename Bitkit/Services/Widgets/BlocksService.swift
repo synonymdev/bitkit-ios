@@ -1,14 +1,9 @@
 import Foundation
-import WidgetKit
 
 /// Service for fetching and caching Bitcoin block data
 class BlocksService {
     static let shared = BlocksService()
-
-    /// WidgetKit `kind` for the home screen blocks widget (keep in sync with `BitkitBlocksWidget`).
-    static let blocksHomeScreenWidgetKind = "BitkitBlocksWidget"
-
-    private static let appGroupSuiteName = "group.bitkit"
+    private let cache = UserDefaults.standard
     private let cacheKey = "blocks_widget_cache"
     private let baseUrl = "https://mempool.space/api"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
@@ -91,18 +86,13 @@ class BlocksService {
         }
     }
 
-    /// Caches block data to the App Group `UserDefaults` (shared with the widget extension).
+    /// Caches block data to UserDefaults
     /// - Parameter data: Block data to cache
     func cacheData(_ data: BlockData) {
         do {
             let encoder = JSONEncoder()
             let encoded = try encoder.encode(data)
-            if let group = UserDefaults(suiteName: Self.appGroupSuiteName) {
-                group.set(encoded, forKey: cacheKey)
-            } else {
-                UserDefaults.standard.set(encoded, forKey: cacheKey)
-            }
-            reloadBlocksHomeScreenWidgetIfNeeded()
+            cache.set(encoded, forKey: cacheKey)
         } catch {
             // Handle silently
         }
@@ -111,32 +101,16 @@ class BlocksService {
     /// Retrieves cached block data
     /// - Returns: Block data if available
     func getCachedData() -> BlockData? {
-        if let group = UserDefaults(suiteName: Self.appGroupSuiteName),
-           let data = group.data(forKey: cacheKey),
-           let decoded = Self.decodeCachedBlockData(data)
-        {
-            return decoded
+        guard let data = cache.data(forKey: cacheKey) else {
+            return nil
         }
 
-        // One-time migration from pre–App Group cache
-        if let data = UserDefaults.standard.data(forKey: cacheKey),
-           let decoded = Self.decodeCachedBlockData(data)
-        {
-            cacheData(decoded)
-            UserDefaults.standard.removeObject(forKey: cacheKey)
-            return decoded
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(BlockData.self, from: data)
+        } catch {
+            return nil
         }
-
-        return nil
-    }
-
-    private static func decodeCachedBlockData(_ data: Data) -> BlockData? {
-        try? JSONDecoder().decode(BlockData.self, from: data)
-    }
-
-    private func reloadBlocksHomeScreenWidgetIfNeeded() {
-        guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
-        WidgetCenter.shared.reloadTimelines(ofKind: Self.blocksHomeScreenWidgetKind)
     }
 
     /// Formats raw block info into display-friendly format

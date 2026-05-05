@@ -3,13 +3,8 @@ import Foundation
 /// Service for managing Bitcoin facts
 class FactsService {
     static let shared = FactsService()
-    
-    private let appGroupIdentifier = "group.bitkit"
 
-    private init() {
-        // Share facts with widget on initialization
-        saveFactsForWidget()
-    }
+    private init() {}
 
     /// Returns a random Bitcoin fact
     /// - Returns: A Bitcoin fact string
@@ -21,15 +16,6 @@ class FactsService {
     /// - Returns: Array of Bitcoin facts
     func getAllFacts() -> [String] {
         return facts
-    }
-    
-    /// Saves facts to App Group shared storage for widget access
-    private func saveFactsForWidget() {
-        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
-            return
-        }
-        
-        userDefaults.set(facts, forKey: "widget_facts")
     }
 
     // MARK: - Private Properties
