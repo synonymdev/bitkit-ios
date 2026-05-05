@@ -7,8 +7,6 @@ import Foundation
 /// asked to refresh. The cache itself is owned by the main app — this service intentionally
 /// does not write back to it, to keep the extension's footprint minimal.
 enum PriceWidgetService {
-    private static let baseURL = "https://feeds.synonym.to/price-feed/api"
-
     enum FetchError: Error {
         case invalidURL
         case invalidPair
@@ -63,7 +61,7 @@ enum PriceWidgetService {
     }
 
     private static func fetchLatestPrice(ticker: String) async throws -> Double {
-        guard let url = URL(string: "\(baseURL)/price/\(ticker)/latest") else {
+        guard let url = URL(string: "\(WidgetEnv.priceFeedBaseUrl)/price/\(ticker)/latest") else {
             throw FetchError.invalidURL
         }
         let (data, _) = try await URLSession.shared.data(from: url)
@@ -71,7 +69,7 @@ enum PriceWidgetService {
     }
 
     private static func fetchCandles(ticker: String, period: GraphPeriod) async throws -> [Candle] {
-        guard let url = URL(string: "\(baseURL)/price/\(ticker)/history/\(period.rawValue)") else {
+        guard let url = URL(string: "\(WidgetEnv.priceFeedBaseUrl)/price/\(ticker)/history/\(period.rawValue)") else {
             throw FetchError.invalidURL
         }
         let (data, _) = try await URLSession.shared.data(from: url)

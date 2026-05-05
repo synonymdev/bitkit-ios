@@ -43,7 +43,7 @@ enum PriceServiceError: Error {
 
 class PriceService {
     static let shared = PriceService()
-    private let baseURL = "https://feeds.synonym.to/price-feed/api"
+    private let baseURL = WidgetEnv.priceFeedBaseUrl
 
     private init() {}
 

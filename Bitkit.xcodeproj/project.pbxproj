@@ -169,6 +169,7 @@
 				Fonts/InterTight-ExtraBold.ttf,
 				Fonts/InterTight-Medium.ttf,
 				Fonts/InterTight-Regular.ttf,
+				Constants/WidgetEnv.swift,
 				Fonts/InterTight-SemiBold.ttf,
 				Models/PriceWidgetData.swift,
 				Models/PriceWidgetOptions.swift,
