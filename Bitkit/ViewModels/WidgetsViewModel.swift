@@ -301,6 +301,7 @@ class WidgetsViewModel: ObservableObject {
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
+        syncPriceOptionsToHomeScreenWidget()
     }
 
     private func persistSavedWidgets() {
@@ -310,5 +311,13 @@ class WidgetsViewModel: ObservableObject {
         } catch {
             print("Failed to persist widgets: \(error)")
         }
+        syncPriceOptionsToHomeScreenWidget()
+    }
+
+    /// Keeps the home-screen WidgetKit price widget in sync with in-app price widget options (App Group).
+    private func syncPriceOptionsToHomeScreenWidget() {
+        let options: PriceWidgetOptions = getOptions(for: .price, as: PriceWidgetOptions.self)
+        PriceHomeScreenWidgetOptionsStore.save(options)
+        PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

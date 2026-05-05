@@ -1,13 +1,6 @@
 import Charts
 import SwiftUI
 
-/// Options for configuring the PriceWidget
-struct PriceWidgetOptions: Codable, Equatable {
-    var selectedPairs: [String] = ["BTC/USD"]
-    var selectedPeriod: GraphPeriod = .oneDay
-    var showSource: Bool = false
-}
-
 /// A widget that displays cryptocurrency price information with chart
 struct PriceWidget: View {
     /// Configuration options for the widget
