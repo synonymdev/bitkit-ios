@@ -127,6 +127,8 @@ struct SendConfirmationView: View {
                     .rotationEffect(.degrees(swipeProgress * 14))
             }
 
+            Spacer(minLength: 16)
+
             if !UIScreen.main.isSmall || !showDetails {
                 CustomButton(
                     title: showDetails ? t("common__hide_details") : t("common__show_details"),
@@ -134,16 +136,15 @@ struct SendConfirmationView: View {
                     icon: Image(showDetails ? "eye-slash" : app.selectedWalletToPayFrom == .lightning ? "bolt-hollow" : "speed-normal")
                         .resizable()
                         .frame(width: 16, height: 16)
-                        .foregroundColor(accentColor)
+                        .foregroundColor(accentColor),
+                    background: Color(hex: 0x151515)
                 ) {
                     showDetails.toggle()
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.top, 16)
+                .padding(.bottom, 62)
                 .accessibilityIdentifier("SendConfirmToggleDetails")
             }
-
-            Spacer(minLength: 16)
 
             SwipeButton(title: t("wallet__send_swipe"), accentColor: accentColor, swipeProgress: $swipeProgress) {
                 // Validate payment and show warnings if needed
