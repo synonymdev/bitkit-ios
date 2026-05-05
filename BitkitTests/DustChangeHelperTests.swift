@@ -4,14 +4,32 @@ import XCTest
 final class DustChangeHelperTests: XCTestCase {
     private let dustLimit: UInt64 = 547
 
-    // MARK: - Change would be dust -> use sendAll
+    // MARK: - Change would be dust
+
+    func testReportedNonMaxDustChange_ShouldNotUseSendAll() {
+        XCTAssertTrue(DustChangeHelper.wouldCreateDustChange(
+            totalInput: 5450,
+            amountSats: 5000,
+            normalFee: 181,
+            dustLimit: dustLimit
+        ))
+
+        XCTAssertFalse(DustChangeHelper.shouldUseSendAllToAvoidDust(
+            totalInput: 5450,
+            amountSats: 5000,
+            normalFee: 181,
+            isMaxAmount: false,
+            dustLimit: dustLimit
+        ))
+    }
 
     func testChangeBelowDustLimit_ShouldUseSendAll() {
-        // totalInput: 100_000, amount: 99_500, fee: 500 -> change = 0
+        // totalInput: 100_000, amount: 99_500, fee: 500 -> change = 0 (explicit max case)
         XCTAssertTrue(DustChangeHelper.shouldUseSendAllToAvoidDust(
             totalInput: 100_000,
             amountSats: 99500,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
 
@@ -20,6 +38,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 99000,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
 
@@ -28,6 +47,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 98954,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
     }
@@ -39,6 +59,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 98953,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
     }
@@ -49,6 +70,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 98000,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
 
@@ -57,6 +79,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 98954,
             normalFee: 495,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
     }
@@ -67,6 +90,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 99500,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
     }
@@ -77,6 +101,7 @@ final class DustChangeHelperTests: XCTestCase {
             totalInput: 100_000,
             amountSats: 100_000,
             normalFee: 500,
+            isMaxAmount: true,
             dustLimit: dustLimit
         ))
     }
@@ -86,7 +111,8 @@ final class DustChangeHelperTests: XCTestCase {
         XCTAssertTrue(DustChangeHelper.shouldUseSendAllToAvoidDust(
             totalInput: 100_000,
             amountSats: 99454,
-            normalFee: 0
+            normalFee: 0,
+            isMaxAmount: true
             // dustLimit omitted -> uses Env.dustLimit
         ))
     }
