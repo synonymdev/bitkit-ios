@@ -4,6 +4,7 @@ struct ContactsIntroView: View {
     @EnvironmentObject var app: AppViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var contactsManager: ContactsManager
 
     var body: some View {
         OnboardingView(
@@ -11,10 +12,11 @@ struct ContactsIntroView: View {
             title: t("contacts__intro_title"),
             description: t("contacts__intro_description"),
             imageName: "group",
-            buttonText: t("common__continue"),
+            buttonText: t("contacts__intro_add_contact"),
             onButtonPress: {
                 app.hasSeenContactsIntro = true
                 if pubkyProfile.isAuthenticated {
+                    contactsManager.shouldOpenAddContactSheet = true
                     navigation.navigate(.contacts)
                 } else if app.hasSeenProfileIntro {
                     navigation.navigate(.pubkyChoice)
@@ -36,6 +38,7 @@ struct ContactsIntroView: View {
             .environmentObject(AppViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(ContactsManager())
             .preferredColorScheme(.dark)
     }
 }

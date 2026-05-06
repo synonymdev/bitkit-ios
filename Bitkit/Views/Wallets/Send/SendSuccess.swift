@@ -79,7 +79,9 @@ struct SendSuccess: View {
                             variant: .secondary,
                             isDisabled: foundActivity == nil
                         ) {
-                            navigation.navigate(.activityDetail(foundActivity!))
+                            if let foundActivity {
+                                navigation.navigate(.activityDetail(foundActivity))
+                            }
                             sheets.hideSheet()
                         }
                         .accessibilityIdentifier("Details")
@@ -111,9 +113,24 @@ struct SendSuccess: View {
                 interval: 5
             )
 
-            foundActivity = activity
+            await applyPendingContactContextIfNeeded()
+            let updatedActivity = try? await activityListViewModel.findActivity(byPaymentId: paymentId)
+            foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for payment ID: \(paymentId) after 12 attempts")
+        }
+    }
+
+    private func applyPendingContactContextIfNeeded() async {
+        guard let contactPublicKey = app.contactPaymentContext(forPendingPaymentHash: paymentId)?.publicKey else {
+            return
+        }
+
+        do {
+            try await activityListViewModel.setContact(contactPublicKey, forPaymentId: paymentId, syncLdkPayments: false)
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentId)
+        } catch {
+            Logger.warn("Failed to set pending contact for payment \(paymentId): \(error)", context: "SendSuccess")
         }
     }
 }

@@ -6,7 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/synonymdev/bitkit-core",
       "state" : {
-        "revision" : "99bd86bb60c1f14e8ce8a6356cd2ab36f222fc69"
+        "revision" : "47bd506bb46ae885191a265f76245ab357a93f28",
+        "version" : "0.1.58"
       }
     },
     {
@@ -40,7 +41,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/pubky/paykit-rs",
       "state" : {
-        "revision" : "cd1253291b1582759d569372d5942b8871527ea1"
+        "revision" : "04759b7b9bca7a0dd8a29e724f11e984db361241",
+        "version" : "0.1.0-rc5"
       }
     },
     {

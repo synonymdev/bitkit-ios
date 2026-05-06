@@ -12,6 +12,7 @@ enum Route: Hashable {
     case contacts
     case contactsIntro
     case contactDetail(publicKey: String)
+    case contactActivity(publicKey: String)
     case contactImportOverview
     case contactImportSelect
     case addContact(publicKey: String)

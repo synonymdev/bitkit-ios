@@ -560,6 +560,7 @@ struct AppScene: View {
                 Task {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
+                    await wallet.refreshPublicPaykitEndpointsOnForeground()
                 }
             }
         }

@@ -759,11 +759,36 @@ class PubkyProfileManager: ObservableObject {
         await PubkyImageCache.shared.clear()
         UserDefaults.standard.removeObject(forKey: cachedNameKey)
         UserDefaults.standard.removeObject(forKey: cachedImageUriKey)
+        clearPublicPaykitSharingState()
         notifyAppStateBackupChanged()
+    }
+
+    private static func clearPublicPaykitSharingState() {
+        UserDefaults.standard.set(false, forKey: "sharesPublicPaykitEndpoints")
+        UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
+        UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
+    }
+
+    static func removePublicPaykitEndpoints(context: String) async throws {
+        do {
+            try await PublicPaykitService.removePublishedEndpoints()
+        } catch PubkyServiceError.sessionNotActive {
+            Logger.debug("Skipping public Paykit endpoint cleanup because no session is active", context: context)
+        } catch {
+            Logger.warn("Failed to remove public Paykit endpoints before clearing session: \(error)", context: context)
+            throw error
+        }
+    }
+
+    static func removePublicPaykitEndpointsBestEffort(context: String) async {
+        try? await removePublicPaykitEndpoints(context: context)
     }
 
     func signOut() async {
         await Task.detached {
+            await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {
