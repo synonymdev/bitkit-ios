@@ -9,6 +9,8 @@ enum AppReset {
         session: SessionManager,
         toastType: Toast.ToastType = .success
     ) async throws {
+        await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
+
         // Set wiping flag to prevent backups during wipe operations
         BackupService.shared.setWiping(true)
         defer {

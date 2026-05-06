@@ -87,6 +87,7 @@
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
+				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Models/Transfer.swift,
 				Models/TransferType.swift,
@@ -117,6 +118,7 @@
 				Extensions/PaymentDetails.swift,
 				Models/BlocktankNotificationType.swift,
 				Models/LnPeer.swift,
+				Models/PubkyPublicKeyFormat.swift,
 				Models/Toast.swift,
 				Services/CoreService.swift,
 				Services/GeoService.swift,
@@ -904,8 +906,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/pubky/paykit-rs";
 			requirement = {
-				kind = revision;
-				revision = cd1253291b1582759d569372d5942b8871527ea1;
+				kind = exactVersion;
+				version = 0.1.0-rc5;
 			};
 		};
 		18D65DFE2EB9649F00252335 /* XCRemoteSwiftPackageReference "vss-rust-client-ffi" */ = {
@@ -936,8 +938,8 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/synonymdev/bitkit-core";
 			requirement = {
-				kind = revision;
-				revision = 99bd86bb60c1f14e8ce8a6356cd2ab36f222fc69;
+				kind = exactVersion;
+				version = 0.1.58;
 			};
 		};
 		96E20CD22CB6D91A00C24149 /* XCRemoteSwiftPackageReference "CodeScanner" */ = {

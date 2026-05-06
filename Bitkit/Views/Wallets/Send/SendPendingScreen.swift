@@ -81,8 +81,12 @@ struct SendPendingScreen: View {
             guard let resolution, resolution.paymentHash == paymentHash else { return }
             app.consumeSendSheetPendingResolution(paymentHash: paymentHash)
             if resolution.success {
-                navigationPath.append(.success(paymentId: paymentHash))
+                Task { @MainActor in
+                    await applyPendingContactContextIfNeeded()
+                    navigationPath.append(.success(paymentId: paymentHash))
+                }
             } else {
+                app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
                 navigationPath.append(.failure)
             }
         }
@@ -97,9 +101,24 @@ struct SendPendingScreen: View {
                 times: 12,
                 interval: 2
             )
-            foundActivity = activity
+            await applyPendingContactContextIfNeeded()
+            let updatedActivity = try? await activityList.findActivity(byPaymentId: paymentHash)
+            foundActivity = updatedActivity ?? activity
         } catch {
             Logger.warn("Could not find activity for pending payment \(paymentHash): \(error)")
+        }
+    }
+
+    private func applyPendingContactContextIfNeeded() async {
+        guard let contactPublicKey = app.contactPaymentContext(forPendingPaymentHash: paymentHash)?.publicKey else {
+            return
+        }
+
+        do {
+            try await activityList.setContact(contactPublicKey, forPaymentId: paymentHash)
+            app.consumeContactPaymentContext(forPendingPaymentHash: paymentHash)
+        } catch {
+            Logger.warn("Failed to set pending contact for payment \(paymentHash): \(error)", context: "SendPendingScreen")
         }
     }
 }

@@ -5,17 +5,16 @@ struct AllActivityView: View {
     @EnvironmentObject private var app: AppViewModel
     @EnvironmentObject private var wallet: WalletViewModel
 
+    @State private var headerContentHeight: CGFloat = 116
+
     private var headerTopPadding: CGFloat {
-        // NavBar + Filter + SegmentedControl + spacing
-        return ScreenLayout.topPaddingWithoutSafeArea + 116
+        ScreenLayout.topPaddingWithoutSafeArea + headerContentHeight
     }
 
     var body: some View {
         ZStack(alignment: .top) {
-            // ScrollView - base layer, full height, content scrolls behind header
             ScrollView(showsIndicators: false) {
                 ActivityList(viewType: .all)
-                    // .padding(.top, headerTopPadding)
                     .scrollDismissesKeyboard(.interactively)
                     .highPriorityGesture(
                         // TODO: rewrite using TabView
@@ -62,7 +61,6 @@ struct AllActivityView: View {
             }
             .transition(.move(edge: .leading).combined(with: .opacity))
 
-            // Header - overlay on top, scroll content goes behind it
             VStack(spacing: 0) {
                 NavigationBar(title: t("wallet__activity"))
                     .padding(.bottom, 16)
@@ -71,6 +69,14 @@ struct AllActivityView: View {
                     .padding(.bottom, 16)
 
                 SegmentedControl(selectedTab: $activity.selectedTab, tabs: ActivityTab.allCases)
+            }
+            .background(
+                GeometryReader { proxy in
+                    Color.clear.preference(key: ActivityHeaderHeightPreferenceKey.self, value: proxy.size.height)
+                }
+            )
+            .onPreferenceChange(ActivityHeaderHeightPreferenceKey.self) { height in
+                headerContentHeight = height
             }
             .frame(maxWidth: .infinity, alignment: .top)
             .padding(.horizontal, 16)
@@ -109,6 +115,14 @@ struct AllActivityView: View {
         .onAppear {
             activity.resetFilters()
         }
+    }
+}
+
+private struct ActivityHeaderHeightPreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = 116
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 

@@ -17,6 +17,10 @@ struct ScannerScreen: View {
             return .electrum
         }
 
+        if navigation.path.dropLast().last == .contacts {
+            return .addContact
+        }
+
         return .main
     }
 
