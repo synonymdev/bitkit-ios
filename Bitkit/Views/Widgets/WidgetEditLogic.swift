@@ -44,8 +44,8 @@ class WidgetEditLogic: ObservableObject {
             // Weather widget has multiple options, check if any are enabled
             return weatherOptions.showStatus || weatherOptions.showText || weatherOptions.showMedian || weatherOptions.showNextBlockFee
         case .price:
-            // Price widget has options, check if at least one trading pair is selected
-            return !priceOptions.selectedPairs.isEmpty
+            // Price widget always has a selected pair (single-select).
+            return true
         case .calculator, .suggestions:
             return false
         }
@@ -158,7 +158,7 @@ class WidgetEditLogic: ObservableObject {
     }
 
     private func selectTradingPair(_ pairName: String) {
-        priceOptions.selectedPairs = [pairName]
+        priceOptions.selectedPair = pairName
     }
 
     func loadCurrentOptions() {

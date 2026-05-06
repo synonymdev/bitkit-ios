@@ -44,16 +44,14 @@ struct PriceWidget: View {
     /// Single pair. Falls back to first available data if the selection isn't loaded yet.
     private var primaryPrice: PriceData? {
         let currentPeriodData = viewModel.getCurrentData(for: options.selectedPeriod)
-        if let preferred = options.selectedPairs.first,
-           let match = currentPeriodData.first(where: { $0.name == preferred })
-        {
+        if let match = currentPeriodData.first(where: { $0.name == options.selectedPair }) {
             return match
         }
         return currentPeriodData.first
     }
 
     private func fetchPriceData() {
-        viewModel.fetchPriceData(pairs: options.selectedPairs, period: options.selectedPeriod)
+        viewModel.fetchPriceData(pairs: [options.selectedPair], period: options.selectedPeriod)
     }
 }
 

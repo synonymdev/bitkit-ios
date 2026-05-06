@@ -50,7 +50,7 @@ struct PriceWidgetProvider: TimelineProvider {
             return
         }
 
-        let cached = PriceWidgetService.cachedPrices(pairs: options.selectedPairs, period: options.selectedPeriod) ?? []
+        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
         completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
     }
 
@@ -61,12 +61,12 @@ struct PriceWidgetProvider: TimelineProvider {
             let entry: PriceWidgetEntry
             do {
                 let fresh = try await PriceWidgetService.fetchFreshPrices(
-                    pairs: options.selectedPairs,
+                    pairs: [options.selectedPair],
                     period: options.selectedPeriod
                 )
                 entry = PriceWidgetEntry(date: Date(), prices: fresh, options: options, showsError: false)
             } catch {
-                let cached = PriceWidgetService.cachedPrices(pairs: options.selectedPairs, period: options.selectedPeriod) ?? []
+                let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
                 entry = PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: cached.isEmpty)
             }
 
@@ -108,8 +108,7 @@ struct PriceHomeScreenWidgetEntryView: View {
     }
 
     private var primaryPrice: PriceData? {
-        let preferred = entry.options.selectedPairs.first
-        if let preferred, let match = entry.prices.first(where: { $0.name == preferred }) {
+        if let match = entry.prices.first(where: { $0.name == entry.options.selectedPair }) {
             return match
         }
         return entry.prices.first

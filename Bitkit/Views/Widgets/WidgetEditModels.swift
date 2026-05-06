@@ -380,7 +380,7 @@ enum WidgetEditItemFactory {
         // CURRENCY section (single-select)
         items.append(sectionHeaderItem(key: "currency_header", title: t("widgets__price__currency")))
 
-        let selectedPair = priceOptions.selectedPairs.first
+        let selectedPair = priceOptions.selectedPair
         for pair in tradingPairNames {
             let isSelected = selectedPair == pair
             items.append(
