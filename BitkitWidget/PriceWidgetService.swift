@@ -22,16 +22,19 @@ enum PriceWidgetService {
     // MARK: - Fresh Fetch
 
     static func fetchFreshPrices(pairs: [String], period: GraphPeriod) async throws -> [PriceData] {
-        let results = await withTaskGroup(of: PriceData?.self) { group -> [PriceData] in
-            for pair in pairs {
-                group.addTask { try? await fetchPair(pairName: pair, period: period) }
+        let results = await withTaskGroup(of: (Int, PriceData?).self) { group -> [PriceData] in
+            for (index, pair) in pairs.enumerated() {
+                group.addTask {
+                    let data = try? await fetchPair(pairName: pair, period: period)
+                    return (index, data)
+                }
             }
 
-            var collected: [PriceData] = []
-            for await result in group {
-                if let result { collected.append(result) }
+            var collected: [(Int, PriceData)] = []
+            for await (index, result) in group {
+                if let result { collected.append((index, result)) }
             }
-            return collected
+            return collected.sorted { $0.0 < $1.0 }.map(\.1)
         }
 
         guard !results.isEmpty else { throw FetchError.noPriceDataAvailable }
