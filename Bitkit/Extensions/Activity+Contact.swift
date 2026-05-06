@@ -6,6 +6,11 @@ extension Activity {
         return contacts.first(where: { PubkyPublicKeyFormat.matches($0.publicKey, contactPublicKey) })
     }
 
+    func isReplacedSentTransaction(txIdsInBoostTxIds: Set<String>) -> Bool {
+        guard case let .onchain(onchain) = self else { return false }
+        return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
+    }
+
     private var contactPublicKey: String? {
         switch self {
         case let .lightning(lightning):

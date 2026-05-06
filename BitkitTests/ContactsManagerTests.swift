@@ -80,6 +80,37 @@ final class ContactsManagerTests: XCTestCase {
         XCTAssertEqual(activity.contact(in: [contact])?.publicKey, contact.publicKey)
     }
 
+    func testActivityDetectsReplacedSentTransaction() {
+        let replacedTxId = "replaced_tx_id"
+        let activity = Activity.onchain(
+            OnchainActivity(
+                id: replacedTxId,
+                txType: .sent,
+                txId: replacedTxId,
+                value: 1000,
+                fee: 10,
+                feeRate: 1,
+                address: "bcrt1...",
+                confirmed: false,
+                timestamp: 0,
+                isBoosted: false,
+                boostTxIds: [],
+                isTransfer: false,
+                doesExist: false,
+                confirmTimestamp: nil,
+                channelId: nil,
+                transferTxId: nil,
+                contact: nil,
+                createdAt: nil,
+                updatedAt: nil,
+                seenAt: nil
+            )
+        )
+
+        XCTAssertTrue(activity.isReplacedSentTransaction(txIdsInBoostTxIds: [replacedTxId]))
+        XCTAssertFalse(activity.isReplacedSentTransaction(txIdsInBoostTxIds: ["other_tx_id"]))
+    }
+
     func testResolveAddContactValidationReturnsEmptyForBlankInput() {
         XCTAssertEqual(resolveAddContactValidation(input: "   ", ownPublicKey: nil), .empty)
     }

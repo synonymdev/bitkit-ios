@@ -667,6 +667,13 @@ extension AppViewModel {
             return
         }
 
+        if PubkyPublicKeyFormat.normalized(normalized) != nil {
+            guard currentSequence == manualEntryValidationSequence else { return }
+            manualEntryValidationResult = .valid
+            isManualEntryInputValid = true
+            return
+        }
+
         // Try to decode the invoice
         guard let decodedData = try? await decode(invoice: normalized) else {
             guard currentSequence == manualEntryValidationSequence else { return }

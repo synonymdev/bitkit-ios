@@ -273,8 +273,7 @@ class ActivityListViewModel: ObservableObject {
     }
 
     func contactActivities(publicKey: String) async throws -> [Activity] {
-        let activities = try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
-        return await filterOutReplacedSentTransactions(activities)
+        try await coreService.activity.get(contact: publicKey, sortDirection: .desc)
     }
 
     func setContact(_ contactPublicKey: String, forPaymentId paymentId: String, syncLdkPayments: Bool = true) async throws {
@@ -470,19 +469,7 @@ extension ActivityListViewModel {
         // Get cached set of txIds that appear in boostTxIds
         let txIdsInBoostTxIds = await coreService.activity.getTxIdsInBoostTxIds()
 
-        // Filter out activities that:
-        // 1. Are onchain
-        // 2. Have doesExist = false
-        // 3. Are sent transactions
-        // 4. Appear in another transaction's boostTxIds
-        return activities.filter { activity in
-            if case let .onchain(onchain) = activity {
-                if !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId) {
-                    return false
-                }
-            }
-            return true
-        }
+        return activities.filter { !$0.isReplacedSentTransaction(txIdsInBoostTxIds: txIdsInBoostTxIds) }
     }
 
     /// Filter activities based on the selected tab
