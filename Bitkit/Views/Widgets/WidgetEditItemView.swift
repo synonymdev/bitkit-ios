@@ -5,7 +5,24 @@ struct WidgetEditItemView: View {
     let onToggle: () -> Void
 
     var body: some View {
-        let content = VStack(spacing: 0) {
+        switch item.type {
+        case .sectionHeader:
+            item.titleView
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+        case .staticItem:
+            row
+        case .toggleItem:
+            Button(action: onToggle) {
+                row
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    private var row: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 16) {
                 item.titleView
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -17,24 +34,17 @@ struct WidgetEditItemView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                Image("check-mark")
-                    .resizable()
-                    .foregroundColor(item.isChecked ? .brandAccent : .gray3)
-                    .frame(width: 32, height: 32)
+                if item.type != .staticItem {
+                    Image("check-mark")
+                        .resizable()
+                        .foregroundColor(item.isChecked ? .brandAccent : .gray3)
+                        .frame(width: 32, height: 32)
+                }
             }
             .padding(.vertical, 16)
             .contentShape(Rectangle())
 
             Divider()
-        }
-
-        if item.type == .staticItem {
-            content
-        } else {
-            Button(action: onToggle) {
-                content
-            }
-            .buttonStyle(PlainButtonStyle())
         }
     }
 }

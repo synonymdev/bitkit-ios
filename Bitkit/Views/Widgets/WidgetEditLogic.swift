@@ -138,14 +138,8 @@ class WidgetEditLogic: ObservableObject {
             }
         case .price:
             switch item.key {
-            case "BTC/USD":
-                toggleTradingPair("BTC/USD")
-            case "BTC/EUR":
-                toggleTradingPair("BTC/EUR")
-            case "BTC/GBP":
-                toggleTradingPair("BTC/GBP")
-            case "BTC/JPY":
-                toggleTradingPair("BTC/JPY")
+            case "BTC/USD", "BTC/EUR", "BTC/GBP", "BTC/JPY":
+                selectTradingPair(item.key)
             case "1D":
                 priceOptions.selectedPeriod = .oneDay
             case "1W":
@@ -154,8 +148,6 @@ class WidgetEditLogic: ObservableObject {
                 priceOptions.selectedPeriod = .oneMonth
             case "1Y":
                 priceOptions.selectedPeriod = .oneYear
-            case "showSource":
-                priceOptions.showSource.toggle()
             default:
                 break
             }
@@ -165,12 +157,9 @@ class WidgetEditLogic: ObservableObject {
         onStateChange?()
     }
 
-    private func toggleTradingPair(_ pairName: String) {
-        if priceOptions.selectedPairs.contains(pairName) {
-            priceOptions.selectedPairs.removeAll { $0 == pairName }
-        } else {
-            priceOptions.selectedPairs.append(pairName)
-        }
+    /// Single-select per Figma v61 — replaces the array with a single pair.
+    private func selectTradingPair(_ pairName: String) {
+        priceOptions.selectedPairs = [pairName]
     }
 
     func loadCurrentOptions() {

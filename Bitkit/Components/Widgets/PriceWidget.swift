@@ -1,21 +1,14 @@
 import Charts
 import SwiftUI
 
-/// A widget that displays cryptocurrency price information with chart
+/// Displays Bitcoin price for the user's selected trading pair and timeframe (Figma v61).
 struct PriceWidget: View {
-    /// Configuration options for the widget
     var options: PriceWidgetOptions = .init()
-
-    /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
-
-    /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
-    /// Price view model singleton
     @StateObject private var viewModel = PriceViewModel.shared
 
-    /// Initialize the widget
     init(
         options: PriceWidgetOptions = PriceWidgetOptions(),
         isEditing: Bool = false,
@@ -32,91 +25,121 @@ struct PriceWidget: View {
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
-            VStack(spacing: 0) {
-                if viewModel.isLoading && filteredPriceData.isEmpty {
-                    WidgetContentBuilder.loadingView()
-                } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(t("widgets__price__error"))
-                } else {
-                    ForEach(filteredPriceData, id: \.name) { priceData in
-                        PriceRow(data: priceData)
-                            .accessibilityIdentifier("PriceWidgetRow-\(priceData.name)")
-                    }
-                }
+            content
+        }
+        .onAppear { fetchPriceData() }
+        .onChange(of: options.selectedPairs) { fetchPriceData() }
+        .onChange(of: options.selectedPeriod) { fetchPriceData() }
+    }
 
-                if let firstPair = filteredPriceData.first {
-                    PriceChart(
-                        values: firstPair.pastValues,
-                        isPositive: firstPair.change.isPositive,
-                        period: options.selectedPeriod.rawValue
-                    )
-                    .frame(height: 96)
-                    .padding(.top, 8)
-                }
-
-                if options.showSource {
-                    WidgetContentBuilder.sourceRow(source: "Bitfinex.com")
-                        .accessibilityIdentifier("PriceWidgetSource")
-                }
-            }
-        }
-        .onAppear {
-            fetchPriceData()
-        }
-        .onChange(of: options.selectedPairs) {
-            fetchPriceData()
-        }
-        .onChange(of: options.selectedPeriod) {
-            fetchPriceData()
+    @ViewBuilder
+    private var content: some View {
+        if viewModel.isLoading && primaryPrice == nil {
+            WidgetContentBuilder.loadingView()
+        } else if viewModel.error != nil {
+            WidgetContentBuilder.errorView(t("widgets__price__error"))
+        } else if let primary = primaryPrice {
+            PriceWidgetWideContent(data: primary, period: options.selectedPeriod)
         }
     }
 
-    private var filteredPriceData: [PriceData] {
+    /// Single pair (v61). Falls back to first available data if the selection isn't loaded yet.
+    private var primaryPrice: PriceData? {
         let currentPeriodData = viewModel.getCurrentData(for: options.selectedPeriod)
-        let dataByPair = Dictionary(uniqueKeysWithValues: currentPeriodData.map { ($0.name, $0) })
-        return options.selectedPairs.compactMap { pair in
-            dataByPair[pair]
+        if let preferred = options.selectedPairs.first,
+           let match = currentPeriodData.first(where: { $0.name == preferred })
+        {
+            return match
         }
+        return currentPeriodData.first
     }
 
-    /// Fetch price data from view model
     private func fetchPriceData() {
         viewModel.fetchPriceData(pairs: options.selectedPairs, period: options.selectedPeriod)
     }
 }
 
-// MARK: - Price Row Component
+// MARK: - Wide layout (in-app + carousel page)
 
-struct PriceRow: View {
+struct PriceWidgetWideContent: View {
     let data: PriceData
+    let period: GraphPeriod
 
     var body: some View {
-        HStack {
-            BodySSBText(data.name, textColor: .textSecondary)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 16) {
+                    CaptionMText("\(data.name)  \(period.rawValue)", textColor: .textSecondary)
+                        .textCase(.uppercase)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer()
+                    Text(data.change.formatted)
+                        .font(Fonts.bold(size: 22))
+                        .foregroundColor(data.change.isPositive ? .greenAccent : .redAccent)
+                        .lineLimit(1)
+                }
 
-            BodySSBText(data.change.formatted, textColor: data.change.isPositive ? .greenAccent : .redAccent)
-                .padding(.trailing, 8)
-            BodySSBText(data.price, textColor: .textPrimary)
+                Text(data.price)
+                    .font(Fonts.bold(size: 34))
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            PriceChart(values: data.pastValues, isPositive: data.change.isPositive)
+                .frame(height: 48)
         }
-        .frame(minHeight: 28)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-// MARK: - Price Chart Component
+// MARK: - Compact layout (small carousel preview only)
+
+struct PriceWidgetCompactContent: View {
+    let data: PriceData
+    let period: GraphPeriod
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 0) {
+                    CaptionMText(data.name, textColor: .textSecondary)
+                        .textCase(.uppercase)
+                    Spacer(minLength: 0)
+                    CaptionMText(period.rawValue, textColor: .textSecondary)
+                        .textCase(.uppercase)
+                }
+
+                Text(data.price)
+                    .font(Fonts.bold(size: 22))
+                    .foregroundColor(.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+
+                Text(data.change.formatted)
+                    .font(Fonts.semiBold(size: 15))
+                    .foregroundColor(data.change.isPositive ? .greenAccent : .redAccent)
+                    .lineLimit(1)
+            }
+
+            PriceChart(values: data.pastValues, isPositive: data.change.isPositive)
+                .frame(height: 64)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.gray6)
+        .cornerRadius(16)
+    }
+}
+
+// MARK: - Chart (line-only per Figma v61)
 
 struct PriceChart: View {
     let values: [Double]
     let isPositive: Bool
-    let period: String
 
-    // Chart styling constants
     private let lineWidth: CGFloat = 1.3
-    private let chartPadding: CGFloat = 4
-    private let cornerRadius: CGFloat = 8
-    private let gradientOpacityTop: CGFloat = 0.64
-    private let gradientOpacityBottom: CGFloat = 0.08
 
     private var normalizedValues: [Double] {
         guard values.count > 1 else { return values }
@@ -127,76 +150,31 @@ struct PriceChart: View {
 
         guard range > 0 else { return values.map { _ in 0.5 } }
 
-        // Map to 0.15...0.85 range for more generous margins
-        // This prevents chart content from reaching the very edges where clipping occurs
         return values.map { value in
             let normalized = (value - minValue) / range
-            return 0.15 + (normalized * 0.7) // Maps 0-1 to 0.15-0.85
+            return 0.15 + (normalized * 0.7)
         }
     }
 
-    private var chartColors: (gradient: [Color], line: Color) {
-        if isPositive {
-            return (
-                gradient: [.greenAccent.opacity(gradientOpacityTop), .greenAccent.opacity(gradientOpacityBottom)],
-                line: .greenAccent
-            )
-        } else {
-            return (
-                gradient: [.redAccent.opacity(gradientOpacityTop), .redAccent.opacity(gradientOpacityBottom)],
-                line: .redAccent
-            )
-        }
+    private var lineColor: Color {
+        isPositive ? .greenAccent : .redAccent
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Chart {
-                ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
-                    // Area fill with gradient
-                    AreaMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: chartColors.gradient,
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .interpolationMethod(.catmullRom)
-
-                    // Line on top
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(chartColors.line)
-                    .lineStyle(StrokeStyle(lineWidth: lineWidth))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            // Y scale domain provides buffer zone beyond data range (0.15...0.85)
-            // This ensures chart elements (lines, curves) don't get clipped at edges
-            .chartYScale(domain: 0.1 ... 0.9) // Domain slightly larger than data range for extra buffer
-            // Apply rounded corners only to bottom - chart content extends to edges for visible clipping
-            // The internal margins above prevent any actual data from being cut off
-            .clipShape(
-                .rect(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: cornerRadius,
-                    bottomTrailingRadius: cornerRadius,
-                    topTrailingRadius: 0
+        Chart {
+            ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("Price", value)
                 )
-            )
-
-            // Period label
-            CaptionBText(period, textColor: isPositive ? .green50 : .red50)
-                .padding(7)
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: lineWidth))
+                .interpolationMethod(.catmullRom)
+            }
         }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0.1 ... 0.9)
     }
 }
 

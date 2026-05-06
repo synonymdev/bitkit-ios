@@ -57,14 +57,16 @@ struct WidgetEditView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: t("widgets__widget__edit"))
+            NavigationBar(title: id == .price ? widget.name : t("widgets__widget__edit"))
                 .padding(.bottom, 16)
 
-            BodyMText(
-                t("widgets__widget__edit_description", variables: ["name": widget.name]),
-                textColor: .textSecondary
-            )
-            .padding(.bottom, 16)
+            if id != .price {
+                BodyMText(
+                    t("widgets__widget__edit_description", variables: ["name": widget.name]),
+                    textColor: .textSecondary
+                )
+                .padding(.bottom, 16)
+            }
 
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 0) {

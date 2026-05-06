@@ -1,10 +1,27 @@
 import SwiftUI
 
+// MARK: - GraphPeriod display
+
+extension GraphPeriod {
+    /// Full-word label shown in the Price edit screen (Day / Week / Month / Year).
+    /// The widget itself uses `rawValue` ("1D"/...) per Figma v61.
+    var editScreenLabel: String {
+        switch self {
+        case .oneDay: return t("widgets__price__period_day")
+        case .oneWeek: return t("widgets__price__period_week")
+        case .oneMonth: return t("widgets__price__period_month")
+        case .oneYear: return t("widgets__price__period_year")
+        }
+    }
+}
+
 // MARK: - Widget Edit Item Models
 
 enum WidgetItemType {
     case toggleItem
     case staticItem
+    /// Non-tappable section header (uppercase caption above a group of items).
+    case sectionHeader
 }
 
 struct WidgetEditItem {
@@ -357,66 +374,60 @@ enum WidgetEditItemFactory {
     }
 
     @MainActor
-    static func getPriceItems(priceOptions: PriceWidgetOptions, priceDataByPeriod: [GraphPeriod: [PriceData]] = [:]) -> [WidgetEditItem] {
+    static func getPriceItems(priceOptions: PriceWidgetOptions, priceDataByPeriod _: [GraphPeriod: [PriceData]] = [:]) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        // Trading pair options with live or fallback prices
-        let fallbackPrices = ["$ 43,250", "€ 39,850", "£ 34,120", "¥ 6,245,000"]
+        // CURRENCY section (single-select)
+        items.append(sectionHeaderItem(key: "currency_header", title: t("widgets__price__currency")))
 
-        // Use current period data for trading pair prices
-        let currentPeriodData = priceDataByPeriod[priceOptions.selectedPeriod] ?? []
-
-        for (index, pair) in tradingPairNames.enumerated() {
-            // Try to find live data for this pair
-            let livePrice = currentPeriodData.first { $0.name == pair }?.price ?? fallbackPrices[index]
-
+        let selectedPair = priceOptions.selectedPairs.first
+        for pair in tradingPairNames {
+            let isSelected = selectedPair == pair
             items.append(
                 WidgetEditItem(
                     key: pair,
                     type: .toggleItem,
-                    title: pair,
-                    value: livePrice,
-                    isChecked: priceOptions.selectedPairs.contains(pair)
+                    titleView: AnyView(
+                        BodySSBText(pair, textColor: isSelected ? .textPrimary : .textSecondary)
+                    ),
+                    valueView: nil,
+                    isChecked: isSelected
                 )
             )
         }
 
-        // Period selection (radio group) with charts
-        let periods: [GraphPeriod] = [.oneDay, .oneWeek, .oneMonth, .oneYear]
+        // TIMEFRAME section (single-select). Full-word labels per Figma v61.
+        items.append(sectionHeaderItem(key: "timeframe_header", title: t("widgets__price__timeframe")))
 
-        for period in periods {
-            // Get data for this specific period
-            let periodData = priceDataByPeriod[period] ?? []
-            let firstPairData = periodData.first
-
+        for period in GraphPeriod.allCases {
+            let isSelected = priceOptions.selectedPeriod == period
             items.append(
                 WidgetEditItem(
                     key: period.rawValue,
                     type: .toggleItem,
                     titleView: AnyView(
-                        PriceChart(
-                            values: firstPairData?.pastValues ?? [],
-                            isPositive: firstPairData?.change.isPositive ?? true,
-                            period: period.rawValue
-                        )
+                        BodySSBText(period.editScreenLabel, textColor: isSelected ? .textPrimary : .textSecondary)
                     ),
                     valueView: nil,
-                    isChecked: priceOptions.selectedPeriod == period
+                    isChecked: isSelected
                 )
             )
         }
 
-        items.append(
-            WidgetEditItem(
-                key: "showSource",
-                type: .toggleItem,
-                title: t("widgets__widget__source"),
-                valueView: AnyView(BodySSBText("Bitfinex.com", textColor: .textSecondary)),
-                isChecked: priceOptions.showSource
-            )
-        )
-
         return items
+    }
+
+    private static func sectionHeaderItem(key: String, title: String) -> WidgetEditItem {
+        WidgetEditItem(
+            key: key,
+            type: .sectionHeader,
+            titleView: AnyView(
+                CaptionMText(title, textColor: .textSecondary)
+                    .textCase(.uppercase)
+            ),
+            valueView: nil,
+            isChecked: false
+        )
     }
 
     @MainActor

@@ -86,123 +86,126 @@ struct PriceHomeScreenWidgetEntryView: View {
     var entry: PriceWidgetProvider.Entry
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            content
-            if entry.options.showSource, !entry.prices.isEmpty {
-                HStack {
-                    Spacer()
-                    CaptionBText("Bitfinex.com", textColor: secondaryTextColor)
-                }
-            }
-        }
-        .containerBackground(for: .widget) { backgroundView }
+        content
+            .containerBackground(for: .widget) { backgroundView }
     }
 
     @ViewBuilder
     private var content: some View {
         if entry.showsError {
             errorView
-        } else if entry.prices.isEmpty {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        } else {
+        } else if let primary = primaryPrice {
             switch widgetFamily {
             case .systemSmall:
-                smallContent
+                compactLayout(data: primary)
             default:
-                rowsAndChart
+                wideLayout(data: primary)
             }
+        } else {
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 
-    // MARK: - Variants
+    /// Always render the first selected pair (v61 is single-pair).
+    private var primaryPrice: PriceData? {
+        let preferred = entry.options.selectedPairs.first
+        if let preferred, let match = entry.prices.first(where: { $0.name == preferred }) {
+            return match
+        }
+        return entry.prices.first
+    }
 
-    private var smallContent: some View {
-        let primary = entry.prices.first
-        return VStack(alignment: .leading, spacing: 4) {
-            BodySSBText(primary?.name ?? "BTC/USD", textColor: secondaryTextColor)
-                .lineLimit(1)
+    // MARK: - Compact (small widget — 163×192)
 
-            Text(primary?.price ?? "—")
-                .font(Fonts.bold(size: 22))
-                .foregroundColor(valueTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .widgetAccentable()
+    private func compactLayout(data: PriceData) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 0) {
+                    captionUpText(data.name)
+                    Spacer(minLength: 0)
+                    captionUpText(entry.options.selectedPeriod.rawValue)
+                }
 
-            if let change = primary?.change {
-                BodySSBText(change.formatted, textColor: changeColor(isPositive: change.isPositive))
+                priceText(data.price, size: 22, lineHeight: 26)
+
+                Text(data.change.formatted)
+                    .font(Fonts.semiBold(size: 15))
+                    .foregroundColor(changeColor(isPositive: data.change.isPositive))
                     .lineLimit(1)
                     .widgetAccentable()
             }
 
-            Spacer(minLength: 0)
+            chart(values: data.pastValues, isPositive: data.change.isPositive, height: 64)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var rowsAndChart: some View {
-        VStack(spacing: 0) {
-            ForEach(visibleRows, id: \.name) { data in
-                priceRow(data: data)
+    // MARK: - Wide (medium / large widget)
+
+    private func wideLayout(data: PriceData) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .center, spacing: 16) {
+                    captionUpText("\(data.name)  \(entry.options.selectedPeriod.rawValue)")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Text(data.change.formatted)
+                        .font(Fonts.bold(size: 22))
+                        .foregroundColor(changeColor(isPositive: data.change.isPositive))
+                        .lineLimit(1)
+                        .widgetAccentable()
+                }
+
+                priceText(data.price, size: 34, lineHeight: 34)
             }
 
-            if let firstPair = entry.prices.first {
-                PriceWidgetChart(
-                    values: firstPair.pastValues,
-                    isPositive: firstPair.change.isPositive,
-                    period: entry.options.selectedPeriod.rawValue,
-                    renderingMode: widgetRenderingMode
-                )
-                .frame(height: chartHeight)
-                .padding(.top, 8)
-            }
+            chart(values: data.pastValues, isPositive: data.change.isPositive, height: chartHeight)
         }
-    }
-
-    private var visibleRows: [PriceData] {
-        switch widgetFamily {
-        case .systemSmall: Array(entry.prices.prefix(1))
-        case .systemMedium: Array(entry.prices.prefix(2))
-        case .systemLarge, .systemExtraLarge: Array(entry.prices.prefix(4))
-        default: Array(entry.prices.prefix(1))
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     private var chartHeight: CGFloat {
         switch widgetFamily {
-        case .systemMedium: 64
-        case .systemLarge, .systemExtraLarge: 120
-        default: 96
+        case .systemLarge, .systemExtraLarge: return 120
+        default: return 48
         }
     }
 
+    // MARK: - Sub-views
+
+    private func captionUpText(_ text: String) -> Text {
+        Text(text)
+            .font(Fonts.medium(size: 13))
+            .tracking(1)
+            .foregroundColor(secondaryTextColor)
+    }
+
+    private func priceText(_ value: String, size: CGFloat, lineHeight: CGFloat) -> some View {
+        Text(value)
+            .font(Fonts.bold(size: size))
+            .foregroundColor(valueTextColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .widgetAccentable()
+    }
+
+    private func chart(values: [Double], isPositive: Bool, height: CGFloat) -> some View {
+        PriceWidgetChart(
+            values: values,
+            isPositive: isPositive,
+            renderingMode: widgetRenderingMode
+        )
+        .frame(height: height)
+        .widgetAccentable()
+    }
+
     private var errorView: some View {
+        // Hardcoded — widget extension target does not bundle the app's localization helpers.
         Text("Couldn’t load price.")
             .font(Fonts.medium(size: 14))
             .foregroundColor(secondaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    // MARK: - Row
-
-    private func priceRow(data: PriceData) -> some View {
-        HStack(spacing: 0) {
-            BodySSBText(data.name, textColor: secondaryTextColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
-
-            BodySSBText(data.change.formatted, textColor: changeColor(isPositive: data.change.isPositive))
-                .padding(.trailing, 8)
-                .lineLimit(1)
-                .widgetAccentable()
-
-            BodySSBText(data.price, textColor: valueTextColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .widgetAccentable()
-        }
-        .frame(minHeight: 24)
     }
 
     // MARK: - Colors
@@ -225,12 +228,11 @@ struct PriceHomeScreenWidgetEntryView: View {
     }
 }
 
-// MARK: - Chart
+// MARK: - Chart (line-only per Figma v61)
 
 private struct PriceWidgetChart: View {
     let values: [Double]
     let isPositive: Bool
-    let period: String
     let renderingMode: WidgetRenderingMode
 
     private var normalizedValues: [Double] {
@@ -247,55 +249,21 @@ private struct PriceWidgetChart: View {
         return isPositive ? .greenAccent : .redAccent
     }
 
-    private var gradientColors: [Color] {
-        guard renderingMode == .fullColor else { return [.primary.opacity(0.3), .clear] }
-        let base: Color = isPositive ? .greenAccent : .redAccent
-        return [base.opacity(0.64), base.opacity(0.08)]
-    }
-
-    private var labelColor: Color {
-        guard renderingMode == .fullColor else { return .secondary }
-        return isPositive ? .green50 : .red50
-    }
-
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            Chart {
-                ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
-                    AreaMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(colors: gradientColors, startPoint: .top, endPoint: .bottom)
-                    )
-                    .interpolationMethod(.catmullRom)
-
-                    LineMark(
-                        x: .value("Index", index),
-                        y: .value("Price", value)
-                    )
-                    .foregroundStyle(lineColor)
-                    .lineStyle(StrokeStyle(lineWidth: 1.3))
-                    .interpolationMethod(.catmullRom)
-                }
-            }
-            .chartXAxis(.hidden)
-            .chartYAxis(.hidden)
-            .chartYScale(domain: 0.1 ... 0.9)
-            .clipShape(
-                .rect(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: 8,
-                    bottomTrailingRadius: 8,
-                    topTrailingRadius: 0
+        Chart {
+            ForEach(Array(normalizedValues.enumerated()), id: \.offset) { index, value in
+                LineMark(
+                    x: .value("Index", index),
+                    y: .value("Price", value)
                 )
-            )
-            .widgetAccentable()
-
-            CaptionBText(period, textColor: labelColor)
-                .padding(7)
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: 1.3))
+                .interpolationMethod(.catmullRom)
+            }
         }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartYScale(domain: 0.1 ... 0.9)
     }
 }
 

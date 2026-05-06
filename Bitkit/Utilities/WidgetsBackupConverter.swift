@@ -66,7 +66,6 @@ enum WidgetsBackupConverter {
                         pricePreferences = [
                             "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
                             "period": androidPeriod,
-                            "showSource": options.showSource,
                         ]
                     }
                 case .calculator, .suggestions:
@@ -179,8 +178,7 @@ enum WidgetsBackupConverter {
                     let period = convertAndroidPeriodToIos(prefs["period"] as? String)
                     let iosOptions = PriceWidgetOptions(
                         selectedPairs: selectedPairs,
-                        selectedPeriod: period,
-                        showSource: prefs["showSource"] as? Bool ?? false
+                        selectedPeriod: period
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
                 }
@@ -243,7 +241,6 @@ enum WidgetsBackupConverter {
         return [
             "enabledPairs": androidPairs.isEmpty ? ["BTC_USD"] : androidPairs,
             "period": androidPeriod,
-            "showSource": defaults.showSource,
         ]
     }
 
