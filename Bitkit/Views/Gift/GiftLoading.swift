@@ -110,6 +110,7 @@ struct GiftLoading: View {
                 message: code,
                 timestamp: nowTimestamp,
                 preimage: nil,
+                contact: nil,
                 createdAt: nowTimestamp,
                 updatedAt: nil,
                 seenAt: nil

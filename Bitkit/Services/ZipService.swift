@@ -64,12 +64,14 @@ extension FileToZip {
     }
 
     private static func sanitizedFilename(_ filename: String) -> String {
-        filename
+        let sanitized = filename
             .replacingOccurrences(of: "\\", with: "/")
             .split(separator: "/")
             .last
             .map(String.init)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        return sanitized == "." || sanitized == ".." ? "" : sanitized
     }
 }
 

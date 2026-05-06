@@ -3,6 +3,12 @@ import SwiftUI
 
 struct ActivityRowLightning: View {
     let item: LightningActivity
+    let titleOverride: String?
+
+    init(item: LightningActivity, titleOverride: String? = nil) {
+        self.item = item
+        self.titleOverride = titleOverride
+    }
 
     private var amountPrefix: String {
         return item.txType == .sent ? "-" : "+"
@@ -21,6 +27,10 @@ struct ActivityRowLightning: View {
     }
 
     private var status: String {
+        if let titleOverride {
+            return titleOverride
+        }
+
         switch item.status {
         case .failed:
             return t("wallet__activity_failed")

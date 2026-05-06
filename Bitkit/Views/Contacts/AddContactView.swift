@@ -2,17 +2,21 @@ import SwiftUI
 
 struct AddContactView: View {
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var currency: CurrencyViewModel
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var pubkyProfile: PubkyProfileManager
+    @EnvironmentObject var settings: SettingsViewModel
+    @EnvironmentObject var sheets: SheetViewModel
 
     let publicKey: String
 
     @State private var fetchedProfile: PubkyProfile?
+    @State private var hasPublicPaymentEndpoint = false
     @State private var isLoading = true
     @State private var isSaving = false
     @State private var errorMessage: String?
-    @State private var canRetry = true
+    @State private var canRetryError = true
 
     private var truncatedPublicKey: String {
         let displayKey = normalizedPublicKey ?? publicKey
@@ -21,7 +25,11 @@ struct AddContactView: View {
     }
 
     private var normalizedPublicKey: String? {
-        if case let .valid(normalizedKey) = resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+        if case let .valid(normalizedKey) = resolveAddContactValidation(
+            input: publicKey,
+            ownPublicKey: pubkyProfile.publicKey,
+            existingContacts: contactsManager.contacts
+        ) {
             return normalizedKey
         }
 
@@ -33,7 +41,7 @@ struct AddContactView: View {
             NavigationBar(title: t("contacts__add_title"))
                 .padding(.horizontal, 16)
 
-            if isLoading && fetchedProfile == nil {
+            if isLoading {
                 loadingContent
             } else if let profile = fetchedProfile {
                 resultContent(profile)
@@ -53,22 +61,13 @@ struct AddContactView: View {
 
     @State private var dashedCircleRotation: Double = 0
 
-    @ViewBuilder
     private var loadingContent: some View {
         VStack(spacing: 0) {
             CaptionMText(truncatedPublicKey, textColor: .white64)
                 .padding(.top, 24)
                 .padding(.bottom, 16)
 
-            Circle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 80, height: 80)
-                .overlay {
-                    Text(String(publicKey.prefix(1)).uppercased())
-                        .font(Fonts.bold(size: 28))
-                        .foregroundColor(.textPrimary)
-                }
-                .accessibilityHidden(true)
+            ContactAvatarLetter(source: publicKey, size: 80)
                 .padding(.bottom, 24)
 
             DisplayText(t("contacts__add_retrieving"), accentColor: .pubkyGreen)
@@ -92,7 +91,6 @@ struct AddContactView: View {
         }
     }
 
-    @ViewBuilder
     private var retrievingAnimation: some View {
         ZStack {
             Image("ellipse-outer-green")
@@ -116,7 +114,6 @@ struct AddContactView: View {
 
     // MARK: - Result State
 
-    @ViewBuilder
     private func resultContent(_ profile: PubkyProfile) -> some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -144,6 +141,15 @@ struct AddContactView: View {
             .padding(.horizontal, 32)
             .padding(.bottom, 16)
 
+            if hasPublicPaymentEndpoint {
+                CustomButton(title: t("wallet__send"), variant: .secondary) {
+                    await payContact()
+                }
+                .accessibilityIdentifier("AddContactPay")
+                .padding(.horizontal, 32)
+                .padding(.bottom, 16)
+            }
+
             HStack(spacing: 16) {
                 CustomButton(title: t("common__discard"), variant: .secondary) {
                     navigation.navigateBack()
@@ -163,7 +169,6 @@ struct AddContactView: View {
 
     // MARK: - Error State
 
-    @ViewBuilder
     private var errorContent: some View {
         VStack(spacing: 16) {
             Spacer()
@@ -173,17 +178,15 @@ struct AddContactView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
 
-            if canRetry {
-                CustomButton(title: t("profile__retry_load"), variant: .secondary) {
+            CustomButton(title: canRetryError ? t("common__retry") : t("common__discard"), variant: .secondary) {
+                if canRetryError {
                     await loadProfile()
-                }
-                .accessibilityIdentifier("AddContactRetry")
-            } else {
-                CustomButton(title: t("common__discard"), variant: .secondary) {
+                } else {
                     navigation.navigateBack()
                 }
-                .accessibilityIdentifier("AddContactDiscardInvalid")
             }
+            .accessibilityIdentifier(canRetryError ? "AddContactRetry" : "AddContactDiscard")
+
             Spacer()
         }
         .padding(.horizontal, 32)
@@ -196,17 +199,26 @@ struct AddContactView: View {
         isLoading = true
         fetchedProfile = nil
         errorMessage = nil
-        canRetry = true
+        canRetryError = true
 
-        switch resolveAddContactValidation(input: publicKey, ownPublicKey: pubkyProfile.publicKey) {
+        switch resolveAddContactValidation(
+            input: publicKey,
+            ownPublicKey: pubkyProfile.publicKey,
+            existingContacts: contactsManager.contacts
+        ) {
         case .empty, .invalidKey:
             errorMessage = t("contacts__add_error_invalid_key")
-            canRetry = false
+            canRetryError = false
             isLoading = false
             return
         case .ownKey:
             errorMessage = t("contacts__add_error_self")
-            canRetry = false
+            canRetryError = false
+            isLoading = false
+            return
+        case .existingContact:
+            errorMessage = t("contacts__add_error_existing")
+            canRetryError = false
             isLoading = false
             return
         case let .valid(normalizedKey):
@@ -215,6 +227,7 @@ struct AddContactView: View {
             } else {
                 errorMessage = t("contacts__add_error")
             }
+            await loadPaymentEndpoints(publicKey: normalizedKey)
         }
 
         isLoading = false
@@ -244,15 +257,86 @@ struct AddContactView: View {
             app.toast(type: .error, title: t("contacts__add_error"), description: error.localizedDescription)
         }
     }
+
+    private func loadPaymentEndpoints(publicKey: String) async {
+        do {
+            hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
+        } catch {
+            Logger.warn(
+                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
+                context: "AddContactView"
+            )
+            hasPublicPaymentEndpoint = false
+        }
+    }
+
+    private func payContact() async {
+        guard let normalizedPublicKey else {
+            app.toast(type: .warning, title: t("slashtags__error_pay_title"), description: t("slashtags__error_pay_empty_msg"))
+            return
+        }
+
+        do {
+            let result = try await PublicPaykitService.beginPayment(to: normalizedPublicKey)
+
+            switch result {
+            case let .opened(paymentRequest):
+                guard await openContactPayment(paymentRequest: paymentRequest, publicKey: normalizedPublicKey) else {
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t("slashtags__error_pay_not_opened_msg")
+                    )
+                    return
+                }
+            case .noEndpoint, .notOpened:
+                if let messageKey = result.contactPaymentFailureMessageKey {
+                    app.toast(
+                        type: .warning,
+                        title: t("slashtags__error_pay_title"),
+                        description: t(messageKey)
+                    )
+                }
+            }
+        } catch {
+            Logger.error("Failed to pay public pubky \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)", context: "AddContactView")
+            app.toast(
+                type: .error,
+                title: t("slashtags__error_pay_title"),
+                description: error.localizedDescription
+            )
+        }
+    }
+
+    @MainActor
+    private func openContactPayment(paymentRequest: String, publicKey: String) async -> Bool {
+        do {
+            try await app.handleScannedData(paymentRequest)
+        } catch {
+            Logger.warn("Failed to decode contact payment request: \(error)", context: "AddContactView")
+            return false
+        }
+
+        guard let route = PaymentNavigationHelper.contactPaymentRoute(app: app, currency: currency, settings: settings) else {
+            return false
+        }
+
+        app.contactPaymentContext = ContactPaymentContext(publicKey: publicKey)
+        sheets.showSheet(.send, data: SendConfig(view: route))
+        return true
+    }
 }
 
 #Preview {
     NavigationStack {
         AddContactView(publicKey: "pubkyz6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK")
             .environmentObject(AppViewModel())
+            .environmentObject(CurrencyViewModel())
             .environmentObject(NavigationViewModel())
             .environmentObject(ContactsManager())
             .environmentObject(PubkyProfileManager())
+            .environmentObject(SettingsViewModel.shared)
+            .environmentObject(SheetViewModel())
     }
     .preferredColorScheme(.dark)
 }

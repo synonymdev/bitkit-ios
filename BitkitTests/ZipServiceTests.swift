@@ -48,6 +48,20 @@ final class ZipServiceTests: XCTestCase {
         }
     }
 
+    func testCreateZipRejectsDotFilenames() throws {
+        let zipService = ZipService()
+
+        for filename in [".", "..", "logs/.."] {
+            let filesToZip: [FileToZip] = [.data(Data([0x01]), filename: filename)]
+
+            XCTAssertThrowsError(try zipService.getZipData(zipFilename: "invalid", filesToZip: filesToZip)) { error in
+                guard case CreateZipError.invalidFilename = error else {
+                    return XCTFail("Expected invalidFilename error for \(filename), got \(error)")
+                }
+            }
+        }
+    }
+
     func testCreateZipOverwritesExistingFileByDefault() throws {
         let sourceDirectory = testRootDirectoryURL.appendingPathComponent("input")
         try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: true)

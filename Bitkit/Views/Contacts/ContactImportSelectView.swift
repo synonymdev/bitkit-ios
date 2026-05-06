@@ -86,7 +86,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Checkmark
 
-    @ViewBuilder
     private func checkmark(isSelected: Bool) -> some View {
         ZStack {
             if isSelected {
@@ -109,20 +108,12 @@ struct ContactImportSelectView: View {
 
     // MARK: - Contact Avatar
 
-    @ViewBuilder
     private func contactAvatar(name: String, imageUrl: String?) -> some View {
         Group {
             if let imageUrl {
                 PubkyImage(uri: imageUrl, size: 48)
             } else {
-                Circle()
-                    .fill(Color.white.opacity(0.1))
-                    .frame(width: 48, height: 48)
-                    .overlay {
-                        Text(String(name.prefix(1)).uppercased())
-                            .font(Fonts.bold(size: 17))
-                            .foregroundColor(.textPrimary)
-                    }
+                ContactAvatarLetter(source: name, size: 48)
             }
         }
         .accessibilityHidden(true)
@@ -130,7 +121,6 @@ struct ContactImportSelectView: View {
 
     // MARK: - Footer Bar
 
-    @ViewBuilder
     private var footerBar: some View {
         VStack(spacing: 0) {
             CustomDivider()
@@ -167,12 +157,9 @@ struct ContactImportSelectView: View {
 
     // MARK: - Pill Button
 
-    @ViewBuilder
     private func pillButton(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(title)
-                .font(Fonts.medium(size: 13))
-                .foregroundColor(isActive ? .white64 : .textPrimary)
+            CaptionText(title, textColor: isActive ? .white64 : .textPrimary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
                 .background(
