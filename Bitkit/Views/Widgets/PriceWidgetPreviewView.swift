@@ -47,7 +47,6 @@ struct PriceWidgetPreviewView: View {
         VStack(alignment: .leading, spacing: 16) {
             NavigationBar(title: widgetName, showMenuButton: false)
 
-            // Content (description + Widget Settings cell with surrounding dividers)
             VStack(alignment: .leading, spacing: 0) {
                 BodyMText(widgetDescription, textColor: .textSecondary)
                     .padding(.bottom, 16)
@@ -59,7 +58,6 @@ struct PriceWidgetPreviewView: View {
                 Divider().background(Color.white.opacity(0.1))
             }
 
-            // Carousel section (centered widget + size label + page indicator)
             VStack(spacing: 16) {
                 Spacer(minLength: 0)
 
