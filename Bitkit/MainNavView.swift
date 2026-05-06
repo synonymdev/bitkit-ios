@@ -385,6 +385,7 @@ struct MainNavView: View {
                     }
                 case .contactsIntro: ContactsIntroView()
                 case let .contactDetail(publicKey): ContactDetailView(publicKey: publicKey)
+                case let .contactActivity(publicKey): ContactActivityView(publicKey: publicKey)
                 case .contactImportOverview:
                     if let fallbackRoute = fallbackRouteForMissingPendingImport(hasPendingImport: contactsManager.hasPendingImport) {
                         missingPendingImportView(fallbackRoute: fallbackRoute)

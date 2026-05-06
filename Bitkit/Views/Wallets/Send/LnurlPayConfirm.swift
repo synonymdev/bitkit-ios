@@ -197,6 +197,7 @@ struct LnurlPayConfirm: View {
 
         let parsedInvoice = try Bolt11Invoice.fromStr(invoiceStr: bolt11)
         let paymentHash = String(describing: parsedInvoice.paymentHash())
+        let contactPublicKey = app.contactPaymentContext?.publicKey
 
         do {
             // Perform the Lightning payment (10s timeout → navigate to pending for hold invoices)
@@ -206,10 +207,11 @@ struct LnurlPayConfirm: View {
                 bolt11: bolt11,
                 sats: nil,
                 onTimeout: {
-                    app.addPendingPaymentHash(paymentHash)
+                    app.addPendingPaymentHash(paymentHash, contactPublicKey: contactPublicKey)
                     navigationPath.append(.pending(paymentHash: paymentHash))
                 }
             )
+            app.addPendingContactPaymentContext(paymentHash, contactPublicKey: contactPublicKey)
             Logger.info("LNURL payment successful: \(paymentHash)")
             navigationPath.append(.success(paymentId: paymentHash))
         } catch is PaymentTimeoutError {
