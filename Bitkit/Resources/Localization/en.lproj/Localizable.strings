@@ -1396,6 +1396,7 @@
 "widgets__price__size_small" = "Small";
 "widgets__price__size_wide" = "Wide";
 "widgets__price__widget_settings" = "Widget Settings";
+"widgets__widget__save_widget" = "Save Widget";
 "widgets__news__name" = "Bitcoin Headlines";
 "widgets__news__description" = "Read the latest & greatest Bitcoin headlines from various news sites.";
 "widgets__news__error" = "Couldn\'t get the latest news";

@@ -9,8 +9,7 @@ struct WidgetEditItemView: View {
         case .sectionHeader:
             item.titleView
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
-                .padding(.bottom, 16)
+                .padding(.vertical, 16)
         case .staticItem:
             row
         case .toggleItem:

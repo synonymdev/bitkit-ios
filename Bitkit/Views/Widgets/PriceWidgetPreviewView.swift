@@ -48,33 +48,36 @@ struct PriceWidgetPreviewView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 16) {
             NavigationBar(title: widgetName)
-                .padding(.bottom, 16)
 
-            BodyMText(widgetDescription, textColor: .textSecondary)
-                .padding(.bottom, 16)
+            // Content (description + Widget Settings cell with surrounding dividers)
+            VStack(alignment: .leading, spacing: 0) {
+                BodyMText(widgetDescription, textColor: .textSecondary)
+                    .padding(.bottom, 16)
 
-            Divider().background(Color.white.opacity(0.1))
+                Divider().background(Color.white.opacity(0.1))
 
-            widgetSettingsRow
+                widgetSettingsRow
 
-            Divider().background(Color.white.opacity(0.1))
+                Divider().background(Color.white.opacity(0.1))
+            }
 
-            Spacer(minLength: 0)
+            // Carousel section (centered widget + size label + page indicator)
+            VStack(spacing: 16) {
+                Spacer(minLength: 0)
 
-            carousel
+                carousel
 
-            sizeLabel
-                .padding(.top, 8)
+                Spacer(minLength: 0)
 
-            pageIndicator
-                .padding(.top, 8)
+                sizeLabel
 
-            Spacer(minLength: 0)
+                pageIndicator
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             buttonsRow
-                .padding(.top, 16)
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
@@ -117,11 +120,10 @@ struct PriceWidgetPreviewView: View {
                     .frame(width: 24, height: 24)
                     .padding(.leading, 5)
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 51)
             .contentShape(Rectangle())
         }
         .buttonStyle(PlainButtonStyle())
-        .padding(.vertical, 14)
         .accessibilityIdentifier("WidgetEdit")
     }
 
@@ -136,12 +138,12 @@ struct PriceWidgetPreviewView: View {
                 .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 240)
+        .frame(height: 320)
     }
 
     private var compactPage: some View {
-        HStack {
-            Spacer()
+        VStack {
+            Spacer(minLength: 0)
             Group {
                 if let data = primaryPrice {
                     PriceWidgetCompactContent(data: data, period: currentOptions.selectedPeriod)
@@ -150,13 +152,14 @@ struct PriceWidgetPreviewView: View {
                 }
             }
             .frame(width: 163, height: 192)
-            Spacer()
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var widePage: some View {
-        HStack {
-            Spacer()
+        VStack {
+            Spacer(minLength: 0)
             Group {
                 if let data = primaryPrice {
                     PriceWidgetWideContent(data: data, period: currentOptions.selectedPeriod)
@@ -168,7 +171,7 @@ struct PriceWidgetPreviewView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            Spacer()
+            Spacer(minLength: 0)
         }
     }
 
@@ -181,7 +184,7 @@ struct PriceWidgetPreviewView: View {
     private var placeholderWide: some View {
         Color.gray6
             .cornerRadius(16)
-            .frame(height: 130)
+            .frame(height: 152)
             .overlay(ProgressView())
     }
 
@@ -230,7 +233,7 @@ struct PriceWidgetPreviewView: View {
             }
 
             CustomButton(
-                title: t("common__save"),
+                title: t("widgets__widget__save_widget"),
                 variant: .primary,
                 size: .large,
                 shouldExpand: true,
