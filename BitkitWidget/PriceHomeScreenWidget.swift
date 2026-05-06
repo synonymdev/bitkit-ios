@@ -160,16 +160,9 @@ struct PriceHomeScreenWidgetEntryView: View {
                 priceText(data.price, size: 34, lineHeight: 34)
             }
 
-            chart(values: data.pastValues, isPositive: data.change.isPositive, height: chartHeight)
+            chart(values: data.pastValues, isPositive: data.change.isPositive, height: 48)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var chartHeight: CGFloat {
-        switch widgetFamily {
-        case .systemLarge, .systemExtraLarge: return 120
-        default: return 48
-        }
     }
 
     // MARK: - Sub-views
@@ -279,6 +272,6 @@ struct BitkitPriceWidget: Widget {
         }
         .configurationDisplayName("Bitcoin Price")
         .description("Latest Bitcoin price and chart, mirroring the in-app price widget.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
