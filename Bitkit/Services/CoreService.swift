@@ -971,7 +971,7 @@ class ActivityService {
         let activities = try await get(filter: .all, sortDirection: sortDirection)
 
         return activities
-            .filter { !$0.isReplacedSentTransaction(txIdsInBoostTxIds: txIdsInBoostTxIds) }
+            .filter { !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIds) }
             .filter { activity in
                 switch activity {
                 case let .lightning(lightning):
@@ -980,6 +980,11 @@ class ActivityService {
                     return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
                 }
             }
+    }
+
+    private func isReplacedSentTransaction(_ activity: Activity, txIdsInBoostTxIds: Set<String>) -> Bool {
+        guard case let .onchain(onchain) = activity else { return false }
+        return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
     }
 
     func update(id: String, activity: Activity) async throws {
@@ -1081,7 +1086,16 @@ class ActivityService {
     private func updateReplacementContactIfNeeded(for activity: OnchainActivity, normalizedContact: String?) throws -> Bool {
         guard !activity.doesExist, activity.txType == .sent else { return false }
 
-        let activities = try getActivities(filter: .onchain)
+        let activities = try getActivities(
+            filter: .onchain,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        )
         var didUpdate = false
         for case var .onchain(replacement) in activities where replacement.boostTxIds.contains(activity.txId) {
             guard replacement.contact != normalizedContact else { continue }
