@@ -7,7 +7,7 @@ This file is symlinked for cross-agents compatibility to the following paths:
 
 ## Agent Commands
 
-Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink to the same files.
+Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink and Cursor command entries under `.cursor/commands/` resolve to the same files.
 
 ## Project Overview
 
