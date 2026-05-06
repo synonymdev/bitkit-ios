@@ -49,7 +49,7 @@ struct PriceWidgetPreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            NavigationBar(title: widgetName)
+            NavigationBar(title: widgetName, showMenuButton: false)
 
             // Content (description + Widget Settings cell with surrounding dividers)
             VStack(alignment: .leading, spacing: 0) {

@@ -57,8 +57,11 @@ struct WidgetEditView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NavigationBar(title: id == .price ? widget.name : t("widgets__widget__edit"))
-                .padding(.bottom, 16)
+            NavigationBar(
+                title: id == .price ? widget.name : t("widgets__widget__edit"),
+                showMenuButton: id != .price
+            )
+            .padding(.bottom, 16)
 
             if id != .price {
                 BodyMText(
