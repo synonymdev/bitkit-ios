@@ -27,9 +27,7 @@ struct PriceWidget: View {
         ) {
             content
         }
-        .task { fetchPriceData() }
-        .onChange(of: options.selectedPairs) { fetchPriceData() }
-        .onChange(of: options.selectedPeriod) { fetchPriceData() }
+        .task(id: options) { fetchPriceData() }
     }
 
     @ViewBuilder
