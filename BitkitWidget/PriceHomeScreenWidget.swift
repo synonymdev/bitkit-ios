@@ -128,10 +128,12 @@ struct PriceHomeScreenWidgetEntryView: View {
                 .foregroundColor(valueTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .widgetAccentable()
 
             if let change = primary?.change {
                 BodySSBText(change.formatted, textColor: changeColor(isPositive: change.isPositive))
                     .lineLimit(1)
+                    .widgetAccentable()
             }
 
             Spacer(minLength: 0)
@@ -193,10 +195,12 @@ struct PriceHomeScreenWidgetEntryView: View {
             BodySSBText(data.change.formatted, textColor: changeColor(isPositive: data.change.isPositive))
                 .padding(.trailing, 8)
                 .lineLimit(1)
+                .widgetAccentable()
 
             BodySSBText(data.price, textColor: valueTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
+                .widgetAccentable()
         }
         .frame(minHeight: 24)
     }
@@ -287,6 +291,7 @@ private struct PriceWidgetChart: View {
                     topTrailingRadius: 0
                 )
             )
+            .widgetAccentable()
 
             CaptionBText(period, textColor: labelColor)
                 .padding(7)
