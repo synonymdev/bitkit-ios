@@ -194,10 +194,7 @@ struct PriceHomeScreenWidgetEntryView: View {
     }
 
     private var errorView: some View {
-        // Hardcoded — widget extension target does not bundle the app's localization helpers.
-        Text("Couldn’t load price.")
-            .font(Fonts.medium(size: 14))
-            .foregroundColor(secondaryTextColor)
+        BodySText("Couldn’t load price.", textColor: secondaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
