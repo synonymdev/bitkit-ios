@@ -117,7 +117,7 @@ struct PriceHomeScreenWidgetEntryView: View {
     // MARK: - Compact (small widget — 163×192)
 
     private func compactLayout(data: PriceData) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 0) {
                     captionUpText(data.name)
@@ -134,15 +134,17 @@ struct PriceHomeScreenWidgetEntryView: View {
                     .widgetAccentable()
             }
 
-            chart(values: data.pastValues, isPositive: data.change.isPositive, height: 64)
+            Spacer(minLength: 8)
+
+            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 64)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    // MARK: - Wide (medium / large widget)
+    // MARK: - Wide (medium widget — 343×152)
 
     private func wideLayout(data: PriceData) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 16) {
                     captionUpText("\(data.name)  \(entry.options.selectedPeriod.rawValue)")
@@ -158,7 +160,9 @@ struct PriceHomeScreenWidgetEntryView: View {
                 priceText(data.price, size: 34, lineHeight: 34)
             }
 
-            chart(values: data.pastValues, isPositive: data.change.isPositive, height: 48)
+            Spacer(minLength: 4)
+
+            chart(values: data.pastValues, isPositive: data.change.isPositive, idealHeight: 48, minHeight: 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -181,13 +185,13 @@ struct PriceHomeScreenWidgetEntryView: View {
             .widgetAccentable()
     }
 
-    private func chart(values: [Double], isPositive: Bool, height: CGFloat) -> some View {
+    private func chart(values: [Double], isPositive: Bool, idealHeight: CGFloat, minHeight: CGFloat = 32) -> some View {
         PriceWidgetChart(
             values: values,
             isPositive: isPositive,
             renderingMode: widgetRenderingMode
         )
-        .frame(height: height)
+        .frame(minHeight: minHeight, maxHeight: idealHeight)
         .widgetAccentable()
     }
 
