@@ -107,7 +107,6 @@ struct PriceHomeScreenWidgetEntryView: View {
         }
     }
 
-    /// Always render the first selected pair (v61 is single-pair).
     private var primaryPrice: PriceData? {
         let preferred = entry.options.selectedPairs.first
         if let preferred, let match = entry.prices.first(where: { $0.name == preferred }) {
@@ -218,7 +217,7 @@ struct PriceHomeScreenWidgetEntryView: View {
     }
 }
 
-// MARK: - Chart (line-only per Figma v61)
+// MARK: - Chart
 
 private struct PriceWidgetChart: View {
     let values: [Double]
