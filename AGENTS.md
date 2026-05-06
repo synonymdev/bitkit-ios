@@ -1,9 +1,13 @@
 # AGENTS.md
 
-This file provides guidance to AI agents like Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex, Claude Code, and Cursor when working with code in this repository.
 
 This file is symlinked for cross-agents compatibility to the following paths:
 - `CLAUDE.md`
+
+## Agent Commands
+
+Durable shared agent command specs live in `.agents/commands/`. For PR creation, follow `.agents/commands/pr.md`; `.claude/commands` is a compatibility symlink and Cursor command entries under `.cursor/commands/` resolve to the same files.
 
 ## Project Overview
 
