@@ -861,7 +861,7 @@
 				961058E62C355B5500E1F1D8 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		96FE1F5C2C2DE6AA006D0C8B /* Build configuration list for PBXProject "Bitkit" */ = {
 			isa = XCConfigurationList;
@@ -870,7 +870,7 @@
 				96FE1F852C2DE6AC006D0C8B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		96FE1F862C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "Bitkit" */ = {
 			isa = XCConfigurationList;
@@ -879,7 +879,7 @@
 				96FE1F882C2DE6AC006D0C8B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		96FE1F892C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "BitkitTests" */ = {
 			isa = XCConfigurationList;
@@ -888,7 +888,7 @@
 				96FE1F8B2C2DE6AC006D0C8B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 		96FE1F8C2C2DE6AC006D0C8B /* Build configuration list for PBXNativeTarget "BitkitUITests" */ = {
 			isa = XCConfigurationList;
@@ -897,7 +897,7 @@
 				96FE1F8E2C2DE6AC006D0C8B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 
