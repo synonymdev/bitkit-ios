@@ -157,7 +157,6 @@ class WidgetEditLogic: ObservableObject {
         onStateChange?()
     }
 
-    /// Single-select per Figma v61 — replaces the array with a single pair.
     private func selectTradingPair(_ pairName: String) {
         priceOptions.selectedPairs = [pairName]
     }
