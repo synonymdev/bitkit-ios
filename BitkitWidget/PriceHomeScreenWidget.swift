@@ -123,9 +123,7 @@ struct PriceHomeScreenWidgetEntryView: View {
             BodySSBText(primary?.name ?? "BTC/USD", textColor: secondaryTextColor)
                 .lineLimit(1)
 
-            Text(primary?.price ?? "—")
-                .font(Fonts.bold(size: 22))
-                .foregroundColor(valueTextColor)
+            TitleText(primary?.price ?? "—", textColor: valueTextColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .widgetAccentable()
@@ -178,9 +176,7 @@ struct PriceHomeScreenWidgetEntryView: View {
     }
 
     private var errorView: some View {
-        Text("Couldn’t load price.")
-            .font(Fonts.medium(size: 14))
-            .foregroundColor(secondaryTextColor)
+        BodySText("Couldn’t load price.", textColor: secondaryTextColor)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
