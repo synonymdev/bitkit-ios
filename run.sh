@@ -7,8 +7,9 @@ DERIVED_DATA_PATH="$ROOT_DIR/build"
 APP_PATH="$DERIVED_DATA_PATH/Build/Products/Debug-iphoneos/Bitkit.app"
 BUNDLE_ID="to.bitkit"
 
-DEVICE_LIST_JSON="$(mktemp "${TMPDIR:-/tmp}/bitkit-devices.XXXXXX.json")"
-trap 'rm -f "$DEVICE_LIST_JSON"' EXIT
+DEVICE_LIST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/bitkit-devices.XXXXXX")"
+DEVICE_LIST_JSON="$DEVICE_LIST_DIR/devices.json"
+trap 'rm -rf "$DEVICE_LIST_DIR"' EXIT
 
 if ! command -v python3 >/dev/null 2>&1; then
   echo "python3 is required to parse the devicectl device list." >&2
