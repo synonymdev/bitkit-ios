@@ -232,6 +232,10 @@ class WidgetsViewModel: ObservableObject {
             return options
         }
 
+        if type == .price, let priceOptions = PriceHomeScreenWidgetOptionsStore.load() as? T {
+            return priceOptions
+        }
+
         // Return default options if none saved
         return getDefaultOptions(for: type) as! T
     }
