@@ -283,6 +283,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         message: "Test payment",
                         timestamp: UInt64(Date().timeIntervalSince1970),
                         preimage: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                        contact: nil,
                         createdAt: nil,
                         updatedAt: nil,
                         seenAt: nil
@@ -310,6 +311,7 @@ struct ActivityExplorer_Previews: PreviewProvider {
                         confirmTimestamp: nil,
                         channelId: nil,
                         transferTxId: nil,
+                        contact: nil,
                         createdAt: nil,
                         updatedAt: nil,
                         seenAt: nil

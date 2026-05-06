@@ -56,7 +56,6 @@ struct ContactImportOverviewView: View {
 
     // MARK: - Profile Row
 
-    @ViewBuilder
     private var profileRow: some View {
         HStack(alignment: .top, spacing: 16) {
             HeadlineText(profile.name)
@@ -67,14 +66,7 @@ struct ContactImportOverviewView: View {
                 if let imageUrl = profile.imageUrl {
                     PubkyImage(uri: imageUrl, size: 64)
                 } else {
-                    Circle()
-                        .fill(Color.pubkyGreen)
-                        .frame(width: 64, height: 64)
-                        .overlay {
-                            Text(String(profile.name.prefix(1)).uppercased())
-                                .font(Fonts.bold(size: 22))
-                                .foregroundColor(.textPrimary)
-                        }
+                    ContactAvatarLetter(source: profile.name, size: 64, backgroundColor: .pubkyGreen)
                 }
             }
             .accessibilityHidden(true)
@@ -84,7 +76,6 @@ struct ContactImportOverviewView: View {
 
     // MARK: - Contacts Summary
 
-    @ViewBuilder
     private var contactsSummary: some View {
         HStack(spacing: 16) {
             BodyMSBText(t("contacts__import_friends_count", variables: ["count": "\(contacts.count)"]))
@@ -112,9 +103,7 @@ struct ContactImportOverviewView: View {
                     .fill(Color.gray4)
                     .frame(width: 36, height: 36)
                     .overlay {
-                        Text("+\(overflow)")
-                            .font(Fonts.bold(size: 12))
-                            .foregroundColor(.textPrimary)
+                        CaptionBText("+\(overflow)", textColor: .textPrimary)
                     }
                     .overlay(
                         Circle()
@@ -136,24 +125,12 @@ struct ContactImportOverviewView: View {
                         .stroke(Color.customBlack, lineWidth: 2)
                 )
         } else {
-            Circle()
-                .fill(Color.white.opacity(0.1))
-                .frame(width: 36, height: 36)
-                .overlay {
-                    Text(String(contact.displayName.prefix(1)).uppercased())
-                        .font(Fonts.bold(size: 13))
-                        .foregroundColor(.textPrimary)
-                }
-                .overlay(
-                    Circle()
-                        .stroke(Color.customBlack, lineWidth: 2)
-                )
+            ContactAvatarLetter(source: contact.displayName, size: 36, strokeColor: .customBlack, strokeWidth: 2)
         }
     }
 
     // MARK: - Button Bar
 
-    @ViewBuilder
     private var buttonBar: some View {
         HStack(spacing: 16) {
             CustomButton(title: t("contacts__import_select"), variant: .secondary) {

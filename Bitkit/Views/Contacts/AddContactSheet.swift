@@ -4,13 +4,14 @@ struct AddContactSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     let currentPublicKey: String?
+    let contacts: [PubkyContact]
     let onAdd: (String) -> Void
     let onScanQR: () -> Void
 
     @State private var pubkyInput: String = ""
 
     private var validationResult: AddContactValidationResult {
-        resolveAddContactValidation(input: pubkyInput, ownPublicKey: currentPublicKey)
+        resolveAddContactValidation(input: pubkyInput, ownPublicKey: currentPublicKey, existingContacts: contacts)
     }
 
     private var validationMessage: String? {
@@ -116,7 +117,7 @@ struct AddContactSheet: View {
 #Preview {
     Color.clear
         .sheet(isPresented: .constant(true)) {
-            AddContactSheet(currentPublicKey: nil, onAdd: { _ in }, onScanQR: {})
+            AddContactSheet(currentPublicKey: nil, contacts: [], onAdd: { _ in }, onScanQR: {})
         }
         .preferredColorScheme(.dark)
 }

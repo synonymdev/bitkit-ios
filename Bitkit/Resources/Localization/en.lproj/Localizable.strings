@@ -958,6 +958,8 @@
 "slashtags__onboarding_text" = "Get automatic updates from your Bitkit contacts, pay them, and follow their public profiles.";
 "slashtags__onboarding_button" = "Add First Contact";
 "contacts__detail_title" = "Contact";
+"contacts__activity_sent_to" = "Sent to {name}";
+"contacts__activity_received_from" = "Received from {name}";
 "contacts__detail_empty_state" = "Unable to load contact.";
 "contacts__empty_state" = "You don't have any contacts yet.";
 "contacts__intro_add_contact" = "Add Contact";
@@ -973,6 +975,7 @@
 "contacts__add_pubky_placeholder" = "Paste a pubky";
 "contacts__add_scan_qr" = "Scan QR";
 "contacts__add_button" = "Add";
+"contacts__add_error_existing" = "This pubky is already in your contacts.";
 "contacts__add_error_invalid_key" = "Invalid pubky key format. Please check and try again.";
 "contacts__add_error_self" = "You can't add your own pubky as a contact.";
 "contacts__add_retrieving" = "Retrieving\n<accent>contact info</accent>";
@@ -1037,6 +1040,7 @@
 "slashtags__error_deleting_profile" = "Unable To Delete Profile";
 "slashtags__error_pay_title" = "Unable To Pay Contact";
 "slashtags__error_pay_empty_msg" = "The contact you're trying to send to hasn't enabled payments.";
+"slashtags__error_pay_not_opened_msg" = "No compatible payment endpoint is available.";
 "slashtags__auth_depricated_title" = "Deprecated";
 "slashtags__auth_depricated_msg" = "Slashauth is deprecated. Please use Bitkit Beta.";
 "profile__nav_title" = "Profile";

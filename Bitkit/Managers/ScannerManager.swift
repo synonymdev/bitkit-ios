@@ -3,6 +3,7 @@ import SwiftUI
 import Vision
 
 enum ScannerContext {
+    case addContact
     case main
     case send
     case electrum
@@ -40,6 +41,8 @@ class ScannerManager: ObservableObject {
         Haptics.play(.scanSuccess)
 
         switch context {
+        case .addContact:
+            handleAddContactScan(uri)
         case .main:
             await handleMainScan(uri)
         case .send:
@@ -47,6 +50,16 @@ class ScannerManager: ObservableObject {
         case .electrum:
             await handleElectrumScan(uri)
         }
+    }
+
+    private func handleAddContactScan(_ input: String) {
+        navigation?.navigateBack()
+
+        guard !handlePubkyRouteIfNeeded(input) else {
+            return
+        }
+
+        navigation?.navigate(.addContact(publicKey: input))
     }
 
     private func handleMainScan(_ uri: String) async {
