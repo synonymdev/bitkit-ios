@@ -396,8 +396,7 @@ enum WidgetEditItemFactory {
             )
         }
 
-        // TIMEFRAME section (single-select). Full-word labels per Figma v61.
-        items.append(sectionHeaderItem(key: "timeframe_header", title: t("widgets__price__timeframe")))
+        items.append(sectionHeaderItem(key: "timeframe_header", title: t("widgets__price__timeframe"), topInset: 16))
 
         for period in GraphPeriod.allCases {
             let isSelected = priceOptions.selectedPeriod == period
@@ -417,13 +416,14 @@ enum WidgetEditItemFactory {
         return items
     }
 
-    private static func sectionHeaderItem(key: String, title: String) -> WidgetEditItem {
+    private static func sectionHeaderItem(key: String, title: String, topInset: CGFloat = 0) -> WidgetEditItem {
         WidgetEditItem(
             key: key,
             type: .sectionHeader,
             titleView: AnyView(
                 CaptionMText(title, textColor: .textSecondary)
                     .textCase(.uppercase)
+                    .padding(.top, topInset)
             ),
             valueView: nil,
             isChecked: false
