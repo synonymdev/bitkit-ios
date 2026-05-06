@@ -73,10 +73,11 @@ struct PriceWidgetWideContent: View {
                         .textCase(.uppercase)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Text(data.change.formatted)
-                        .font(Fonts.bold(size: 22))
-                        .foregroundColor(data.change.isPositive ? .greenAccent : .redAccent)
-                        .lineLimit(1)
+                    TitleText(
+                        data.change.formatted,
+                        textColor: data.change.isPositive ? .greenAccent : .redAccent
+                    )
+                    .lineLimit(1)
                 }
 
                 Text(data.price)
@@ -117,10 +118,11 @@ struct PriceWidgetCompactContent: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
 
-                Text(data.change.formatted)
-                    .font(Fonts.semiBold(size: 15))
-                    .foregroundColor(data.change.isPositive ? .greenAccent : .redAccent)
-                    .lineLimit(1)
+                BodySSBText(
+                    data.change.formatted,
+                    textColor: data.change.isPositive ? .greenAccent : .redAccent
+                )
+                .lineLimit(1)
             }
 
             PriceChart(values: data.pastValues, isPositive: data.change.isPositive)

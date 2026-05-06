@@ -81,7 +81,7 @@ struct PriceWidgetPreviewView: View {
         }
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
-        .onAppear {
+        .task {
             let options = currentOptions
             viewModel.fetchPriceData(pairs: options.selectedPairs, period: options.selectedPeriod)
         }
