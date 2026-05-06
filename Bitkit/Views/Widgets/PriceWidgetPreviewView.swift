@@ -1,10 +1,6 @@
 import SwiftUI
 
-/// Preview screen for the Bitcoin Price widget (Figma v61).
-///
-/// Replaces the generic `WidgetDetailView` for `.price` only — the other widgets continue to use
-/// `WidgetDetailView`. Layout differences from the generic preview: centered top-bar title,
-/// description, "Widget Settings" cell, and a Compact ↔ Wide carousel.
+/// Preview screen for the Bitcoin Price widget.
 struct PriceWidgetPreviewView: View {
     @EnvironmentObject private var navigation: NavigationViewModel
     @EnvironmentObject private var widgets: WidgetsViewModel
