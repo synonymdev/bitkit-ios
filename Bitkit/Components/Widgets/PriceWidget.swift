@@ -1,7 +1,7 @@
 import Charts
 import SwiftUI
 
-/// Displays Bitcoin price for the user's selected trading pair and timeframe (Figma v61).
+/// Displays Bitcoin price for the user's selected trading pair and timeframe.
 struct PriceWidget: View {
     var options: PriceWidgetOptions = .init()
     var isEditing: Bool = false
@@ -43,7 +43,7 @@ struct PriceWidget: View {
         }
     }
 
-    /// Single pair (v61). Falls back to first available data if the selection isn't loaded yet.
+    /// Single pair. Falls back to first available data if the selection isn't loaded yet.
     private var primaryPrice: PriceData? {
         let currentPeriodData = viewModel.getCurrentData(for: options.selectedPeriod)
         if let preferred = options.selectedPairs.first,
@@ -135,7 +135,7 @@ struct PriceWidgetCompactContent: View {
     }
 }
 
-// MARK: - Chart (line-only per Figma v61)
+// MARK: - Chart
 
 struct PriceChart: View {
     let values: [Double]
