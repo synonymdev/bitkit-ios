@@ -21,7 +21,7 @@ struct WidgetEditItemView: View {
     }
 
     private var row: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 8) {
             HStack(spacing: 16) {
                 item.titleView
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -40,10 +40,11 @@ struct WidgetEditItemView: View {
                         .frame(width: 32, height: 32)
                 }
             }
-            .padding(.vertical, 16)
+            .frame(minHeight: 32)
             .contentShape(Rectangle())
 
             Divider()
         }
+        .padding(.top, 8)
     }
 }
