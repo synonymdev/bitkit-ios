@@ -236,6 +236,10 @@ class WidgetsViewModel: ObservableObject {
             return priceOptions
         }
 
+        if type == .news, let newsOptions = NewsHomeScreenWidgetOptionsStore.load() as? T {
+            return newsOptions
+        }
+
         // Return default options if none saved
         return getDefaultOptions(for: type) as! T
     }
@@ -306,6 +310,7 @@ class WidgetsViewModel: ObservableObject {
             persistSavedWidgets()
         }
         syncPriceOptionsToHomeScreenWidget()
+        syncNewsOptionsToHomeScreenWidget()
     }
 
     private func persistSavedWidgets() {
@@ -316,6 +321,7 @@ class WidgetsViewModel: ObservableObject {
             print("Failed to persist widgets: \(error)")
         }
         syncPriceOptionsToHomeScreenWidget()
+        syncNewsOptionsToHomeScreenWidget()
     }
 
     /// Keeps the home-screen WidgetKit price widget in sync with in-app price widget options (App Group).
@@ -323,5 +329,12 @@ class WidgetsViewModel: ObservableObject {
         let options: PriceWidgetOptions = getOptions(for: .price, as: PriceWidgetOptions.self)
         PriceHomeScreenWidgetOptionsStore.save(options)
         PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    /// Keeps the home-screen WidgetKit news widget in sync with in-app news widget options (App Group).
+    private func syncNewsOptionsToHomeScreenWidget() {
+        let options: NewsWidgetOptions = getOptions(for: .news, as: NewsWidgetOptions.self)
+        NewsHomeScreenWidgetOptionsStore.save(options)
+        NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }

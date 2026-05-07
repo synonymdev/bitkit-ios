@@ -1,27 +1,13 @@
 import SwiftUI
 
-/// Options for configuring the NewsWidget
-struct NewsWidgetOptions: Codable, Equatable {
-    var showDate: Bool = true
-    var showTitle: Bool = true
-    var showSource: Bool = true
-}
-
-/// A widget that displays a news article
+/// A widget that displays a news article (Figma v61).
 struct NewsWidget: View {
-    /// Configuration options for the widget
     var options: NewsWidgetOptions = .init()
-
-    /// Flag indicating if the widget is in editing mode
     var isEditing: Bool = false
-
-    /// Callback to signal when editing should end
     var onEditingEnd: (() -> Void)?
 
-    /// View model for handling news data
     @StateObject private var viewModel = NewsViewModel.shared
 
-    /// Initialize the widget
     init(
         options: NewsWidgetOptions = NewsWidgetOptions(),
         isEditing: Bool = false,
@@ -38,40 +24,92 @@ struct NewsWidget: View {
             isEditing: isEditing,
             onEditingEnd: onEditingEnd
         ) {
-            VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    WidgetContentBuilder.loadingView()
-                } else if viewModel.error != nil {
-                    WidgetContentBuilder.errorView(t("widgets__news__error"))
-                } else if let data = viewModel.widgetData {
-                    if options.showDate {
-                        BodyMText(data.timeAgo, textColor: .textPrimary)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.bottom, 16)
-                    }
-
-                    if options.showTitle {
-                        TitleText(data.title)
-                            .lineLimit(2)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    if options.showSource {
-                        WidgetContentBuilder.sourceRow(source: data.publisher)
+            content
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if !isEditing, let data = viewModel.widgetData, let url = URL(string: data.link) {
+                        UIApplication.shared.open(url)
                     }
                 }
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if !isEditing, let data = viewModel.widgetData, let url = URL(string: data.link) {
-                    UIApplication.shared.open(url)
-                }
-            }
         }
         .onAppear {
             viewModel.startUpdates()
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if viewModel.isLoading && viewModel.widgetData == nil {
+            WidgetContentBuilder.loadingView()
+        } else if viewModel.error != nil {
+            WidgetContentBuilder.errorView(t("widgets__news__error"))
+        } else if let data = viewModel.widgetData {
+            NewsWidgetWideContent(data: data, options: options)
+        }
+    }
+}
+
+// MARK: - Wide layout (in-app + 343-wide carousel page)
+
+struct NewsWidgetWideContent: View {
+    let data: WidgetData
+    let options: NewsWidgetOptions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if options.showTitle {
+                TitleText(data.title)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if options.showSource || options.showDate {
+                HStack(alignment: .center, spacing: 8) {
+                    if options.showSource {
+                        BodySSBText(data.publisher, textColor: .brandAccent)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                    if options.showDate {
+                        BodySSBText(data.timeAgo, textColor: .textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Compact layout (small carousel preview + 163×192 OS widget)
+
+struct NewsWidgetCompactContent: View {
+    let data: WidgetData
+    let options: NewsWidgetOptions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if options.showTitle {
+                TitleText(data.title)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Spacer(minLength: 8)
+
+            if options.showDate {
+                HStack {
+                    Spacer(minLength: 0)
+                    BodySSBText(data.timeAgo, textColor: .textSecondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Color.gray6)
+        .cornerRadius(16)
     }
 }
 

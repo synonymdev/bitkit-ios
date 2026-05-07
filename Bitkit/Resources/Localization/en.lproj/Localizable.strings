@@ -1404,6 +1404,10 @@
 "widgets__news__name" = "Bitcoin Headlines";
 "widgets__news__description" = "Read the latest & greatest Bitcoin headlines from various news sites.";
 "widgets__news__error" = "Couldn\'t get the latest news";
+"widgets__news__size_small" = "Small";
+"widgets__news__size_wide" = "Wide";
+"widgets__news__widget_settings" = "Widget Settings";
+"widgets__news__content_header" = "Content";
 "widgets__blocks__name" = "Bitcoin Blocks";
 "widgets__blocks__description" = "Examine various statistics on newly mined Bitcoin Blocks.";
 "widgets__blocks__error" = "Couldn\'t get blocks data";
