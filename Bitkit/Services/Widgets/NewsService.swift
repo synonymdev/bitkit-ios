@@ -3,7 +3,6 @@ import Foundation
 /// Service for fetching and caching news articles
 class NewsService {
     static let shared = NewsService()
-    private let baseUrl = "https://feeds.synonym.to/news-feed/api"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
     private init() {
@@ -14,7 +13,7 @@ class NewsService {
     /// - Returns: Array of articles
     /// - Throws: URLError or decoding error
     func fetchArticles() async throws -> [Article] {
-        guard let url = URL(string: "\(baseUrl)/articles") else {
+        guard let url = URL(string: WidgetEnv.newsFeedArticlesUrl) else {
             throw URLError(.badURL)
         }
 

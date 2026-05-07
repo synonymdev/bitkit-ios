@@ -11,14 +11,12 @@ enum NewsWidgetService {
         case noArticlesAvailable
     }
 
-    private static let baseUrl = "https://feeds.synonym.to/news-feed/api"
-
     static func cachedTopArticles() -> [CachedNewsArticle] {
         NewsWidgetCache.loadTop()
     }
 
     static func fetchFreshTopArticles() async throws -> [CachedNewsArticle] {
-        guard let url = URL(string: "\(baseUrl)/articles") else { throw FetchError.invalidURL }
+        guard let url = URL(string: WidgetEnv.newsFeedArticlesUrl) else { throw FetchError.invalidURL }
 
         let (data, _) = try await URLSession.shared.data(from: url)
         let articles = try JSONDecoder().decode([WireArticle].self, from: data)
