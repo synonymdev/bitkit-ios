@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// A widget that displays a news article (Figma v61).
+/// A widget that displays a news article.
 struct NewsWidget: View {
     var options: NewsWidgetOptions = .init()
     var isEditing: Bool = false
@@ -32,7 +32,7 @@ struct NewsWidget: View {
                     }
                 }
         }
-        .onAppear {
+        .task {
             viewModel.startUpdates()
         }
     }
