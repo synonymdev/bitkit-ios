@@ -133,6 +133,7 @@ struct NewsHomeScreenWidgetEntryView: View {
                 content
             }
         }
+        .widgetURL(articleURL)
         .containerBackground(for: .widget) { backgroundView }
     }
 
