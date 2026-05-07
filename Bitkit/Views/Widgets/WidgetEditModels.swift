@@ -149,10 +149,10 @@ enum WidgetEditItemFactory {
             items.append(
                 WidgetEditItem(
                     key: "showTitle",
-                    type: .staticItem,
+                    type: .toggleItem,
                     titleView: AnyView(TitleText(data.title)),
                     valueView: nil,
-                    isChecked: true // Static items are always shown
+                    isChecked: newsOptions.showTitle
                 )
             )
 
@@ -180,10 +180,10 @@ enum WidgetEditItemFactory {
             items.append(
                 WidgetEditItem(
                     key: "showTitle",
-                    type: .staticItem,
+                    type: .toggleItem,
                     titleView: AnyView(TitleText("How Bitcoin changed El Salvador in more ways...")),
                     valueView: nil,
-                    isChecked: true // Static items are always shown
+                    isChecked: newsOptions.showTitle
                 )
             )
 

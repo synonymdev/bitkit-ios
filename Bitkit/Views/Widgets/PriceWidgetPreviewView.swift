@@ -43,7 +43,7 @@ struct PriceWidgetPreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            NavigationBar(title: widgetName, showMenuButton: false, showGradient: false)
+            NavigationBar(title: widgetName, showMenuButton: false)
 
             VStack(alignment: .leading, spacing: 0) {
                 BodyMText(widgetDescription, textColor: .textSecondary)
@@ -57,11 +57,7 @@ struct PriceWidgetPreviewView: View {
             }
 
             VStack(spacing: 16) {
-                Spacer(minLength: 0)
-
                 carousel
-
-                Spacer(minLength: 0)
 
                 sizeLabel
 
@@ -74,7 +70,7 @@ struct PriceWidgetPreviewView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.gray7.ignoresSafeArea())
+        .bottomSafeAreaPadding()
         .task {
             let options = currentOptions
             viewModel.fetchPriceData(pairs: [options.selectedPair], period: options.selectedPeriod)
@@ -97,7 +93,7 @@ struct PriceWidgetPreviewView: View {
     private var widgetSettingsRow: some View {
         Button(action: { navigation.navigate(.widgetEdit(widgetType)) }) {
             HStack(alignment: .center, spacing: 0) {
-                BodyMText(t("widgets__price__widget_settings"), textColor: .textPrimary)
+                BodyMText(t("widgets__widget__settings"), textColor: .textPrimary)
 
                 Spacer()
 
@@ -132,7 +128,7 @@ struct PriceWidgetPreviewView: View {
                 .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 320)
+        .frame(maxHeight: .infinity)
     }
 
     private var compactPage: some View {
@@ -189,8 +185,8 @@ struct PriceWidgetPreviewView: View {
             Spacer()
             CaptionMText(
                 carouselPage == 0
-                    ? t("widgets__price__size_small")
-                    : t("widgets__price__size_wide"),
+                    ? t("widgets__widget__size_small")
+                    : t("widgets__widget__size_wide"),
                 textColor: .textSecondary
             )
             .textCase(.uppercase)

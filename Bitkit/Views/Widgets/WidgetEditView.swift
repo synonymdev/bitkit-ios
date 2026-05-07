@@ -65,8 +65,7 @@ struct WidgetEditView: View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
                 title: usesV61Header ? widget.name : t("widgets__widget__edit"),
-                showMenuButton: !usesV61Header,
-                showGradient: !usesV61Header
+                showMenuButton: !usesV61Header
             )
             .padding(.bottom, 16)
 
@@ -120,7 +119,6 @@ struct WidgetEditView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.gray7.ignoresSafeArea())
         .onAppear {
             if editLogic == nil {
                 let logic = WidgetEditLogic(widgetType: id, widgetsViewModel: widgets)
