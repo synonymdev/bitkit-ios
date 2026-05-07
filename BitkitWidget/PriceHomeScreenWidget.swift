@@ -34,23 +34,43 @@ struct PriceWidgetProvider: TimelineProvider {
     }()
 
     func placeholder(in _: Context) -> PriceWidgetEntry {
-        Self.mockEntry
+        let options = PriceHomeScreenWidgetOptionsStore.load()
+        if let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod),
+           !cached.isEmpty
+        {
+            return PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false)
+        }
+        return Self.mockEntry
     }
 
     func getSnapshot(in context: Context, completion: @escaping (PriceWidgetEntry) -> Void) {
         let options = PriceHomeScreenWidgetOptionsStore.load()
+        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
 
-        if context.isPreview {
-            completion(PriceWidgetEntry(
-                date: Self.mockEntry.date,
-                prices: Self.mockEntry.prices,
-                options: options,
-                showsError: false
-            ))
+        if !cached.isEmpty {
+            completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
             return
         }
 
-        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
+        if context.isPreview {
+            Task {
+                if let fresh = try? await PriceWidgetService.fetchFreshPrices(
+                    pairs: [options.selectedPair],
+                    period: options.selectedPeriod
+                ), !fresh.isEmpty {
+                    completion(PriceWidgetEntry(date: Date(), prices: fresh, options: options, showsError: false))
+                } else {
+                    completion(PriceWidgetEntry(
+                        date: Self.mockEntry.date,
+                        prices: Self.mockEntry.prices,
+                        options: options,
+                        showsError: false
+                    ))
+                }
+            }
+            return
+        }
+
         completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
     }
 
@@ -120,12 +140,12 @@ struct PriceHomeScreenWidgetEntryView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 0) {
-                    captionUpText(data.name)
+                    CaptionMText(data.name, textColor: secondaryTextColor)
                     Spacer(minLength: 0)
-                    captionUpText(entry.options.selectedPeriod.rawValue)
+                    CaptionMText(entry.options.selectedPeriod.rawValue, textColor: secondaryTextColor)
                 }
 
-                priceText(data.price, size: 22, lineHeight: 26)
+                priceText(data.price, size: 22)
 
                 Text(data.change.formatted)
                     .font(Fonts.semiBold(size: 15))
@@ -147,7 +167,7 @@ struct PriceHomeScreenWidgetEntryView: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .center, spacing: 16) {
-                    captionUpText("\(data.name)  \(entry.options.selectedPeriod.rawValue)")
+                    CaptionMText("\(data.name)  \(entry.options.selectedPeriod.rawValue)", textColor: secondaryTextColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     Text(data.change.formatted)
@@ -157,7 +177,7 @@ struct PriceHomeScreenWidgetEntryView: View {
                         .widgetAccentable()
                 }
 
-                priceText(data.price, size: 34, lineHeight: 34)
+                priceText(data.price, size: 34)
             }
 
             Spacer(minLength: 4)
@@ -169,19 +189,11 @@ struct PriceHomeScreenWidgetEntryView: View {
 
     // MARK: - Sub-views
 
-    private func captionUpText(_ text: String) -> Text {
-        Text(text)
-            .font(Fonts.medium(size: 13))
-            .tracking(1)
-            .foregroundColor(secondaryTextColor)
-    }
-
-    private func priceText(_ value: String, size: CGFloat, lineHeight: CGFloat) -> some View {
+    private func priceText(_ value: String, size: CGFloat) -> some View {
         Text(value)
             .font(Fonts.bold(size: size))
             .foregroundColor(valueTextColor)
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
             .widgetAccentable()
     }
 
