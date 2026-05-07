@@ -184,9 +184,11 @@ struct NewsHomeScreenWidgetEntryView: View {
     // MARK: - Wide (medium widget — 343×118)
 
     private func wideLayout(article: CachedNewsArticle) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             titleText(article.title)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 8)
 
             if entry.options.showSource || entry.options.showDate {
                 HStack(alignment: .center, spacing: 8) {
