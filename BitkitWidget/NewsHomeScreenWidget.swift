@@ -15,6 +15,8 @@ struct NewsWidgetEntry: TimelineEntry {
 // MARK: - Helpers
 
 private enum NewsWidgetEntryBuilder {
+    static let refreshInterval: TimeInterval = 15 * 60
+
     static func relativeTime(from dateString: String) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale.current
@@ -25,6 +27,13 @@ private enum NewsWidgetEntryBuilder {
         relative.locale = Locale.current
         relative.dateTimeStyle = .named
         return relative.localizedString(for: date, relativeTo: Date())
+    }
+
+    static func currentArticle(from articles: [CachedNewsArticle], at date: Date = Date()) -> CachedNewsArticle? {
+        guard !articles.isEmpty else { return nil }
+        let bucket = Int(date.timeIntervalSince1970 / refreshInterval)
+        let index = abs(bucket) % articles.count
+        return articles[index]
     }
 }
 
@@ -67,7 +76,7 @@ struct NewsWidgetProvider: TimelineProvider {
         }
 
         let cached = NewsWidgetService.cachedTopArticles()
-        let pick = cached.randomElement()
+        let pick = NewsWidgetEntryBuilder.currentArticle(from: cached)
         completion(NewsWidgetEntry(
             date: Date(),
             article: pick,
@@ -84,7 +93,7 @@ struct NewsWidgetProvider: TimelineProvider {
             let entry: NewsWidgetEntry
             do {
                 let fresh = try await NewsWidgetService.fetchFreshTopArticles()
-                if let pick = fresh.randomElement() {
+                if let pick = NewsWidgetEntryBuilder.currentArticle(from: fresh) {
                     entry = NewsWidgetEntry(
                         date: Date(),
                         article: pick,
@@ -97,7 +106,7 @@ struct NewsWidgetProvider: TimelineProvider {
                 }
             } catch {
                 let cached = NewsWidgetService.cachedTopArticles()
-                if let pick = cached.randomElement() {
+                if let pick = NewsWidgetEntryBuilder.currentArticle(from: cached) {
                     entry = NewsWidgetEntry(
                         date: Date(),
                         article: pick,
@@ -110,8 +119,7 @@ struct NewsWidgetProvider: TimelineProvider {
                 }
             }
 
-            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date())
-                ?? Date().addingTimeInterval(15 * 60)
+            let nextRefresh = Date().addingTimeInterval(NewsWidgetEntryBuilder.refreshInterval)
             completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
         }
     }
