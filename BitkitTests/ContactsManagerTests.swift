@@ -281,6 +281,19 @@ final class ContactsManagerTests: XCTestCase {
         )
     }
 
+    func testResolvePastedPubkyRouteTrimsClipboardInput() {
+        let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
+
+        XCTAssertEqual(
+            resolvePastedPubkyRoute(
+                input: "  \(contactKey)\n",
+                ownPublicKey: nil,
+                contacts: [makeContact(publicKey: contactKey)]
+            ),
+            .contactDetail(publicKey: contactKey)
+        )
+    }
+
     func testResolvePastedPubkyRouteReturnsAddContactForUnknownKey() {
         let contactKey = "pubky3rsduhcxpw74snwyct86m38c63j3pq8x4ycqikxg64roik8yw5xg"
 
