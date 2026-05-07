@@ -232,10 +232,6 @@ class WidgetsViewModel: ObservableObject {
             return options
         }
 
-        if type == .price, let priceOptions = PriceHomeScreenWidgetOptionsStore.load() as? T {
-            return priceOptions
-        }
-
         // Return default options if none saved
         return getDefaultOptions(for: type) as! T
     }
@@ -258,6 +254,10 @@ class WidgetsViewModel: ObservableObject {
             }
 
             persistSavedWidgets()
+
+            if type == .price, let priceOptions = options as? PriceWidgetOptions {
+                syncPriceOptionsToHomeScreenWidget(priceOptions)
+            }
         } catch {
             print("Failed to save widget options: \(error)")
         }
@@ -305,7 +305,6 @@ class WidgetsViewModel: ObservableObject {
             savedWidgets = savedWidgetsWithOptions.map { $0.toWidget() }
             persistSavedWidgets()
         }
-        syncPriceOptionsToHomeScreenWidget()
     }
 
     private func persistSavedWidgets() {
@@ -315,12 +314,12 @@ class WidgetsViewModel: ObservableObject {
         } catch {
             print("Failed to persist widgets: \(error)")
         }
-        syncPriceOptionsToHomeScreenWidget()
     }
 
-    /// Keeps the home-screen WidgetKit price widget in sync with in-app price widget options (App Group).
-    private func syncPriceOptionsToHomeScreenWidget() {
-        let options: PriceWidgetOptions = getOptions(for: .price, as: PriceWidgetOptions.self)
+    /// Mirrors in-app price widget options to the App Group so the home-screen WidgetKit widget can read them.
+    /// Only invoked when the user explicitly changes price widget options — adding, deleting, or resetting
+    /// in-app widgets must not affect the independent OS home-screen widget.
+    private func syncPriceOptionsToHomeScreenWidget(_ options: PriceWidgetOptions) {
         PriceHomeScreenWidgetOptionsStore.save(options)
         PriceHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
