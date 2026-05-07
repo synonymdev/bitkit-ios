@@ -19,7 +19,7 @@ private enum NewsWidgetEntryBuilder {
 
     static func relativeTime(from dateString: String) -> String {
         let formatter = DateFormatter()
-        formatter.locale = Locale.current
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
         guard let date = formatter.date(from: dateString) else { return "" }
 
