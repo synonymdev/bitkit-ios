@@ -106,8 +106,6 @@ struct BlocksHomeScreenWidgetEntryView: View {
             switch widgetFamily {
             case .systemSmall:
                 compactLayout(block: block)
-            case .systemLarge:
-                wideLayout(block: block, fields: entry.options.enabledFields)
             default:
                 wideLayout(block: block, fields: entry.options.compactFields)
             }
@@ -139,8 +137,8 @@ struct BlocksHomeScreenWidgetEntryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    /// Wide layout: icon + label + value rows. `.systemMedium` is capped at 4 fields with the
-    /// same default-priority logic as the small widget; `.systemLarge` shows all enabled fields.
+    /// Wide layout (`.systemMedium`): icon + label + value rows, capped at 4 fields with the
+    /// same default-priority logic as the small widget.
     private func wideLayout(block: CachedBlock, fields: [BlocksWidgetField]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             ForEach(fields, id: \.self) { field in
@@ -211,6 +209,6 @@ struct BitkitBlocksWidget: Widget {
         }
         .configurationDisplayName("Bitcoin Blocks")
         .description("Latest mined Bitcoin block, mirroring the in-app blocks widget.")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+        .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
