@@ -34,23 +34,43 @@ struct PriceWidgetProvider: TimelineProvider {
     }()
 
     func placeholder(in _: Context) -> PriceWidgetEntry {
-        Self.mockEntry
+        let options = PriceHomeScreenWidgetOptionsStore.load()
+        if let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod),
+           !cached.isEmpty
+        {
+            return PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false)
+        }
+        return Self.mockEntry
     }
 
     func getSnapshot(in context: Context, completion: @escaping (PriceWidgetEntry) -> Void) {
         let options = PriceHomeScreenWidgetOptionsStore.load()
+        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
 
-        if context.isPreview {
-            completion(PriceWidgetEntry(
-                date: Self.mockEntry.date,
-                prices: Self.mockEntry.prices,
-                options: options,
-                showsError: false
-            ))
+        if !cached.isEmpty {
+            completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
             return
         }
 
-        let cached = PriceWidgetService.cachedPrices(pairs: [options.selectedPair], period: options.selectedPeriod) ?? []
+        if context.isPreview {
+            Task {
+                if let fresh = try? await PriceWidgetService.fetchFreshPrices(
+                    pairs: [options.selectedPair],
+                    period: options.selectedPeriod
+                ), !fresh.isEmpty {
+                    completion(PriceWidgetEntry(date: Date(), prices: fresh, options: options, showsError: false))
+                } else {
+                    completion(PriceWidgetEntry(
+                        date: Self.mockEntry.date,
+                        prices: Self.mockEntry.prices,
+                        options: options,
+                        showsError: false
+                    ))
+                }
+            }
+            return
+        }
+
         completion(PriceWidgetEntry(date: Date(), prices: cached, options: options, showsError: false))
     }
 
