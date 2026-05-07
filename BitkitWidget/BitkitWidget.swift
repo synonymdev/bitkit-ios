@@ -6,5 +6,6 @@ struct BitkitWidgetBundle: WidgetBundle {
     var body: some Widget {
         BitkitPriceWidget()
         BitkitNewsWidget()
+        BitkitBlocksWidget()
     }
 }

@@ -127,10 +127,7 @@ enum WidgetsBackupConverter {
                         date: prefs["showDate"] as? Bool ?? true,
                         transactionCount: prefs["showTransactions"] as? Bool ?? false,
                         size: prefs["showSize"] as? Bool ?? false,
-                        weight: false,
-                        difficulty: false,
-                        hash: false,
-                        merkleRoot: false,
+                        fees: prefs["showFees"] as? Bool ?? false,
                         showSource: prefs["showSource"] as? Bool ?? false
                     )
                     optionsData = try? JSONEncoder().encode(iosOptions)
@@ -201,6 +198,7 @@ enum WidgetsBackupConverter {
             "showDate": defaults.date,
             "showTransactions": defaults.transactionCount,
             "showSize": defaults.size,
+            "showFees": defaults.fees,
             "showSource": defaults.showSource,
         ]
     }

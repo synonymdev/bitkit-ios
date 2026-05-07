@@ -443,6 +443,8 @@ struct MainNavView: View {
                         PriceWidgetPreviewView()
                     case .news:
                         NewsWidgetPreviewView()
+                    case .blocks:
+                        BlocksWidgetPreviewView()
                     default:
                         WidgetDetailView(id: widgetType)
                     }

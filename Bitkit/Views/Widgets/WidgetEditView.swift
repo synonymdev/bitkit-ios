@@ -55,16 +55,22 @@ struct WidgetEditView: View {
         editLogic?.resetOptions()
     }
 
+    /// v61 widget configuration screens (Price, News, Blocks) use the widget name as the title
+    /// and skip the legacy description block.
+    private var usesV61Header: Bool {
+        id == .price || id == .blocks
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NavigationBar(
-                title: id == .price ? widget.name : t("widgets__widget__edit"),
-                showMenuButton: id != .price,
-                showGradient: id != .price
+                title: usesV61Header ? widget.name : t("widgets__widget__edit"),
+                showMenuButton: !usesV61Header,
+                showGradient: !usesV61Header
             )
             .padding(.bottom, 16)
 
-            if id != .price {
+            if !usesV61Header {
                 BodyMText(
                     t("widgets__widget__edit_description", variables: ["name": widget.name]),
                     textColor: .textSecondary

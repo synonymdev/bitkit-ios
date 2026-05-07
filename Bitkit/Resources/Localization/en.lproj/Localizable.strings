@@ -1411,6 +1411,10 @@
 "widgets__blocks__name" = "Bitcoin Blocks";
 "widgets__blocks__description" = "Examine various statistics on newly mined Bitcoin Blocks.";
 "widgets__blocks__error" = "Couldn\'t get blocks data";
+"widgets__blocks__widget_settings" = "Widget Settings";
+"widgets__blocks__size_small" = "Small";
+"widgets__blocks__size_wide" = "Wide";
+"widgets__blocks__data_header" = "Data";
 "widgets__facts__name" = "Bitcoin Facts";
 "widgets__facts__description" = "Discover fun facts about Bitcoin, every time you open your wallet.";
 "widgets__calculator__name" = "Bitcoin Calculator";

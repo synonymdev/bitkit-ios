@@ -68,205 +68,41 @@ enum WidgetEditItemFactory {
     ) -> [WidgetEditItem] {
         var items: [WidgetEditItem] = []
 
-        if let data = blocksViewModel.blockData {
-            items.append(
-                WidgetEditItem(
-                    key: "height",
-                    type: .toggleItem,
-                    title: "Block",
-                    value: data.height,
-                    isChecked: blocksOptions.height
-                )
-            )
+        items.append(sectionHeaderItem(key: "blocks_data_header", title: t("widgets__blocks__data_header")))
 
-            items.append(
-                WidgetEditItem(
-                    key: "time",
-                    type: .toggleItem,
-                    title: "Time",
-                    value: data.time,
-                    isChecked: blocksOptions.time
-                )
-            )
+        let fallback: [BlocksWidgetField: String] = [
+            .height: "870,123",
+            .time: "2:45:30 PM",
+            .date: "Dec 15, 2024",
+            .transactionCount: "3,456",
+            .size: "1,234 KB",
+            .fees: "25,059,357",
+        ]
 
-            items.append(
-                WidgetEditItem(
-                    key: "date",
-                    type: .toggleItem,
-                    title: "Date",
-                    value: data.date,
-                    isChecked: blocksOptions.date
-                )
-            )
+        for field in BlocksWidgetField.allCases {
+            let value: String = {
+                if field == .showSource { return "mempool.space" }
+                if let data = blocksViewModel.blockData { return field.value(from: data) }
+                return fallback[field] ?? ""
+            }()
 
-            items.append(
-                WidgetEditItem(
-                    key: "transactionCount",
-                    type: .toggleItem,
-                    title: "Transactions",
-                    value: data.transactionCount,
-                    isChecked: blocksOptions.transactionCount
-                )
+            let titleView = AnyView(
+                HStack(spacing: 8) {
+                    Image(field.iconName)
+                        .resizable()
+                        .renderingMode(.template)
+                        .foregroundColor(.brandAccent)
+                        .frame(width: 20, height: 20)
+                    BodySSBText(field.inAppLabel, textColor: .textSecondary)
+                }
             )
-
             items.append(
                 WidgetEditItem(
-                    key: "size",
+                    key: field.rawValue,
                     type: .toggleItem,
-                    title: "Size",
-                    value: data.size,
-                    isChecked: blocksOptions.size
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "weight",
-                    type: .toggleItem,
-                    title: "Weight",
-                    value: data.weight,
-                    isChecked: blocksOptions.weight
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "difficulty",
-                    type: .toggleItem,
-                    title: "Difficulty",
-                    value: data.difficulty,
-                    isChecked: blocksOptions.difficulty
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "hash",
-                    type: .toggleItem,
-                    title: "Hash",
-                    value: data.hash,
-                    isChecked: blocksOptions.hash
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "merkleRoot",
-                    type: .toggleItem,
-                    title: "Merkle Root",
-                    value: data.merkleRoot,
-                    isChecked: blocksOptions.merkleRoot
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showSource",
-                    type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                    isChecked: blocksOptions.showSource
-                )
-            )
-        } else {
-            // Fallback when no data is available
-            items.append(
-                WidgetEditItem(
-                    key: "height",
-                    type: .toggleItem,
-                    title: "Block",
-                    value: "870,123",
-                    isChecked: blocksOptions.height
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "time",
-                    type: .toggleItem,
-                    title: "Time",
-                    value: "2:45:30 PM",
-                    isChecked: blocksOptions.time
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "date",
-                    type: .toggleItem,
-                    title: "Date",
-                    value: "Dec 15, 2024",
-                    isChecked: blocksOptions.date
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "transactionCount",
-                    type: .toggleItem,
-                    title: "Transactions",
-                    value: "3,456",
-                    isChecked: blocksOptions.transactionCount
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "size",
-                    type: .toggleItem,
-                    title: "Size",
-                    value: "1,234 KB",
-                    isChecked: blocksOptions.size
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "weight",
-                    type: .toggleItem,
-                    title: "Weight",
-                    value: "3.45 MWU",
-                    isChecked: blocksOptions.weight
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "difficulty",
-                    type: .toggleItem,
-                    title: "Difficulty",
-                    value: "102.45 T",
-                    isChecked: blocksOptions.difficulty
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "hash",
-                    type: .toggleItem,
-                    title: "Hash",
-                    value: "00000000000000000002a7c4c1e48d76c5a37902165a270156b7a8d72728a054",
-                    isChecked: blocksOptions.hash
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "merkleRoot",
-                    type: .toggleItem,
-                    title: "Merkle Root",
-                    value: "4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b",
-                    isChecked: blocksOptions.merkleRoot
-                )
-            )
-
-            items.append(
-                WidgetEditItem(
-                    key: "showSource",
-                    type: .toggleItem,
-                    title: t("widgets__widget__source"),
-                    valueView: AnyView(BodySSBText("mempool.space", textColor: .textSecondary)),
-                    isChecked: blocksOptions.showSource
+                    titleView: titleView,
+                    valueView: AnyView(BodySSBText(value, textColor: .textSecondary)),
+                    isChecked: field.isEnabled(in: blocksOptions)
                 )
             )
         }

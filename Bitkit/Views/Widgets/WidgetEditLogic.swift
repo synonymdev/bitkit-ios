@@ -34,9 +34,13 @@ class WidgetEditLogic: ObservableObject {
     var hasEnabledOption: Bool {
         switch widgetType {
         case .blocks:
-            // Blocks widget has many options, check if any are enabled
-            return blocksOptions.height || blocksOptions.time || blocksOptions.date || blocksOptions.transactionCount || blocksOptions.size
-                || blocksOptions.weight || blocksOptions.difficulty || blocksOptions.hash || blocksOptions.merkleRoot || blocksOptions.showSource
+            return blocksOptions.height
+                || blocksOptions.time
+                || blocksOptions.date
+                || blocksOptions.transactionCount
+                || blocksOptions.size
+                || blocksOptions.fees
+                || blocksOptions.showSource
         case .news, .facts:
             // Static items (showTitle) are always enabled, so these widgets always have enabled options
             return true
@@ -92,14 +96,8 @@ class WidgetEditLogic: ObservableObject {
                 blocksOptions.transactionCount.toggle()
             case "size":
                 blocksOptions.size.toggle()
-            case "weight":
-                blocksOptions.weight.toggle()
-            case "difficulty":
-                blocksOptions.difficulty.toggle()
-            case "hash":
-                blocksOptions.hash.toggle()
-            case "merkleRoot":
-                blocksOptions.merkleRoot.toggle()
+            case "fees":
+                blocksOptions.fees.toggle()
             case "showSource":
                 blocksOptions.showSource.toggle()
             default:

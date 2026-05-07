@@ -1,129 +1,94 @@
 import Foundation
 
-/// Service for fetching and caching Bitcoin block data
+/// Service for fetching and caching the latest mined Bitcoin block.
+///
+/// Writes the result to the App Group cache (`BlocksWidgetCache`) so the WidgetKit extension
+/// can surface the same data, and triggers a timeline reload on the home-screen widget after
+/// a successful fresh fetch.
 class BlocksService {
     static let shared = BlocksService()
-    private let cache = UserDefaults.standard
-    private let cacheKey = "blocks_widget_cache"
     private let baseUrl = "https://mempool.space/api"
     private let refreshInterval: TimeInterval = 2 * 60 // 2 minutes
 
-    private init() {}
+    private init() {
+        BlocksWidgetCache.legacyDropStandardSuiteCache()
+    }
 
-    /// Fetches the latest block data using stale-while-revalidate strategy
-    /// - Parameter returnCachedImmediately: If true, returns cached data immediately if available
-    /// - Returns: Block data
-    /// - Throws: URLError or decoding error
+    /// Fetches the latest block data using stale-while-revalidate strategy.
+    /// - Parameter returnCachedImmediately: If true, returns cached data immediately if available.
     @discardableResult
-    func fetchBlockData(returnCachedImmediately: Bool = true) async throws -> BlockData {
-        // If we want cached data and it exists, return it immediately
+    func fetchBlockData(returnCachedImmediately: Bool = true) async throws -> CachedBlock {
         if returnCachedImmediately, let cachedData = getCachedData() {
-            // Start fresh fetch in background to update cache (don't await)
+            // Background refresh; cache is updated automatically inside fetchFreshData.
             Task {
                 do {
                     try await fetchFreshData()
-                    // Cache will be updated automatically in fetchFreshData
                 } catch {
-                    // Silent failure for background updates
                     print("Background blocks data update failed: \(error)")
                 }
             }
             return cachedData
         }
 
-        // No cache available or cache not requested - fetch fresh data
         return try await fetchFreshData()
     }
 
-    /// Fetches fresh data from API (always hits the network)
+    /// Fetches fresh data from the mempool API.
     @discardableResult
-    private func fetchFreshData() async throws -> BlockData {
-        // First get the tip hash
+    private func fetchFreshData() async throws -> CachedBlock {
         guard let tipUrl = URL(string: "\(baseUrl)/blocks/tip/hash") else {
             throw URLError(.badURL)
         }
 
         let (hashData, hashResponse) = try await URLSession.shared.data(from: tipUrl)
 
-        // Validate HTTP response
-        guard let httpResponse = hashResponse as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        guard httpResponse.statusCode == 200 else {
+        guard let httpResponse = hashResponse as? HTTPURLResponse,
+              httpResponse.statusCode == 200
+        else {
             throw URLError(.badServerResponse)
         }
 
         let hash = String(data: hashData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
-        // Now get the block info
-        guard let blockUrl = URL(string: "\(baseUrl)/block/\(hash)") else {
+        // The v1 endpoint returns the same fields as the legacy one plus an `extras` block with `totalFees`.
+        guard let blockUrl = URL(string: "\(baseUrl)/v1/block/\(hash)") else {
             throw URLError(.badURL)
         }
 
         let (blockData, blockResponse) = try await URLSession.shared.data(from: blockUrl)
 
-        // Validate HTTP response
-        guard let httpBlockResponse = blockResponse as? HTTPURLResponse else {
+        guard let httpBlockResponse = blockResponse as? HTTPURLResponse,
+              httpBlockResponse.statusCode == 200
+        else {
             throw URLError(.badServerResponse)
         }
 
-        guard httpBlockResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
+        let blockInfo = try JSONDecoder().decode(BlockInfo.self, from: blockData)
+        let formattedData = formatBlockInfo(blockInfo)
 
-        do {
-            let decoder = JSONDecoder()
-            let blockInfo = try decoder.decode(BlockInfo.self, from: blockData)
-            let formattedData = formatBlockInfo(blockInfo)
+        cacheData(formattedData)
+        BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
 
-            // Cache the data
-            cacheData(formattedData)
-
-            return formattedData
-        } catch {
-            throw error
-        }
+        return formattedData
     }
 
-    /// Caches block data to UserDefaults
-    /// - Parameter data: Block data to cache
-    func cacheData(_ data: BlockData) {
-        do {
-            let encoder = JSONEncoder()
-            let encoded = try encoder.encode(data)
-            cache.set(encoded, forKey: cacheKey)
-        } catch {
-            // Handle silently
-        }
+    /// Caches block data to the App Group so the WidgetKit extension can read it.
+    func cacheData(_ data: CachedBlock) {
+        BlocksWidgetCache.saveLatest(data)
     }
 
-    /// Retrieves cached block data
-    /// - Returns: Block data if available
-    func getCachedData() -> BlockData? {
-        guard let data = cache.data(forKey: cacheKey) else {
-            return nil
-        }
-
-        do {
-            let decoder = JSONDecoder()
-            return try decoder.decode(BlockData.self, from: data)
-        } catch {
-            return nil
-        }
+    /// Retrieves cached block data from the App Group.
+    func getCachedData() -> CachedBlock? {
+        BlocksWidgetCache.loadLatest()
     }
 
-    /// Formats raw block info into display-friendly format
-    /// - Parameter blockInfo: Raw block info from API
-    /// - Returns: Formatted block data
-    private func formatBlockInfo(_ blockInfo: BlockInfo) -> BlockData {
+    /// Formats raw block info into display-friendly format.
+    private func formatBlockInfo(_ blockInfo: BlockInfo) -> CachedBlock {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
         formatter.locale = Locale.current
 
-        let difficulty = (blockInfo.difficulty / 1_000_000_000_000).formatted(.number.precision(.fractionLength(2)))
-        let size = Double(blockInfo.size) / 1024
-        let weight = Double(blockInfo.weight) / 1024 / 1024
+        let sizeKb = Double(blockInfo.size) / 1024
 
         let timeFormatter = DateFormatter()
         timeFormatter.dateStyle = .none
@@ -138,25 +103,24 @@ class BlocksService {
         let dateString = dateFormatter.string(from: date)
 
         let formattedHeight = formatter.string(from: NSNumber(value: blockInfo.height)) ?? "\(blockInfo.height)"
-        let formattedSize = "\(formatter.string(from: NSNumber(value: Int(size))) ?? "\(Int(size))") KB"
+        let formattedSize = "\(formatter.string(from: NSNumber(value: Int(sizeKb))) ?? "\(Int(sizeKb))") KB"
         let formattedTransactions = formatter.string(from: NSNumber(value: blockInfo.txCount)) ?? "\(blockInfo.txCount)"
-        let formattedWeight = "\(formatter.string(from: NSNumber(value: weight)) ?? "\(weight)") MWU"
 
-        return BlockData(
-            hash: blockInfo.id,
-            difficulty: difficulty,
-            size: formattedSize,
-            weight: formattedWeight,
+        let totalFeesSats = blockInfo.extras?.totalFees ?? 0
+        let formattedFees = formatter.string(from: NSNumber(value: totalFeesSats)) ?? "\(totalFeesSats)"
+
+        return CachedBlock(
             height: formattedHeight,
             time: time,
             date: dateString,
             transactionCount: formattedTransactions,
-            merkleRoot: blockInfo.merkleRoot
+            size: formattedSize,
+            fees: formattedFees
         )
     }
 }
 
-/// Raw block info model from mempool.space API
+/// Raw block info model from mempool.space API (`/api/v1/block/:hash`).
 struct BlockInfo: Codable {
     let id: String
     let height: Int
@@ -164,8 +128,11 @@ struct BlockInfo: Codable {
     let txCount: Int
     let size: Int
     let weight: Int
-    let difficulty: Double
-    let merkleRoot: String
+    let extras: Extras?
+
+    struct Extras: Codable {
+        let totalFees: Int?
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -174,20 +141,6 @@ struct BlockInfo: Codable {
         case txCount = "tx_count"
         case size
         case weight
-        case difficulty
-        case merkleRoot = "merkle_root"
+        case extras
     }
-}
-
-/// Formatted block data for display
-struct BlockData: Codable {
-    let hash: String
-    let difficulty: String
-    let size: String
-    let weight: String
-    let height: String
-    let time: String
-    let date: String
-    let transactionCount: String
-    let merkleRoot: String
 }

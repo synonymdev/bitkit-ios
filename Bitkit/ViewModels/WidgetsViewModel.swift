@@ -240,6 +240,10 @@ class WidgetsViewModel: ObservableObject {
             return newsOptions
         }
 
+        if type == .blocks, let blocksOptions = BlocksHomeScreenWidgetOptionsStore.load() as? T {
+            return blocksOptions
+        }
+
         // Return default options if none saved
         return getDefaultOptions(for: type) as! T
     }
@@ -311,6 +315,7 @@ class WidgetsViewModel: ObservableObject {
         }
         syncPriceOptionsToHomeScreenWidget()
         syncNewsOptionsToHomeScreenWidget()
+        syncBlocksOptionsToHomeScreenWidget()
     }
 
     private func persistSavedWidgets() {
@@ -322,6 +327,7 @@ class WidgetsViewModel: ObservableObject {
         }
         syncPriceOptionsToHomeScreenWidget()
         syncNewsOptionsToHomeScreenWidget()
+        syncBlocksOptionsToHomeScreenWidget()
     }
 
     /// Keeps the home-screen WidgetKit price widget in sync with in-app price widget options (App Group).
@@ -336,5 +342,12 @@ class WidgetsViewModel: ObservableObject {
         let options: NewsWidgetOptions = getOptions(for: .news, as: NewsWidgetOptions.self)
         NewsHomeScreenWidgetOptionsStore.save(options)
         NewsHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
+    }
+
+    /// Keeps the home-screen WidgetKit Blocks widget in sync with in-app Blocks widget options (App Group).
+    private func syncBlocksOptionsToHomeScreenWidget() {
+        let options: BlocksWidgetOptions = getOptions(for: .blocks, as: BlocksWidgetOptions.self)
+        BlocksHomeScreenWidgetOptionsStore.save(options)
+        BlocksHomeScreenWidgetOptionsStore.reloadHomeScreenWidgetIfNeeded()
     }
 }
