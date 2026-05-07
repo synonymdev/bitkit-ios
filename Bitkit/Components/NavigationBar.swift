@@ -7,7 +7,6 @@ struct NavigationBar: View {
     let title: String
     let showBackButton: Bool
     let showMenuButton: Bool
-    let showGradient: Bool
     let action: AnyView?
     let icon: String?
     let onBack: (() -> Void)?
@@ -16,7 +15,6 @@ struct NavigationBar: View {
         title: String,
         showBackButton: Bool = true,
         showMenuButton: Bool = true,
-        showGradient: Bool = true,
         action: AnyView? = nil,
         icon: String? = nil,
         onBack: (() -> Void)? = nil
@@ -24,7 +22,6 @@ struct NavigationBar: View {
         self.title = title
         self.showBackButton = showBackButton
         self.showMenuButton = showMenuButton
-        self.showGradient = showGradient
         self.action = action
         self.icon = icon
         self.onBack = onBack
@@ -92,17 +89,11 @@ struct NavigationBar: View {
             }
         }
         .frame(height: 48)
-        .background(
-            Group {
-                if showGradient {
-                    LinearGradient(
-                        colors: [.black, .black.opacity(0)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
-            }
-        )
+        .background(LinearGradient(
+            colors: [.black, .black.opacity(0)],
+            startPoint: .top,
+            endPoint: .bottom
+        ))
         .zIndex(.infinity)
     }
 }

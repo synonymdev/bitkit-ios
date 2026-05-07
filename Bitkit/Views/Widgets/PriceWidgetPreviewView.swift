@@ -43,7 +43,7 @@ struct PriceWidgetPreviewView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            NavigationBar(title: widgetName, showMenuButton: false, showGradient: false)
+            NavigationBar(title: widgetName, showMenuButton: false)
 
             VStack(alignment: .leading, spacing: 0) {
                 BodyMText(widgetDescription, textColor: .textSecondary)
@@ -74,7 +74,6 @@ struct PriceWidgetPreviewView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.gray7.ignoresSafeArea())
         .task {
             let options = currentOptions
             viewModel.fetchPriceData(pairs: [options.selectedPair], period: options.selectedPeriod)
