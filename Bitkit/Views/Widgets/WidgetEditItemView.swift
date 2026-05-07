@@ -33,10 +33,10 @@ struct WidgetEditItemView: View {
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
-                if item.type != .staticItem, item.isChecked {
+                if item.type != .staticItem {
                     Image("check-mark")
                         .resizable()
-                        .foregroundColor(.brandAccent)
+                        .foregroundColor(item.isChecked ? .brandAccent : .white32)
                         .frame(width: 32, height: 32)
                 }
             }
