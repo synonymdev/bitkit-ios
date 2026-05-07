@@ -38,7 +38,7 @@ enum BlocksWidgetField: String, CaseIterable {
         case .height: return "cube"
         case .time: return "clock"
         case .date: return "calendar"
-        case .transactionCount: return "transfer"
+        case .transactionCount: return "arrow-up-down"
         case .size: return "file-text"
         case .fees: return "coins"
         case .showSource: return "globe"
