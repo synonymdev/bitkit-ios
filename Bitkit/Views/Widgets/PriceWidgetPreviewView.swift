@@ -96,7 +96,7 @@ struct PriceWidgetPreviewView: View {
     private var widgetSettingsRow: some View {
         Button(action: { navigation.navigate(.widgetEdit(widgetType)) }) {
             HStack(alignment: .center, spacing: 0) {
-                BodyMText(t("widgets__price__widget_settings"), textColor: .textPrimary)
+                BodyMText(t("widgets__widget__settings"), textColor: .textPrimary)
 
                 Spacer()
 
@@ -188,8 +188,8 @@ struct PriceWidgetPreviewView: View {
             Spacer()
             CaptionMText(
                 carouselPage == 0
-                    ? t("widgets__price__size_small")
-                    : t("widgets__price__size_wide"),
+                    ? t("widgets__widget__size_small")
+                    : t("widgets__widget__size_wide"),
                 textColor: .textSecondary
             )
             .textCase(.uppercase)
