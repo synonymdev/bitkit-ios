@@ -57,11 +57,7 @@ struct PriceWidgetPreviewView: View {
             }
 
             VStack(spacing: 16) {
-                Spacer(minLength: 0)
-
                 carousel
-
-                Spacer(minLength: 0)
 
                 sizeLabel
 
@@ -74,6 +70,7 @@ struct PriceWidgetPreviewView: View {
         .navigationBarHidden(true)
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .bottomSafeAreaPadding()
         .task {
             let options = currentOptions
             viewModel.fetchPriceData(pairs: [options.selectedPair], period: options.selectedPeriod)
@@ -131,7 +128,7 @@ struct PriceWidgetPreviewView: View {
                 .tag(1)
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .frame(height: 320)
+        .frame(maxHeight: .infinity)
     }
 
     private var compactPage: some View {
