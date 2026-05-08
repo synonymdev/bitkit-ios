@@ -78,7 +78,7 @@ struct WidgetEditView: View {
                             item: item,
                             onToggle: { editLogic?.toggleOption(item) }
                         )
-                        .accessibilityIdentifier("WidgetEditField-\(item.key)")
+                        .accessibilityIdentifier("\(item.key)_setting_row")
                     }
                 }
                 .id(refreshTrigger) // Force refresh when refreshTrigger changes
