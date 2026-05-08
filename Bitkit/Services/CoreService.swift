@@ -582,6 +582,7 @@ class ActivityService {
                 {
                     activity.boostTxIds.append(txid)
                     activity.isBoosted = true
+                    activity.contact = activity.contact ?? replacedActivity?.contact
                     activity.updatedAt = UInt64(Date().timeIntervalSince1970)
                     try await self.update(id: activity.id, activity: .onchain(activity))
 
@@ -965,17 +966,25 @@ class ActivityService {
 
     func get(contact publicKey: String, sortDirection: SortDirection = .desc) async throws -> [Activity] {
         let normalizedKey = PubkyPublicKeyFormat.normalized(publicKey) ?? publicKey
+        let txIdsInBoostTxIds = await getTxIdsInBoostTxIds()
         // TODO: push contact filtering into BitkitCore once the activity store exposes it.
         let activities = try await get(filter: .all, sortDirection: sortDirection)
 
-        return activities.filter { activity in
-            switch activity {
-            case let .lightning(lightning):
-                return PubkyPublicKeyFormat.matches(lightning.contact, normalizedKey)
-            case let .onchain(onchain):
-                return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
+        return activities
+            .filter { !isReplacedSentTransaction($0, txIdsInBoostTxIds: txIdsInBoostTxIds) }
+            .filter { activity in
+                switch activity {
+                case let .lightning(lightning):
+                    return PubkyPublicKeyFormat.matches(lightning.contact, normalizedKey)
+                case let .onchain(onchain):
+                    return PubkyPublicKeyFormat.matches(onchain.contact, normalizedKey)
+                }
             }
-        }
+    }
+
+    private func isReplacedSentTransaction(_ activity: Activity, txIdsInBoostTxIds: Set<String>) -> Bool {
+        guard case let .onchain(onchain) = activity else { return false }
+        return !onchain.doesExist && onchain.txType == .sent && txIdsInBoostTxIds.contains(onchain.txId)
     }
 
     func update(id: String, activity: Activity) async throws {
@@ -1046,7 +1055,7 @@ class ActivityService {
         let normalizedContact = publicKey.map { PubkyPublicKeyFormat.normalized($0) ?? $0 }
 
         try await ServiceQueue.background(.core) {
-            guard let activity = try getActivityById(activityId: id) else {
+            guard let activity = try getActivityById(activityId: id) ?? (try? BitkitCore.getActivityByTxId(txId: id)).map(Activity.onchain) else {
                 throw AppError(message: "Activity not found", debugMessage: "Activity with ID \(id) not found")
             }
 
@@ -1055,17 +1064,47 @@ class ActivityService {
                 guard lightning.contact != normalizedContact else { return }
                 lightning.contact = normalizedContact
                 lightning.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try updateActivity(activityId: id, activity: .lightning(lightning))
+                try updateActivity(activityId: lightning.id, activity: .lightning(lightning))
                 self.activitiesChangedSubject.send()
 
             case var .onchain(onchain):
-                guard onchain.contact != normalizedContact else { return }
-                onchain.contact = normalizedContact
-                onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
-                try updateActivity(activityId: id, activity: .onchain(onchain))
-                self.activitiesChangedSubject.send()
+                let contactChanged = onchain.contact != normalizedContact
+                if contactChanged {
+                    onchain.contact = normalizedContact
+                    onchain.updatedAt = UInt64(Date().timeIntervalSince1970)
+                    try updateActivity(activityId: onchain.id, activity: .onchain(onchain))
+                }
+
+                let replacementContactChanged = try self.updateReplacementContactIfNeeded(for: onchain, normalizedContact: normalizedContact)
+                if contactChanged || replacementContactChanged {
+                    self.activitiesChangedSubject.send()
+                }
             }
         }
+    }
+
+    private func updateReplacementContactIfNeeded(for activity: OnchainActivity, normalizedContact: String?) throws -> Bool {
+        guard !activity.doesExist, activity.txType == .sent else { return false }
+
+        let activities = try getActivities(
+            filter: .onchain,
+            txType: nil,
+            tags: nil,
+            search: nil,
+            minDate: nil,
+            maxDate: nil,
+            limit: nil,
+            sortDirection: nil
+        )
+        var didUpdate = false
+        for case var .onchain(replacement) in activities where replacement.boostTxIds.contains(activity.txId) {
+            guard replacement.contact != normalizedContact else { continue }
+            replacement.contact = normalizedContact
+            replacement.updatedAt = UInt64(Date().timeIntervalSince1970)
+            try updateActivity(activityId: replacement.id, activity: .onchain(replacement))
+            didUpdate = true
+        }
+        return didUpdate
     }
 
     func delete(id: String) async throws -> Bool {
