@@ -576,7 +576,10 @@ struct AppScene: View {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
                     try? await wallet.sync()
-                    await PrivatePaykitService.shared.retryPendingEndpointRemoval(wallet: wallet)
+                    await PrivatePaykitService.shared.retryPendingEndpointRemoval(
+                        wallet: wallet,
+                        savedPublicKeys: contactsManager.contacts.map(\.publicKey)
+                    )
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
                     await PrivatePaykitService.shared.refreshSavedContactEndpoints(
                         for: contactsManager.contacts.map(\.publicKey),

@@ -87,16 +87,28 @@ extension PrivatePaykitService {
         await PrivatePaykitAddressReservationStore.shared.clearContactAssignments(excludingPublicKeys: Array(savedKeys))
     }
 
-    func retryPendingEndpointRemoval(wallet: WalletViewModel) async {
+    func retryPendingEndpointRemoval(wallet: WalletViewModel, savedPublicKeys: [String]) async {
         guard UserDefaults.standard.bool(forKey: Self.cleanupPendingKey) else { return }
 
         do {
             try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
             try await removePublishedEndpoints()
+            await clearUnsavedContactState(savedPublicKeys: savedPublicKeys)
             Self.setContactSharingCleanupPending(false)
         } catch {
             Logger.warn("Failed to retry pending Paykit contact endpoint removal: \(error)", context: "PrivatePaykit")
         }
+    }
+
+    func clearUnsavedContactState(savedPublicKeys publicKeys: [String]) async {
+        let savedKeys = Set(normalizedSavedContactKeys(publicKeys))
+        let staleKeys = state.contacts.keys.filter { !savedKeys.contains($0) }
+
+        for publicKey in staleKeys {
+            await clearContactState(publicKey: publicKey)
+        }
+
+        await PrivatePaykitAddressReservationStore.shared.clearContactAssignments(excludingPublicKeys: Array(savedKeys))
     }
 
     func publishLocalEndpoints(
