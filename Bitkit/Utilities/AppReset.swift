@@ -10,6 +10,7 @@ enum AppReset {
         toastType: Toast.ToastType = .success
     ) async throws {
         await PubkyProfileManager.removePublicPaykitEndpointsBestEffort(context: "AppReset.wipe")
+        await PubkyProfileManager.removePrivatePaykitEndpointsBestEffort(context: "AppReset.wipe")
 
         // Set wiping flag to prevent backups during wipe operations
         BackupService.shared.setWiping(true)
@@ -31,6 +32,7 @@ enum AppReset {
 
         // Clear any live Pubky runtime state and cached profile images.
         await PubkyProfileManager.clearLocalState()
+        await PrivatePaykitAddressReservationStore.shared.clear()
 
         // Wipe keychain
         try Keychain.wipeEntireKeychain()

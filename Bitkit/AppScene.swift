@@ -77,6 +77,15 @@ struct AppScene: View {
         _settings = StateObject(wrappedValue: SettingsViewModel.shared)
 
         _transferTracking = StateObject(wrappedValue: TransferTrackingManager(service: transferService))
+
+        CoreService.shared.activity.setPrivatePaykitContactResolvers(
+            invoice: { paymentHash in
+                await PrivatePaykitService.shared.contactPublicKey(forPrivateInvoicePaymentHash: paymentHash)
+            },
+            onchainAddress: { address in
+                await PrivatePaykitAddressReservationStore.shared.contactPublicKey(forReservedAddress: address)
+            }
+        )
     }
 
     var body: some View {
@@ -91,7 +100,7 @@ struct AppScene: View {
             .onChange(of: currency.hasStaleData) { _, newValue in handleCurrencyStaleData(newValue) }
             .onChange(of: wallet.walletExists) { _, newValue in handleWalletExistsChange(newValue) }
             .onChange(of: wallet.nodeLifecycleState) { _, newValue in handleNodeLifecycleChange(newValue) }
-            .onChange(of: scenePhase) { _, newValue in handleScenePhaseChange(newValue) }
+            .onChange(of: scenePhase, initial: true) { _, newValue in handleScenePhaseChange(newValue) }
             .onChange(of: network.isConnected) { _, isConnected in handleNetworkChange(isConnected) }
             .onChange(of: migrations.isShowingMigrationLoading) { _, isLoading in
                 if !isLoading {
@@ -140,6 +149,13 @@ struct AppScene: View {
                     Task { try? await contactsManager.loadContacts(for: pk) }
                 } else if authState == .idle {
                     contactsManager.reset()
+                }
+            }
+            .onReceive(contactsManager.$contacts) { contacts in
+                guard wallet.walletExists == true, pubkyProfile.authState == .authenticated else { return }
+                let publicKeys = contacts.map(\.publicKey)
+                Task {
+                    await PrivatePaykitService.shared.prepareSavedContacts(publicKeys, wallet: wallet)
                 }
             }
             .onChange(of: navigation.currentRoute) { oldRoute, newRoute in
@@ -527,6 +543,13 @@ struct AppScene: View {
             walletInitShouldFinish = true
             app.markAppStatusInit()
             BackupService.shared.startObservingBackups()
+            Task {
+                await PrivatePaykitAddressReservationStore.shared.reconcileReservedIndexesWithLdk()
+                await PrivatePaykitService.shared.prepareSavedContacts(
+                    contactsManager.contacts.map(\.publicKey),
+                    wallet: wallet
+                )
+            }
         } else {
             if case .errorStarting = state {
                 walletInitShouldFinish = true
@@ -552,7 +575,13 @@ struct AppScene: View {
                 Task {
                     await clearDeliveredNotifications()
                     await LightningService.shared.reconnectPeers()
+                    try? await wallet.sync()
+                    await PrivatePaykitService.shared.retryPendingEndpointRemoval(wallet: wallet)
                     await wallet.refreshPublicPaykitEndpointsOnForeground()
+                    await PrivatePaykitService.shared.refreshSavedContactEndpoints(
+                        for: contactsManager.contacts.map(\.publicKey),
+                        wallet: wallet
+                    )
                 }
             }
         }

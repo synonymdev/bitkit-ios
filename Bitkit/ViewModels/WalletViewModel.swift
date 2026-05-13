@@ -210,6 +210,7 @@ class WalletViewModel: ObservableObject {
                         self.bolt11 = ""
                         self.rotatePublicPaykitInvoiceIfNeeded(paymentHash: paymentHash)
                         Task {
+                            await PrivatePaykitService.shared.handleReceivedPayment(paymentHash: paymentHash, wallet: self)
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
                         }
@@ -219,6 +220,7 @@ class WalletViewModel: ObservableObject {
                             await self.reconnectTrustedPeers()
                             await self.refreshAndSyncState()
                             try? await self.refreshBip21()
+                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-ready refresh")
                         }
 
                     case let .channelClosed(channelId, _, _, reason):
@@ -227,14 +229,33 @@ class WalletViewModel: ObservableObject {
                             await self.refreshAndSyncState()
                             await self.handleChannelClosed(channelId: channelId, reason: reason)
                             try? await self.refreshBip21()
+                            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: self, reason: "channel-closed refresh")
                         }
 
                     // MARK: Onchain Transaction Events
 
-                    case .onchainTransactionReceived, .onchainTransactionConfirmed, .onchainTransactionReplaced, .onchainTransactionReorged,
-                         .onchainTransactionEvicted:
+                    case let .onchainTransactionReceived(_, details):
                         Task {
                             await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+
+                    case let .onchainTransactionConfirmed(_, _, _, _, details):
+                        Task {
+                            await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(
+                                receivedAddresses: details.outputs.compactMap(\.scriptpubkeyAddress),
+                                wallet: self
+                            )
+                        }
+
+                    case .onchainTransactionReplaced, .onchainTransactionReorged, .onchainTransactionEvicted:
+                        Task {
+                            await self.refreshAndSyncState()
+                            await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
                         }
 
                     // MARK: Sync Events
@@ -453,6 +474,8 @@ class WalletViewModel: ObservableObject {
 
         isSyncingWallet = false
         syncState()
+        await PrivatePaykitService.shared.reconcileReceivedPayments(wallet: self)
+        await PrivatePaykitService.shared.handleOnchainActivity(wallet: self)
     }
 
     /// Sends bitcoin to an on-chain address
@@ -952,15 +975,21 @@ class WalletViewModel: ObservableObject {
 
     @discardableResult
     private func refreshReusableOnchainAddress() async throws -> String {
+        let addressType = LDKNode.AddressType.fromStorage(UserDefaults.standard.string(forKey: "selectedAddressType"))
+
+        if await PrivatePaykitAddressReservationStore.shared.isUnavailableForReusableReceive(address: onchainAddress) {
+            onchainAddress = ""
+        }
+
         if onchainAddress.isEmpty {
-            onchainAddress = try await lightningService.newAddress()
+            onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
         } else {
             // Check if current address has been used
             let hasTransactions = try await coreService.utility.isAddressUsed(address: onchainAddress)
 
             if hasTransactions {
                 // Address has been used, generate a new one
-                onchainAddress = try await lightningService.newAddress()
+                onchainAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
             }
         }
 

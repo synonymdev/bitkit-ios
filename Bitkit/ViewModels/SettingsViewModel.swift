@@ -366,6 +366,9 @@ class SettingsViewModel: NSObject, ObservableObject {
         }
 
         wallet?.syncState()
+        if !enabled, let wallet {
+            await PrivatePaykitService.shared.refreshKnownSavedContactEndpoints(wallet: wallet, reason: "address type monitoring changed")
+        }
         return true
     }
 
@@ -509,7 +512,7 @@ class SettingsViewModel: NSObject, ObservableObject {
 
     private func generateAndUpdateAddress(addressType: AddressScriptType, wallet: WalletViewModel?) async {
         do {
-            let newAddress = try await lightningService.newAddressForType(addressType)
+            let newAddress = try await PrivatePaykitAddressReservationStore.shared.nextNonReservedReceiveAddress(addressType: addressType)
             guard addressType.matchesAddressFormat(newAddress, network: Env.network) else {
                 Logger.error("Generated address did not match expected format for \(addressType.stringValue): \(newAddress)")
                 return

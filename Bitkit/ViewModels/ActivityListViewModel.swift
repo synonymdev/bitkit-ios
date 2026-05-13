@@ -217,7 +217,7 @@ class ActivityListViewModel: ObservableObject {
             return
         }
 
-        if let ldkPayments = lightningService.payments {
+        if let ldkPayments = await lightningService.listPayments() {
             isSyncingLdkNodePayments = true
             do {
                 try await coreService.activity.syncLdkNodePayments(ldkPayments)

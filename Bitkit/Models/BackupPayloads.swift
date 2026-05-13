@@ -7,6 +7,20 @@ struct WalletBackupV1: Codable {
     let version: Int
     let createdAt: UInt64
     let transfers: [Transfer]
+    let privatePaykitHighestReservedReceiveIndexByAddressType: [String: UInt32]?
+    let privatePaykitContactLinks: [String: PrivatePaykitContactLinkBackupV1]?
+}
+
+struct PrivatePaykitContactLinkBackupV1: Codable, Equatable {
+    let publicKey: String
+    let linkSnapshotHex: String?
+    let handshakeSnapshotHex: String?
+    let remoteEndpoints: [String: String]
+    let linkCompletedAt: UInt64?
+    let handshakeUpdatedAt: UInt64?
+    let recoveryStartedAt: UInt64?
+    let mainRecoveryAttemptId: String?
+    let responderRecoveryAttemptId: String?
 }
 
 struct MetadataBackupV1: Codable {

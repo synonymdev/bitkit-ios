@@ -5,6 +5,7 @@ struct PayContactsView: View {
     @AppStorage("sharesPublicPaykitEndpoints") private var sharesPublicPaykitEndpoints = false
 
     @EnvironmentObject var app: AppViewModel
+    @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var navigation: NavigationViewModel
     @EnvironmentObject var wallet: WalletViewModel
 
@@ -71,9 +72,39 @@ struct PayContactsView: View {
         defer { isSaving = false }
 
         do {
-            try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: publish)
-            sharesPublicPaykitEndpoints = publish
-            hasConfirmedPublicPaykitEndpoints = true
+            if publish {
+                try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: true)
+                sharesPublicPaykitEndpoints = true
+                hasConfirmedPublicPaykitEndpoints = true
+                PrivatePaykitService.setContactSharingCleanupPending(false)
+                await PrivatePaykitService.shared.prepareSavedContacts(
+                    contactsManager.contacts.map(\.publicKey),
+                    wallet: wallet
+                )
+            } else {
+                var cleanupError: Error?
+                sharesPublicPaykitEndpoints = false
+                hasConfirmedPublicPaykitEndpoints = true
+                do {
+                    try await PublicPaykitService.syncPublishedEndpoints(wallet: wallet, publish: false)
+                } catch {
+                    cleanupError = error
+                    Logger.warn("Failed to remove public Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
+                }
+                do {
+                    try await PrivatePaykitService.shared.removePublishedEndpoints()
+                } catch {
+                    if cleanupError == nil {
+                        cleanupError = error
+                    }
+                    Logger.warn("Failed to remove private Paykit endpoints while disabling contact payments: \(error)", context: "PayContactsView")
+                }
+                if let cleanupError {
+                    PrivatePaykitService.setContactSharingCleanupPending(true)
+                    throw cleanupError
+                }
+                PrivatePaykitService.setContactSharingCleanupPending(false)
+            }
             navigation.path = [.profile]
         } catch {
             enablePayments = hasConfirmedPublicPaykitEndpoints ? sharesPublicPaykitEndpoints : true
@@ -91,6 +122,7 @@ struct PayContactsView: View {
     NavigationStack {
         PayContactsView()
             .environmentObject(AppViewModel())
+            .environmentObject(ContactsManager())
             .environmentObject(NavigationViewModel())
             .environmentObject(WalletViewModel())
     }

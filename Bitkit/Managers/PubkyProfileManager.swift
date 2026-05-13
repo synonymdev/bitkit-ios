@@ -753,6 +753,8 @@ class PubkyProfileManager: ObservableObject {
     // MARK: - Sign Out
 
     static func clearLocalState() async {
+        await PrivatePaykitService.shared.closeAndClear()
+        await PrivatePaykitAddressReservationStore.shared.clearContactAssignments()
         await PubkyService.forceSignOut()
         try? Keychain.delete(key: .paykitSession)
         try? Keychain.delete(key: .pubkySecretKey)
@@ -766,6 +768,7 @@ class PubkyProfileManager: ObservableObject {
     private static func clearPublicPaykitSharingState() {
         UserDefaults.standard.set(false, forKey: "sharesPublicPaykitEndpoints")
         UserDefaults.standard.set(false, forKey: "hasConfirmedPublicPaykitEndpoints")
+        PrivatePaykitService.setContactSharingCleanupPending(false)
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11PaymentHash")
         UserDefaults.standard.removeObject(forKey: "publicPaykitBolt11ExpiresAt")
@@ -786,9 +789,18 @@ class PubkyProfileManager: ObservableObject {
         try? await removePublicPaykitEndpoints(context: context)
     }
 
+    static func removePrivatePaykitEndpointsBestEffort(context: String) async {
+        do {
+            try await PrivatePaykitService.shared.removePublishedEndpoints()
+        } catch {
+            Logger.warn("Failed to remove private Paykit endpoints before clearing session: \(error)", context: context)
+        }
+    }
+
     func signOut() async {
         await Task.detached {
             await Self.removePublicPaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
+            await Self.removePrivatePaykitEndpointsBestEffort(context: "PubkyProfileManager.signOut")
             do {
                 try await PubkyService.signOut()
             } catch {

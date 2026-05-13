@@ -73,7 +73,7 @@ enum Env {
     /// Returns the keychain access group based on the current network
     static var keychainGroup: String {
         let base = "KYH47R284B.to.bitkit"
-        let networkSuffix = networkName(network)
+        let networkSuffix = networkName
         return networkSuffix == "bitcoin" ? base : "\(base).\(networkSuffix)"
     }
 
@@ -106,8 +106,13 @@ enum Env {
         }
     }
 
-    /// Returns the lowercase name of the network (e.g., "bitcoin", "testnet", "signet", "regtest")
-    private static func networkName(_ network: LDKNode.Network) -> String {
+    /// Lowercase storage/display name for the current network.
+    static var networkName: String {
+        networkName(for: network)
+    }
+
+    /// Lowercase storage/display name for a network.
+    static func networkName(for network: LDKNode.Network) -> String {
         switch network {
         case .bitcoin: "bitcoin"
         case .testnet: "testnet"
@@ -150,13 +155,13 @@ enum Env {
 
     static func ldkStorage(walletIndex: Int) -> URL {
         appStorageUrl
-            .appendingPathComponent(networkName(network))
+            .appendingPathComponent(networkName)
             .appendingPathComponent("wallet\(walletIndex)/ldk")
     }
 
     static func bitkitCoreStorage(walletIndex: Int) -> URL {
         appStorageUrl
-            .appendingPathComponent(networkName(network))
+            .appendingPathComponent(networkName)
             .appendingPathComponent("wallet\(walletIndex)/core")
     }
 
@@ -242,7 +247,7 @@ enum Env {
     ]
 
     static var vssStoreIdPrefix: String {
-        "bitkit_v1_\(networkName(network))"
+        "bitkit_v1_\(networkName)"
     }
 
     static var vssServerUrl: String {

@@ -490,12 +490,65 @@ class LightningService {
     }
 
     func newAddressForType(_ addressType: LDKNode.AddressType) async throws -> String {
+        let addressInfo = try await newAddressInfoForType(addressType)
+        return addressInfo.address
+    }
+
+    struct AddressDerivationInfo {
+        let address: String
+        let index: UInt32
+    }
+
+    func newAddressInfoForType(_ addressType: LDKNode.AddressType) async throws -> AddressDerivationInfo {
         guard let node else {
             throw AppError(serviceError: .nodeNotSetup)
         }
 
         return try await ServiceQueue.background(.ldk) {
-            try node.onchainPayment().newAddressForType(addressType: addressType)
+            let addressInfo = try node.onchainPayment().newAddressInfoForType(addressType: addressType)
+            return AddressDerivationInfo(address: addressInfo.address, index: addressInfo.index)
+        }
+    }
+
+    func addressInfoForType(
+        _ addressType: LDKNode.AddressType,
+        keychain: LDKNode.KeychainKind = .external,
+        atIndex index: UInt32
+    ) async throws -> AddressDerivationInfo {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            let addressInfo = try node.onchainPayment().addressInfoForTypeAtIndex(addressType: addressType, keychain: keychain, index: index)
+            return AddressDerivationInfo(address: addressInfo.address, index: addressInfo.index)
+        }
+    }
+
+    func addressInfosForType(
+        _ addressType: LDKNode.AddressType,
+        keychain: LDKNode.KeychainKind,
+        startIndex: UInt32,
+        count: UInt32
+    ) async throws -> [AddressDerivationInfo] {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        return try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment()
+                .addressInfosForType(addressType: addressType, keychain: keychain, startIndex: startIndex, count: count)
+                .map { AddressDerivationInfo(address: $0.address, index: $0.index) }
+        }
+    }
+
+    func revealReceiveAddresses(to receiveIndex: UInt32, forType addressType: LDKNode.AddressType) async throws {
+        guard let node else {
+            throw AppError(serviceError: .nodeNotSetup)
+        }
+
+        try await ServiceQueue.background(.ldk) {
+            try node.onchainPayment().revealReceiveAddressesTo(addressType: addressType, index: receiveIndex)
         }
     }
 
@@ -939,8 +992,10 @@ extension LightningService {
         cachedChannels
     }
 
-    var payments: [PaymentDetails]? {
-        node?.listPayments()
+    func listPayments() async -> [PaymentDetails]? {
+        try? await ServiceQueue.background(.ldk) { [self] in
+            node?.listPayments()
+        }
     }
 
     /// Refresh all cached values asynchronously

@@ -7,11 +7,12 @@ struct ContactDetailView: View {
     @EnvironmentObject var contactsManager: ContactsManager
     @EnvironmentObject var settings: SettingsViewModel
     @EnvironmentObject var sheets: SheetViewModel
+    @EnvironmentObject var wallet: WalletViewModel
 
     let publicKey: String
 
     @State private var profile: PubkyProfile?
-    @State private var hasPublicPaymentEndpoint = false
+    @State private var hasPayablePaymentEndpoint = false
     @State private var isLoading = true
     @State private var showAddTagSheet = false
     @State private var hasResolvedContactFromContacts = false
@@ -36,6 +37,7 @@ struct ContactDetailView: View {
             if let cached = contactsManager.contacts.first(where: { $0.publicKey == publicKey }) {
                 profile = cached.profile
                 hasResolvedContactFromContacts = true
+                isLoading = false
             }
             await loadPaymentEndpoints()
             isLoading = false
@@ -94,7 +96,7 @@ struct ContactDetailView: View {
 
     private var contactActions: some View {
         HStack(spacing: 16) {
-            if hasPublicPaymentEndpoint {
+            if hasPayablePaymentEndpoint {
                 GradientCircleButton(icon: "coins", accessibilityLabel: t("wallet__send")) {
                     Task {
                         await payContact()
@@ -269,20 +271,12 @@ struct ContactDetailView: View {
     }
 
     private func loadPaymentEndpoints() async {
-        do {
-            hasPublicPaymentEndpoint = try await PublicPaykitService.hasPayablePublicEndpoint(publicKey: publicKey)
-        } catch {
-            Logger.warn(
-                "Failed to load public payment endpoints for \(PubkyPublicKeyFormat.redacted(publicKey)): \(error)",
-                context: "ContactDetailView"
-            )
-            hasPublicPaymentEndpoint = false
-        }
+        hasPayablePaymentEndpoint = await PrivatePaykitService.shared.resolveSavedContactPayableEndpoint(publicKey: publicKey, wallet: wallet)
     }
 
     private func payContact() async {
         do {
-            let result = try await PublicPaykitService.beginPayment(to: publicKey)
+            let result = try await PrivatePaykitService.shared.beginSavedContactPayment(to: publicKey, wallet: wallet)
 
             switch result {
             case let .opened(paymentRequest):
@@ -341,6 +335,7 @@ struct ContactDetailView: View {
             .environmentObject(ContactsManager())
             .environmentObject(SettingsViewModel.shared)
             .environmentObject(SheetViewModel())
+            .environmentObject(WalletViewModel())
     }
     .preferredColorScheme(.dark)
 }
